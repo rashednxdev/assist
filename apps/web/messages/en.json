@@ -1,0 +1,30 @@
+{
+  "app": {
+    "name": "iBAS++",
+    "tagline": "Government financial management assistant"
+  },
+  "auth": {
+    "login": "Login",
+    "logout": "Logout",
+    "email": "Email",
+    "password": "Password",
+    "emailPlaceholder": "you@finance.gov.bd",
+    "passwordPlaceholder": "••••••••",
+    "submit": "Sign in",
+    "submitting": "Please wait...",
+    "loginFailed": "Login failed"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "Welcome",
+    "phase": "Phase 1 — Users & Setup"
+  },
+  "admin": {
+    "users": "Users",
+    "modules": "Modules",
+    "addUser": "Add user"
+  },
+  "common": {
+    "loading": "Loading..."
+  }
+}

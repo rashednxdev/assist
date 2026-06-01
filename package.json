@@ -1,0 +1,21 @@
+{
+  "name": "ibas-plus",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm build:packages && turbo dev --filter=@ibas/api --filter=@ibas/web",
+    "build": "turbo build",
+    "build:packages": "pnpm --filter @ibas/shared-constants build && pnpm --filter @ibas/shared-types build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "seed": "pnpm --filter @ibas/api seed",
+    "migrate:indexes": "pnpm --filter @ibas/api migrate:indexes"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.4",
+    "typescript": "^5.8.3"
+  },
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=20"
+  }
+}

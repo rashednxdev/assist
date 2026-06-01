@@ -1,0 +1,104 @@
+import 'dotenv/config';
+import dns from 'node:dns';
+import mongoose from 'mongoose';
+import { User } from '../../src/domains/users/models/User.model.js';
+import { Credentials } from '../../src/domains/users/models/Credentials.model.js';
+import { Division } from '../../src/domains/setup/models/Division.model.js';
+import { District } from '../../src/domains/setup/models/District.model.js';
+import { Thana } from '../../src/domains/setup/models/Thana.model.js';
+import { Module } from '../../src/domains/setup/models/Module.model.js';
+import { Role } from '../../src/domains/workflow/models/Role.model.js';
+import { Task } from '../../src/domains/workflow/models/Task.model.js';
+import { TaskStep } from '../../src/domains/workflow/models/TaskStep.model.js';
+import { TaskRun } from '../../src/domains/workflow/models/TaskRun.model.js';
+import { StepResponse } from '../../src/domains/workflow/models/StepResponse.model.js';
+import { Notification } from '../../src/domains/workflow/models/Notification.model.js';
+import { AuditLog } from '../../src/domains/workflow/models/AuditLog.model.js';
+import { UserModuleAccess } from '../../src/domains/users/models/UserModuleAccess.model.js';
+import { UserAddress } from '../../src/domains/users/models/UserAddress.model.js';
+import { UserActivityLog } from '../../src/domains/users/models/UserActivityLog.model.js';
+import { BookType } from '../../src/domains/books/models/BookType.model.js';
+import { BookInfo } from '../../src/domains/books/models/BookInfo.model.js';
+import { BookPart } from '../../src/domains/books/models/BookPart.model.js';
+import { BookChapter } from '../../src/domains/books/models/BookChapter.model.js';
+import { BookTopic } from '../../src/domains/books/models/BookTopic.model.js';
+import { BookTopicDetail } from '../../src/domains/books/models/BookTopicDetail.model.js';
+import { BookSubTopic } from '../../src/domains/books/models/BookSubTopic.model.js';
+import { BookSubTopicDetail } from '../../src/domains/books/models/BookSubTopicDetail.model.js';
+import { Regulation } from '../../src/domains/books/models/Regulation.model.js';
+import { RegulationAmendment } from '../../src/domains/books/models/RegulationAmendment.model.js';
+import { QuestionType } from '../../src/domains/questions/models/QuestionType.model.js';
+import { Question } from '../../src/domains/questions/models/Question.model.js';
+import { QuestionOption } from '../../src/domains/questions/models/QuestionOption.model.js';
+import { QuestionAnswer } from '../../src/domains/questions/models/QuestionAnswer.model.js';
+import { QuestionAnswerDetail } from '../../src/domains/questions/models/QuestionAnswerDetail.model.js';
+import { Department } from '../../src/domains/exams/models/Department.model.js';
+import { Authority } from '../../src/domains/exams/models/Authority.model.js';
+import { ExamName } from '../../src/domains/exams/models/ExamName.model.js';
+import { ExamPart } from '../../src/domains/exams/models/ExamPart.model.js';
+import { ExamType } from '../../src/domains/exams/models/ExamType.model.js';
+import { ExamSubject } from '../../src/domains/exams/models/ExamSubject.model.js';
+import { SyllabusGroup } from '../../src/domains/syllabus/models/SyllabusGroup.model.js';
+import { SyllabusTopic } from '../../src/domains/syllabus/models/SyllabusTopic.model.js';
+import { SyllabusSubTopic } from '../../src/domains/syllabus/models/SyllabusSubTopic.model.js';
+import { SyllabusReference } from '../../src/domains/syllabus/models/SyllabusReference.model.js';
+
+async function createIndexes() {
+  const uri = process.env.MONGODB_URI;
+  if (!uri) throw new Error('MONGODB_URI required');
+
+  dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
+  dns.setDefaultResultOrder('ipv4first');
+  await mongoose.connect(uri);
+
+  await User.syncIndexes();
+  await Credentials.syncIndexes();
+  await Division.syncIndexes();
+  await District.syncIndexes();
+  await Thana.syncIndexes();
+  await Module.syncIndexes();
+  await Role.syncIndexes();
+  await Task.syncIndexes();
+  await TaskStep.syncIndexes();
+  await TaskRun.syncIndexes();
+  await StepResponse.syncIndexes();
+  await Notification.syncIndexes();
+  await AuditLog.syncIndexes();
+  await UserModuleAccess.syncIndexes();
+  await UserAddress.syncIndexes();
+  await UserActivityLog.syncIndexes();
+  await BookType.syncIndexes();
+  await BookInfo.syncIndexes();
+  await BookPart.syncIndexes();
+  await BookChapter.syncIndexes();
+  await BookTopic.syncIndexes();
+  await BookTopicDetail.syncIndexes();
+  await BookSubTopic.syncIndexes();
+  await BookSubTopicDetail.syncIndexes();
+  await Regulation.syncIndexes();
+  await RegulationAmendment.syncIndexes();
+  await QuestionType.syncIndexes();
+  await Question.syncIndexes();
+  await QuestionOption.syncIndexes();
+  await QuestionAnswer.syncIndexes();
+  await QuestionAnswerDetail.syncIndexes();
+  await Department.syncIndexes();
+  await Authority.syncIndexes();
+  await ExamName.syncIndexes();
+  await ExamPart.syncIndexes();
+  await ExamType.syncIndexes();
+  await ExamSubject.syncIndexes();
+  await SyllabusGroup.syncIndexes();
+  await SyllabusTopic.syncIndexes();
+  await SyllabusSubTopic.syncIndexes();
+  await SyllabusReference.syncIndexes();
+
+  console.log('Indexes synced');
+
+  await mongoose.disconnect();
+}
+
+createIndexes().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

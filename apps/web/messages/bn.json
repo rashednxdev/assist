@@ -1,0 +1,25 @@
+{
+  "app": {
+    "name": "iBAS++",
+    "tagline": "সরকারি অর্থ ব্যবস্থাপনা সহায়ক"
+  },
+  "auth": {
+    "login": "লগইন",
+    "logout": "লগআউট",
+    "email": "ইমেইল",
+    "password": "পাসওয়ার্ড",
+    "emailPlaceholder": "you@finance.gov.bd",
+    "passwordPlaceholder": "••••••••",
+    "submit": "প্রবেশ করুন",
+    "submitting": "অপেক্ষা করুন...",
+    "loginFailed": "লগইন ব্যর্থ হয়েছে"
+  },
+  "dashboard": {
+    "title": "ড্যাশবোর্ড",
+    "welcome": "স্বাগতম",
+    "phase": "পর্যায় ০ — ভিত্তি স্থাপন সম্পন্ন"
+  },
+  "common": {
+    "loading": "লোড হচ্ছে..."
+  }
+}

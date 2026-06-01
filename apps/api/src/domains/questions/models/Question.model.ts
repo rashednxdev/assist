@@ -1,0 +1,54 @@
+import mongoose, { Schema, type Document, type Types } from 'mongoose';
+
+export interface IQuestion extends Document {
+  question_type_id: Types.ObjectId;
+  question_type_code: string;
+  book_chapter_id?: Types.ObjectId;
+  book_topic_id?: Types.ObjectId;
+  book_sub_topic_id?: Types.ObjectId;
+  regulation_id?: Types.ObjectId;
+  body_en: string;
+  body_bn?: string;
+  difficulty: string;
+  marks: number;
+  negative_marks?: number;
+  time_seconds: number;
+  is_published: boolean;
+  is_active: boolean;
+  language: string;
+  created_by: Types.ObjectId;
+  reviewed_by?: Types.ObjectId;
+  created_at: Date;
+  updated_at: Date;
+}
+
+const schema = new Schema<IQuestion>(
+  {
+    question_type_id: { type: Schema.Types.ObjectId, required: true, ref: 'QuestionType' },
+    question_type_code: { type: String, required: true },
+    book_chapter_id: { type: Schema.Types.ObjectId, ref: 'BookChapter' },
+    book_topic_id: { type: Schema.Types.ObjectId, ref: 'BookTopic' },
+    book_sub_topic_id: { type: Schema.Types.ObjectId, ref: 'BookSubTopic' },
+    regulation_id: { type: Schema.Types.ObjectId, ref: 'Regulation' },
+    body_en: { type: String, required: true },
+    body_bn: { type: String },
+    difficulty: { type: String, required: true },
+    marks: { type: Number, required: true },
+    negative_marks: { type: Number },
+    time_seconds: { type: Number, required: true },
+    is_published: { type: Boolean, default: false },
+    is_active: { type: Boolean, default: true },
+    language: { type: String, default: 'both' },
+    created_by: { type: Schema.Types.ObjectId, required: true, ref: 'User' },
+    reviewed_by: { type: Schema.Types.ObjectId, ref: 'User' },
+  },
+  { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } },
+);
+
+schema.index({ book_chapter_id: 1, is_published: 1 });
+schema.index({ book_topic_id: 1, is_published: 1 });
+schema.index({ regulation_id: 1 });
+schema.index({ difficulty: 1, is_published: 1 });
+schema.index({ created_by: 1 });
+
+export const Question = mongoose.model<IQuestion>('Question', schema, 'questions');

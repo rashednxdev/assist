@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { ArrowLeft, History, Pencil } from 'lucide-react';
+import { useParams, useRouter } from 'next/navigation';
+import { ArrowLeft, History, Pencil, Trash2 } from 'lucide-react';
+import { confirmDelete } from '@/lib/confirm-action';
 import { apiFetch } from '@/lib/api-client';
 import { fetchMe } from '@/lib/auth';
 import { PageHeader } from '@/components/shared/page-header';
@@ -45,6 +46,7 @@ interface RegulationDetail {
 
 export default function RegulationDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const id = params.id as string;
   const [reg, setReg] = useState<RegulationDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -90,6 +92,19 @@ export default function RegulationDetailPage() {
     return <p className="text-muted">Regulation not found.</p>;
   }
 
+  async function removeRegulation() {
+    if (!reg || !confirmDelete(reg.title)) return;
+    setBusy(true);
+    setError('');
+    try {
+      await apiFetch(`/books/regulations/${id}`, { method: 'DELETE' });
+      router.push('/books/regulations');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Delete failed');
+      setBusy(false);
+    }
+  }
+
   async function saveEdit() {
     setError('');
     setMessage('');
@@ -126,10 +141,16 @@ export default function RegulationDetailPage() {
           </Link>
         </Button>
         {isAdmin && (
-          <Button size="sm" variant={editing ? 'default' : 'outline'} onClick={() => setEditing(!editing)}>
-            <Pencil className="h-4 w-4" />
-            {editing ? 'Cancel edit' : 'Edit'}
-          </Button>
+          <>
+            <Button size="sm" variant={editing ? 'default' : 'outline'} onClick={() => setEditing(!editing)}>
+              <Pencil className="h-4 w-4" />
+              {editing ? 'Cancel edit' : 'Edit'}
+            </Button>
+            <Button size="sm" variant="outline" className="text-red-600" disabled={busy} onClick={removeRegulation}>
+              <Trash2 className="h-4 w-4" />
+              Delete
+            </Button>
+          </>
         )}
       </div>
 

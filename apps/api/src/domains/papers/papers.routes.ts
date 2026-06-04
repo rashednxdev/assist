@@ -6,6 +6,7 @@ import {
   listPaperTypesHandler,
   createPaperTypeHandler,
   updatePaperTypeHandler,
+  deletePaperTypeHandler,
   listPapersHandler,
   getPaperHandler,
   getPaperComposeHandler,
@@ -32,6 +33,7 @@ papersRouter.use(authenticate);
 papersRouter.get('/types', asyncHandler(listPaperTypesHandler));
 papersRouter.post('/types', requireAdmin, asyncHandler(createPaperTypeHandler));
 papersRouter.patch('/types/:id', requireAdmin, asyncHandler(updatePaperTypeHandler));
+papersRouter.delete('/types/:id', requireAdmin, asyncHandler(deletePaperTypeHandler));
 
 papersRouter.get('/', asyncHandler(listPapersHandler));
 papersRouter.post('/', requireAdmin, asyncHandler(createPaperHandler));

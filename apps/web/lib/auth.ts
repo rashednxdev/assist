@@ -1,4 +1,4 @@
-import type { AuthUser } from '@ibas/shared-types';
+import type { AuthUser, ModuleAccessGrant } from '@ibas/shared-types';
 import { parseJsonResponse } from './parse-json-response';
 
 const TOKEN_KEY = 'ibas_access_token';
@@ -48,6 +48,7 @@ export type MeUser = AuthUser & {
   is_verified: boolean;
   email_verified: boolean;
   phone_verified: boolean;
+  module_access: ModuleAccessGrant[];
 };
 
 export async function loginRequest(email: string, password: string): Promise<LoginResponse> {

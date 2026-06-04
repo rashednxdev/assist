@@ -29,6 +29,10 @@ export async function updatePaperTypeHandler(req: AuthRequest, res: Response): P
   res.json({ data: await papersService.updatePaperType(String(req.params.id), dto) });
 }
 
+export async function deletePaperTypeHandler(req: AuthRequest, res: Response): Promise<void> {
+  res.json({ data: await papersService.deletePaperType(String(req.params.id)) });
+}
+
 export async function listPapersHandler(req: AuthRequest, res: Response): Promise<void> {
   const filters = listPapersQuerySchema.parse(req.query);
   res.json({ data: await papersService.listPapers(filters) });

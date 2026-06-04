@@ -7,7 +7,8 @@ import { useTranslations } from 'next-intl';
 import { Menu, X, LogOut, Shield } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { logoutRequest, fetchMe, getAccessToken } from '@/lib/auth';
+import { logoutRequest, fetchMe, getAccessToken, type MeUser } from '@/lib/auth';
+import { buildVisibleNav } from '@/lib/capabilities';
 import { navGroups, type NavItem } from './nav-config';
 
 function NavLink({
@@ -40,7 +41,7 @@ function NavLink({
 
 function SidebarContent({
   pathname,
-  isAdmin,
+  visibleNav,
   onNavigate,
   onLogout,
   logoutLabel,
@@ -48,7 +49,7 @@ function SidebarContent({
   tagline,
 }: {
   pathname: string;
-  isAdmin: boolean;
+  visibleNav: ReturnType<typeof buildVisibleNav>;
   onNavigate?: () => void;
   onLogout: () => void;
   logoutLabel: string;
@@ -68,23 +69,23 @@ function SidebarContent({
       </div>
 
       <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-4">
-        {navGroups.map((group) => {
-          if (group.adminOnly && !isAdmin) return null;
-          const items = group.items.filter((item) => !item.adminOnly || isAdmin);
-          if (items.length === 0) return null;
-          return (
-            <div key={group.title}>
-              <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-sidebar-muted">
-                {group.title}
-              </p>
-              <div className="space-y-0.5">
-                {items.map((item) => (
-                  <NavLink key={item.href} item={item} pathname={pathname} onNavigate={onNavigate} />
-                ))}
-              </div>
+        {visibleNav.map((group) => (
+          <div key={group.title}>
+            <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-sidebar-muted">
+              {group.title}
+            </p>
+            <div className="space-y-0.5">
+              {group.items.map((item) => (
+                <NavLink
+                  key={`${group.title}-${item.href}-${item.label}`}
+                  item={item}
+                  pathname={pathname}
+                  onNavigate={onNavigate}
+                />
+              ))}
             </div>
-          );
-        })}
+          </div>
+        ))}
       </nav>
 
       <div className="border-t border-white/10 p-3">
@@ -107,7 +108,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const tAuth = useTranslations('auth');
   const tApp = useTranslations('app');
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [me, setMe] = useState<MeUser | null>(null);
 
   useEffect(() => {
     setMobileOpen(false);
@@ -117,14 +118,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (!getAccessToken()) return;
     fetchMe()
       .then((res) => {
-        const admin =
-          res.data.is_super_admin ||
-          res.data.user_type === 'system_admin' ||
-          res.data.user_type === 'admin';
-        setIsAdmin(admin);
+        setMe({
+          ...res.data,
+          module_access: res.data.module_access ?? [],
+        });
       })
       .catch(() => {});
   }, []);
+
+  const visibleNav =
+    me !== null ? buildVisibleNav(me, me.module_access, navGroups) : [{ title: 'Overview', items: navGroups[0]!.items }];
 
   async function handleLogout() {
     await logoutRequest();
@@ -133,7 +136,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const sidebarProps = {
     pathname,
-    isAdmin,
+    visibleNav,
     onLogout: handleLogout,
     logoutLabel: tAuth('logout'),
     appName: tApp('name'),

@@ -3,6 +3,7 @@ import { loginSchema } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
 import { login } from './auth.service.js';
 import { User } from '../users/models/User.model.js';
+import { listModuleAccessForSession } from '../users/module-access.service.js';
 import { badRequest } from '../../shared/errors/AppError.js';
 
 export async function loginHandler(req: AuthRequest, res: Response): Promise<void> {
@@ -58,6 +59,8 @@ export async function meHandler(req: AuthRequest, res: Response): Promise<void> 
     return;
   }
 
+  const module_access = await listModuleAccessForSession(String(user._id));
+
   res.json({
     data: {
       id: String(user._id),
@@ -71,7 +74,11 @@ export async function meHandler(req: AuthRequest, res: Response): Promise<void> 
       is_verified: user.is_verified,
       email_verified: user.email_verified,
       phone_verified: user.phone_verified,
-      workflow_roles: user.workflow_roles,
+      workflow_roles: user.workflow_roles.map((r) => ({
+        role_code: r.role_code,
+        is_active: r.is_active,
+      })),
+      module_access,
     },
   });
 }

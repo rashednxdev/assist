@@ -28,6 +28,20 @@ export const authUserSchema = z.object({
 
 export type AuthUser = z.infer<typeof authUserSchema>;
 
+/** Active module grants returned on GET /auth/me for navigation and UI gating. */
+export const moduleAccessGrantSchema = z.object({
+  module_code: z.string(),
+  module_name_en: z.string(),
+  can_read: z.boolean(),
+  can_create: z.boolean(),
+  can_update: z.boolean(),
+  can_delete: z.boolean(),
+  can_grade: z.boolean(),
+  can_publish: z.boolean(),
+});
+
+export type ModuleAccessGrant = z.infer<typeof moduleAccessGrantSchema>;
+
 export const registerSchema = z
   .object({
     full_name_en: z.string().min(2),

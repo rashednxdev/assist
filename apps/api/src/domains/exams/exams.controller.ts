@@ -30,6 +30,10 @@ export async function updateDepartmentHandler(req: AuthRequest, res: Response): 
   res.json({ data: await examsService.updateDepartment(String(req.params.id), dto) });
 }
 
+export async function deleteDepartmentHandler(req: AuthRequest, res: Response): Promise<void> {
+  res.json({ data: await examsService.deleteDepartment(String(req.params.id)) });
+}
+
 export async function getDepartmentHandler(req: AuthRequest, res: Response): Promise<void> {
   res.json({ data: await examsService.getDepartmentById(String(req.params.id)) });
 }
@@ -47,6 +51,10 @@ export async function createAuthorityHandler(req: AuthRequest, res: Response): P
 export async function updateAuthorityHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = updateAuthoritySchema.parse(req.body);
   res.json({ data: await examsService.updateAuthority(String(req.params.id), dto) });
+}
+
+export async function deleteAuthorityHandler(req: AuthRequest, res: Response): Promise<void> {
+  res.json({ data: await examsService.deleteAuthority(String(req.params.id)) });
 }
 
 export async function getAuthorityHandler(req: AuthRequest, res: Response): Promise<void> {
@@ -76,6 +84,10 @@ export async function updateExamNameHandler(req: AuthRequest, res: Response): Pr
   res.json({ data: await examsService.updateExamName(String(req.params.id), dto) });
 }
 
+export async function deleteExamNameHandler(req: AuthRequest, res: Response): Promise<void> {
+  res.json({ data: await examsService.deleteExamName(String(req.params.id)) });
+}
+
 export async function listExamPartsHandler(req: AuthRequest, res: Response): Promise<void> {
   res.json({ data: await examsService.listExamParts(String(req.params.examId)) });
 }
@@ -88,6 +100,10 @@ export async function createExamPartHandler(req: AuthRequest, res: Response): Pr
 export async function updateExamPartHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = updateExamPartSchema.parse(req.body);
   res.json({ data: await examsService.updateExamPart(String(req.params.id), dto) });
+}
+
+export async function deleteExamPartHandler(req: AuthRequest, res: Response): Promise<void> {
+  res.json({ data: await examsService.deleteExamPart(String(req.params.id)) });
 }
 
 export async function getExamPartHandler(req: AuthRequest, res: Response): Promise<void> {
@@ -106,6 +122,10 @@ export async function createExamTypeHandler(req: AuthRequest, res: Response): Pr
 export async function updateExamTypeHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = updateExamTypeSchema.parse(req.body);
   res.json({ data: await examsService.updateExamType(String(req.params.id), dto) });
+}
+
+export async function deleteExamTypeHandler(req: AuthRequest, res: Response): Promise<void> {
+  res.json({ data: await examsService.deleteExamType(String(req.params.id)) });
 }
 
 export async function getExamTypeHandler(req: AuthRequest, res: Response): Promise<void> {

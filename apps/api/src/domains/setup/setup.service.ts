@@ -3,7 +3,7 @@ import { District } from './models/District.model.js';
 import { Thana } from './models/Thana.model.js';
 import { Module } from './models/Module.model.js';
 import { Role } from '../workflow/models/Role.model.js';
-import { notFound } from '../../shared/errors/AppError.js';
+import { notFound, badRequest } from '../../shared/errors/AppError.js';
 import type { z } from 'zod';
 import { createDivisionSchema, updateGeoSchema } from '@ibas/shared-types';
 
@@ -45,6 +45,16 @@ export async function updateDivision(id: string, dto: UpdateGeoDto) {
   return doc;
 }
 
+export async function deleteDivision(id: string) {
+  const doc = await Division.findById(id);
+  if (!doc) throw notFound('Division not found');
+  const districtCount = await District.countDocuments({ division_id: doc._id, is_active: true });
+  if (districtCount > 0) throw badRequest('Remove districts in this division first');
+  doc.is_active = false;
+  await doc.save();
+  return { deleted: true };
+}
+
 export async function createDistrict(divisionId: string, dto: CreateDivisionDto) {
   const division = await Division.findById(divisionId);
   if (!division) throw notFound('Division not found');
@@ -57,6 +67,16 @@ export async function updateDistrict(id: string, dto: UpdateGeoDto) {
   return doc;
 }
 
+export async function deleteDistrict(id: string) {
+  const doc = await District.findById(id);
+  if (!doc) throw notFound('District not found');
+  const thanaCount = await Thana.countDocuments({ district_id: doc._id, is_active: true });
+  if (thanaCount > 0) throw badRequest('Remove thanas in this district first');
+  doc.is_active = false;
+  await doc.save();
+  return { deleted: true };
+}
+
 export async function createThana(districtId: string, dto: CreateDivisionDto) {
   const district = await District.findById(districtId);
   if (!district) throw notFound('District not found');
@@ -67,6 +87,14 @@ export async function updateThana(id: string, dto: UpdateGeoDto) {
   const doc = await Thana.findByIdAndUpdate(id, dto, { new: true });
   if (!doc) throw notFound('Thana not found');
   return doc;
+}
+
+export async function deleteThana(id: string) {
+  const doc = await Thana.findById(id);
+  if (!doc) throw notFound('Thana not found');
+  doc.is_active = false;
+  await doc.save();
+  return { deleted: true };
 }
 
 export async function getGeographyTree(): Promise<object[]> {

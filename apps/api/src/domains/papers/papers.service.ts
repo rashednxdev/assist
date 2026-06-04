@@ -164,6 +164,16 @@ export async function updatePaperType(id: string, dto: UpdatePaperTypeDto) {
   return serializePaperType(t);
 }
 
+export async function deletePaperType(id: string) {
+  const t = await PaperType.findById(id);
+  if (!t) throw notFound('Paper type not found');
+  const inUse = await PaperDetail.countDocuments({ paper_type_id: t._id, is_active: true });
+  if (inUse > 0) throw badRequest('Cannot delete: papers still use this type');
+  t.is_active = false;
+  await t.save();
+  return { deleted: true };
+}
+
 // --- Papers ---
 
 export async function listPapers(filters: ListPapersQuery) {

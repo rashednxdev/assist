@@ -4,7 +4,22 @@ import { Thana } from '../../src/domains/setup/models/Thana.model.js';
 import { Module } from '../../src/domains/setup/models/Module.model.js';
 import { Role } from '../../src/domains/workflow/models/Role.model.js';
 
+/** Learning & platform modules (sidebar / RBAC). */
+const PLATFORM_MODULES = [
+  { code: 'BOOKS', name_en: 'Rule library', description_en: 'GFR and government financial rule books', color: '#0F6E56', sort_order: 10 },
+  { code: 'QUESTIONS', name_en: 'Question bank', description_en: 'MCQ and descriptive questions linked to rules', color: '#185FA5', sort_order: 11 },
+  { code: 'EXAM', name_en: 'Exam programs', description_en: 'SAS, SRAS and promotion exam structure', color: '#534AB7', sort_order: 12 },
+  { code: 'SYLLABUS', name_en: 'Syllabus', description_en: 'Subject syllabus and references', color: '#854F0B', sort_order: 13 },
+  { code: 'PAPER', name_en: 'Practice papers', description_en: 'Model tests and practice papers', color: '#BA7517', sort_order: 14 },
+  { code: 'WORKFLOW', name_en: 'Guided processes', description_en: 'Step-by-step workflow runs and inbox', color: '#1D9E75', sort_order: 15 },
+  { code: 'CANDIDATE', name_en: 'Candidate portal', description_en: 'Applicant exam registration', color: '#A32D2D', sort_order: 16 },
+  { code: 'USER', name_en: 'User management', description_en: 'Create and manage system users', color: '#64748b', sort_order: 17 },
+  { code: 'SETUP', name_en: 'System setup', description_en: 'Modules, geography, and configuration', color: '#64748b', sort_order: 18 },
+  { code: 'AUDIT', name_en: 'Audit log', description_en: 'Platform audit trail', color: '#64748b', sort_order: 19 },
+];
+
 const MODULES = [
+  ...PLATFORM_MODULES,
   { code: 'BUDGET_PREP', name_en: 'Budget Preparation', description_en: 'Annual budget planning', color: '#534AB7', sort_order: 1 },
   { code: 'BUDGET_EXEC', name_en: 'Budget Execution', description_en: 'Budget execution and monitoring', color: '#185FA5', sort_order: 2 },
   { code: 'ACCOUNTING', name_en: 'Accounting', description_en: 'Core accounting operations', color: '#1D9E75', sort_order: 3 },
@@ -28,7 +43,7 @@ export async function seedSetupData() {
   for (const m of MODULES) {
     await Module.updateOne({ code: m.code }, { $set: { ...m, is_active: true } }, { upsert: true });
   }
-  console.log(`Seeded ${MODULES.length} modules`);
+  console.log(`Seeded ${MODULES.length} modules (${PLATFORM_MODULES.length} platform + ${MODULES.length - PLATFORM_MODULES.length} office)`);
 
   for (const r of ROLES) {
     await Role.updateOne(

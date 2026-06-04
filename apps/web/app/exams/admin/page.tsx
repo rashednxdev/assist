@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, BookMarked, Eye, Pencil, Plus } from 'lucide-react';
+import { ArrowLeft, BookMarked, Eye, Pencil, Plus, Trash2 } from 'lucide-react';
+import { confirmDelete } from '@/lib/confirm-action';
 import { AUTHORITY_TYPES } from '@ibas/shared-constants';
 import { apiFetch } from '@/lib/api-client';
 import { fetchMe } from '@/lib/auth';
@@ -395,6 +396,50 @@ export default function ExamsAdminPage() {
     }
   }
 
+  async function deleteRecord(s: Step, id: string, label: string) {
+    if (!confirmDelete(label)) return;
+    const paths: Record<Step, string> = {
+      department: `/exams/departments/${id}`,
+      authority: `/exams/authorities/${id}`,
+      exam: `/exams/names/${id}`,
+      part: `/exams/parts/${id}`,
+      type: `/exams/types/${id}`,
+      subject: `/exams/subjects/${id}`,
+    };
+    setBusy(true);
+    setError('');
+    try {
+      await apiFetch(paths[s], { method: 'DELETE' });
+      setMessage('Removed');
+      resetStepForm(s);
+      if (s === 'department') {
+        const list = await apiFetch<{ data: DepartmentRow[] }>('/exams/departments');
+        setDepartments(list.data);
+      } else if (s === 'authority' && selectedDept) {
+        await loadAuthorities(selectedDept);
+      } else if (s === 'exam') {
+        const allExams = await apiFetch<{ data: ExamRow[] }>('/exams/names');
+        setExams(allExams.data);
+        if (overviewExamId === id) {
+          setOverviewExamId('');
+          setOverview(null);
+        }
+      } else if (s === 'part' && selectedExam) {
+        await loadParts(selectedExam);
+      } else if (s === 'type' && selectedExam) {
+        await loadTypes(selectedExam);
+      } else if (s === 'subject' && selectedPart) {
+        const subs = await apiFetch<{ data: SubjectRow[] }>(`/exams/parts/${selectedPart}/subjects`);
+        setSubjects(subs.data);
+      }
+      if (overviewExamId) await loadOverview(overviewExamId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Delete failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (allowed === null) return null;
 
   function editPicker(s: Step, items: { id: string; label: string }[]) {
@@ -416,6 +461,21 @@ export default function ExamsAdminPage() {
             <option key={item.id} value={item.id}>{item.label}</option>
           ))}
         </select>
+        {formMode === 'edit' && editId && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="text-red-600"
+            disabled={busy}
+            onClick={() => {
+              const item = items.find((i) => i.id === editId);
+              deleteRecord(s, editId, item?.label ?? s);
+            }}
+          >
+            <Trash2 className="h-3.5 w-3.5" /> Delete selected
+          </Button>
+        )}
       </div>
     );
   }
@@ -471,18 +531,29 @@ export default function ExamsAdminPage() {
                     <div className="font-semibold text-foreground">Department</div>
                     <div>{overview.department.name}</div>
                     <Badge variant="outline" className="mt-1">{overview.department.short_name}</Badge>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className="mt-2 h-7 px-2"
-                      onClick={() => {
-                        goToStep('department');
-                        loadForEdit('department', overview.department!.id);
-                      }}
-                    >
-                      <Pencil className="h-3 w-3" /> Edit
-                    </Button>
+                    <div className="mt-2 flex gap-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-2"
+                        onClick={() => {
+                          goToStep('department');
+                          loadForEdit('department', overview.department!.id);
+                        }}
+                      >
+                        <Pencil className="h-3 w-3" /> Edit
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-2 text-red-600"
+                        onClick={() => deleteRecord('department', overview.department!.id, overview.department!.name)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
                   </div>
                 )}
                 {overview.authority && (

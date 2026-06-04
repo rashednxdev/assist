@@ -21,14 +21,21 @@ import {
 
 export interface NavItem {
   href: string;
+  /** Fallback label when module name is unavailable */
   label: string;
   icon: LucideIcon;
-  adminOnly?: boolean;
+  /** Platform module code from setup/modules — menu shown when user has matching grant */
+  moduleCode?: string;
+  /** Admin CRUD link — requires can_create (or can_update) on moduleCode */
+  requireCreate?: boolean;
+  /** Workflow inbox / run guide — requires an active workflow_roles tag */
+  requireWorkflowRole?: boolean;
 }
 
 export interface NavGroup {
   title: string;
   items: NavItem[];
+  /** Legacy: super-admin-only sections; items still gated per moduleCode */
   adminOnly?: boolean;
 }
 
@@ -40,20 +47,32 @@ export const navGroups: NavGroup[] = [
   {
     title: 'Learning',
     items: [
-      { href: '/books', label: 'Rule library', icon: Library },
-      { href: '/books/regulations', label: 'Regulations', icon: ScrollText },
-      { href: '/questions', label: 'Question bank', icon: HelpCircle },
-      { href: '/exams', label: 'Exam programs', icon: GraduationCap },
-      { href: '/papers', label: 'Practice papers', icon: FileText },
+      { href: '/books', label: 'Rule library', icon: Library, moduleCode: 'BOOKS' },
+      { href: '/books/regulations', label: 'Regulations', icon: ScrollText, moduleCode: 'BOOKS' },
+      { href: '/questions', label: 'Question bank', icon: HelpCircle, moduleCode: 'QUESTIONS' },
+      { href: '/exams', label: 'Exam programs', icon: GraduationCap, moduleCode: 'EXAM' },
+      { href: '/papers', label: 'Practice papers', icon: FileText, moduleCode: 'PAPER' },
     ],
   },
   {
     title: 'Guided processes',
     items: [
-      { href: '/guided-tasks', label: 'Process catalog', icon: Route },
-      { href: '/guided-tasks/my-runs', label: 'My runs', icon: PlayCircle },
-      { href: '/workflow/inbox', label: 'Action inbox', icon: Inbox },
-      { href: '/workflow/guide', label: 'Run guide', icon: ListTodo },
+      { href: '/guided-tasks', label: 'Process catalog', icon: Route, moduleCode: 'WORKFLOW' },
+      { href: '/guided-tasks/my-runs', label: 'My runs', icon: PlayCircle, moduleCode: 'WORKFLOW' },
+      {
+        href: '/workflow/inbox',
+        label: 'Action inbox',
+        icon: Inbox,
+        moduleCode: 'WORKFLOW',
+        requireWorkflowRole: true,
+      },
+      {
+        href: '/workflow/guide',
+        label: 'Run guide',
+        icon: ListTodo,
+        moduleCode: 'WORKFLOW',
+        requireWorkflowRole: true,
+      },
     ],
   },
   {
@@ -61,34 +80,40 @@ export const navGroups: NavGroup[] = [
     items: [{ href: '/settings/profile', label: 'Settings', icon: Settings }],
   },
   {
-    title: 'Workflow',
+    title: 'Workflow admin',
     adminOnly: true,
     items: [
-      { href: '/workflow/inbox', label: 'Inbox', icon: Inbox },
-      { href: '/workflow/notifications', label: 'Notifications', icon: Bell },
-      { href: '/workflow/tasks', label: 'Tasks', icon: ListTodo },
-      { href: '/workflow/guide', label: 'Run guide', icon: PlayCircle },
-      { href: '/workflow/admin', label: 'Workflow admin', icon: Workflow },
+      { href: '/workflow/inbox', label: 'Inbox', icon: Inbox, moduleCode: 'WORKFLOW', requireCreate: true },
+      {
+        href: '/workflow/notifications',
+        label: 'Notifications',
+        icon: Bell,
+        moduleCode: 'WORKFLOW',
+        requireCreate: true,
+      },
+      { href: '/workflow/tasks', label: 'Tasks', icon: ListTodo, moduleCode: 'WORKFLOW', requireCreate: true },
+      { href: '/workflow/guide', label: 'Run guide', icon: PlayCircle, moduleCode: 'WORKFLOW', requireCreate: true },
+      { href: '/workflow/admin', label: 'Workflow admin', icon: Workflow, moduleCode: 'WORKFLOW', requireCreate: true },
     ],
   },
   {
     title: 'Content admin',
     adminOnly: true,
     items: [
-      { href: '/books/admin', label: 'Book admin', icon: BookOpen },
-      { href: '/questions/new', label: 'New question', icon: HelpCircle },
-      { href: '/exams/admin', label: 'Exam setup', icon: GraduationCap },
-      { href: '/papers/new', label: 'New paper', icon: FileText },
+      { href: '/books/admin', label: 'Book admin', icon: BookOpen, moduleCode: 'BOOKS', requireCreate: true },
+      { href: '/questions/new', label: 'New question', icon: HelpCircle, moduleCode: 'QUESTIONS', requireCreate: true },
+      { href: '/exams/admin', label: 'Exam setup', icon: GraduationCap, moduleCode: 'EXAM', requireCreate: true },
+      { href: '/papers/new', label: 'New paper', icon: FileText, moduleCode: 'PAPER', requireCreate: true },
     ],
   },
   {
     title: 'Administration',
     adminOnly: true,
     items: [
-      { href: '/admin/users', label: 'Users', icon: Users },
-      { href: '/admin/setup/modules', label: 'Modules', icon: Layers },
-      { href: '/admin/setup/geography', label: 'Geography', icon: MapPin },
-      { href: '/admin/audit', label: 'Audit log', icon: ScrollText },
+      { href: '/admin/users', label: 'Users', icon: Users, moduleCode: 'USER', requireCreate: true },
+      { href: '/admin/setup/modules', label: 'Modules', icon: Layers, moduleCode: 'SETUP', requireCreate: true },
+      { href: '/admin/setup/geography', label: 'Geography', icon: MapPin, moduleCode: 'SETUP', requireCreate: true },
+      { href: '/admin/audit', label: 'Audit log', icon: ScrollText, moduleCode: 'AUDIT', requireCreate: true },
     ],
   },
 ];

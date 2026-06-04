@@ -46,6 +46,11 @@ export async function updateDivisionHandler(req: AuthRequest, res: Response): Pr
   res.json({ data });
 }
 
+export async function deleteDivisionHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await setupService.deleteDivision(String(req.params.id));
+  res.json({ data });
+}
+
 export async function createDistrictHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = createDivisionSchema.parse(req.body);
   const data = await setupService.createDistrict(String(req.params.divisionId), dto);
@@ -58,6 +63,11 @@ export async function updateDistrictHandler(req: AuthRequest, res: Response): Pr
   res.json({ data });
 }
 
+export async function deleteDistrictHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await setupService.deleteDistrict(String(req.params.id));
+  res.json({ data });
+}
+
 export async function createThanaHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = createDivisionSchema.parse(req.body);
   const data = await setupService.createThana(String(req.params.districtId), dto);
@@ -67,5 +77,10 @@ export async function createThanaHandler(req: AuthRequest, res: Response): Promi
 export async function updateThanaHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = updateGeoSchema.parse(req.body);
   const data = await setupService.updateThana(String(req.params.id), dto);
+  res.json({ data });
+}
+
+export async function deleteThanaHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await setupService.deleteThana(String(req.params.id));
   res.json({ data });
 }

@@ -32,6 +32,27 @@ export async function listModuleAccess(userId: string) {
   return items.map(serializeAccess);
 }
 
+/** Grants with module display names — used for session / navigation. */
+export async function listModuleAccessForSession(userId: string) {
+  const items = await UserModuleAccess.find({ user_id: userId, is_active: true }).sort({ module_code: 1 });
+  if (items.length === 0) return [];
+
+  const moduleIds = items.map((i) => i.module_id);
+  const modules = await Module.find({ _id: { $in: moduleIds } }).select('name_en code');
+  const nameById = new Map(modules.map((m) => [String(m._id), m.name_en]));
+
+  return items.map((doc) => ({
+    module_code: doc.module_code,
+    module_name_en: nameById.get(String(doc.module_id)) ?? doc.module_code,
+    can_read: doc.can_read,
+    can_create: doc.can_create,
+    can_update: doc.can_update,
+    can_delete: doc.can_delete,
+    can_grade: doc.can_grade,
+    can_publish: doc.can_publish,
+  }));
+}
+
 export async function upsertModuleAccess(userId: string, dto: UpsertModuleAccessDto, grantedBy: string) {
   const user = await User.findById(userId);
   if (!user) throw notFound('User not found');

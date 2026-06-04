@@ -4,6 +4,9 @@ import { requireAdmin } from '../../middleware/requireAdmin.js';
 import { asyncHandler } from '../../shared/asyncHandler.js';
 import {
   listBookTypesHandler,
+  createBookTypeHandler,
+  updateBookTypeHandler,
+  deleteBookTypeHandler,
   listBooksHandler,
   getBookHandler,
   getBookTreeHandler,
@@ -13,6 +16,7 @@ import {
   getChapterHandler,
   createBookHandler,
   updateBookHandler,
+  deleteBookHandler,
   createChapterHandler,
   updateChapterHandler,
   deleteChapterHandler,
@@ -30,6 +34,7 @@ import {
   createRegulationHandler,
   createBookRegulationHandler,
   updateRegulationHandler,
+  deleteRegulationHandler,
   createAmendmentHandler,
 } from './books.controller.js';
 
@@ -38,6 +43,9 @@ export const booksRouter = Router();
 booksRouter.use(authenticate);
 
 booksRouter.get('/types', asyncHandler(listBookTypesHandler));
+booksRouter.post('/types', requireAdmin, asyncHandler(createBookTypeHandler));
+booksRouter.patch('/types/:id', requireAdmin, asyncHandler(updateBookTypeHandler));
+booksRouter.delete('/types/:id', requireAdmin, asyncHandler(deleteBookTypeHandler));
 booksRouter.get('/regulations/search', asyncHandler(searchRegulationsHandler));
 booksRouter.get('/regulations/:id', asyncHandler(getRegulationHandler));
 booksRouter.get('/regulations/:id/amendments', asyncHandler(listAmendmentsHandler));
@@ -55,9 +63,11 @@ booksRouter.get('/:id/tree', asyncHandler(getBookTreeHandler));
 booksRouter.post('/', requireAdmin, asyncHandler(createBookHandler));
 booksRouter.post('/regulations', requireAdmin, asyncHandler(createRegulationHandler));
 booksRouter.patch('/regulations/:id', requireAdmin, asyncHandler(updateRegulationHandler));
+booksRouter.delete('/regulations/:id', requireAdmin, asyncHandler(deleteRegulationHandler));
 booksRouter.post('/regulations/:id/amendments', requireAdmin, asyncHandler(createAmendmentHandler));
 booksRouter.post('/:id/regulations', requireAdmin, asyncHandler(createBookRegulationHandler));
 booksRouter.patch('/:id', requireAdmin, asyncHandler(updateBookHandler));
+booksRouter.delete('/:id', requireAdmin, asyncHandler(deleteBookHandler));
 booksRouter.post('/:id/chapters', requireAdmin, asyncHandler(createChapterHandler));
 booksRouter.patch('/chapters/:chapterId', requireAdmin, asyncHandler(updateChapterHandler));
 booksRouter.delete('/chapters/:chapterId', requireAdmin, asyncHandler(deleteChapterHandler));

@@ -1,5 +1,7 @@
 import type { Response } from 'express';
 import {
+  createBookTypeSchema,
+  updateBookTypeSchema,
   createBookSchema,
   updateBookSchema,
   createBookChapterSchema,
@@ -20,6 +22,23 @@ import * as booksService from './books.service.js';
 
 export async function listBookTypesHandler(_req: AuthRequest, res: Response): Promise<void> {
   const data = await booksService.listBookTypes();
+  res.json({ data });
+}
+
+export async function createBookTypeHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = createBookTypeSchema.parse(req.body);
+  const data = await booksService.createBookType(dto);
+  res.status(201).json({ data });
+}
+
+export async function updateBookTypeHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = updateBookTypeSchema.parse(req.body);
+  const data = await booksService.updateBookType(String(req.params.id), dto);
+  res.json({ data });
+}
+
+export async function deleteBookTypeHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await booksService.deleteBookType(String(req.params.id));
   res.json({ data });
 }
 
@@ -61,6 +80,11 @@ export async function createBookHandler(req: AuthRequest, res: Response): Promis
 export async function updateBookHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = updateBookSchema.parse(req.body);
   const data = await booksService.updateBook(String(req.params.id), dto);
+  res.json({ data });
+}
+
+export async function deleteBookHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await booksService.deleteBook(String(req.params.id));
   res.json({ data });
 }
 
@@ -120,6 +144,11 @@ export async function listBookRegulationsHandler(req: AuthRequest, res: Response
 export async function updateRegulationHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = updateRegulationSchema.parse(req.body);
   const data = await booksService.updateRegulation(String(req.params.id), dto);
+  res.json({ data });
+}
+
+export async function deleteRegulationHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await booksService.deleteRegulation(String(req.params.id));
   res.json({ data });
 }
 

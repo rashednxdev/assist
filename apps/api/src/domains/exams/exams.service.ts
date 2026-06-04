@@ -139,6 +139,16 @@ export async function updateDepartment(id: string, dto: UpdateDepartmentDto) {
   return serializeDepartment(d);
 }
 
+export async function deleteDepartment(id: string) {
+  const d = await Department.findById(id);
+  if (!d) throw notFound('Department not found');
+  const childCount = await Authority.countDocuments({ department_id: d._id, is_active: true });
+  if (childCount > 0) throw badRequest('Remove or deactivate authorities under this department first');
+  d.is_active = false;
+  await d.save();
+  return { deleted: true };
+}
+
 // --- Authorities ---
 
 export async function listAuthorities(departmentId?: string) {
@@ -169,6 +179,16 @@ export async function updateAuthority(id: string, dto: UpdateAuthorityDto) {
   await a.save();
   const dept = await Department.findById(a.department_id);
   return serializeAuthority(a, dept?.name);
+}
+
+export async function deleteAuthority(id: string) {
+  const a = await Authority.findById(id);
+  if (!a) throw notFound('Authority not found');
+  const examCount = await ExamName.countDocuments({ authority_id: a._id, is_active: true });
+  if (examCount > 0) throw badRequest('Remove or deactivate exam programs under this authority first');
+  a.is_active = false;
+  await a.save();
+  return { deleted: true };
 }
 
 // --- Exam names ---
@@ -210,6 +230,22 @@ export async function updateExamName(id: string, dto: UpdateExamNameDto) {
   await e.save();
   const auth = await Authority.findById(e.authority_id);
   return serializeExamName(e, auth?.name);
+}
+
+export async function deleteExamName(id: string) {
+  const e = await ExamName.findById(id);
+  if (!e) throw notFound('Exam not found');
+  const [parts, types] = await Promise.all([
+    ExamPart.find({ exam_name_id: e._id, is_active: true }),
+    ExamType.find({ exam_name_id: e._id, is_active: true }),
+  ]);
+  const partIds = parts.map((p) => p._id);
+  await ExamSubject.updateMany({ exam_part_id: { $in: partIds } }, { is_active: false });
+  await ExamPart.updateMany({ exam_name_id: e._id }, { is_active: false });
+  await ExamType.updateMany({ exam_name_id: e._id }, { is_active: false });
+  e.is_active = false;
+  await e.save();
+  return { deleted: true };
 }
 
 export async function getExamTree(examNameId: string) {
@@ -297,6 +333,15 @@ export async function updateExamPart(id: string, dto: UpdateExamPartDto) {
   return serializeExamPart(p);
 }
 
+export async function deleteExamPart(id: string) {
+  const p = await ExamPart.findById(id);
+  if (!p) throw notFound('Exam part not found');
+  await ExamSubject.updateMany({ exam_part_id: p._id }, { is_active: false });
+  p.is_active = false;
+  await p.save();
+  return { deleted: true };
+}
+
 // --- Exam types ---
 
 export async function listExamTypes(examNameId: string) {
@@ -317,6 +362,16 @@ export async function updateExamType(id: string, dto: UpdateExamTypeDto) {
   Object.assign(t, dto);
   await t.save();
   return serializeExamType(t);
+}
+
+export async function deleteExamType(id: string) {
+  const t = await ExamType.findById(id);
+  if (!t) throw notFound('Exam type not found');
+  const subjectCount = await ExamSubject.countDocuments({ exam_type_id: t._id, is_active: true });
+  if (subjectCount > 0) throw badRequest('Remove or deactivate subjects using this exam type first');
+  t.is_active = false;
+  await t.save();
+  return { deleted: true };
 }
 
 // --- Exam subjects ---

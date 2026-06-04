@@ -5,6 +5,8 @@ import { asyncHandler } from '../../shared/asyncHandler.js';
 import {
   listQuestionTypesHandler,
   createQuestionTypeHandler,
+  updateQuestionTypeHandler,
+  deleteQuestionTypeHandler,
   listQuestionsHandler,
   getQuestionHandler,
   createQuestionHandler,
@@ -20,6 +22,8 @@ questionsRouter.use(authenticate);
 
 questionsRouter.get('/types', asyncHandler(listQuestionTypesHandler));
 questionsRouter.post('/types', requireAdmin, asyncHandler(createQuestionTypeHandler));
+questionsRouter.patch('/types/:id', requireAdmin, asyncHandler(updateQuestionTypeHandler));
+questionsRouter.delete('/types/:id', requireAdmin, asyncHandler(deleteQuestionTypeHandler));
 questionsRouter.get('/', asyncHandler(listQuestionsHandler));
 questionsRouter.get('/:id', asyncHandler(getQuestionHandler));
 

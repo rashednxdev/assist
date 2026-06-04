@@ -11,6 +11,8 @@ export const createBookTypeSchema = z.object({
   sort_order: z.number().int().optional(),
 });
 
+export const updateBookTypeSchema = createBookTypeSchema.partial();
+
 export const createBookSchema = z.object({
   book_type_id: z.string().regex(/^[a-f\d]{24}$/i),
   name: z.string().min(1),
@@ -125,6 +127,8 @@ export const regulationSearchSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
+export type CreateBookTypeDto = z.infer<typeof createBookTypeSchema>;
+export type UpdateBookTypeDto = z.infer<typeof updateBookTypeSchema>;
 export type CreateBookDto = z.infer<typeof createBookSchema>;
 export type UpdateBookDto = z.infer<typeof updateBookSchema>;
 export type CreateBookChapterDto = z.infer<typeof createBookChapterSchema>;

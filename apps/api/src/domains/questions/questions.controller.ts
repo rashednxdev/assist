@@ -1,5 +1,11 @@
 import type { Response } from 'express';
-import { createQuestionSchema, updateQuestionSchema, listQuestionsQuerySchema, createQuestionTypeSchema } from '@ibas/shared-types';
+import {
+  createQuestionSchema,
+  updateQuestionSchema,
+  listQuestionsQuerySchema,
+  createQuestionTypeSchema,
+  updateQuestionTypeSchema,
+} from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
 import * as questionsService from './questions.service.js';
 
@@ -11,6 +17,17 @@ export async function createQuestionTypeHandler(req: AuthRequest, res: Response)
 
 export async function listQuestionTypesHandler(_req: AuthRequest, res: Response): Promise<void> {
   const data = await questionsService.listQuestionTypes();
+  res.json({ data });
+}
+
+export async function updateQuestionTypeHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = updateQuestionTypeSchema.parse(req.body);
+  const data = await questionsService.updateQuestionType(String(req.params.id), dto);
+  res.json({ data });
+}
+
+export async function deleteQuestionTypeHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await questionsService.deleteQuestionType(String(req.params.id));
   res.json({ data });
 }
 

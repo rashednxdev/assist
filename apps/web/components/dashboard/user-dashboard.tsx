@@ -15,6 +15,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import type { MeUser } from '@/lib/auth';
+import { hasModuleRead, hasOfficeModuleRead, isSuperAdmin } from '@/lib/capabilities';
 import { userDisplayName } from '@/lib/display-text';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -41,32 +42,37 @@ const learnLinks = [
     label: 'Rule library',
     desc: 'GFR and government financial regulations',
     icon: Library,
+    moduleCode: 'BOOKS',
   },
   {
     href: '/books/regulations',
     label: 'Regulations',
     desc: 'Acts, circulars, and amendments',
     icon: BookOpen,
+    moduleCode: 'BOOKS',
   },
   {
     href: '/questions',
     label: 'Question bank',
     desc: 'MCQ, short notes linked to rules',
     icon: HelpCircle,
+    moduleCode: 'QUESTIONS',
   },
   {
     href: '/exams',
     label: 'Exam programs',
     desc: 'SAS, SRAS syllabus & structure',
     icon: GraduationCap,
+    moduleCode: 'EXAM',
   },
   {
     href: '/papers',
     label: 'Practice papers',
     desc: 'Model tests for your subject',
     icon: FileText,
+    moduleCode: 'PAPER',
   },
-];
+] as const;
 
 export function UserDashboard({
   user,
@@ -77,6 +83,14 @@ export function UserDashboard({
 }) {
   const complete = summary?.profile_complete_percent ?? 0;
   const workflow = summary?.workflow;
+  const grants = user.module_access ?? [];
+  const visibleLearn = learnLinks.filter(
+    (link) => isSuperAdmin(user) || hasModuleRead(grants, link.moduleCode),
+  );
+  const grantLabel = (code: string) =>
+    grants.find((g) => g.module_code === code)?.module_name_en;
+  const showWorkflow =
+    isSuperAdmin(user) || hasModuleRead(grants, 'WORKFLOW') || hasOfficeModuleRead(grants);
 
   return (
     <div className="space-y-8">
@@ -91,15 +105,21 @@ export function UserDashboard({
             pace.
           </p>
           <div className="flex flex-wrap gap-2 pt-2">
-            <Button asChild size="sm" variant="outline" className="bg-white text-primary-dark hover:bg-white/90 border-0">
-              <Link href="/guided-tasks">Guided processes</Link>
-            </Button>
-            <Button asChild size="sm" variant="outline" className="border-white/40 text-white hover:bg-white/10">
-              <Link href="/books">Browse rules</Link>
-            </Button>
-            <Button asChild size="sm" variant="outline" className="border-white/40 text-white hover:bg-white/10">
-              <Link href="/papers">Practice now</Link>
-            </Button>
+            {showWorkflow && (
+              <Button asChild size="sm" variant="outline" className="bg-white text-primary-dark hover:bg-white/90 border-0">
+                <Link href="/guided-tasks">{grantLabel('WORKFLOW') ?? 'Guided processes'}</Link>
+              </Button>
+            )}
+            {(isSuperAdmin(user) || hasModuleRead(grants, 'BOOKS')) && (
+              <Button asChild size="sm" variant="outline" className="border-white/40 text-white hover:bg-white/10">
+                <Link href="/books">{grantLabel('BOOKS') ?? 'Browse rules'}</Link>
+              </Button>
+            )}
+            {(isSuperAdmin(user) || hasModuleRead(grants, 'PAPER')) && (
+              <Button asChild size="sm" variant="outline" className="border-white/40 text-white hover:bg-white/10">
+                <Link href="/papers">{grantLabel('PAPER') ?? 'Practice now'}</Link>
+              </Button>
+            )}
           </div>
         </div>
         <Sparkles className="absolute -right-4 -top-4 h-32 w-32 text-white/10" />
@@ -150,6 +170,7 @@ export function UserDashboard({
         </Card>
       </div>
 
+      {showWorkflow && (
       <div>
         <h2 className="mb-4 text-lg font-semibold">Guided office processes</h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -218,12 +239,15 @@ export function UserDashboard({
           </p>
         )}
       </div>
+      )}
 
+      {visibleLearn.length > 0 && (
       <div>
         <h2 className="mb-4 text-lg font-semibold">Learning &amp; exam prep</h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {learnLinks.map((link) => {
+          {visibleLearn.map((link) => {
             const Icon = link.icon;
+            const title = grantLabel(link.moduleCode) ?? link.label;
             return (
               <Link
                 key={link.href}
@@ -235,7 +259,7 @@ export function UserDashboard({
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-semibold">{link.label}</span>
+                    <span className="font-semibold">{title}</span>
                     <ArrowRight className="h-4 w-4 text-muted group-hover:translate-x-0.5 group-hover:text-primary" />
                   </div>
                   <p className="mt-0.5 text-sm text-muted">{link.desc}</p>
@@ -245,6 +269,7 @@ export function UserDashboard({
           })}
         </div>
       </div>
+      )}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">

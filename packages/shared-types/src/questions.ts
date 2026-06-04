@@ -101,7 +101,12 @@ export const createQuestionTypeSchema = z.object({
   note: z.string().optional(),
 });
 
+export const updateQuestionTypeSchema = createQuestionTypeSchema.partial().extend({
+  is_active: z.boolean().optional(),
+});
+
 export type CreateQuestionDto = z.infer<typeof createQuestionSchema>;
 export type UpdateQuestionDto = z.infer<typeof updateQuestionSchema>;
 export type QuestionOptionInput = z.infer<typeof questionOptionInputSchema>;
 export type CreateQuestionTypeDto = z.infer<typeof createQuestionTypeSchema>;
+export type UpdateQuestionTypeDto = z.infer<typeof updateQuestionTypeSchema>;

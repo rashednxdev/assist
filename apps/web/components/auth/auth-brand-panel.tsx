@@ -31,12 +31,4 @@ export function AuthBrandPanel() {
   );
 }
 
-export function isPlatformAdmin(user: {
-  is_super_admin?: boolean;
-  user_type?: string;
-} | null) {
-  return (
-    !!user &&
-    (user.is_super_admin || user.user_type === 'system_admin' || user.user_type === 'admin')
-  );
-}
+export { isPlatformAdmin } from '@/lib/capabilities';

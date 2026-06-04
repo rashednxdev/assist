@@ -1,5 +1,10 @@
 import mongoose from 'mongoose';
-import type { CreateQuestionDto, CreateQuestionTypeDto, UpdateQuestionDto } from '@ibas/shared-types';
+import type {
+  CreateQuestionDto,
+  CreateQuestionTypeDto,
+  UpdateQuestionDto,
+  UpdateQuestionTypeDto,
+} from '@ibas/shared-types';
 import { QuestionType } from './models/QuestionType.model.js';
 import { Question } from './models/Question.model.js';
 import { QuestionOption } from './models/QuestionOption.model.js';
@@ -249,6 +254,42 @@ export async function createQuestionType(dto: CreateQuestionTypeDto) {
     has_options: item.has_options,
     note: item.note,
   };
+}
+
+function serializeQuestionType(t: InstanceType<typeof QuestionType>) {
+  return {
+    id: String(t._id),
+    name: t.name,
+    code: t.code,
+    has_options: t.has_options,
+    note: t.note,
+  };
+}
+
+export async function updateQuestionType(id: string, dto: UpdateQuestionTypeDto) {
+  const item = await QuestionType.findById(id);
+  if (!item) throw notFound('Question type not found');
+  if (dto.code && dto.code !== item.code) {
+    const clash = await QuestionType.findOne({ code: dto.code });
+    if (clash) throw badRequest(`Question type code "${dto.code}" already exists`);
+    item.code = dto.code;
+  }
+  if (dto.name !== undefined) item.name = dto.name;
+  if (dto.has_options !== undefined) item.has_options = dto.has_options;
+  if (dto.note !== undefined) item.note = dto.note;
+  if (dto.is_active !== undefined) item.is_active = dto.is_active;
+  await item.save();
+  return serializeQuestionType(item);
+}
+
+export async function deleteQuestionType(id: string) {
+  const item = await QuestionType.findById(id);
+  if (!item) throw notFound('Question type not found');
+  const inUse = await Question.countDocuments({ question_type_id: item._id, is_active: true });
+  if (inUse > 0) throw badRequest('Cannot delete: questions still use this type');
+  item.is_active = false;
+  await item.save();
+  return { deleted: true };
 }
 
 export async function listQuestions(filters: {

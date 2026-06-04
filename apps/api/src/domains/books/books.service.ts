@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 import type {
+  CreateBookTypeDto,
+  UpdateBookTypeDto,
   CreateBookDto,
   UpdateBookDto,
   CreateBookChapterDto,
@@ -149,6 +151,71 @@ async function loadChaptersForBook(bookId: string, partId: string | null, depth:
 export async function listBookTypes() {
   const items = await BookType.find({ is_active: true }).sort({ sort_order: 1 });
   return items.map(serializeBookType);
+}
+
+export async function createBookType(dto: CreateBookTypeDto) {
+  const code = dto.code.toUpperCase();
+  const existing = await BookType.findOne({ code });
+  if (existing) throw badRequest(`Book type code "${code}" already exists`);
+
+  const last = await BookType.findOne().sort({ sort_order: -1 }).select('sort_order');
+  const sort_order = dto.sort_order ?? (last ? last.sort_order + 1 : 1);
+
+  const doc = await BookType.create({
+    name: dto.name.trim(),
+    name_bn: dto.name_bn.trim(),
+    code,
+    description: dto.description?.trim(),
+    notes: dto.notes?.trim(),
+    icon: dto.icon?.trim(),
+    sort_order,
+    is_active: true,
+  });
+  return serializeBookType(doc);
+}
+
+export async function updateBookType(id: string, dto: UpdateBookTypeDto) {
+  const doc = await BookType.findById(id);
+  if (!doc) throw notFound('Book type not found');
+  if (dto.code && dto.code.toUpperCase() !== doc.code) {
+    const clash = await BookType.findOne({ code: dto.code.toUpperCase() });
+    if (clash) throw badRequest(`Book type code "${dto.code}" already exists`);
+    doc.code = dto.code.toUpperCase();
+  }
+  if (dto.name !== undefined) doc.name = dto.name.trim();
+  if (dto.name_bn !== undefined) doc.name_bn = dto.name_bn.trim();
+  if (dto.description !== undefined) doc.description = dto.description?.trim();
+  if (dto.notes !== undefined) doc.notes = dto.notes?.trim();
+  if (dto.icon !== undefined) doc.icon = dto.icon?.trim();
+  if (dto.sort_order !== undefined) doc.sort_order = dto.sort_order;
+  await doc.save();
+  return serializeBookType(doc);
+}
+
+export async function deleteBookType(id: string) {
+  const doc = await BookType.findById(id);
+  if (!doc) throw notFound('Book type not found');
+  const inUse = await BookInfo.countDocuments({ book_type_id: doc._id, is_active: true });
+  if (inUse > 0) throw badRequest('Cannot delete: books still use this type');
+  doc.is_active = false;
+  await doc.save();
+  return { deleted: true };
+}
+
+export async function deleteBook(id: string) {
+  const book = await BookInfo.findById(id);
+  if (!book) throw notFound('Book not found');
+  book.is_active = false;
+  await book.save();
+  return { deleted: true };
+}
+
+export async function deleteRegulation(id: string) {
+  const reg = await Regulation.findById(id);
+  if (!reg) throw notFound('Regulation not found');
+  reg.is_active = false;
+  await reg.save();
+  return { deleted: true };
 }
 
 export async function listBooks(filters: { book_type_id?: string; q?: string }) {

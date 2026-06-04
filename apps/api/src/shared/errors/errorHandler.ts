@@ -14,6 +14,16 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
     return;
   }
 
+  if (err instanceof SyntaxError && 'body' in err) {
+    res.status(400).json({
+      error: {
+        code: 'INVALID_JSON',
+        message: 'Request body must be valid JSON',
+      },
+    });
+    return;
+  }
+
   if (err instanceof ZodError) {
     const first = err.issues[0];
     const field = first?.path.length ? first.path.join('.') : undefined;

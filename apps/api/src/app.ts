@@ -18,6 +18,7 @@ import { examsRouter } from './domains/exams/exams.routes.js';
 import { syllabusRouter } from './domains/syllabus/syllabus.routes.js';
 import { papersRouter } from './domains/papers/papers.routes.js';
 import { accountRouter } from './domains/account/account.routes.js';
+import { ocrRouter } from './domains/ocr/ocr.routes.js';
 
 export function createApp(): Application {
   const app = express();
@@ -58,6 +59,7 @@ export function createApp(): Application {
   app.use('/api/v1/syllabus', syllabusRouter);
   app.use('/api/v1/papers', papersRouter);
   app.use('/api/v1/account', accountRouter);
+  app.use('/api/v1/ocr', ocrRouter);
 
   app.use(errorHandler);
   return app;

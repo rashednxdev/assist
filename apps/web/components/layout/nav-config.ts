@@ -17,6 +17,7 @@ import {
   GraduationCap,
   FileText,
   Settings,
+  ScanText,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -72,6 +73,17 @@ export const navGroups: NavGroup[] = [
         icon: ListTodo,
         moduleCode: 'WORKFLOW',
         requireWorkflowRole: true,
+      },
+    ],
+  },
+  {
+    title: 'Tools',
+    items: [
+      {
+        href: '/tools/pdf-to-word',
+        label: 'PDF to Word',
+        icon: ScanText,
+        moduleCode: 'OCR',
       },
     ],
   },

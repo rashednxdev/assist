@@ -32,12 +32,29 @@ function buildUpstreamHeaders(req: NextRequest): Headers {
 
 function buildClientResponseHeaders(upstream: Response): Headers {
   const headers = new Headers();
-  const passthrough = ['content-type', 'cache-control', 'etag', 'vary'];
+  const passthrough = [
+    'content-type',
+    'cache-control',
+    'etag',
+    'vary',
+    'content-disposition',
+    'x-conversion-pages',
+    'x-conversion-method',
+    'x-ocr-languages',
+  ];
   for (const name of passthrough) {
     const value = upstream.headers.get(name);
     if (value) headers.set(name, value);
   }
   return headers;
+}
+
+function isBinaryResponse(contentType: string): boolean {
+  return (
+    contentType.includes('wordprocessingml') ||
+    contentType.includes('octet-stream') ||
+    contentType.includes('application/pdf')
+  );
 }
 
 function jsonError(status: number, code: string, message: string): NextResponse {
@@ -67,11 +84,16 @@ async function proxyRequest(req: NextRequest, path: string): Promise<NextRespons
   };
 
   if (req.method !== 'GET' && req.method !== 'HEAD') {
-    const body = await req.text();
-    if (body) {
-      init.body = body;
-      if (!headers.has('content-type')) {
-        headers.set('content-type', 'application/json');
+    const reqContentType = req.headers.get('content-type') ?? '';
+    if (reqContentType.includes('multipart/form-data')) {
+      init.body = await req.arrayBuffer();
+    } else {
+      const body = await req.text();
+      if (body) {
+        init.body = body;
+        if (!headers.has('content-type')) {
+          headers.set('content-type', 'application/json');
+        }
       }
     }
   }
@@ -87,9 +109,23 @@ async function proxyRequest(req: NextRequest, path: string): Promise<NextRespons
     );
   }
 
-  const text = await upstream.text();
   const setCookie = upstream.headers.getSetCookie?.() ?? [];
   const contentType = upstream.headers.get('content-type') ?? '';
+
+  if (isBinaryResponse(contentType)) {
+    const buffer = await upstream.arrayBuffer();
+    const responseHeaders = buildClientResponseHeaders(upstream);
+    const res = new NextResponse(buffer.byteLength ? buffer : null, {
+      status: upstream.status,
+      headers: responseHeaders,
+    });
+    for (const cookie of setCookie) {
+      res.headers.append('Set-Cookie', cookie);
+    }
+    return res;
+  }
+
+  const text = await upstream.text();
 
   if (!text && upstream.status >= 400) {
     return jsonError(

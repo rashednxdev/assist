@@ -16,6 +16,7 @@ const PLATFORM_MODULES = [
   { code: 'USER', name_en: 'User management', description_en: 'Create and manage system users', color: '#64748b', sort_order: 17 },
   { code: 'SETUP', name_en: 'System setup', description_en: 'Modules, geography, and configuration', color: '#64748b', sort_order: 18 },
   { code: 'AUDIT', name_en: 'Audit log', description_en: 'Platform audit trail', color: '#64748b', sort_order: 19 },
+  { code: 'OCR', name_en: 'PDF to Word (OCR)', description_en: 'Convert PDF scans to editable Word documents', color: '#7c3aed', sort_order: 20 },
 ];
 
 const MODULES = [

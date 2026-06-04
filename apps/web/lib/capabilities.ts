@@ -81,6 +81,7 @@ const MODULE_PRIMARY_HREF: Record<string, string> = {
   EXAM: '/exams',
   PAPER: '/papers',
   WORKFLOW: '/guided-tasks',
+  OCR: '/tools/pdf-to-word',
   USER: '/admin/users',
   SETUP: '/admin/setup/modules',
   AUDIT: '/admin/audit',

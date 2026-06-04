@@ -9,7 +9,6 @@ out/
 .turbo/
 
 # Env
-.env
 .env.local
 .env.*.local
 

@@ -7,8 +7,8 @@ import { logger } from './shared/logger.js';
 async function main() {
   await connectDb();
   const app = createApp();
-  app.listen(env.PORT, () => {
-    logger.info(`API listening on http://localhost:${env.PORT}`);
+  app.listen(env.PORT, '0.0.0.0', () => {
+    logger.info(`API listening on port ${env.PORT}`);
   });
 }
 

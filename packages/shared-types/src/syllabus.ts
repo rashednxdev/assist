@@ -14,15 +14,24 @@ export const updateSyllabusGroupSchema = createSyllabusGroupSchema.partial().ext
   is_active: z.boolean().optional(),
 });
 
-export const createSyllabusTopicSchema = z.object({
-  syllabus_group_id: mongoId,
+const syllabusTopicFieldsSchema = z.object({
+  syllabus_group_id: mongoId.optional(),
+  exam_subject_id: mongoId.optional(),
   name: z.string().min(1),
   description: z.string().optional(),
   marks_weightage: z.number().min(0).optional(),
   sort_order: z.number().int().positive().optional(),
 });
 
-export const updateSyllabusTopicSchema = createSyllabusTopicSchema.partial().extend({
+export const createSyllabusTopicSchema = syllabusTopicFieldsSchema
+  .refine((data) => data.syllabus_group_id || data.exam_subject_id, {
+    message: 'Either syllabus_group_id or exam_subject_id is required',
+  })
+  .refine((data) => !(data.syllabus_group_id && data.exam_subject_id), {
+    message: 'Provide syllabus_group_id or exam_subject_id, not both',
+  });
+
+export const updateSyllabusTopicSchema = syllabusTopicFieldsSchema.partial().extend({
   is_active: z.boolean().optional(),
 });
 

@@ -114,6 +114,7 @@ export default function SyllabusPage() {
   const subjectId = params.subjectId as string;
   const [subject, setSubject] = useState<SubjectInfo | null>(null);
   const [groups, setGroups] = useState<SyllabusGroup[]>([]);
+  const [subjectTopics, setSubjectTopics] = useState<SyllabusTopic[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [message, setMessage] = useState('');
@@ -138,10 +139,13 @@ export default function SyllabusPage() {
   const reload = useCallback(() => {
     return Promise.all([
       apiFetch<{ data: SubjectInfo }>(`/exams/subjects/${subjectId}`),
-      apiFetch<{ data: { groups: SyllabusGroup[] } }>(`/syllabus/subjects/${subjectId}/tree`),
+      apiFetch<{ data: { groups: SyllabusGroup[]; subject_topics: SyllabusTopic[] } }>(
+        `/syllabus/subjects/${subjectId}/tree`,
+      ),
     ]).then(([subRes, treeRes]) => {
       setSubject(subRes.data);
       setGroups(treeRes.data.groups);
+      setSubjectTopics(treeRes.data.subject_topics ?? []);
     });
   }, [subjectId]);
 
@@ -269,7 +273,11 @@ export default function SyllabusPage() {
 
   async function saveTopic(e: React.FormEvent) {
     e.preventDefault();
-    if (!topicForm.groupId) return;
+    const hasGroups = groups.length > 0;
+    if (hasGroups && !topicForm.groupId) {
+      setError('Please select a syllabus group');
+      return;
+    }
     setError('');
     try {
       const body = {
@@ -283,7 +291,11 @@ export default function SyllabusPage() {
       } else {
         await apiFetch('/syllabus/topics', {
           method: 'POST',
-          body: JSON.stringify({ syllabus_group_id: topicForm.groupId, ...body }),
+          body: JSON.stringify(
+            hasGroups
+              ? { syllabus_group_id: topicForm.groupId, ...body }
+              : { exam_subject_id: subjectId, ...body },
+          ),
         });
         setMessage('Topic added');
       }
@@ -493,6 +505,127 @@ export default function SyllabusPage() {
     return <Alert variant="error">Subject not found.</Alert>;
   }
 
+  const hasGroups = groups.length > 0;
+
+  const syllabusTopicOptions = [
+    ...groups.flatMap((g) =>
+      g.topics.map((t) => ({ id: t.id, label: `${g.name} → ${t.name}` })),
+    ),
+    ...subjectTopics.map((t) => ({ id: t.id, label: t.name })),
+  ];
+
+  function renderTopicCard(topic: SyllabusTopic, groupId: string) {
+    return (
+      <div key={topic.id} className="rounded-lg border border-border p-4">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <div className="font-medium">{topic.name}</div>
+            {topic.description && <p className="mt-1 text-sm text-muted">{topic.description}</p>}
+            {topic.marks_weightage != null && (
+              <Badge variant="outline" className="mt-2">
+                {topic.marks_weightage} marks
+              </Badge>
+            )}
+          </div>
+          {isAdmin && (
+            <div className="flex shrink-0 gap-1">
+              <Button size="sm" variant="outline" onClick={() => startEditTopic(topic, groupId)}>
+                <Pencil className="h-3 w-3" />
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => deleteItem('topic', topic.id, `topic "${topic.name}"`)}
+              >
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {topic.sub_topics.length > 0 && (
+          <div className="mt-3">
+            <div className="text-xs font-semibold uppercase text-muted">Sub-topics</div>
+            <ul className="mt-1 space-y-1">
+              {topic.sub_topics.map((st) => (
+                <li
+                  key={st.id}
+                  className="flex items-center justify-between gap-2 rounded-md bg-slate-50 px-2 py-1 text-sm"
+                >
+                  <span>{st.name}</span>
+                  {isAdmin && (
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => startEditSubTopic(st, topic.id)}>
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-2"
+                        onClick={() => deleteItem('sub_topic', st.id, `sub-topic "${st.name}"`)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div className="mt-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs font-semibold uppercase text-muted">
+              Book links ({topic.references.length})
+            </div>
+            {isAdmin && (
+              <Button size="sm" variant="outline" className="h-7" onClick={() => startAddRef(topic.id)}>
+                <Plus className="h-3 w-3" /> Add link
+              </Button>
+            )}
+          </div>
+          {topic.references.length === 0 ? (
+            <p className="mt-1 text-sm text-muted">No book chapters or rules linked yet.</p>
+          ) : (
+            <div className="mt-2 space-y-2">
+              {topic.references.map((ref) => (
+                <div
+                  key={ref.id}
+                  className="flex items-start justify-between gap-2 rounded-md border border-border bg-slate-50/80 p-2 text-sm"
+                >
+                  <div>
+                    <Badge variant="secondary">{ref.ref_level ?? 'link'}</Badge>
+                    <span className="ml-2 font-medium">{refLabel(ref)}</span>
+                    {ref.topic_name && ref.rule_number && (
+                      <span className="ml-1 text-muted">({ref.topic_name})</span>
+                    )}
+                    {ref.relevance_note && <p className="mt-1 text-muted">{ref.relevance_note}</p>}
+                  </div>
+                  {isAdmin && (
+                    <div className="flex shrink-0 gap-1">
+                      <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => startEditRef(ref, topic.id)}>
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2"
+                        onClick={() => deleteItem('reference', ref.id, 'this book link')}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   const panels: { id: Panel; label: string }[] = [
     { id: 'group', label: 'Group' },
     { id: 'topic', label: 'Topic' },
@@ -564,20 +697,26 @@ export default function SyllabusPage() {
 
             {panel === 'topic' && (
               <form onSubmit={saveTopic} className="space-y-3">
-                <select
-                  required
-                  value={topicForm.groupId}
-                  onChange={(e) => setTopicForm((f) => ({ ...f, groupId: e.target.value }))}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  disabled={!!editTopicId}
-                >
-                  <option value="">Select group</option>
-                  {groups.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.name}
-                    </option>
-                  ))}
-                </select>
+                {hasGroups ? (
+                  <select
+                    required
+                    value={topicForm.groupId}
+                    onChange={(e) => setTopicForm((f) => ({ ...f, groupId: e.target.value }))}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    disabled={!!editTopicId}
+                  >
+                    <option value="">Select group</option>
+                    {groups.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="text-sm text-muted">
+                    No groups yet — topics will be added directly under this subject.
+                  </p>
+                )}
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Input
                     placeholder="Topic name"
@@ -613,13 +752,11 @@ export default function SyllabusPage() {
                   disabled={!!editSubTopicId}
                 >
                   <option value="">Select syllabus topic</option>
-                  {groups.flatMap((g) =>
-                    g.topics.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {g.name} → {t.name}
-                      </option>
-                    )),
-                  )}
+                  {syllabusTopicOptions.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.label}
+                    </option>
+                  ))}
                 </select>
                 <Input
                   placeholder="Sub-topic name"
@@ -652,13 +789,11 @@ export default function SyllabusPage() {
                   disabled={!!editRefId}
                 >
                   <option value="">Syllabus topic</option>
-                  {groups.flatMap((g) =>
-                    g.topics.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {g.name} → {t.name}
-                      </option>
-                    )),
-                  )}
+                  {syllabusTopicOptions.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.label}
+                    </option>
+                  ))}
                 </select>
                 {bookRefFields()}
                 <div className="flex flex-wrap gap-2">
@@ -683,10 +818,22 @@ export default function SyllabusPage() {
         </Card>
       )}
 
-      {groups.length === 0 ? (
-        <p className="text-muted">No syllabus groups yet.</p>
+      {!hasGroups && subjectTopics.length === 0 ? (
+        <p className="text-muted">No syllabus content yet. Add a group or topic to get started.</p>
       ) : (
-        groups.map((group) => (
+        <>
+      {!hasGroups && subjectTopics.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Topics</CardTitle>
+            <p className="text-sm text-muted">Syllabus topics for this subject</p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {subjectTopics.map((topic) => renderTopicCard(topic, ''))}
+          </CardContent>
+        </Card>
+      )}
+      {groups.map((group) => (
           <Card key={group.id}>
             <CardHeader className="flex flex-row items-start justify-between gap-2">
               <div>
@@ -712,119 +859,23 @@ export default function SyllabusPage() {
               {group.topics.length === 0 ? (
                 <p className="text-sm text-muted">No topics in this group.</p>
               ) : (
-                group.topics.map((topic) => (
-                  <div key={topic.id} className="rounded-lg border border-border p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <div className="font-medium">{topic.name}</div>
-                        {topic.description && <p className="mt-1 text-sm text-muted">{topic.description}</p>}
-                        {topic.marks_weightage != null && (
-                          <Badge variant="outline" className="mt-2">
-                            {topic.marks_weightage} marks
-                          </Badge>
-                        )}
-                      </div>
-                      {isAdmin && (
-                        <div className="flex shrink-0 gap-1">
-                          <Button size="sm" variant="outline" onClick={() => startEditTopic(topic, group.id)}>
-                            <Pencil className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => deleteItem('topic', topic.id, `topic "${topic.name}"`)}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-
-                    {topic.sub_topics.length > 0 && (
-                      <div className="mt-3">
-                        <div className="text-xs font-semibold uppercase text-muted">Sub-topics</div>
-                        <ul className="mt-1 space-y-1">
-                          {topic.sub_topics.map((st) => (
-                            <li
-                              key={st.id}
-                              className="flex items-center justify-between gap-2 rounded-md bg-slate-50 px-2 py-1 text-sm"
-                            >
-                              <span>{st.name}</span>
-                              {isAdmin && (
-                                <div className="flex gap-1">
-                                  <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => startEditSubTopic(st, topic.id)}>
-                                    <Pencil className="h-3 w-3" />
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="h-7 px-2"
-                                    onClick={() => deleteItem('sub_topic', st.id, `sub-topic "${st.name}"`)}
-                                  >
-                                    <Trash2 className="h-3 w-3" />
-                                  </Button>
-                                </div>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    <div className="mt-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="text-xs font-semibold uppercase text-muted">
-                          Book links ({topic.references.length})
-                        </div>
-                        {isAdmin && (
-                          <Button size="sm" variant="outline" className="h-7" onClick={() => startAddRef(topic.id)}>
-                            <Plus className="h-3 w-3" /> Add link
-                          </Button>
-                        )}
-                      </div>
-                      {topic.references.length === 0 ? (
-                        <p className="mt-1 text-sm text-muted">No book chapters or rules linked yet.</p>
-                      ) : (
-                        <div className="mt-2 space-y-2">
-                          {topic.references.map((ref) => (
-                            <div
-                              key={ref.id}
-                              className="flex items-start justify-between gap-2 rounded-md border border-border bg-slate-50/80 p-2 text-sm"
-                            >
-                              <div>
-                                <Badge variant="secondary">{ref.ref_level ?? 'link'}</Badge>
-                                <span className="ml-2 font-medium">{refLabel(ref)}</span>
-                                {ref.topic_name && ref.rule_number && (
-                                  <span className="ml-1 text-muted">({ref.topic_name})</span>
-                                )}
-                                {ref.relevance_note && <p className="mt-1 text-muted">{ref.relevance_note}</p>}
-                              </div>
-                              {isAdmin && (
-                                <div className="flex shrink-0 gap-1">
-                                  <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => startEditRef(ref, topic.id)}>
-                                    <Pencil className="h-3 w-3" />
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-7 px-2"
-                                    onClick={() => deleteItem('reference', ref.id, 'this book link')}
-                                  >
-                                    <Trash2 className="h-3 w-3" />
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))
+                group.topics.map((topic) => renderTopicCard(topic, group.id))
               )}
             </CardContent>
           </Card>
-        ))
+        ))}
+      {hasGroups && subjectTopics.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Subject topics</CardTitle>
+            <p className="text-sm text-muted">Topics added directly under this subject (not in a group)</p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {subjectTopics.map((topic) => renderTopicCard(topic, ''))}
+          </CardContent>
+        </Card>
+      )}
+        </>
       )}
     </div>
   );

@@ -8,7 +8,8 @@
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
     "seed": "pnpm --filter @ibas/api seed",
-    "migrate:indexes": "pnpm --filter @ibas/api migrate:indexes"
+    "migrate:indexes": "pnpm --filter @ibas/api migrate:indexes",
+    "manual:pdf": "node docs/scripts/generate-manual-pdfs.mjs"
   },
   "devDependencies": {
     "turbo": "^2.5.4",

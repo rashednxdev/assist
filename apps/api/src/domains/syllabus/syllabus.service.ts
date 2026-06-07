@@ -63,6 +63,30 @@ async function enrichReference(ref: InstanceType<typeof SyllabusReference>) {
   };
 }
 
+function mapTopicNode(
+  t: InstanceType<typeof SyllabusTopic>,
+  subTopics: InstanceType<typeof SyllabusSubTopic>[],
+  refsByTopic: Map<string, InstanceType<typeof SyllabusReference>[]>,
+  refMap: Map<string, Awaited<ReturnType<typeof enrichReference>>>,
+) {
+  return {
+    id: String(t._id),
+    name: t.name,
+    description: t.description,
+    marks_weightage: t.marks_weightage,
+    sort_order: t.sort_order,
+    sub_topics: subTopics
+      .filter((st) => String(st.syllabus_topic_id) === String(t._id))
+      .map((st) => ({
+        id: String(st._id),
+        name: st.name,
+        description: st.description,
+        sort_order: st.sort_order,
+      })),
+    references: (refsByTopic.get(String(t._id)) ?? []).map((r) => refMap.get(String(r._id))!),
+  };
+}
+
 export async function getSyllabusTree(examSubjectId: string) {
   const subject = await ExamSubject.findById(examSubjectId);
   if (!subject || !subject.is_active) throw notFound('Exam subject not found');
@@ -71,10 +95,16 @@ export async function getSyllabusTree(examSubjectId: string) {
     sort_order: 1,
   });
   const groupIds = groups.map((g) => g._id);
-  const topics = await SyllabusTopic.find({ syllabus_group_id: { $in: groupIds }, is_active: true }).sort({
-    sort_order: 1,
-  });
-  const topicIds = topics.map((t) => t._id);
+  const [groupTopics, subjectTopics] = await Promise.all([
+    SyllabusTopic.find({ syllabus_group_id: { $in: groupIds }, is_active: true }).sort({ sort_order: 1 }),
+    SyllabusTopic.find({
+      exam_subject_id: examSubjectId,
+      is_active: true,
+      $or: [{ syllabus_group_id: null }, { syllabus_group_id: { $exists: false } }],
+    }).sort({ sort_order: 1 }),
+  ]);
+  const allTopics = [...groupTopics, ...subjectTopics];
+  const topicIds = allTopics.map((t) => t._id);
   const [subTopics, references] = await Promise.all([
     SyllabusSubTopic.find({ syllabus_topic_id: { $in: topicIds }, is_active: true }).sort({ sort_order: 1 }),
     SyllabusReference.find({ exam_subject_id: examSubjectId, syllabus_topic_id: { $in: topicIds } }),
@@ -95,27 +125,16 @@ export async function getSyllabusTree(examSubjectId: string) {
     name: g.name,
     marks_allocated: g.marks_allocated,
     sort_order: g.sort_order,
-    topics: topics
+    topics: groupTopics
       .filter((t) => String(t.syllabus_group_id) === String(g._id))
-      .map((t) => ({
-        id: String(t._id),
-        name: t.name,
-        description: t.description,
-        marks_weightage: t.marks_weightage,
-        sort_order: t.sort_order,
-        sub_topics: subTopics
-          .filter((st) => String(st.syllabus_topic_id) === String(t._id))
-          .map((st) => ({
-            id: String(st._id),
-            name: st.name,
-            description: st.description,
-            sort_order: st.sort_order,
-          })),
-        references: (refsByTopic.get(String(t._id)) ?? []).map((r) => refMap.get(String(r._id))!),
-      })),
+      .map((t) => mapTopicNode(t, subTopics, refsByTopic, refMap)),
   }));
 
-  return { exam_subject_id: examSubjectId, groups: tree };
+  return {
+    exam_subject_id: examSubjectId,
+    groups: tree,
+    subject_topics: subjectTopics.map((t) => mapTopicNode(t, subTopics, refsByTopic, refMap)),
+  };
 }
 
 async function nextSortOrder(model: { findOne: Function }, filter: Record<string, unknown>, field: string) {
@@ -169,21 +188,64 @@ export async function deleteSyllabusGroup(id: string) {
   return { deleted: true };
 }
 
-export async function createSyllabusTopic(dto: CreateSyllabusTopicDto) {
-  const group = await SyllabusGroup.findById(dto.syllabus_group_id);
-  if (!group || !group.is_active) throw notFound('Syllabus group not found');
-  const sort_order =
-    dto.sort_order ??
-    (await nextSortOrder(SyllabusTopic, { syllabus_group_id: dto.syllabus_group_id }, 'sort_order'));
-  const t = await SyllabusTopic.create({ ...dto, sort_order, is_active: true });
+function topicResponse(t: InstanceType<typeof SyllabusTopic>) {
   return {
     id: String(t._id),
-    syllabus_group_id: String(t.syllabus_group_id),
+    syllabus_group_id: t.syllabus_group_id ? String(t.syllabus_group_id) : undefined,
+    exam_subject_id: t.exam_subject_id ? String(t.exam_subject_id) : undefined,
     name: t.name,
     description: t.description,
     marks_weightage: t.marks_weightage,
     sort_order: t.sort_order,
   };
+}
+
+export async function createSyllabusTopic(dto: CreateSyllabusTopicDto) {
+  if (dto.syllabus_group_id) {
+    const group = await SyllabusGroup.findById(dto.syllabus_group_id);
+    if (!group || !group.is_active) throw notFound('Syllabus group not found');
+    const sort_order =
+      dto.sort_order ??
+      (await nextSortOrder(SyllabusTopic, { syllabus_group_id: dto.syllabus_group_id }, 'sort_order'));
+    const t = await SyllabusTopic.create({
+      syllabus_group_id: dto.syllabus_group_id,
+      name: dto.name,
+      description: dto.description,
+      marks_weightage: dto.marks_weightage,
+      sort_order,
+      is_active: true,
+    });
+    return topicResponse(t);
+  }
+
+  const subject = await ExamSubject.findById(dto.exam_subject_id);
+  if (!subject || !subject.is_active) throw notFound('Exam subject not found');
+  const groupCount = await SyllabusGroup.countDocuments({
+    exam_subject_id: dto.exam_subject_id,
+    is_active: true,
+  });
+  if (groupCount > 0) {
+    throw badRequest('Select a syllabus group — this subject already has groups');
+  }
+  const sort_order =
+    dto.sort_order ??
+    (await nextSortOrder(
+      SyllabusTopic,
+      {
+        exam_subject_id: dto.exam_subject_id,
+        $or: [{ syllabus_group_id: null }, { syllabus_group_id: { $exists: false } }],
+      },
+      'sort_order',
+    ));
+  const t = await SyllabusTopic.create({
+    exam_subject_id: dto.exam_subject_id,
+    name: dto.name,
+    description: dto.description,
+    marks_weightage: dto.marks_weightage,
+    sort_order,
+    is_active: true,
+  });
+  return topicResponse(t);
 }
 
 export async function updateSyllabusTopic(id: string, dto: UpdateSyllabusTopicDto) {
@@ -195,14 +257,7 @@ export async function updateSyllabusTopic(id: string, dto: UpdateSyllabusTopicDt
   if (dto.sort_order !== undefined) t.sort_order = dto.sort_order;
   if (dto.is_active !== undefined) t.is_active = dto.is_active;
   await t.save();
-  return {
-    id: String(t._id),
-    syllabus_group_id: String(t.syllabus_group_id),
-    name: t.name,
-    description: t.description,
-    marks_weightage: t.marks_weightage,
-    sort_order: t.sort_order,
-  };
+  return topicResponse(t);
 }
 
 export async function deleteSyllabusTopic(id: string) {

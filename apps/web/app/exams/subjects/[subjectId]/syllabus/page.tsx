@@ -6,12 +6,12 @@ import Link from 'next/link';
 import { ArrowLeft, Link2, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { SYLLABUS_REF_LEVELS, type SyllabusRefLevel } from '@ibas/shared-constants';
 import { apiFetch } from '@/lib/api-client';
+import { bookContentHref } from '@/lib/book-links';
 import { fetchMe } from '@/lib/auth';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { OutlinedInput, OutlinedSelect } from '@/components/shared/outlined-field';
 import { Badge } from '@/components/ui/badge';
 import { Alert } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -204,6 +204,26 @@ export default function SyllabusPage() {
     setRefForm(emptyRef);
   }
 
+  function resetGroupFormAfterAdd() {
+    setEditGroupId('');
+    setGroupForm(emptyGroup);
+  }
+
+  function resetTopicFormAfterAdd() {
+    setEditTopicId('');
+    setTopicForm((f) => ({ ...emptyTopic, groupId: f.groupId }));
+  }
+
+  function resetSubTopicFormAfterAdd() {
+    setEditSubTopicId('');
+    setSubTopicForm((f) => ({ ...emptySubTopic, topicId: f.topicId }));
+  }
+
+  function resetRefFormAfterAdd() {
+    setEditRefId('');
+    setRefForm((f) => ({ ...f, relevance_note: '' }));
+  }
+
   function startEditGroup(g: SyllabusGroup) {
     setPanel('group');
     setEditGroupId(g.id);
@@ -264,7 +284,8 @@ export default function SyllabusPage() {
         });
         setMessage('Group added');
       }
-      clearEdits();
+      if (editGroupId) clearEdits();
+      else resetGroupFormAfterAdd();
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed');
@@ -299,7 +320,8 @@ export default function SyllabusPage() {
         });
         setMessage('Topic added');
       }
-      clearEdits();
+      if (editTopicId) clearEdits();
+      else resetTopicFormAfterAdd();
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed');
@@ -325,7 +347,8 @@ export default function SyllabusPage() {
         });
         setMessage('Sub-topic added');
       }
-      clearEdits();
+      if (editSubTopicId) clearEdits();
+      else resetSubTopicFormAfterAdd();
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed');
@@ -367,8 +390,8 @@ export default function SyllabusPage() {
         });
         setMessage('Book link added — you can add more links to the same topic');
       }
-      setEditRefId('');
-      setRefForm({ ...emptyRef, topicId: refForm.topicId });
+      if (editRefId) clearEdits();
+      else resetRefFormAfterAdd();
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed');
@@ -397,7 +420,8 @@ export default function SyllabusPage() {
   function bookRefFields() {
     return (
       <>
-        <select
+        <OutlinedSelect
+          label="Link level"
           value={refForm.ref_level}
           onChange={(e) =>
             setRefForm((f) => ({
@@ -408,15 +432,15 @@ export default function SyllabusPage() {
               regulation_id: '',
             }))
           }
-          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
         >
           {SYLLABUS_REF_LEVELS.map((l) => (
             <option key={l} value={l}>
               {l === 'book' ? 'Whole book' : l === 'chapter' ? 'Chapter' : l === 'rule' ? 'Rule / topic' : 'Regulation'}
             </option>
           ))}
-        </select>
-        <select
+        </OutlinedSelect>
+        <OutlinedSelect
+          label="Book"
           required
           value={refForm.book_id}
           onChange={(e) =>
@@ -428,63 +452,58 @@ export default function SyllabusPage() {
               regulation_id: '',
             }))
           }
-          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
         >
-          <option value="">Select book</option>
           {books.map((b) => (
             <option key={b.id} value={b.id}>
               {b.short_name} — {b.name}
             </option>
           ))}
-        </select>
+        </OutlinedSelect>
         {refForm.ref_level !== 'book' && (
-          <select
+          <OutlinedSelect
+            label="Chapter"
             required
             value={refForm.book_chapter_id}
             onChange={(e) =>
               setRefForm((f) => ({ ...f, book_chapter_id: e.target.value, book_topic_id: '', regulation_id: '' }))
             }
-            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           >
-            <option value="">Select chapter</option>
             {chapters.map((c) => (
               <option key={c.id} value={c.id}>
                 Ch. {c.chapter_number} — {c.name}
               </option>
             ))}
-          </select>
+          </OutlinedSelect>
         )}
         {(refForm.ref_level === 'rule' || refForm.ref_level === 'regulation') && (
-          <select
+          <OutlinedSelect
+            label="Rule / book topic"
             required
             value={refForm.book_topic_id}
             onChange={(e) => setRefForm((f) => ({ ...f, book_topic_id: e.target.value, regulation_id: '' }))}
-            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           >
-            <option value="">Select rule / book topic</option>
             {bookTopics.map((t) => (
               <option key={t.id} value={t.id}>
                 Rule {t.rule_number} — {t.name}
               </option>
             ))}
-          </select>
+          </OutlinedSelect>
         )}
         {refForm.ref_level === 'regulation' && (
-          <select
+          <OutlinedSelect
+            label="Regulation (optional)"
             value={refForm.regulation_id}
             onChange={(e) => setRefForm((f) => ({ ...f, regulation_id: e.target.value }))}
-            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           >
-            <option value="">Regulation (optional)</option>
             {regulations.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.regulation_no} — {r.title}
               </option>
             ))}
-          </select>
+          </OutlinedSelect>
         )}
-        <Input
-          placeholder="Relevance note"
+        <OutlinedInput
+          label="Relevance note"
           value={refForm.relevance_note}
           onChange={(e) => setRefForm((f) => ({ ...f, relevance_note: e.target.value }))}
         />
@@ -589,14 +608,25 @@ export default function SyllabusPage() {
             <p className="mt-1 text-sm text-muted">No book chapters or rules linked yet.</p>
           ) : (
             <div className="mt-2 space-y-2">
-              {topic.references.map((ref) => (
+              {topic.references.map((ref) => {
+                const contentHref = bookContentHref(ref);
+                return (
                 <div
                   key={ref.id}
                   className="flex items-start justify-between gap-2 rounded-md border border-border bg-slate-50/80 p-2 text-sm"
                 >
                   <div>
                     <Badge variant="secondary">{ref.ref_level ?? 'link'}</Badge>
-                    <span className="ml-2 font-medium">{refLabel(ref)}</span>
+                    {contentHref ? (
+                      <Link
+                        href={contentHref}
+                        className="ml-2 font-medium text-primary hover:underline"
+                      >
+                        {refLabel(ref)}
+                      </Link>
+                    ) : (
+                      <span className="ml-2 font-medium">{refLabel(ref)}</span>
+                    )}
                     {ref.topic_name && ref.rule_number && (
                       <span className="ml-1 text-muted">({ref.topic_name})</span>
                     )}
@@ -618,7 +648,8 @@ export default function SyllabusPage() {
                     </div>
                   )}
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
         </div>
@@ -677,19 +708,19 @@ export default function SyllabusPage() {
 
             {panel === 'group' && (
               <form onSubmit={saveGroup} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <Input
-                  placeholder="Group name"
+                <OutlinedInput
+                  label="Group name"
                   value={groupForm.name}
                   onChange={(e) => setGroupForm((f) => ({ ...f, name: e.target.value }))}
                   required
                 />
-                <Input
+                <OutlinedInput
+                  label="Marks allocated"
                   type="number"
-                  placeholder="Marks allocated"
                   value={groupForm.marks_allocated}
                   onChange={(e) => setGroupForm((f) => ({ ...f, marks_allocated: Number(e.target.value) }))}
                 />
-                <Button type="submit" size="sm">
+                <Button type="submit" size="sm" className="self-end">
                   {editGroupId ? 'Update group' : 'Add group'}
                 </Button>
               </form>
@@ -698,41 +729,40 @@ export default function SyllabusPage() {
             {panel === 'topic' && (
               <form onSubmit={saveTopic} className="space-y-3">
                 {hasGroups ? (
-                  <select
+                  <OutlinedSelect
+                    label="Syllabus group"
                     required
                     value={topicForm.groupId}
                     onChange={(e) => setTopicForm((f) => ({ ...f, groupId: e.target.value }))}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                     disabled={!!editTopicId}
                   >
-                    <option value="">Select group</option>
                     {groups.map((g) => (
                       <option key={g.id} value={g.id}>
                         {g.name}
                       </option>
                     ))}
-                  </select>
+                  </OutlinedSelect>
                 ) : (
                   <p className="text-sm text-muted">
                     No groups yet — topics will be added directly under this subject.
                   </p>
                 )}
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Input
-                    placeholder="Topic name"
+                  <OutlinedInput
+                    label="Topic name"
                     value={topicForm.name}
                     onChange={(e) => setTopicForm((f) => ({ ...f, name: e.target.value }))}
                     required
                   />
-                  <Input
+                  <OutlinedInput
+                    label="Marks weightage"
                     type="number"
-                    placeholder="Marks weightage"
                     value={topicForm.marks_weightage}
                     onChange={(e) => setTopicForm((f) => ({ ...f, marks_weightage: Number(e.target.value) }))}
                   />
                 </div>
-                <Input
-                  placeholder="Description (optional)"
+                <OutlinedInput
+                  label="Description (optional)"
                   value={topicForm.description}
                   onChange={(e) => setTopicForm((f) => ({ ...f, description: e.target.value }))}
                 />
@@ -744,28 +774,27 @@ export default function SyllabusPage() {
 
             {panel === 'sub_topic' && (
               <form onSubmit={saveSubTopic} className="space-y-3">
-                <select
+                <OutlinedSelect
+                  label="Syllabus topic"
                   required
                   value={subTopicForm.topicId}
                   onChange={(e) => setSubTopicForm((f) => ({ ...f, topicId: e.target.value }))}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   disabled={!!editSubTopicId}
                 >
-                  <option value="">Select syllabus topic</option>
                   {syllabusTopicOptions.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.label}
                     </option>
                   ))}
-                </select>
-                <Input
-                  placeholder="Sub-topic name"
+                </OutlinedSelect>
+                <OutlinedInput
+                  label="Sub-topic name"
                   value={subTopicForm.name}
                   onChange={(e) => setSubTopicForm((f) => ({ ...f, name: e.target.value }))}
                   required
                 />
-                <Input
-                  placeholder="Description (optional)"
+                <OutlinedInput
+                  label="Description (optional)"
                   value={subTopicForm.description}
                   onChange={(e) => setSubTopicForm((f) => ({ ...f, description: e.target.value }))}
                 />
@@ -781,20 +810,19 @@ export default function SyllabusPage() {
                   A syllabus topic can link to many book chapters or rules. Add one link at a time; repeat to attach
                   more.
                 </p>
-                <select
+                <OutlinedSelect
+                  label="Syllabus topic"
                   required
                   value={refForm.topicId}
                   onChange={(e) => setRefForm((f) => ({ ...f, topicId: e.target.value }))}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   disabled={!!editRefId}
                 >
-                  <option value="">Syllabus topic</option>
                   {syllabusTopicOptions.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.label}
                     </option>
                   ))}
-                </select>
+                </OutlinedSelect>
                 {bookRefFields()}
                 <div className="flex flex-wrap gap-2">
                   <Button type="submit" size="sm">
@@ -806,7 +834,17 @@ export default function SyllabusPage() {
                       type="button"
                       size="sm"
                       variant="outline"
-                      onClick={() => setRefForm((f) => ({ ...emptyRef, topicId: f.topicId }))}
+                      onClick={() =>
+                        setRefForm((f) => ({
+                          ...emptyRef,
+                          topicId: f.topicId,
+                          ref_level: f.ref_level,
+                          book_id: f.book_id,
+                          book_chapter_id: f.book_chapter_id,
+                          book_topic_id: f.book_topic_id,
+                          regulation_id: f.regulation_id,
+                        }))
+                      }
                     >
                       Clear form
                     </Button>

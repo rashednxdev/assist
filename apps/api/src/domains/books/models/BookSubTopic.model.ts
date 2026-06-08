@@ -2,7 +2,7 @@ import mongoose, { Schema, type Document, type Types } from 'mongoose';
 
 export interface IBookSubTopic extends Document {
   book_topic_id: Types.ObjectId;
-  name: string;
+  name?: string;
   rule_number?: string;
   description?: string;
   note?: string;
@@ -13,7 +13,7 @@ export interface IBookSubTopic extends Document {
 const schema = new Schema<IBookSubTopic>(
   {
     book_topic_id: { type: Schema.Types.ObjectId, required: true, ref: 'BookTopic' },
-    name: { type: String, required: true },
+    name: { type: String, default: '' },
     rule_number: { type: String },
     description: { type: String },
     note: { type: String },

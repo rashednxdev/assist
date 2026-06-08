@@ -56,7 +56,7 @@ export const updateBookChapterSchema = createBookChapterSchema.partial().extend(
 });
 
 export const createBookTopicSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().optional(),
   sub_name: z.string().optional(),
   rule_number: z.string().min(1),
   description: z.string().optional(),
@@ -69,15 +69,20 @@ export const updateBookTopicSchema = createBookTopicSchema.partial().extend({
   is_active: z.boolean().optional(),
 });
 
-export const createBookSubTopicSchema = z.object({
-  name: z.string().min(1),
+const bookSubTopicFieldsSchema = z.object({
+  name: z.string().optional(),
   rule_number: z.string().optional(),
   description: z.string().optional(),
   note: z.string().optional(),
   sort_order: z.number().int().positive().optional(),
 });
 
-export const updateBookSubTopicSchema = createBookSubTopicSchema.partial().extend({
+export const createBookSubTopicSchema = bookSubTopicFieldsSchema.refine(
+  (data) => Boolean(data.name?.trim() || data.rule_number?.trim()),
+  { message: 'Sub-rule number or title is required' },
+);
+
+export const updateBookSubTopicSchema = bookSubTopicFieldsSchema.partial().extend({
   is_active: z.boolean().optional(),
 });
 

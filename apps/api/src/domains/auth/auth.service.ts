@@ -15,14 +15,22 @@ export interface TokenPair {
   expiresIn: number;
 }
 
-function accessExpiresSeconds(): number {
-  const match = env.JWT_ACCESS_EXPIRES_IN.match(/^(\d+)([smhd])$/);
-  if (!match) return 900;
-  const value = Number(match[1]);
+function expiresInToSeconds(value: string, fallbackSeconds: number): number {
+  const match = value.match(/^(\d+)([smhd])$/);
+  if (!match) return fallbackSeconds;
+  const amount = Number(match[1]);
   const unit = match[2];
-  if (!unit) return 900;
+  if (!unit) return fallbackSeconds;
   const multipliers: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 };
-  return value * (multipliers[unit] ?? 60);
+  return amount * (multipliers[unit] ?? 60);
+}
+
+function accessExpiresSeconds(): number {
+  return expiresInToSeconds(env.JWT_ACCESS_EXPIRES_IN, 900);
+}
+
+export function refreshExpiresMs(): number {
+  return expiresInToSeconds(env.JWT_REFRESH_EXPIRES_IN, 7 * 86400) * 1000;
 }
 
 export async function login(dto: LoginDto, ip?: string): Promise<{ tokens: TokenPair; userId: string }> {

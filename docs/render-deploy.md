@@ -17,8 +17,8 @@ Use **two Web Services** from the same GitHub repo.
 | `MONGODB_URI` | MongoDB Atlas connection string |
 | `JWT_SECRET` | Long random string (16+ chars) |
 | `CORS_ORIGIN` | `https://YOUR-WEB-SERVICE.onrender.com` |
-| `JWT_ACCESS_EXPIRES_IN` | `15m` |
-| `JWT_REFRESH_EXPIRES_IN` | `7d` |
+| `JWT_ACCESS_EXPIRES_IN` | `8h` |
+| `JWT_REFRESH_EXPIRES_IN` | `30d` |
 
 Copy the API URL after deploy, e.g. `https://ibas-api.onrender.com` (no trailing slash).
 

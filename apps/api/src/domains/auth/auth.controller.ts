@@ -1,7 +1,7 @@
 import type { Response } from 'express';
 import { loginSchema } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
-import { login } from './auth.service.js';
+import { login, refreshExpiresMs } from './auth.service.js';
 import { User } from '../users/models/User.model.js';
 import { listModuleAccessForSession } from '../users/module-access.service.js';
 import { badRequest } from '../../shared/errors/AppError.js';
@@ -18,7 +18,7 @@ export async function loginHandler(req: AuthRequest, res: Response): Promise<voi
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
+    maxAge: refreshExpiresMs(),
     path: '/',
   });
 

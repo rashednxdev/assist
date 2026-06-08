@@ -36,7 +36,7 @@ interface ChapterRow {
 
 interface TopicRow {
   id: string;
-  name: string;
+  name?: string;
   sub_name?: string;
   rule_number: string;
   description?: string;
@@ -47,7 +47,7 @@ interface TopicRow {
 
 interface SubTopicRow {
   id: string;
-  name: string;
+  name?: string;
   rule_number?: string;
   description?: string;
   note?: string;
@@ -65,6 +65,18 @@ function wrapHtml(text: string) {
   const t = text.trim();
   if (!t) return '';
   return t.startsWith('<') ? t : `<p>${t}</p>`;
+}
+
+function topicLabel(t: { rule_number: string; name?: string }) {
+  const title = t.name?.trim();
+  return title ? `${t.rule_number} — ${title}` : t.rule_number;
+}
+
+function subTopicLabel(st: { rule_number?: string; name?: string }) {
+  const no = st.rule_number?.trim();
+  const title = st.name?.trim();
+  if (no && title) return `${no} — ${title}`;
+  return no || title || 'Sub-rule';
 }
 
 export function BookContentEditor({
@@ -274,14 +286,14 @@ export function BookContentEditor({
   }
 
   async function addTopic() {
-    if (!selectedChapterId || !topicForm.name.trim() || !topicForm.rule_number.trim()) return;
+    if (!selectedChapterId || !topicForm.rule_number.trim()) return;
     clearFeedback();
     setBusy(true);
     try {
       await apiFetch(`/books/chapters/${selectedChapterId}/topics`, {
         method: 'POST',
         body: JSON.stringify({
-          name: topicForm.name.trim(),
+          name: topicForm.name.trim() || undefined,
           rule_number: topicForm.rule_number.trim(),
           sub_name: topicForm.sub_name.trim() || undefined,
           description: topicForm.description.trim() ? wrapHtml(topicForm.description) : undefined,
@@ -344,14 +356,14 @@ export function BookContentEditor({
   }
 
   async function addSubTopic() {
-    if (!selectedTopicId || !subForm.name.trim()) return;
+    if (!selectedTopicId || (!subForm.name.trim() && !subForm.rule_number.trim())) return;
     clearFeedback();
     setBusy(true);
     try {
       await apiFetch(`/books/topics/${selectedTopicId}/sub-topics`, {
         method: 'POST',
         body: JSON.stringify({
-          name: subForm.name.trim(),
+          name: subForm.name.trim() || undefined,
           rule_number: subForm.rule_number.trim() || undefined,
           description: subForm.description.trim() ? wrapHtml(subForm.description) : undefined,
           note: subForm.note.trim() || undefined,
@@ -571,7 +583,7 @@ export function BookContentEditor({
                   {topics.map((t) => (
                     <li key={t.id} className={`rounded-lg border px-2 py-1.5 text-sm ${selectedTopicId === t.id ? 'border-primary bg-primary-muted' : 'border-border'}`}>
                       <button type="button" className="w-full text-left" onClick={() => setSelectedTopicId(t.id)}>
-                        <span className="font-medium">{t.rule_number} — {t.name}</span>
+                        <span className="font-medium">{topicLabel(t)}</span>
                         {t.is_amended && <Badge variant="warning" className="ml-1">Amended</Badge>}
                       </button>
                       <div className="mt-1 flex gap-1">
@@ -594,8 +606,8 @@ export function BookContentEditor({
                   <div className="rounded-lg border border-dashed p-3 space-y-2">
                     <p className="text-xs font-semibold text-muted">Edit rule</p>
                     <Input disabled={busy} value={editTopicForm.rule_number} onChange={(e) => setEditTopicForm({ ...editTopicForm, rule_number: e.target.value })} />
-                    <Input disabled={busy} value={editTopicForm.name} onChange={(e) => setEditTopicForm({ ...editTopicForm, name: e.target.value })} />
-                    <textarea className="ibas-textarea text-sm" disabled={busy} value={editTopicForm.description} placeholder="Rule text" onChange={(e) => setEditTopicForm({ ...editTopicForm, description: e.target.value })} />
+                    <Input disabled={busy} value={editTopicForm.name} placeholder="Title (optional)" onChange={(e) => setEditTopicForm({ ...editTopicForm, name: e.target.value })} />
+                    <textarea className="ibas-textarea text-sm" disabled={busy} value={editTopicForm.description} placeholder="Details (optional)" onChange={(e) => setEditTopicForm({ ...editTopicForm, description: e.target.value })} />
                     <Input disabled={busy} value={editTopicForm.note} placeholder="Note / cross-ref" onChange={(e) => setEditTopicForm({ ...editTopicForm, note: e.target.value })} />
                     <div className="flex gap-2">
                       <Button size="sm" disabled={busy} onClick={saveTopicEdit}>Save</Button>
@@ -606,9 +618,9 @@ export function BookContentEditor({
                 <div className="rounded-lg border border-dashed p-3 space-y-2">
                   <p className="text-xs font-semibold text-muted">Add rule</p>
                   <Input disabled={busy} value={topicForm.rule_number} placeholder="Rule no. e.g. 45" onChange={(e) => setTopicForm({ ...topicForm, rule_number: e.target.value })} />
-                  <Input disabled={busy} value={topicForm.name} placeholder="Title" onChange={(e) => setTopicForm({ ...topicForm, name: e.target.value })} />
-                  <textarea className="ibas-textarea text-sm" disabled={busy} value={topicForm.description} placeholder="Full rule text" onChange={(e) => setTopicForm({ ...topicForm, description: e.target.value })} />
-                  <Button size="sm" disabled={busy} onClick={addTopic}>Add rule</Button>
+                  <Input disabled={busy} value={topicForm.name} placeholder="Title (optional)" onChange={(e) => setTopicForm({ ...topicForm, name: e.target.value })} />
+                  <textarea className="ibas-textarea text-sm" disabled={busy} value={topicForm.description} placeholder="Details (optional)" onChange={(e) => setTopicForm({ ...topicForm, description: e.target.value })} />
+                  <Button size="sm" disabled={busy || !topicForm.rule_number.trim()} onClick={addTopic}>Add rule</Button>
                 </div>
               </>
             )}
@@ -627,7 +639,7 @@ export function BookContentEditor({
                 <ul className="max-h-40 space-y-1 overflow-y-auto">
                   {subTopics.map((st) => (
                     <li key={st.id} className="rounded-lg border border-border px-2 py-1.5 text-sm">
-                      <span className="font-medium">{st.rule_number ? `${st.rule_number} — ` : ''}{st.name}</span>
+                      <span className="font-medium">{subTopicLabel(st)}</span>
                       <div className="mt-1 flex gap-1">
                         <Button size="sm" variant="ghost" className="h-7 text-xs" disabled={busy} onClick={() => {
                           setEditSubId(st.id);
@@ -646,8 +658,8 @@ export function BookContentEditor({
                 {editSubId && (
                   <div className="rounded-lg border border-dashed p-3 space-y-2">
                     <Input disabled={busy} value={editSubForm.rule_number} placeholder="Sub-rule no." onChange={(e) => setEditSubForm({ ...editSubForm, rule_number: e.target.value })} />
-                    <Input disabled={busy} value={editSubForm.name} onChange={(e) => setEditSubForm({ ...editSubForm, name: e.target.value })} />
-                    <textarea className="ibas-textarea text-sm" disabled={busy} value={editSubForm.description} onChange={(e) => setEditSubForm({ ...editSubForm, description: e.target.value })} />
+                    <Input disabled={busy} value={editSubForm.name} placeholder="Title (optional)" onChange={(e) => setEditSubForm({ ...editSubForm, name: e.target.value })} />
+                    <textarea className="ibas-textarea text-sm" disabled={busy} value={editSubForm.description} placeholder="Details (optional)" onChange={(e) => setEditSubForm({ ...editSubForm, description: e.target.value })} />
                     <div className="flex gap-2">
                       <Button size="sm" disabled={busy} onClick={saveSubEdit}>Save</Button>
                       <Button size="sm" variant="ghost" onClick={() => setEditSubId(null)}>Cancel</Button>
@@ -656,9 +668,9 @@ export function BookContentEditor({
                 )}
                 <div className="rounded-lg border border-dashed p-3 space-y-2">
                   <Input disabled={busy} value={subForm.rule_number} placeholder="Sub-rule no. e.g. 45(1)" onChange={(e) => setSubForm({ ...subForm, rule_number: e.target.value })} />
-                  <Input disabled={busy} value={subForm.name} placeholder="Title" onChange={(e) => setSubForm({ ...subForm, name: e.target.value })} />
-                  <textarea className="ibas-textarea text-sm" disabled={busy} value={subForm.description} onChange={(e) => setSubForm({ ...subForm, description: e.target.value })} />
-                  <Button size="sm" disabled={busy} onClick={addSubTopic}>Add sub-rule</Button>
+                  <Input disabled={busy} value={subForm.name} placeholder="Title (optional)" onChange={(e) => setSubForm({ ...subForm, name: e.target.value })} />
+                  <textarea className="ibas-textarea text-sm" disabled={busy} value={subForm.description} placeholder="Details (optional)" onChange={(e) => setSubForm({ ...subForm, description: e.target.value })} />
+                  <Button size="sm" disabled={busy || (!subForm.name.trim() && !subForm.rule_number.trim())} onClick={addSubTopic}>Add sub-rule</Button>
                 </div>
               </>
             )}

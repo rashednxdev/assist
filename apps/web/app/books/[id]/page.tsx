@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Pencil } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
@@ -37,7 +37,10 @@ interface TreeNode {
 
 export default function BookDetailPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const bookId = params.id as string;
+  const focusChapterId = searchParams.get('chapter');
+  const focusTopicId = searchParams.get('topic');
   const [book, setBook] = useState<BookDetail | null>(null);
   const [nodes, setNodes] = useState<TreeNode[]>([]);
   const [loading, setLoading] = useState(true);
@@ -117,7 +120,13 @@ export default function BookDetailPage() {
       {isAdmin && editMode ? (
         <BookContentEditor bookId={bookId} book={book} onRefresh={() => reload()} />
       ) : (
-        <BookTree key={treeKey} bookId={bookId} initialNodes={nodes} />
+        <BookTree
+          key={`${treeKey}:${focusChapterId ?? ''}:${focusTopicId ?? ''}`}
+          bookId={bookId}
+          initialNodes={nodes}
+          focusChapterId={focusChapterId}
+          focusTopicId={focusTopicId}
+        />
       )}
     </div>
   );

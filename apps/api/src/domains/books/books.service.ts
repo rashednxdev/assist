@@ -337,6 +337,7 @@ export async function getTopicDetail(topicId: string) {
       name: st.name,
       rule_number: st.rule_number,
       description: st.description,
+      note: st.note,
     })),
     regulations: regulations.map(serializeRegulation),
   };
@@ -517,7 +518,7 @@ export async function createTopic(chapterId: string, dto: CreateBookTopicDto) {
   const sortOrder = dto.sort_order ?? count + 1;
   const topic = await BookTopic.create({
     book_chapter_id: chapter._id,
-    name: dto.name,
+    name: dto.name?.trim() ?? '',
     sub_name: dto.sub_name,
     rule_number: dto.rule_number,
     description: dto.description,
@@ -538,7 +539,7 @@ export async function createTopic(chapterId: string, dto: CreateBookTopicDto) {
 export async function updateTopic(topicId: string, dto: UpdateBookTopicDto) {
   const topic = await BookTopic.findById(topicId);
   if (!topic) throw notFound('Topic not found');
-  if (dto.name !== undefined) topic.name = dto.name;
+  if (dto.name !== undefined) topic.name = dto.name.trim();
   if (dto.sub_name !== undefined) topic.sub_name = dto.sub_name;
   if (dto.rule_number !== undefined) topic.rule_number = dto.rule_number;
   if (dto.description !== undefined) topic.description = dto.description;
@@ -571,7 +572,7 @@ export async function createSubTopic(topicId: string, dto: CreateBookSubTopicDto
   const sortOrder = dto.sort_order ?? count + 1;
   const sub = await BookSubTopic.create({
     book_topic_id: topic._id,
-    name: dto.name,
+    name: dto.name?.trim() ?? '',
     rule_number: dto.rule_number,
     description: dto.description,
     note: dto.note,
@@ -584,7 +585,7 @@ export async function createSubTopic(topicId: string, dto: CreateBookSubTopicDto
 export async function updateSubTopic(subTopicId: string, dto: UpdateBookSubTopicDto) {
   const sub = await BookSubTopic.findById(subTopicId);
   if (!sub) throw notFound('Sub-topic not found');
-  if (dto.name !== undefined) sub.name = dto.name;
+  if (dto.name !== undefined) sub.name = dto.name.trim();
   if (dto.rule_number !== undefined) sub.rule_number = dto.rule_number;
   if (dto.description !== undefined) sub.description = dto.description;
   if (dto.note !== undefined) sub.note = dto.note;

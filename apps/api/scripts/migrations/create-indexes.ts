@@ -32,6 +32,7 @@ import { Question } from '../../src/domains/questions/models/Question.model.js';
 import { QuestionOption } from '../../src/domains/questions/models/QuestionOption.model.js';
 import { QuestionAnswer } from '../../src/domains/questions/models/QuestionAnswer.model.js';
 import { QuestionAnswerDetail } from '../../src/domains/questions/models/QuestionAnswerDetail.model.js';
+import { QuestionBookLink } from '../../src/domains/questions/models/QuestionBookLink.model.js';
 import { Department } from '../../src/domains/exams/models/Department.model.js';
 import { Authority } from '../../src/domains/exams/models/Authority.model.js';
 import { ExamName } from '../../src/domains/exams/models/ExamName.model.js';
@@ -82,6 +83,7 @@ async function createIndexes() {
   await QuestionOption.syncIndexes();
   await QuestionAnswer.syncIndexes();
   await QuestionAnswerDetail.syncIndexes();
+  await QuestionBookLink.syncIndexes();
   await Department.syncIndexes();
   await Authority.syncIndexes();
   await ExamName.syncIndexes();

@@ -12,6 +12,7 @@ import {
   QuestionEditor,
   emptyQuestionForm,
   questionFormToPayload,
+  validateQuestionForm,
   type QuestionFormValues,
 } from '@/components/questions/question-editor';
 
@@ -61,18 +62,12 @@ export default function NewQuestionPage() {
     setError('');
     setBusy(true);
     try {
-      const payload = questionFormToPayload(form);
-      if (form.has_options && form.question_type_code !== 'TF') {
-        const options = (payload.options as unknown[]) ?? [];
-        if (options.length < 2) {
-          setError('At least two options with text are required');
-          return;
-        }
-      }
-      if (!form.has_options && !form.model_answer.trim()) {
-        setError('Model answer is required');
+      const validationError = validateQuestionForm(form);
+      if (validationError) {
+        setError(validationError);
         return;
       }
+      const payload = questionFormToPayload(form);
       const res = await apiFetch<{ data: { id: string } }>('/questions', {
         method: 'POST',
         body: JSON.stringify(payload),

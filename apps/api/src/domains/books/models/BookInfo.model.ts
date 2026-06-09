@@ -4,8 +4,8 @@ export interface IBookInfo extends Document {
   book_type_id: Types.ObjectId;
   name: string;
   name_bn: string;
-  short_name: string;
-  description: string;
+  short_name?: string;
+  description?: string;
   edition?: string;
   publish_date?: Date;
   published_by?: string;
@@ -26,8 +26,8 @@ const schema = new Schema<IBookInfo>(
     book_type_id: { type: Schema.Types.ObjectId, required: true, ref: 'BookType' },
     name: { type: String, required: true },
     name_bn: { type: String, required: true },
-    short_name: { type: String, required: true },
-    description: { type: String, required: true },
+    short_name: { type: String, default: '' },
+    description: { type: String, default: '' },
     edition: { type: String },
     publish_date: { type: Date },
     published_by: { type: String },

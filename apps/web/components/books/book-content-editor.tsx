@@ -169,7 +169,7 @@ export function BookContentEditor({
     if (!selectedTopicId) return;
     const topic = topics.find((t) => t.id === selectedTopicId);
     if (!topic) return;
-    const suggestedNo = `${book.short_name}-${topic.rule_number}`.replace(/\s+/g, '');
+    const suggestedNo = `${book.short_name || 'BOOK'}-${topic.rule_number}`.replace(/\s+/g, '');
     setRegForm((prev) => ({
       ...prev,
       regulation_no: prev.regulation_no || suggestedNo,
@@ -194,8 +194,8 @@ export function BookContentEditor({
         body: JSON.stringify({
           name: bookForm.name.trim(),
           name_bn: bookForm.name_bn.trim(),
-          short_name: bookForm.short_name.trim().toUpperCase(),
-          description: wrapHtml(bookForm.description),
+          short_name: bookForm.short_name.trim().toUpperCase() || undefined,
+          description: bookForm.description.trim() ? wrapHtml(bookForm.description) : undefined,
           edition: bookForm.edition.trim() || undefined,
           published_by: bookForm.published_by.trim() || undefined,
           language: bookForm.language,
@@ -492,7 +492,7 @@ export function BookContentEditor({
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="space-y-1">
-              <Label>Short code</Label>
+              <Label>Short code (optional)</Label>
               <Input disabled={busy} value={bookForm.short_name} onChange={(e) => setBookForm({ ...bookForm, short_name: e.target.value })} />
             </div>
             <div className="space-y-1">
@@ -509,8 +509,8 @@ export function BookContentEditor({
             </div>
           </div>
           <div className="space-y-1">
-            <Label>Description</Label>
-            <textarea className="ibas-textarea" disabled={busy} value={bookForm.description} onChange={(e) => setBookForm({ ...bookForm, description: e.target.value })} />
+            <Label>Description (optional)</Label>
+            <textarea className="ibas-textarea" disabled={busy} value={bookForm.description} placeholder="Overview (optional)" onChange={(e) => setBookForm({ ...bookForm, description: e.target.value })} />
           </div>
           <div className="space-y-1">
             <Label>Tags (comma-separated)</Label>

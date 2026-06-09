@@ -8,6 +8,15 @@ import {
 
 const mongoId = z.string().regex(/^[a-f\d]{24}$/i);
 
+export const questionBookLinkInputSchema = z.object({
+  id: mongoId.optional(),
+  link_level: z.enum(QUESTION_LINK_LEVELS),
+  book_chapter_id: mongoId,
+  book_topic_id: mongoId.optional(),
+  book_sub_topic_id: mongoId.optional(),
+  regulation_id: mongoId.optional(),
+});
+
 export const questionOptionInputSchema = z.object({
   option_key: z.enum(OPTION_KEYS),
   option_text_en: z.string().min(1),
@@ -35,6 +44,7 @@ const questionFieldsSchema = z.object({
   options: z.array(questionOptionInputSchema).optional(),
   correct_option_key: z.enum(OPTION_KEYS).optional(),
   correct_true_false: z.enum(['true', 'false']).optional(),
+  book_links: z.array(questionBookLinkInputSchema).optional(),
 });
 
 function validateBookLink(
@@ -70,12 +80,57 @@ function validateBookLink(
   }
 }
 
+function validateBookLinkItem(
+  data: {
+    link_level: string;
+    book_chapter_id?: string;
+    book_topic_id?: string;
+    book_sub_topic_id?: string;
+  },
+  ctx: z.RefinementCtx,
+  pathPrefix: (string | number)[],
+) {
+  if (!data.book_chapter_id) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'Chapter is required when linking to book content',
+      path: [...pathPrefix, 'book_chapter_id'],
+    });
+  }
+  if (data.link_level === 'rule' && !data.book_topic_id) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'Rule/topic is required when link level is rule',
+      path: [...pathPrefix, 'book_topic_id'],
+    });
+  }
+  if (data.link_level === 'sub_rule' && (!data.book_topic_id || !data.book_sub_topic_id)) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'Rule and sub-rule are required when link level is sub-rule',
+      path: [...pathPrefix, 'book_sub_topic_id'],
+    });
+  }
+}
+
 export const createQuestionSchema = questionFieldsSchema.superRefine((data, ctx) => {
-  validateBookLink(data, ctx);
+  if (data.book_links?.length) {
+    data.book_links.forEach((link, i) => validateBookLinkItem(link, ctx, ['book_links', i]));
+  } else {
+    validateBookLink(data, ctx);
+  }
 });
 
 export const updateQuestionSchema = questionFieldsSchema.partial().extend({
   is_active: z.boolean().optional(),
+});
+
+export const similarQuestionsQuerySchema = z.object({
+  text: z.string().min(1),
+  question_type_id: mongoId,
+  exclude_id: mongoId.optional(),
+  threshold: z.coerce.number().min(0).max(1).default(0.6),
+  limit: z.coerce.number().int().min(1).max(20).default(8),
 });
 
 export const listQuestionsQuerySchema = z.object({
@@ -107,6 +162,7 @@ export const updateQuestionTypeSchema = createQuestionTypeSchema.partial().exten
 
 export type CreateQuestionDto = z.infer<typeof createQuestionSchema>;
 export type UpdateQuestionDto = z.infer<typeof updateQuestionSchema>;
+export type QuestionBookLinkInput = z.infer<typeof questionBookLinkInputSchema>;
 export type QuestionOptionInput = z.infer<typeof questionOptionInputSchema>;
 export type CreateQuestionTypeDto = z.infer<typeof createQuestionTypeSchema>;
 export type UpdateQuestionTypeDto = z.infer<typeof updateQuestionTypeSchema>;

@@ -227,12 +227,7 @@ export default function BooksAdminPage() {
       setError('Select a book type');
       return;
     }
-    if (!form.description.trim()) {
-      setError('Description is required');
-      return;
-    }
-
-    const shortName = (form.short_name || slugShortName(form.name)).toUpperCase();
+    const shortName = form.short_name.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     const tags = form.tags
       .split(',')
       .map((t) => t.trim())
@@ -246,10 +241,12 @@ export default function BooksAdminPage() {
           book_type_id: form.book_type_id,
           name: form.name.trim(),
           name_bn: form.name_bn.trim(),
-          short_name: shortName,
-          description: form.description.trim().startsWith('<')
-            ? form.description.trim()
-            : `<p>${form.description.trim()}</p>`,
+          short_name: shortName || undefined,
+          description: form.description.trim()
+            ? form.description.trim().startsWith('<')
+              ? form.description.trim()
+              : `<p>${form.description.trim()}</p>`
+            : undefined,
           edition: form.edition.trim() || undefined,
           published_by: form.published_by.trim() || undefined,
           language: form.language,
@@ -507,12 +504,11 @@ export default function BooksAdminPage() {
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1">
-                  <Label>Short code *</Label>
+                  <Label>Short code (optional)</Label>
                   <Input
-                    required
                     disabled={busy}
                     value={form.short_name}
-                    placeholder="GFR"
+                    placeholder="GFR (auto-suggested from title)"
                     onChange={(e) =>
                       setForm({ ...form, short_name: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })
                     }
@@ -540,13 +536,12 @@ export default function BooksAdminPage() {
               </div>
 
               <div className="space-y-1">
-                <Label>Description *</Label>
+                <Label>Description (optional)</Label>
                 <textarea
                   className="ibas-textarea min-h-[100px]"
-                  required
                   disabled={busy}
                   value={form.description}
-                  placeholder="Overview of this publication..."
+                  placeholder="Overview of this publication (optional)"
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                 />
                 <p className="text-xs text-muted">Plain text is wrapped as HTML. You can paste HTML directly.</p>

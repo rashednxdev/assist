@@ -351,6 +351,8 @@ export async function createBook(dto: CreateBookDto) {
   const book = await BookInfo.create({
     ...dto,
     book_type_id: bookType._id,
+    short_name: dto.short_name?.trim() ?? '',
+    description: dto.description?.trim() ?? '',
     is_active: true,
     is_superseded: false,
     tags: dto.tags ?? [],
@@ -369,8 +371,8 @@ export async function updateBook(id: string, dto: UpdateBookDto) {
   Object.assign(book, {
     ...(dto.name !== undefined && { name: dto.name }),
     ...(dto.name_bn !== undefined && { name_bn: dto.name_bn }),
-    ...(dto.short_name !== undefined && { short_name: dto.short_name }),
-    ...(dto.description !== undefined && { description: dto.description }),
+    ...(dto.short_name !== undefined && { short_name: dto.short_name.trim() }),
+    ...(dto.description !== undefined && { description: dto.description.trim() }),
     ...(dto.edition !== undefined && { edition: dto.edition }),
     ...(dto.publish_date !== undefined && { publish_date: dto.publish_date }),
     ...(dto.published_by !== undefined && { published_by: dto.published_by }),

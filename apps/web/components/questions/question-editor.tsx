@@ -1,19 +1,29 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import {
-  BOOK_LANGUAGES,
-  OPTION_KEYS,
-  QUESTION_DIFFICULTIES,
-  QUESTION_LINK_LEVELS,
-  type QuestionLinkLevel,
-} from '@ibas/shared-constants';
+import Link from 'next/link';
+import { ExternalLink } from 'lucide-react';
+import { BOOK_LANGUAGES, OPTION_KEYS, QUESTION_DIFFICULTIES } from '@ibas/shared-constants';
 import { apiFetch } from '@/lib/api-client';
+import {
+  QuestionBookLinksEditor,
+  type QuestionBookLinkForm,
+} from '@/components/questions/question-book-links-editor';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+
+interface SimilarQuestion {
+  id: string;
+  body_en: string;
+  body_bn?: string;
+  question_type_code: string;
+  is_published: boolean;
+  similarity: number;
+}
 
 export interface QuestionOptionInput {
   option_key: (typeof OPTION_KEYS)[number];
@@ -38,13 +48,10 @@ export interface QuestionFormValues {
   model_answer: string;
   explanation: string;
   note: string;
-  link_level: QuestionLinkLevel | '';
-  book_id: string;
-  book_chapter_id: string;
-  book_topic_id: string;
-  book_sub_topic_id: string;
-  regulation_id: string;
+  book_links: QuestionBookLinkForm[];
 }
+
+export type { QuestionBookLinkForm };
 
 const defaultMcqOptions: QuestionOptionInput[] = [
   { option_key: 'a', option_text_en: '' },
@@ -70,12 +77,7 @@ export const emptyQuestionForm: QuestionFormValues = {
   model_answer: '',
   explanation: '',
   note: '',
-  link_level: '',
-  book_id: '',
-  book_chapter_id: '',
-  book_topic_id: '',
-  book_sub_topic_id: '',
-  regulation_id: '',
+  book_links: [],
 };
 
 interface QuestionTypeItem {
@@ -86,36 +88,6 @@ interface QuestionTypeItem {
   note?: string;
 }
 
-interface BookItem {
-  id: string;
-  name: string;
-  short_name: string;
-}
-
-interface ChapterItem {
-  id: string;
-  name: string;
-  chapter_number?: string;
-}
-
-interface TopicItem {
-  id: string;
-  name: string;
-  rule_number?: string;
-}
-
-interface SubTopicItem {
-  id: string;
-  name: string;
-  rule_number?: string;
-}
-
-interface RegulationItem {
-  id: string;
-  regulation_no: string;
-  title: string;
-}
-
 interface QuestionEditorProps {
   value: QuestionFormValues;
   onChange: (value: QuestionFormValues) => void;
@@ -124,6 +96,11 @@ interface QuestionEditorProps {
   busy?: boolean;
   error?: string;
   submitLabel?: string;
+  /** When editing, exclude the current question from duplicate hints. */
+  excludeQuestionId?: string;
+  /** Existing question id — enables immediate book-link add/remove. */
+  questionId?: string;
+  onBookLinksChange?: () => void;
 }
 
 export function QuestionEditor({
@@ -134,66 +111,51 @@ export function QuestionEditor({
   busy,
   error,
   submitLabel = 'Save question',
+  excludeQuestionId,
+  questionId,
+  onBookLinksChange,
 }: QuestionEditorProps) {
-  const [books, setBooks] = useState<BookItem[]>([]);
-  const [chapters, setChapters] = useState<ChapterItem[]>([]);
-  const [topics, setTopics] = useState<TopicItem[]>([]);
-  const [subTopics, setSubTopics] = useState<SubTopicItem[]>([]);
-  const [regulations, setRegulations] = useState<RegulationItem[]>([]);
+  const [similarQuestions, setSimilarQuestions] = useState<SimilarQuestion[]>([]);
+  const [similarLoading, setSimilarLoading] = useState(false);
 
   const selectedType = useMemo(
     () => questionTypes.find((t) => t.id === value.question_type_id),
     [questionTypes, value.question_type_id],
   );
 
+  const isMcq = value.question_type_code === 'MCQ';
   const isTf = value.question_type_code === 'TF';
+  const isMcqOrTf = isMcq || isTf;
   const isShortNote = value.question_type_code === 'SHORT_NOTE';
   const isDescriptive = value.question_type_code === 'DESCRIPTIVE';
   const isTextAnswer = isShortNote || isDescriptive;
+  const questionText = value.body_bn || value.body_en;
 
   useEffect(() => {
-    apiFetch<{ data: BookItem[] }>('/books').then((r) => setBooks(r.data)).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    if (!value.book_id) {
-      setChapters([]);
+    const text = questionText.trim();
+    if (!value.question_type_id || text.length < 8) {
+      setSimilarQuestions([]);
+      setSimilarLoading(false);
       return;
     }
-    apiFetch<{ data: ChapterItem[] }>(`/books/${value.book_id}/chapters`)
-      .then((r) => setChapters(r.data))
-      .catch(() => setChapters([]));
-  }, [value.book_id]);
 
-  useEffect(() => {
-    if (!value.book_chapter_id) {
-      setTopics([]);
-      return;
-    }
-    apiFetch<{ data: { topics: TopicItem[] } }>(`/books/chapters/${value.book_chapter_id}`)
-      .then((r) => setTopics(r.data.topics ?? []))
-      .catch(() => setTopics([]));
-  }, [value.book_chapter_id]);
+    const timer = window.setTimeout(() => {
+      setSimilarLoading(true);
+      const params = new URLSearchParams({
+        text,
+        question_type_id: value.question_type_id,
+        threshold: '0.6',
+      });
+      if (excludeQuestionId) params.set('exclude_id', excludeQuestionId);
 
-  useEffect(() => {
-    if (!value.book_topic_id) {
-      setSubTopics([]);
-      return;
-    }
-    apiFetch<{ data: { sub_topics: SubTopicItem[] } }>(`/books/topics/${value.book_topic_id}`)
-      .then((r) => setSubTopics(r.data.sub_topics ?? []))
-      .catch(() => setSubTopics([]));
-  }, [value.book_topic_id]);
+      apiFetch<{ data: SimilarQuestion[] }>(`/questions/similar?${params.toString()}`)
+        .then((r) => setSimilarQuestions(r.data))
+        .catch(() => setSimilarQuestions([]))
+        .finally(() => setSimilarLoading(false));
+    }, 400);
 
-  useEffect(() => {
-    if (!value.book_topic_id) {
-      setRegulations([]);
-      return;
-    }
-    apiFetch<{ data: { regulations: RegulationItem[] } }>(`/books/topics/${value.book_topic_id}`)
-      .then((r) => setRegulations(r.data.regulations ?? []))
-      .catch(() => setRegulations([]));
-  }, [value.book_topic_id]);
+    return () => window.clearTimeout(timer);
+  }, [questionText, value.question_type_id, excludeQuestionId]);
 
   function patch(partial: Partial<QuestionFormValues>) {
     onChange({ ...value, ...partial });
@@ -215,39 +177,12 @@ export function QuestionEditor({
     if (!t.has_options) {
       next.negative_marks = 0;
     }
-    if (t.code === 'SHORT_NOTE' && value.time_seconds === 60) {
-      next.time_seconds = 180;
-      next.marks = 3;
-    }
-    if (t.code === 'DESCRIPTIVE' && value.time_seconds === 60) {
-      next.time_seconds = 600;
-      next.marks = 10;
-    }
     onChange({ ...value, ...next });
   }
 
   function updateOption(key: string, field: 'option_text_en' | 'option_text_bn', text: string) {
     patch({
       options: value.options.map((o) => (o.option_key === key ? { ...o, [field]: text } : o)),
-    });
-  }
-
-  function onLinkLevelChange(level: QuestionLinkLevel | '') {
-    if (!level) {
-      patch({
-        link_level: '',
-        book_chapter_id: '',
-        book_topic_id: '',
-        book_sub_topic_id: '',
-        regulation_id: '',
-      });
-      return;
-    }
-    patch({
-      link_level: level,
-      book_topic_id: level === 'chapter' ? '' : value.book_topic_id,
-      book_sub_topic_id: level === 'sub_rule' ? value.book_sub_topic_id : '',
-      regulation_id: level === 'chapter' ? '' : value.regulation_id,
     });
   }
 
@@ -287,25 +222,55 @@ export function QuestionEditor({
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="body_en">Question (English) *</Label>
-            <textarea
-              id="body_en"
-              required
-              rows={3}
-              value={value.body_en}
-              onChange={(e) => patch({ body_en: e.target.value })}
-              className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="body_bn">Question (Bengali)</Label>
+            <Label htmlFor="body_bn">Question *</Label>
             <textarea
               id="body_bn"
-              rows={2}
-              value={value.body_bn}
-              onChange={(e) => patch({ body_bn: e.target.value })}
-              className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              required
+              rows={3}
+              value={questionText}
+              onChange={(e) => {
+                const text = e.target.value;
+                patch({ body_bn: text, body_en: text });
+              }}
+              className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
             />
+            {(similarLoading || similarQuestions.length > 0) && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3 dark:border-amber-900/50 dark:bg-amber-950/20">
+                <p className="text-xs font-medium text-amber-900 dark:text-amber-200">
+                  {similarLoading
+                    ? 'Checking for similar questions…'
+                    : `Similar questions in this type (${similarQuestions.length} at ≥60% match)`}
+                </p>
+                {!similarLoading && similarQuestions.length > 0 && (
+                  <ul className="mt-2 space-y-2">
+                    {similarQuestions.map((q) => (
+                      <li
+                        key={q.id}
+                        className="flex items-start justify-between gap-2 rounded-md border border-amber-100 bg-background px-2.5 py-2 text-sm dark:border-amber-900/40"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="line-clamp-2">{q.body_bn || q.body_en}</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            <Badge variant="outline" className="text-xs">
+                              {q.similarity}% match
+                            </Badge>
+                            <Badge variant={q.is_published ? 'default' : 'secondary'} className="text-xs">
+                              {q.is_published ? 'Published' : 'Draft'}
+                            </Badge>
+                          </div>
+                        </div>
+                        <Button asChild type="button" size="sm" variant="ghost" className="h-8 shrink-0 px-2">
+                          <Link href={`/questions/${q.id}`} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            <span className="sr-only">View question</span>
+                          </Link>
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-1.5">
@@ -323,40 +288,44 @@ export function QuestionEditor({
                 ))}
               </select>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="marks">Marks</Label>
-              <Input
-                id="marks"
-                type="number"
-                min={0.25}
-                step={0.25}
-                value={value.marks}
-                onChange={(e) => patch({ marks: Number(e.target.value) })}
-              />
-            </div>
-            {value.has_options && (
-              <div className="space-y-1.5">
-                <Label htmlFor="negative_marks">Negative marks</Label>
-                <Input
-                  id="negative_marks"
-                  type="number"
-                  min={0}
-                  step={0.25}
-                  value={value.negative_marks}
-                  onChange={(e) => patch({ negative_marks: Number(e.target.value) })}
-                />
-              </div>
+            {isMcqOrTf && (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="marks">Marks</Label>
+                  <Input
+                    id="marks"
+                    type="number"
+                    min={0.25}
+                    step={0.25}
+                    value={value.marks}
+                    onChange={(e) => patch({ marks: Number(e.target.value) })}
+                  />
+                </div>
+                {isMcq && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="negative_marks">Negative marks</Label>
+                    <Input
+                      id="negative_marks"
+                      type="number"
+                      min={0}
+                      step={0.25}
+                      value={value.negative_marks}
+                      onChange={(e) => patch({ negative_marks: Number(e.target.value) })}
+                    />
+                  </div>
+                )}
+                <div className="space-y-1.5">
+                  <Label htmlFor="time_seconds">Time (seconds)</Label>
+                  <Input
+                    id="time_seconds"
+                    type="number"
+                    min={10}
+                    value={value.time_seconds}
+                    onChange={(e) => patch({ time_seconds: Number(e.target.value) })}
+                  />
+                </div>
+              </>
             )}
-            <div className="space-y-1.5">
-              <Label htmlFor="time_seconds">Time (seconds)</Label>
-              <Input
-                id="time_seconds"
-                type="number"
-                min={10}
-                value={value.time_seconds}
-                onChange={(e) => patch({ time_seconds: Number(e.target.value) })}
-              />
-            </div>
           </div>
         </CardContent>
       </Card>
@@ -364,7 +333,7 @@ export function QuestionEditor({
       {isTf && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Correct answer</CardTitle>
+            <CardTitle className="text-lg">Correct answer (True / False) *</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-4">
             <label className="flex items-center gap-2">
@@ -389,10 +358,10 @@ export function QuestionEditor({
         </Card>
       )}
 
-      {value.has_options && !isTf && (
+      {isMcq && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Answer options (MCQ)</CardTitle>
+            <CardTitle className="text-lg">Answer options (MCQ) *</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {value.options.map((opt) => (
@@ -410,8 +379,7 @@ export function QuestionEditor({
                   )}
                 </div>
                 <Input
-                  required
-                  placeholder="Option text (English)"
+                  placeholder="Option text"
                   value={opt.option_text_en}
                   onChange={(e) => updateOption(opt.option_key, 'option_text_en', e.target.value)}
                   className="mb-2"
@@ -430,18 +398,19 @@ export function QuestionEditor({
       {isTextAnswer && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">{isShortNote ? 'Model short answer' : 'Model answer'}</CardTitle>
+            <CardTitle className="text-lg">
+              {isShortNote ? 'Model short answer (optional)' : 'Model answer (optional)'}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <textarea
-              required
               rows={isDescriptive ? 6 : 4}
               value={value.model_answer}
               onChange={(e) => patch({ model_answer: e.target.value })}
               placeholder={
                 isShortNote
-                  ? 'Expected brief answer for examiners (2–5 sentences)'
-                  : 'Full model answer for descriptive marking'
+                  ? 'Optional — expected brief answer for examiners'
+                  : 'Optional — full model answer for descriptive marking'
               }
               className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
             />
@@ -469,139 +438,13 @@ export function QuestionEditor({
             </div>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="link_level">Attach to book content</Label>
-              <select
-                id="link_level"
-                value={value.link_level}
-                onChange={(e) => onLinkLevelChange(e.target.value as QuestionLinkLevel | '')}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              >
-                <option value="">— Not linked —</option>
-                {QUESTION_LINK_LEVELS.map((l) => (
-                  <option key={l} value={l}>
-                    {l === 'chapter' ? 'Chapter' : l === 'rule' ? 'Rule / topic' : 'Sub-rule'}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {value.link_level && (
-              <>
-                <div className="space-y-1.5">
-                  <Label htmlFor="book_id">Book *</Label>
-                  <select
-                    id="book_id"
-                    required
-                    value={value.book_id}
-                    onChange={(e) =>
-                      patch({
-                        book_id: e.target.value,
-                        book_chapter_id: '',
-                        book_topic_id: '',
-                        book_sub_topic_id: '',
-                        regulation_id: '',
-                      })
-                    }
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  >
-                    <option value="">— Select book —</option>
-                    {books.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.short_name} — {b.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="book_chapter_id">Chapter *</Label>
-                  <select
-                    id="book_chapter_id"
-                    required
-                    value={value.book_chapter_id}
-                    disabled={!value.book_id}
-                    onChange={(e) =>
-                      patch({
-                        book_chapter_id: e.target.value,
-                        book_topic_id: '',
-                        book_sub_topic_id: '',
-                        regulation_id: '',
-                      })
-                    }
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-50"
-                  >
-                    <option value="">— Select chapter —</option>
-                    {chapters.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.chapter_number ? `Ch. ${c.chapter_number}` : ''} {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {(value.link_level === 'rule' || value.link_level === 'sub_rule') && (
-                  <div className="space-y-1.5">
-                    <Label htmlFor="book_topic_id">Rule / topic *</Label>
-                    <select
-                      id="book_topic_id"
-                      required
-                      value={value.book_topic_id}
-                      disabled={!value.book_chapter_id}
-                      onChange={(e) =>
-                        patch({ book_topic_id: e.target.value, book_sub_topic_id: '', regulation_id: '' })
-                      }
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-50"
-                    >
-                      <option value="">— Select rule —</option>
-                      {topics.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.rule_number ? `Rule ${t.rule_number}` : ''} — {t.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-                {value.link_level === 'sub_rule' && (
-                  <div className="space-y-1.5">
-                    <Label htmlFor="book_sub_topic_id">Sub-rule *</Label>
-                    <select
-                      id="book_sub_topic_id"
-                      required
-                      value={value.book_sub_topic_id}
-                      disabled={!value.book_topic_id}
-                      onChange={(e) => patch({ book_sub_topic_id: e.target.value })}
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-50"
-                    >
-                      <option value="">— Select sub-rule —</option>
-                      {subTopics.map((st) => (
-                        <option key={st.id} value={st.id}>
-                          {st.rule_number ? `${st.rule_number}` : ''} — {st.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-                {value.link_level !== 'chapter' && value.book_topic_id && (
-                  <div className="space-y-1.5">
-                    <Label htmlFor="regulation_id">Regulation (optional)</Label>
-                    <select
-                      id="regulation_id"
-                      value={value.regulation_id}
-                      onChange={(e) => patch({ regulation_id: e.target.value })}
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    >
-                      <option value="">— Optional —</option>
-                      {regulations.map((r) => (
-                        <option key={r.id} value={r.id}>
-                          {r.regulation_no} — {r.title}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+          <QuestionBookLinksEditor
+            links={value.book_links}
+            onChange={(book_links) => patch({ book_links })}
+            questionId={questionId}
+            onRemoteChange={onBookLinksChange}
+            disabled={busy}
+          />
         </CardContent>
       </Card>
 
@@ -614,35 +457,47 @@ export function QuestionEditor({
   );
 }
 
+export function validateQuestionForm(form: QuestionFormValues): string | null {
+  if (form.question_type_code === 'MCQ') {
+    const options = form.options.filter((o) => o.option_text_en.trim());
+    if (options.length < 2) return 'MCQ questions need at least two answer options with text';
+    if (!options.some((o) => o.option_key === form.correct_option_key)) {
+      return 'Select the correct MCQ answer';
+    }
+  }
+  return null;
+}
+
 export function questionFormToPayload(form: QuestionFormValues) {
+  const text = (form.body_bn || form.body_en).trim();
+  const isMcqOrTf = form.question_type_code === 'MCQ' || form.question_type_code === 'TF';
   const payload: Record<string, unknown> = {
     question_type_id: form.question_type_id,
-    body_en: form.body_en.trim(),
-    body_bn: form.body_bn.trim() || undefined,
+    body_en: text,
+    body_bn: text || undefined,
     difficulty: form.difficulty,
-    marks: form.marks,
-    negative_marks: form.has_options && form.negative_marks ? form.negative_marks : undefined,
-    time_seconds: form.time_seconds,
+    marks: isMcqOrTf ? form.marks : 1,
+    negative_marks:
+      form.question_type_code === 'MCQ' && form.negative_marks ? form.negative_marks : undefined,
+    time_seconds: isMcqOrTf ? form.time_seconds : 60,
     language: form.language,
     note: form.note.trim() || undefined,
     explanation: form.explanation.trim() || undefined,
-    regulation_id: form.regulation_id || undefined,
+    book_links: form.book_links
+      .filter((l) => l.link_level && l.book_chapter_id)
+      .map((l) => ({
+        ...(l.id ? { id: l.id } : {}),
+        link_level: l.link_level,
+        book_chapter_id: l.book_chapter_id,
+        book_topic_id: l.book_topic_id || undefined,
+        book_sub_topic_id: l.book_sub_topic_id || undefined,
+        regulation_id: l.regulation_id || undefined,
+      })),
   };
-
-  if (form.link_level) {
-    payload.link_level = form.link_level;
-    payload.book_chapter_id = form.book_chapter_id || undefined;
-    if (form.link_level === 'rule' || form.link_level === 'sub_rule') {
-      payload.book_topic_id = form.book_topic_id || undefined;
-    }
-    if (form.link_level === 'sub_rule') {
-      payload.book_sub_topic_id = form.book_sub_topic_id || undefined;
-    }
-  }
 
   if (form.question_type_code === 'TF') {
     payload.correct_true_false = form.correct_true_false;
-  } else if (form.has_options) {
+  } else if (form.question_type_code === 'MCQ') {
     payload.options = form.options
       .filter((o) => o.option_text_en.trim())
       .map((o) => ({
@@ -651,7 +506,7 @@ export function questionFormToPayload(form: QuestionFormValues) {
         option_text_bn: o.option_text_bn?.trim() || undefined,
       }));
     payload.correct_option_key = form.correct_option_key;
-  } else {
+  } else if (form.model_answer.trim()) {
     payload.model_answer = form.model_answer.trim();
   }
 

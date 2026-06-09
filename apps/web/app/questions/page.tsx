@@ -5,7 +5,9 @@ import Link from 'next/link';
 import { HelpCircle, Plus, Search } from 'lucide-react';
 import { QUESTION_DIFFICULTIES } from '@ibas/shared-constants';
 import { apiFetch } from '@/lib/api-client';
+import { confirmDelete } from '@/lib/confirm-action';
 import { fetchMe } from '@/lib/auth';
+import { RowActions } from '@/components/shared/row-actions';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -21,6 +23,8 @@ interface QuestionType {
   code: string;
   name: string;
   has_options: boolean;
+  note?: string;
+  question_count: number;
 }
 
 interface QuestionItem {
@@ -35,11 +39,13 @@ interface QuestionItem {
   book_chapter_id?: string;
   book_topic_id?: string;
   book_sub_topic_id?: string;
+  book_link_count?: number;
   option_count: number;
   updated_at: string;
 }
 
 function linkBadge(item: QuestionItem) {
+  if ((item.book_link_count ?? 0) > 1) return `${item.book_link_count} links`;
   if (item.book_sub_topic_id) return 'Sub-rule';
   if (item.book_topic_id) return 'Rule';
   if (item.book_chapter_id) return 'Chapter';
@@ -57,7 +63,12 @@ export default function QuestionsPage() {
   const [typeCode, setTypeCode] = useState('');
   const [typeMsg, setTypeMsg] = useState('');
   const [typeErr, setTypeErr] = useState('');
-  const [newType, setNewType] = useState({ name: '', code: '', has_options: true, note: '' });
+  const [typeBusy, setTypeBusy] = useState(false);
+  const [editingTypeId, setEditingTypeId] = useState<string | null>(null);
+  const [typeForm, setTypeForm] = useState({ name: '', code: '', has_options: true, note: '' });
+
+  const loadTypes = () =>
+    apiFetch<{ data: QuestionType[] }>('/questions/types').then((r) => setTypes(r.data));
 
   function load(search?: string, diff?: string, pub?: string, code?: string) {
     setLoading(true);
@@ -74,7 +85,7 @@ export default function QuestionsPage() {
 
   useEffect(() => {
     load();
-    apiFetch<{ data: QuestionType[] }>('/questions/types').then((r) => setTypes(r.data));
+    loadTypes();
     fetchMe()
       .then((res) => {
         setIsAdmin(
@@ -84,26 +95,75 @@ export default function QuestionsPage() {
       .catch(() => {});
   }, []);
 
-  async function addQuestionType(e: React.FormEvent) {
+  async function saveQuestionType(e: React.FormEvent) {
     e.preventDefault();
     setTypeErr('');
     setTypeMsg('');
+    const code = typeForm.code.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+    if (!typeForm.name.trim() || !code) {
+      setTypeErr('Name and code are required');
+      return;
+    }
+    const payload = {
+      name: typeForm.name.trim(),
+      code,
+      has_options: typeForm.has_options,
+      note: typeForm.note.trim() || undefined,
+    };
+    setTypeBusy(true);
     try {
-      await apiFetch('/questions/types', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: newType.name.trim(),
-          code: newType.code.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_'),
-          has_options: newType.has_options,
-          note: newType.note.trim() || undefined,
-        }),
-      });
-      setTypeMsg('Question type added');
-      setNewType({ name: '', code: '', has_options: true, note: '' });
-      const r = await apiFetch<{ data: QuestionType[] }>('/questions/types');
-      setTypes(r.data);
+      const res = editingTypeId
+        ? await apiFetch<{ data: QuestionType }>(`/questions/types/${editingTypeId}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload),
+          })
+        : await apiFetch<{ data: QuestionType }>('/questions/types', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+          });
+      setTypeMsg(editingTypeId ? `Type "${res.data.name}" updated` : `Type "${res.data.name}" added`);
+      setTypeForm({ name: '', code: '', has_options: true, note: '' });
+      setEditingTypeId(null);
+      await loadTypes();
     } catch (err) {
-      setTypeErr(err instanceof Error ? err.message : 'Failed to add type');
+      setTypeErr(err instanceof Error ? err.message : 'Failed to save type');
+    } finally {
+      setTypeBusy(false);
+    }
+  }
+
+  function startEditType(t: QuestionType) {
+    setEditingTypeId(t.id);
+    setTypeForm({
+      name: t.name,
+      code: t.code,
+      has_options: t.has_options,
+      note: t.note ?? '',
+    });
+    setTypeErr('');
+    setTypeMsg('');
+  }
+
+  async function removeQuestionType(t: QuestionType) {
+    if (t.question_count > 0) {
+      setTypeErr(`Cannot delete "${t.name}" — ${t.question_count} question(s) use this type`);
+      return;
+    }
+    if (!confirmDelete(t.name)) return;
+    setTypeBusy(true);
+    setTypeErr('');
+    try {
+      await apiFetch(`/questions/types/${t.id}`, { method: 'DELETE' });
+      setTypeMsg('Question type removed');
+      if (editingTypeId === t.id) {
+        setEditingTypeId(null);
+        setTypeForm({ name: '', code: '', has_options: true, note: '' });
+      }
+      await loadTypes();
+    } catch (err) {
+      setTypeErr(err instanceof Error ? err.message : 'Failed to remove type');
+    } finally {
+      setTypeBusy(false);
     }
   }
 
@@ -130,45 +190,93 @@ export default function QuestionsPage() {
             <CardTitle className="text-lg">Question types</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex flex-wrap gap-2">
-              {types.map((t) => (
-                <Badge key={t.id} variant="outline">
-                  {t.name} ({t.code})
-                </Badge>
-              ))}
-            </div>
             {typeMsg && <Alert variant="success">{typeMsg}</Alert>}
             {typeErr && <Alert variant="error">{typeErr}</Alert>}
-            <form className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5" onSubmit={addQuestionType}>
-              <Input
-                placeholder="Display name"
-                value={newType.name}
-                onChange={(e) => setNewType((f) => ({ ...f, name: e.target.value }))}
-                required
-              />
-              <Input
-                placeholder="CODE e.g. FILL_BLANK"
-                value={newType.code}
-                onChange={(e) => setNewType((f) => ({ ...f, code: e.target.value }))}
-                required
-              />
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={newType.has_options}
-                  onChange={(e) => setNewType((f) => ({ ...f, has_options: e.target.checked }))}
+            <form className="space-y-3" onSubmit={saveQuestionType}>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <Input
+                  placeholder="Display name"
+                  value={typeForm.name}
+                  onChange={(e) => setTypeForm((f) => ({ ...f, name: e.target.value }))}
+                  disabled={typeBusy}
+                  required
                 />
-                Has options
-              </label>
-              <Input
-                placeholder="Note (optional)"
-                value={newType.note}
-                onChange={(e) => setNewType((f) => ({ ...f, note: e.target.value }))}
-              />
-              <Button type="submit" size="sm">
-                Add type
-              </Button>
+                <Input
+                  placeholder="CODE e.g. FILL_BLANK"
+                  value={typeForm.code}
+                  onChange={(e) => setTypeForm((f) => ({ ...f, code: e.target.value }))}
+                  disabled={typeBusy}
+                  required
+                />
+                <Input
+                  placeholder="Note (optional)"
+                  value={typeForm.note}
+                  onChange={(e) => setTypeForm((f) => ({ ...f, note: e.target.value }))}
+                  disabled={typeBusy}
+                />
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={typeForm.has_options}
+                    disabled={typeBusy}
+                    onChange={(e) => setTypeForm((f) => ({ ...f, has_options: e.target.checked }))}
+                  />
+                  Has options
+                </label>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="submit" size="sm" disabled={typeBusy}>
+                  {editingTypeId ? 'Save type' : 'Add type'}
+                </Button>
+                {editingTypeId && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={typeBusy}
+                    onClick={() => {
+                      setEditingTypeId(null);
+                      setTypeForm({ name: '', code: '', has_options: true, note: '' });
+                    }}
+                  >
+                    Cancel edit
+                  </Button>
+                )}
+              </div>
             </form>
+            {types.length === 0 ? (
+              <p className="text-sm text-muted">No question types yet.</p>
+            ) : (
+              <ul className="divide-y divide-border rounded-lg border border-border">
+                {types.map((t) => (
+                  <li
+                    key={t.id}
+                    className="flex items-start justify-between gap-2 px-3 py-2.5 text-sm"
+                  >
+                    <div className="min-w-0">
+                      <div className="font-medium">{t.name}</div>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                        <Badge variant="outline">{t.code}</Badge>
+                        {t.has_options && <Badge variant="secondary">Options</Badge>}
+                        <span className="text-xs text-muted">
+                          {t.question_count} question{t.question_count !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <RowActions
+                        onEdit={() => startEditType(t)}
+                        onDelete={t.question_count === 0 ? () => removeQuestionType(t) : undefined}
+                        busy={typeBusy}
+                      />
+                      {t.question_count > 0 && (
+                        <span className="text-xs text-muted">In use</span>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </CardContent>
         </Card>
       )}

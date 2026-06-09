@@ -16,8 +16,11 @@ import {
   QuestionEditor,
   emptyQuestionForm,
   questionFormToPayload,
+  validateQuestionForm,
+  type QuestionBookLinkForm,
   type QuestionFormValues,
 } from '@/components/questions/question-editor';
+import { bookContentHref } from '@/lib/book-links';
 
 interface QuestionType {
   id: string;
@@ -44,6 +47,7 @@ interface QuestionDetail {
   book_topic_id?: string;
   book_sub_topic_id?: string;
   regulation_id?: string;
+  book_links?: QuestionBookLinkForm[];
   explanation?: string;
   model_answer?: string;
   note?: string;
@@ -85,11 +89,7 @@ function detailToForm(q: QuestionDetail): QuestionFormValues {
     model_answer: q.model_answer ?? '',
     explanation: q.explanation ?? '',
     note: q.note ?? '',
-    link_level: q.link_level ?? '',
-    book_chapter_id: q.book_chapter_id ?? '',
-    book_topic_id: q.book_topic_id ?? '',
-    book_sub_topic_id: q.book_sub_topic_id ?? '',
-    regulation_id: q.regulation_id ?? '',
+    book_links: q.book_links ?? [],
   };
 }
 
@@ -116,20 +116,9 @@ export default function QuestionDetailPage() {
   const [showAnswer, setShowAnswer] = useState(false);
 
   const reload = useCallback(() => {
-    return apiFetch<{ data: QuestionDetail }>(`/questions/${id}`).then(async (r) => {
+    return apiFetch<{ data: QuestionDetail }>(`/questions/${id}`).then((r) => {
       setQuestion(r.data);
-      let bookId = '';
-      if (r.data.book_chapter_id) {
-        try {
-          const ch = await apiFetch<{ data: { book_info_id: string } }>(
-            `/books/chapters/${r.data.book_chapter_id}`,
-          );
-          bookId = ch.data.book_info_id;
-        } catch {
-          /* optional */
-        }
-      }
-      setForm({ ...detailToForm(r.data), book_id: bookId });
+      setForm(detailToForm(r.data));
     });
   }, [id]);
 
@@ -152,6 +141,11 @@ export default function QuestionDetailPage() {
     setError('');
     setBusy(true);
     try {
+      const validationError = validateQuestionForm(form);
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
       const payload = questionFormToPayload(form);
       await apiFetch(`/questions/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
       setMessage('Question saved');
@@ -206,6 +200,7 @@ export default function QuestionDetailPage() {
   }
 
   const link = linkLabel(question.link_level);
+  const bookLinks = question.book_links ?? [];
 
   return (
     <div className="space-y-6">
@@ -254,7 +249,11 @@ export default function QuestionDetailPage() {
 
       <div className="flex flex-wrap gap-2">
         <Badge variant="outline">{question.question_type_code}</Badge>
-        {link && <Badge variant="secondary">Linked: {link}</Badge>}
+        {bookLinks.length > 0 ? (
+          <Badge variant="secondary">{bookLinks.length} book link{bookLinks.length !== 1 ? 's' : ''}</Badge>
+        ) : link ? (
+          <Badge variant="secondary">Linked: {link}</Badge>
+        ) : null}
         <Badge variant="secondary">{question.difficulty}</Badge>
         <Badge variant="outline">{question.marks} marks</Badge>
         {question.negative_marks ? <Badge variant="outline">−{question.negative_marks} wrong</Badge> : null}
@@ -272,6 +271,9 @@ export default function QuestionDetailPage() {
           busy={busy}
           error={error}
           submitLabel="Save changes"
+          excludeQuestionId={id}
+          questionId={id}
+          onBookLinksChange={reload}
         />
       ) : (
         <Card>
@@ -317,6 +319,33 @@ export default function QuestionDetailPage() {
               <div className="rounded-lg border border-border bg-slate-50/80 p-4">
                 <div className="text-sm font-semibold">Explanation</div>
                 <p className="mt-1 text-sm text-muted">{question.explanation}</p>
+              </div>
+            )}
+
+            {bookLinks.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-sm font-semibold">Book links</div>
+                <ul className="space-y-1.5">
+                  {bookLinks.map((bl) => {
+                    const href = bookContentHref({
+                      book_info_id: bl.book_id,
+                      book_chapter_id: bl.book_chapter_id,
+                      book_topic_id: bl.book_topic_id,
+                      regulation_id: bl.regulation_id,
+                    });
+                    return (
+                      <li key={bl.id ?? bl.label} className="text-sm">
+                        {href ? (
+                          <Link href={href} className="text-primary hover:underline">
+                            {bl.label || 'Book link'}
+                          </Link>
+                        ) : (
+                          bl.label || 'Book link'
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
             )}
           </CardContent>

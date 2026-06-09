@@ -3,7 +3,9 @@ import {
   createQuestionSchema,
   updateQuestionSchema,
   listQuestionsQuerySchema,
+  similarQuestionsQuerySchema,
   createQuestionTypeSchema,
+  questionBookLinkInputSchema,
   updateQuestionTypeSchema,
 } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
@@ -37,6 +39,12 @@ export async function listQuestionsHandler(req: AuthRequest, res: Response): Pro
   res.json({ data });
 }
 
+export async function similarQuestionsHandler(req: AuthRequest, res: Response): Promise<void> {
+  const filters = similarQuestionsQuerySchema.parse(req.query);
+  const data = await questionsService.findSimilarQuestions(filters);
+  res.json({ data });
+}
+
 export async function getQuestionHandler(req: AuthRequest, res: Response): Promise<void> {
   const data = await questionsService.getQuestionById(String(req.params.id));
   res.json({ data });
@@ -66,5 +74,19 @@ export async function publishQuestionHandler(req: AuthRequest, res: Response): P
 
 export async function unpublishQuestionHandler(req: AuthRequest, res: Response): Promise<void> {
   const data = await questionsService.unpublishQuestion(String(req.params.id));
+  res.json({ data });
+}
+
+export async function addQuestionBookLinkHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = questionBookLinkInputSchema.parse(req.body);
+  const data = await questionsService.addQuestionBookLink(String(req.params.id), dto);
+  res.status(201).json({ data });
+}
+
+export async function deleteQuestionBookLinkHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await questionsService.deleteQuestionBookLink(
+    String(req.params.id),
+    String(req.params.linkId),
+  );
   res.json({ data });
 }

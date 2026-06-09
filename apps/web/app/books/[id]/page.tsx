@@ -109,7 +109,7 @@ export default function BookDetailPage() {
       <PageHeader title={book.name} description={book.name_bn} />
 
       <div className="flex flex-wrap gap-2">
-        <Badge variant="outline">{book.short_name}</Badge>
+        {book.short_name && <Badge variant="outline">{book.short_name}</Badge>}
         {book.edition && <Badge variant="secondary">Edition {book.edition}</Badge>}
         <Badge variant="outline">{book.language}</Badge>
         {book.published_by && <Badge variant="outline">{book.published_by}</Badge>}

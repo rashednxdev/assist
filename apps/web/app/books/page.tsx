@@ -129,13 +129,15 @@ export default function BooksPage() {
                       <div className="font-semibold text-foreground group-hover:text-primary">{b.name}</div>
                       <div className="text-sm text-muted">{b.name_bn}</div>
                       <div className="mt-2 flex flex-wrap gap-1">
-                        <Badge variant="outline">{b.short_name}</Badge>
+                        {b.short_name && <Badge variant="outline">{b.short_name}</Badge>}
                         {b.book_type_name && <Badge variant="secondary">{b.book_type_name}</Badge>}
                         {b.edition && <Badge variant="outline">{b.edition}</Badge>}
                       </div>
-                      <p className="mt-2 line-clamp-2 text-sm text-muted">
-                        {b.description.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160)}
-                      </p>
+                      {b.description?.trim() && (
+                        <p className="mt-2 line-clamp-2 text-sm text-muted">
+                          {b.description.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160)}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </Link>

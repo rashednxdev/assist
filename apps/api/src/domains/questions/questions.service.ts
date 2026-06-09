@@ -2,15 +2,26 @@ import mongoose from 'mongoose';
 import type {
   CreateQuestionDto,
   CreateQuestionTypeDto,
+  QuestionBookLinkInput,
   UpdateQuestionDto,
   UpdateQuestionTypeDto,
 } from '@ibas/shared-types';
+import { BookChapter } from '../books/models/BookChapter.model.js';
+import { BookInfo } from '../books/models/BookInfo.model.js';
+import { BookSubTopic } from '../books/models/BookSubTopic.model.js';
+import { BookTopic } from '../books/models/BookTopic.model.js';
 import { QuestionType } from './models/QuestionType.model.js';
 import { Question } from './models/Question.model.js';
+import { QuestionBookLink } from './models/QuestionBookLink.model.js';
 import { QuestionOption } from './models/QuestionOption.model.js';
 import { QuestionAnswer } from './models/QuestionAnswer.model.js';
 import { QuestionAnswerDetail } from './models/QuestionAnswerDetail.model.js';
 import { notFound, badRequest } from '../../shared/errors/AppError.js';
+import {
+  escapeRegex,
+  extractSearchKeywords,
+  questionSimilarity,
+} from './question-similarity.js';
 
 const TF_OPTIONS = [
   { option_key: 'a' as const, option_text_en: 'True', option_text_bn: 'সঠিক' },
@@ -23,6 +34,118 @@ function idStr(v: mongoose.Types.ObjectId | string | undefined) {
 
 function isTrueFalseType(code: string) {
   return code === 'TF';
+}
+
+function isMcqOrTf(code: string) {
+  return code === 'MCQ' || code === 'TF';
+}
+
+function linksFromDto(dto: CreateQuestionDto | UpdateQuestionDto): QuestionBookLinkInput[] | undefined {
+  if (dto.book_links !== undefined) return dto.book_links;
+  if (dto.link_level && dto.book_chapter_id) {
+    return [
+      {
+        link_level: dto.link_level,
+        book_chapter_id: dto.book_chapter_id,
+        book_topic_id: dto.book_topic_id,
+        book_sub_topic_id: dto.book_sub_topic_id,
+        regulation_id: dto.regulation_id,
+      },
+    ];
+  }
+  return undefined;
+}
+
+function syncPrimaryBookFields(question: InstanceType<typeof Question>, link?: QuestionBookLinkInput | null) {
+  if (!link?.book_chapter_id) {
+    question.book_chapter_id = undefined;
+    question.book_topic_id = undefined;
+    question.book_sub_topic_id = undefined;
+    question.regulation_id = undefined;
+    return;
+  }
+  question.book_chapter_id = new mongoose.Types.ObjectId(link.book_chapter_id);
+  question.book_topic_id = link.book_topic_id ? new mongoose.Types.ObjectId(link.book_topic_id) : undefined;
+  question.book_sub_topic_id = link.book_sub_topic_id
+    ? new mongoose.Types.ObjectId(link.book_sub_topic_id)
+    : undefined;
+  question.regulation_id = link.regulation_id ? new mongoose.Types.ObjectId(link.regulation_id) : undefined;
+  if (link.link_level === 'chapter') {
+    question.book_topic_id = undefined;
+    question.book_sub_topic_id = undefined;
+  } else if (link.link_level === 'rule') {
+    question.book_sub_topic_id = undefined;
+  }
+}
+
+async function ensureLegacyBookLink(question: InstanceType<typeof Question>) {
+  const count = await QuestionBookLink.countDocuments({ question_id: question._id, is_active: true });
+  if (count > 0 || !question.book_chapter_id) return;
+  let linkLevel: QuestionBookLinkInput['link_level'] = 'chapter';
+  if (question.book_sub_topic_id) linkLevel = 'sub_rule';
+  else if (question.book_topic_id) linkLevel = 'rule';
+  await QuestionBookLink.create({
+    question_id: question._id,
+    link_level: linkLevel,
+    book_chapter_id: question.book_chapter_id,
+    book_topic_id: question.book_topic_id,
+    book_sub_topic_id: question.book_sub_topic_id,
+    regulation_id: question.regulation_id,
+    sort_order: 0,
+    is_active: true,
+  });
+}
+
+async function serializeBookLink(link: InstanceType<typeof QuestionBookLink>) {
+  const chapter = await BookChapter.findById(link.book_chapter_id);
+  const book = chapter ? await BookInfo.findById(chapter.book_info_id) : null;
+  const topic = link.book_topic_id ? await BookTopic.findById(link.book_topic_id) : null;
+  const subTopic = link.book_sub_topic_id ? await BookSubTopic.findById(link.book_sub_topic_id) : null;
+  const parts: string[] = [];
+  if (book) parts.push(book.short_name || book.name);
+  if (chapter) parts.push(`Ch. ${chapter.chapter_number} ${chapter.name}`.trim());
+  if (topic) parts.push(topic.rule_number ? `Rule ${topic.rule_number}` : topic.name || 'Rule');
+  if (subTopic) parts.push(subTopic.rule_number || subTopic.name || 'Sub-rule');
+  return {
+    id: String(link._id),
+    link_level: link.link_level,
+    book_id: book ? String(book._id) : undefined,
+    book_chapter_id: idStr(link.book_chapter_id),
+    book_topic_id: idStr(link.book_topic_id),
+    book_sub_topic_id: idStr(link.book_sub_topic_id),
+    regulation_id: idStr(link.regulation_id),
+    label: parts.join(' › '),
+  };
+}
+
+async function loadSerializedBookLinks(questionId: mongoose.Types.ObjectId | string) {
+  const links = await QuestionBookLink.find({ question_id: questionId, is_active: true }).sort({
+    sort_order: 1,
+  });
+  return Promise.all(links.map((link) => serializeBookLink(link)));
+}
+
+async function saveBookLinks(
+  questionId: mongoose.Types.ObjectId,
+  links: QuestionBookLinkInput[],
+  question: InstanceType<typeof Question>,
+) {
+  await QuestionBookLink.updateMany({ question_id: questionId }, { is_active: false });
+  const activeLinks = links.filter((l) => l.link_level && l.book_chapter_id);
+  for (let i = 0; i < activeLinks.length; i++) {
+    const l = activeLinks[i]!;
+    await QuestionBookLink.create({
+      question_id: questionId,
+      link_level: l.link_level,
+      book_chapter_id: new mongoose.Types.ObjectId(l.book_chapter_id),
+      book_topic_id: l.book_topic_id ? new mongoose.Types.ObjectId(l.book_topic_id) : undefined,
+      book_sub_topic_id: l.book_sub_topic_id ? new mongoose.Types.ObjectId(l.book_sub_topic_id) : undefined,
+      regulation_id: l.regulation_id ? new mongoose.Types.ObjectId(l.regulation_id) : undefined,
+      sort_order: i,
+      is_active: true,
+    });
+  }
+  syncPrimaryBookFields(question, activeLinks[0] ?? null);
 }
 
 function serializeQuestionListItem(
@@ -45,6 +168,7 @@ function serializeQuestionListItem(
     book_topic_id: idStr(q.book_topic_id),
     book_sub_topic_id: idStr(q.book_sub_topic_id),
     regulation_id: idStr(q.regulation_id),
+    book_link_count: 0,
     option_count: optionCount,
     created_at: q.created_at,
     updated_at: q.updated_at,
@@ -54,6 +178,9 @@ function serializeQuestionListItem(
 async function loadQuestionDetail(questionId: string) {
   const question = await Question.findById(questionId);
   if (!question || !question.is_active) throw notFound('Question not found');
+
+  await ensureLegacyBookLink(question);
+  const book_links = await loadSerializedBookLinks(question._id);
 
   const qType = await QuestionType.findById(question.question_type_id);
   const [options, answers, detail] = await Promise.all([
@@ -83,6 +210,7 @@ async function loadQuestionDetail(questionId: string) {
     book_topic_id: idStr(question.book_topic_id),
     book_sub_topic_id: idStr(question.book_sub_topic_id),
     regulation_id: idStr(question.regulation_id),
+    book_links,
     body_en: question.body_en,
     body_bn: question.body_bn,
     difficulty: question.difficulty,
@@ -205,7 +333,7 @@ async function applyAnswerPayload(
   qType: InstanceType<typeof QuestionType>,
   dto: CreateQuestionDto | UpdateQuestionDto,
 ) {
-  if (qType.has_options) {
+  if (qType.has_options && isMcqOrTf(qType.code)) {
     const resolved = resolveOptionPayload(dto as CreateQuestionDto, qType.code);
     await replaceOptionsAndAnswer(
       questionId,
@@ -218,51 +346,39 @@ async function applyAnswerPayload(
     return;
   }
 
-  const modelAnswer = dto.model_answer?.trim() || dto.explanation?.trim();
-  if (!modelAnswer) throw badRequest('Model answer is required for this question type');
-  await replaceTextAnswer(questionId, modelAnswer, dto.note, dto.reference_regulation_id);
-}
+  if (qType.has_options) return;
 
-function applyBookLinks(question: InstanceType<typeof Question>, dto: CreateQuestionDto | UpdateQuestionDto) {
-  if (dto.link_level === 'chapter') {
-    question.book_topic_id = undefined;
-    question.book_sub_topic_id = undefined;
-  } else if (dto.link_level === 'rule') {
-    question.book_sub_topic_id = undefined;
+  const modelAnswer = dto.model_answer?.trim() || dto.explanation?.trim();
+  if (modelAnswer) {
+    await replaceTextAnswer(questionId, modelAnswer, dto.note, dto.reference_regulation_id);
   }
 }
 
 export async function listQuestionTypes() {
   const items = await QuestionType.find({ is_active: true }).sort({ name: 1 });
-  return items.map((t) => ({
-    id: String(t._id),
-    name: t.name,
-    code: t.code,
-    has_options: t.has_options,
-    note: t.note,
-  }));
+  const counts = await Question.aggregate<{ _id: mongoose.Types.ObjectId; count: number }>([
+    { $match: { is_active: true } },
+    { $group: { _id: '$question_type_id', count: { $sum: 1 } } },
+  ]);
+  const countByType = new Map(counts.map((c) => [String(c._id), c.count]));
+  return items.map((t) => serializeQuestionType(t, countByType.get(String(t._id)) ?? 0));
 }
 
 export async function createQuestionType(dto: CreateQuestionTypeDto) {
   const existing = await QuestionType.findOne({ code: dto.code });
   if (existing) throw badRequest(`Question type code "${dto.code}" already exists`);
   const item = await QuestionType.create({ ...dto, is_active: true });
-  return {
-    id: String(item._id),
-    name: item.name,
-    code: item.code,
-    has_options: item.has_options,
-    note: item.note,
-  };
+  return serializeQuestionType(item, 0);
 }
 
-function serializeQuestionType(t: InstanceType<typeof QuestionType>) {
+function serializeQuestionType(t: InstanceType<typeof QuestionType>, question_count = 0) {
   return {
     id: String(t._id),
     name: t.name,
     code: t.code,
     has_options: t.has_options,
     note: t.note,
+    question_count,
   };
 }
 
@@ -279,7 +395,8 @@ export async function updateQuestionType(id: string, dto: UpdateQuestionTypeDto)
   if (dto.note !== undefined) item.note = dto.note;
   if (dto.is_active !== undefined) item.is_active = dto.is_active;
   await item.save();
-  return serializeQuestionType(item);
+  const question_count = await Question.countDocuments({ question_type_id: item._id, is_active: true });
+  return serializeQuestionType(item, question_count);
 }
 
 export async function deleteQuestionType(id: string) {
@@ -290,6 +407,77 @@ export async function deleteQuestionType(id: string) {
   item.is_active = false;
   await item.save();
   return { deleted: true };
+}
+
+export async function findSimilarQuestions(params: {
+  text: string;
+  question_type_id: string;
+  exclude_id?: string;
+  threshold?: number;
+  limit?: number;
+}) {
+  const text = params.text.trim();
+  const threshold = params.threshold ?? 0.6;
+  const limit = params.limit ?? 8;
+  if (text.length < 8) return [];
+
+  const qType = await QuestionType.findById(params.question_type_id);
+  if (!qType || !qType.is_active) throw notFound('Question type not found');
+
+  const query: Record<string, unknown> = {
+    is_active: true,
+    question_type_id: qType._id,
+  };
+  if (params.exclude_id) {
+    query._id = { $ne: new mongoose.Types.ObjectId(params.exclude_id) };
+  }
+
+  const keywords = extractSearchKeywords(text);
+  if (keywords.length > 0) {
+    query.$or = keywords.flatMap((w) => [
+      { body_en: { $regex: escapeRegex(w), $options: 'i' } },
+      { body_bn: { $regex: escapeRegex(w), $options: 'i' } },
+    ]);
+  }
+
+  let candidates = await Question.find(query)
+    .select('body_en body_bn question_type_code is_published')
+    .sort({ updated_at: -1 })
+    .limit(200);
+
+  if (candidates.length === 0) {
+    const fallbackQuery: Record<string, unknown> = {
+      is_active: true,
+      question_type_id: qType._id,
+    };
+    if (params.exclude_id) {
+      fallbackQuery._id = { $ne: new mongoose.Types.ObjectId(params.exclude_id) };
+    }
+    candidates = await Question.find(fallbackQuery)
+      .select('body_en body_bn question_type_code is_published')
+      .sort({ updated_at: -1 })
+      .limit(150);
+  }
+
+  return candidates
+    .map((q) => {
+      const scoreEn = questionSimilarity(text, q.body_en);
+      const scoreBn = q.body_bn ? questionSimilarity(text, q.body_bn) : 0;
+      const score = Math.max(scoreEn, scoreBn);
+      return {
+        id: String(q._id),
+        body_en: q.body_en,
+        body_bn: q.body_bn,
+        question_type_code: q.question_type_code,
+        is_published: q.is_published,
+        similarity: Math.round(score * 100),
+        score,
+      };
+    })
+    .filter((item) => item.score >= threshold)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map(({ score: _score, ...item }) => item);
 }
 
 export async function listQuestions(filters: {
@@ -324,10 +512,20 @@ export async function listQuestions(filters: {
   const types = await QuestionType.find({ _id: { $in: typeIds } });
   const typeMap = new Map(types.map((t) => [String(t._id), t.name]));
 
+  const questionIds = items.map((q) => q._id);
+  const linkCounts = await QuestionBookLink.aggregate<{ _id: mongoose.Types.ObjectId; count: number }>([
+    { $match: { question_id: { $in: questionIds }, is_active: true } },
+    { $group: { _id: '$question_id', count: { $sum: 1 } } },
+  ]);
+  const linkCountMap = new Map(linkCounts.map((c) => [String(c._id), c.count]));
+
   const result = await Promise.all(
     items.map(async (q) => {
       const optionCount = await QuestionOption.countDocuments({ question_id: q._id });
-      return serializeQuestionListItem(q, typeMap.get(String(q.question_type_id)), optionCount);
+      const item = serializeQuestionListItem(q, typeMap.get(String(q.question_type_id)), optionCount);
+      const storedCount = linkCountMap.get(String(q._id)) ?? 0;
+      item.book_link_count = storedCount > 0 ? storedCount : q.book_chapter_id ? 1 : 0;
+      return item;
     }),
   );
   return result;
@@ -344,10 +542,6 @@ export async function createQuestion(dto: CreateQuestionDto, createdBy: string) 
   const question = await Question.create({
     question_type_id: qType._id,
     question_type_code: qType.code,
-    book_chapter_id: dto.book_chapter_id ? new mongoose.Types.ObjectId(dto.book_chapter_id) : undefined,
-    book_topic_id: dto.book_topic_id ? new mongoose.Types.ObjectId(dto.book_topic_id) : undefined,
-    book_sub_topic_id: dto.book_sub_topic_id ? new mongoose.Types.ObjectId(dto.book_sub_topic_id) : undefined,
-    regulation_id: dto.regulation_id ? new mongoose.Types.ObjectId(dto.regulation_id) : undefined,
     body_en: dto.body_en,
     body_bn: dto.body_bn,
     difficulty: dto.difficulty,
@@ -360,11 +554,71 @@ export async function createQuestion(dto: CreateQuestionDto, createdBy: string) 
     created_by: new mongoose.Types.ObjectId(createdBy),
   });
 
-  applyBookLinks(question, dto);
+  const links = linksFromDto(dto) ?? [];
+  await saveBookLinks(question._id, links, question);
   await question.save();
   await applyAnswerPayload(question._id, qType, dto);
 
   return loadQuestionDetail(String(question._id));
+}
+
+export async function addQuestionBookLink(questionId: string, dto: QuestionBookLinkInput) {
+  const question = await Question.findById(questionId);
+  if (!question || !question.is_active) throw notFound('Question not found');
+
+  const latest = await QuestionBookLink.findOne({ question_id: question._id, is_active: true })
+    .sort({ sort_order: -1 })
+    .select('sort_order');
+  const link = await QuestionBookLink.create({
+    question_id: question._id,
+    link_level: dto.link_level,
+    book_chapter_id: new mongoose.Types.ObjectId(dto.book_chapter_id),
+    book_topic_id: dto.book_topic_id ? new mongoose.Types.ObjectId(dto.book_topic_id) : undefined,
+    book_sub_topic_id: dto.book_sub_topic_id ? new mongoose.Types.ObjectId(dto.book_sub_topic_id) : undefined,
+    regulation_id: dto.regulation_id ? new mongoose.Types.ObjectId(dto.regulation_id) : undefined,
+    sort_order: (latest?.sort_order ?? -1) + 1,
+    is_active: true,
+  });
+
+  if (!question.book_chapter_id) {
+    syncPrimaryBookFields(question, dto);
+    await question.save();
+  }
+
+  return serializeBookLink(link);
+}
+
+export async function deleteQuestionBookLink(questionId: string, linkId: string) {
+  const question = await Question.findById(questionId);
+  if (!question || !question.is_active) throw notFound('Question not found');
+
+  const link = await QuestionBookLink.findOne({
+    _id: linkId,
+    question_id: question._id,
+    is_active: true,
+  });
+  if (!link) throw notFound('Book link not found');
+
+  link.is_active = false;
+  await link.save();
+
+  const first = await QuestionBookLink.findOne({ question_id: question._id, is_active: true }).sort({
+    sort_order: 1,
+  });
+  syncPrimaryBookFields(
+    question,
+    first
+      ? {
+          link_level: first.link_level,
+          book_chapter_id: String(first.book_chapter_id),
+          book_topic_id: idStr(first.book_topic_id),
+          book_sub_topic_id: idStr(first.book_sub_topic_id),
+          regulation_id: idStr(first.regulation_id),
+        }
+      : null,
+  );
+  await question.save();
+  return { deleted: true };
 }
 
 export async function updateQuestion(id: string, dto: UpdateQuestionDto) {
@@ -389,24 +643,10 @@ export async function updateQuestion(id: string, dto: UpdateQuestionDto) {
   if (dto.time_seconds !== undefined) question.time_seconds = dto.time_seconds;
   if (dto.language !== undefined) question.language = dto.language;
   if (dto.is_active !== undefined) question.is_active = dto.is_active;
-  if (dto.book_chapter_id !== undefined) {
-    question.book_chapter_id = dto.book_chapter_id
-      ? new mongoose.Types.ObjectId(dto.book_chapter_id)
-      : undefined;
+  const links = linksFromDto(dto);
+  if (links !== undefined) {
+    await saveBookLinks(question._id, links, question);
   }
-  if (dto.book_topic_id !== undefined) {
-    question.book_topic_id = dto.book_topic_id ? new mongoose.Types.ObjectId(dto.book_topic_id) : undefined;
-  }
-  if (dto.book_sub_topic_id !== undefined) {
-    question.book_sub_topic_id = dto.book_sub_topic_id
-      ? new mongoose.Types.ObjectId(dto.book_sub_topic_id)
-      : undefined;
-  }
-  if (dto.regulation_id !== undefined) {
-    question.regulation_id = dto.regulation_id ? new mongoose.Types.ObjectId(dto.regulation_id) : undefined;
-  }
-
-  if (dto.link_level) applyBookLinks(question, dto as CreateQuestionDto);
 
   await question.save();
 

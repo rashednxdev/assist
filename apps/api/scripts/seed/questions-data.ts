@@ -146,9 +146,15 @@ export async function seedQuestionsData() {
 
     await QuestionAnswerDetail.create({
       question_id: question._id,
-      explanation:
-        'GFR Rule 45 requires that all government receipts be classified under the appropriate minor head of account as prescribed in the Chart of Accounts.',
-      note: 'Linked to GFR Rule 45 — Classification of Receipts',
+      explanation_sections: [
+        {
+          title: 'Classification rule',
+          details:
+            'GFR Rule 45 requires that all government receipts be classified under the appropriate minor head of account as prescribed in the Chart of Accounts.',
+          note: 'Linked to GFR Rule 45 — Classification of Receipts',
+          subsections: [],
+        },
+      ],
       reference_regulation_id: regulation?._id,
     });
     console.log('Created sample MCQ for GFR Rule 45');
@@ -187,7 +193,13 @@ export async function seedQuestionsData() {
     );
     await QuestionAnswerDetail.create({
       question_id: tfQuestion._id,
-      explanation: 'Rule 45 detail requires same-day cash book entry by the receiving officer.',
+      explanation_sections: [
+        {
+          title: 'Same-day entry',
+          details: 'Rule 45 detail requires same-day cash book entry by the receiving officer.',
+          subsections: [],
+        },
+      ],
       reference_regulation_id: regulation?._id,
     });
     console.log('Created sample True/False for GFR Rule 45 sub-rule');
@@ -212,8 +224,14 @@ export async function seedQuestionsData() {
     });
     await QuestionAnswerDetail.create({
       question_id: shortQ._id,
-      explanation:
-        'The DDO shall reconcile daily receipts with the treasury challan before close of business, ensuring amounts and account heads match official records.',
+      model_answer_sections: [
+        {
+          title: 'Daily reconciliation',
+          details:
+            'The DDO shall reconcile daily receipts with the treasury challan before close of business, ensuring amounts and account heads match official records.',
+          subsections: [],
+        },
+      ],
       note: 'Expect 2–4 sentences in exam answers.',
       reference_regulation_id: regulation?._id,
     });

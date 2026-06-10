@@ -4,11 +4,13 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ExternalLink } from 'lucide-react';
 import { BOOK_LANGUAGES, OPTION_KEYS, QUESTION_DIFFICULTIES } from '@ibas/shared-constants';
+import type { ExplanationSection } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import {
   QuestionBookLinksEditor,
   type QuestionBookLinkForm,
 } from '@/components/questions/question-book-links-editor';
+import { ExplanationSectionsEditor } from '@/components/questions/explanation-sections-editor';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -45,8 +47,8 @@ export interface QuestionFormValues {
   options: QuestionOptionInput[];
   correct_option_key: (typeof OPTION_KEYS)[number];
   correct_true_false: 'true' | 'false';
-  model_answer: string;
-  explanation: string;
+  model_answer_sections: ExplanationSection[];
+  explanation_sections: ExplanationSection[];
   note: string;
   book_links: QuestionBookLinkForm[];
 }
@@ -74,8 +76,8 @@ export const emptyQuestionForm: QuestionFormValues = {
   options: defaultMcqOptions,
   correct_option_key: 'a',
   correct_true_false: 'true',
-  model_answer: '',
-  explanation: '',
+  model_answer_sections: [],
+  explanation_sections: [],
   note: '',
   book_links: [],
 };
@@ -145,8 +147,7 @@ export function QuestionEditor({
   const isTf = value.question_type_code === 'TF';
   const isMcqOrTf = isMcq || isTf;
   const isShortNote = value.question_type_code === 'SHORT_NOTE';
-  const isDescriptive = value.question_type_code === 'DESCRIPTIVE';
-  const isTextAnswer = isShortNote || isDescriptive;
+  const isTextAnswer = !value.has_options;
   const questionText = value.body_bn || value.body_en;
 
   useEffect(() => {
@@ -194,6 +195,9 @@ export function QuestionEditor({
     }
     if (!t.has_options) {
       next.negative_marks = 0;
+      next.explanation_sections = [];
+    } else {
+      next.model_answer_sections = [];
     }
     onChange({ ...value, ...next });
   }
@@ -420,17 +424,14 @@ export function QuestionEditor({
               {isShortNote ? 'Model short answer (optional)' : 'Model answer (optional)'}
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <textarea
-              rows={isDescriptive ? 6 : 4}
-              value={value.model_answer}
-              onChange={(e) => patch({ model_answer: e.target.value })}
-              placeholder={
-                isShortNote
-                  ? 'Optional — expected brief answer for examiners'
-                  : 'Optional — full model answer for descriptive marking'
-              }
-              className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          <CardContent className="space-y-2">
+            <p className="text-xs text-muted">
+              Add one or more titles. Under each title you can add sub-titles with their own details and notes.
+            </p>
+            <ExplanationSectionsEditor
+              sections={value.model_answer_sections}
+              onChange={(model_answer_sections) => patch({ model_answer_sections })}
+              disabled={busy}
             />
           </CardContent>
         </Card>
@@ -439,19 +440,22 @@ export function QuestionEditor({
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">
-            {isTextAnswer ? 'Notes & book linking' : 'Explanation & book linking'}
+            {isMcqOrTf ? 'Explanation & book linking' : 'Notes & book linking'}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!isTextAnswer && (
-            <div className="space-y-1.5">
-              <Label htmlFor="explanation">Explanation (optional)</Label>
-              <textarea
-                id="explanation"
-                rows={3}
-                value={value.explanation}
-                onChange={(e) => patch({ explanation: e.target.value })}
-                className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          {isMcqOrTf && (
+            <div className="space-y-2">
+              <div>
+                <Label>Explanation (optional)</Label>
+                <p className="mt-1 text-xs text-muted">
+                  Add one or more titles. Under each title you can add sub-titles with their own details and notes.
+                </p>
+              </div>
+              <ExplanationSectionsEditor
+                sections={value.explanation_sections}
+                onChange={(explanation_sections) => patch({ explanation_sections })}
+                disabled={busy}
               />
             </div>
           )}
@@ -500,7 +504,6 @@ export function questionFormToPayload(form: QuestionFormValues) {
     time_seconds: isMcqOrTf ? form.time_seconds : 60,
     language: form.language,
     note: form.note.trim() || undefined,
-    explanation: form.explanation.trim() || undefined,
     book_links: form.book_links
       .filter((l) => l.link_level && l.book_chapter_id)
       .map((l) => ({
@@ -515,6 +518,7 @@ export function questionFormToPayload(form: QuestionFormValues) {
 
   if (form.question_type_code === 'TF') {
     payload.correct_true_false = form.correct_true_false;
+    payload.explanation_sections = form.explanation_sections;
   } else if (form.question_type_code === 'MCQ') {
     payload.options = form.options
       .filter((o) => o.option_text_en.trim())
@@ -524,8 +528,9 @@ export function questionFormToPayload(form: QuestionFormValues) {
         option_text_bn: o.option_text_bn?.trim() || undefined,
       }));
     payload.correct_option_key = form.correct_option_key;
-  } else if (form.model_answer.trim()) {
-    payload.model_answer = form.model_answer.trim();
+    payload.explanation_sections = form.explanation_sections;
+  } else if (!form.has_options) {
+    payload.model_answer_sections = form.model_answer_sections;
   }
 
   return payload;

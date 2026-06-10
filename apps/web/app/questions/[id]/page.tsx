@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert } from '@/components/ui/alert';
+import { serializeExplanationSections, type ExplanationSection } from '@ibas/shared-types';
 import {
   QuestionEditor,
   emptyQuestionForm,
@@ -20,6 +21,7 @@ import {
   type QuestionBookLinkForm,
   type QuestionFormValues,
 } from '@/components/questions/question-editor';
+import { QuestionAnswerView } from '@/components/questions/question-answer-view';
 import { bookContentHref } from '@/lib/book-links';
 
 interface QuestionType {
@@ -48,8 +50,8 @@ interface QuestionDetail {
   book_sub_topic_id?: string;
   regulation_id?: string;
   book_links?: QuestionBookLinkForm[];
-  explanation?: string;
-  model_answer?: string;
+  explanation_sections?: ExplanationSection[];
+  model_answer_sections?: ExplanationSection[];
   note?: string;
   correct_true_false?: 'true' | 'false';
   options: {
@@ -86,8 +88,8 @@ function detailToForm(q: QuestionDetail): QuestionFormValues {
     options,
     correct_option_key: (q.correct_option_key ?? 'a') as QuestionFormValues['correct_option_key'],
     correct_true_false: q.correct_true_false ?? 'true',
-    model_answer: q.model_answer ?? '',
-    explanation: q.explanation ?? '',
+    model_answer_sections: serializeExplanationSections(q.model_answer_sections),
+    explanation_sections: serializeExplanationSections(q.explanation_sections),
     note: q.note ?? '',
     book_links: q.book_links ?? [],
   };
@@ -284,43 +286,17 @@ export default function QuestionDetailPage() {
               {showAnswer ? 'Hide answer' : 'Show answer'}
             </Button>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="font-medium">{question.body_en}</p>
-            {question.body_bn && <p className="text-muted">{question.body_bn}</p>}
-
-            {question.has_options && question.options.length > 0 && (
-              <div className="space-y-2">
-                {question.options.map((opt) => {
-                  const isCorrect = showAnswer && opt.is_correct;
-                  return (
-                    <div
-                      key={opt.id}
-                      className={`rounded-lg border p-3 ${
-                        isCorrect ? 'border-primary bg-primary-muted/40' : 'border-border'
-                      }`}
-                    >
-                      <span className="mr-2 font-semibold uppercase">{opt.option_key}.</span>
-                      {opt.option_text_en}
-                      {opt.option_text_bn && <div className="mt-1 text-sm text-muted">{opt.option_text_bn}</div>}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {!question.has_options && showAnswer && question.model_answer && (
-              <div className="rounded-lg border border-primary/40 bg-primary-muted/30 p-4">
-                <div className="text-sm font-semibold">Model answer</div>
-                <p className="mt-1 text-sm">{question.model_answer}</p>
-              </div>
-            )}
-
-            {showAnswer && question.explanation && question.has_options && (
-              <div className="rounded-lg border border-border bg-slate-50/80 p-4">
-                <div className="text-sm font-semibold">Explanation</div>
-                <p className="mt-1 text-sm text-muted">{question.explanation}</p>
-              </div>
-            )}
+          <CardContent className="space-y-6">
+            <QuestionAnswerView
+              body_en={question.body_en}
+              body_bn={question.body_bn}
+              has_options={question.has_options}
+              options={question.options}
+              model_answer_sections={question.model_answer_sections}
+              explanation_sections={question.explanation_sections}
+              answer_note={question.note}
+              showAnswer={showAnswer}
+            />
 
             {bookLinks.length > 0 && (
               <div className="space-y-2">

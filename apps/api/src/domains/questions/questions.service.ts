@@ -6,6 +6,12 @@ import type {
   UpdateQuestionDto,
   UpdateQuestionTypeDto,
 } from '@ibas/shared-types';
+import {
+  cleanExplanationSections,
+  parseLegacyExplanation,
+  serializeExplanationSections,
+  type ExplanationSection,
+} from '@ibas/shared-types';
 import { BookChapter } from '../books/models/BookChapter.model.js';
 import { BookInfo } from '../books/models/BookInfo.model.js';
 import { BookSubTopic } from '../books/models/BookSubTopic.model.js';
@@ -15,7 +21,10 @@ import { Question } from './models/Question.model.js';
 import { QuestionBookLink } from './models/QuestionBookLink.model.js';
 import { QuestionOption } from './models/QuestionOption.model.js';
 import { QuestionAnswer } from './models/QuestionAnswer.model.js';
-import { QuestionAnswerDetail } from './models/QuestionAnswerDetail.model.js';
+import {
+  QuestionAnswerDetail,
+  type IQuestionAnswerDetail,
+} from './models/QuestionAnswerDetail.model.js';
 import { notFound, badRequest } from '../../shared/errors/AppError.js';
 import {
   escapeRegex,
@@ -38,6 +47,69 @@ function isTrueFalseType(code: string) {
 
 function isMcqOrTf(code: string) {
   return code === 'MCQ' || code === 'TF';
+}
+
+interface AnswerDetailInput {
+  /** Omit to leave existing sections unchanged; pass [] to clear. */
+  explanation_sections?: ExplanationSection[];
+  model_answer_sections?: ExplanationSection[];
+  model_answer?: string;
+  note?: string;
+  reference_regulation_id?: string;
+}
+
+async function loadExplanationSections(
+  questionId: mongoose.Types.ObjectId,
+  detail: IQuestionAnswerDetail | null,
+): Promise<ExplanationSection[]> {
+  const fromDetail = serializeExplanationSections(detail?.explanation_sections);
+  if (fromDetail.length > 0) return fromDetail;
+
+  if (typeof detail?.explanation === 'string' && detail.explanation.trim()) {
+    return parseLegacyExplanation(detail.explanation);
+  }
+
+  const raw = await mongoose.connection
+    .collection('question_answer_details')
+    .findOne({ question_id: questionId }, { projection: { explanation: 1, explanation_sections: 1 } });
+
+  const rawSections = serializeExplanationSections(
+    raw?.explanation_sections as ExplanationSection[] | undefined,
+  );
+  if (rawSections.length > 0) return rawSections;
+
+  if (typeof raw?.explanation === 'string' && raw.explanation.trim()) {
+    return parseLegacyExplanation(raw.explanation);
+  }
+
+  return [];
+}
+
+async function loadModelAnswerSections(
+  questionId: mongoose.Types.ObjectId,
+  detail: IQuestionAnswerDetail | null,
+): Promise<ExplanationSection[]> {
+  const fromDetail = serializeExplanationSections(detail?.model_answer_sections);
+  if (fromDetail.length > 0) return fromDetail;
+
+  if (typeof detail?.model_answer === 'string' && detail.model_answer.trim()) {
+    return parseLegacyExplanation(detail.model_answer);
+  }
+
+  const raw = await mongoose.connection
+    .collection('question_answer_details')
+    .findOne({ question_id: questionId }, { projection: { model_answer: 1, model_answer_sections: 1 } });
+
+  const rawSections = serializeExplanationSections(
+    raw?.model_answer_sections as ExplanationSection[] | undefined,
+  );
+  if (rawSections.length > 0) return rawSections;
+
+  if (typeof raw?.model_answer === 'string' && raw.model_answer.trim()) {
+    return parseLegacyExplanation(raw.model_answer);
+  }
+
+  return [];
 }
 
 function linksFromDto(dto: CreateQuestionDto | UpdateQuestionDto): QuestionBookLinkInput[] | undefined {
@@ -237,41 +309,90 @@ async function loadQuestionDetail(questionId: string) {
           ? 'true'
           : 'false'
         : undefined,
-    model_answer: qType?.has_options ? undefined : detail?.explanation,
-    explanation: qType?.has_options ? detail?.explanation : undefined,
+    model_answer_sections:
+      qType && !qType.has_options ? await loadModelAnswerSections(question._id, detail) : undefined,
+    explanation_sections:
+      qType?.has_options && isMcqOrTf(question.question_type_code)
+        ? await loadExplanationSections(question._id, detail)
+        : undefined,
     note: detail?.note,
     reference_regulation_id: idStr(detail?.reference_regulation_id),
   };
 }
 
-async function saveAnswerDetail(
-  questionId: mongoose.Types.ObjectId,
-  explanation?: string,
-  note?: string,
-  referenceRegulationId?: string,
-) {
-  if (explanation?.trim()) {
-    await QuestionAnswerDetail.findOneAndUpdate(
-      { question_id: questionId },
-      {
-        explanation: explanation.trim(),
-        note: note?.trim() || undefined,
-        reference_regulation_id: referenceRegulationId
-          ? new mongoose.Types.ObjectId(referenceRegulationId)
-          : undefined,
-      },
-      { upsert: true, new: true },
-    );
-  } else {
+async function saveAnswerDetail(questionId: mongoose.Types.ObjectId, input: AnswerDetailInput) {
+  const existing = await QuestionAnswerDetail.findOne({ question_id: questionId }).lean();
+
+  const sectionsToSave =
+    input.explanation_sections !== undefined
+      ? cleanExplanationSections(input.explanation_sections)
+      : undefined;
+
+  const modelSectionsToSave =
+    input.model_answer_sections !== undefined
+      ? cleanExplanationSections(input.model_answer_sections)
+      : undefined;
+
+  const note = input.note !== undefined ? input.note.trim() || undefined : undefined;
+
+  const finalSections =
+    sectionsToSave !== undefined
+      ? sectionsToSave
+      : serializeExplanationSections(existing?.explanation_sections as ExplanationSection[] | undefined);
+
+  const finalModelSections =
+    modelSectionsToSave !== undefined
+      ? modelSectionsToSave
+      : serializeExplanationSections(existing?.model_answer_sections as ExplanationSection[] | undefined);
+
+  const finalNote = note !== undefined ? note : existing?.note?.trim() || undefined;
+
+  const hasContent =
+    finalSections.length > 0 || finalModelSections.length > 0 || Boolean(finalNote);
+
+  if (!hasContent) {
     await QuestionAnswerDetail.deleteOne({ question_id: questionId });
+    return;
   }
+
+  const $set: Record<string, unknown> = { question_id: questionId };
+  const $unset: Record<string, ''> = { explanation: '', model_answer: '' };
+
+  if (sectionsToSave !== undefined) {
+    if (sectionsToSave.length > 0) $set.explanation_sections = sectionsToSave;
+    else $unset.explanation_sections = '';
+  }
+
+  if (modelSectionsToSave !== undefined) {
+    if (modelSectionsToSave.length > 0) $set.model_answer_sections = modelSectionsToSave;
+    else $unset.model_answer_sections = '';
+  }
+
+  if (note !== undefined) {
+    if (note) $set.note = note;
+    else $unset.note = '';
+  }
+
+  if (input.reference_regulation_id !== undefined) {
+    if (input.reference_regulation_id) {
+      $set.reference_regulation_id = new mongoose.Types.ObjectId(input.reference_regulation_id);
+    } else {
+      $unset.reference_regulation_id = '';
+    }
+  }
+
+  await QuestionAnswerDetail.findOneAndUpdate(
+    { question_id: questionId },
+    { $set, $unset },
+    { upsert: true, new: true },
+  );
 }
 
 async function replaceOptionsAndAnswer(
   questionId: mongoose.Types.ObjectId,
   options: NonNullable<CreateQuestionDto['options']>,
   correctOptionKey: string,
-  explanation?: string,
+  explanationSections?: ExplanationSection[],
   note?: string,
   referenceRegulationId?: string,
 ) {
@@ -301,18 +422,28 @@ async function replaceOptionsAndAnswer(
     })),
   );
 
-  await saveAnswerDetail(questionId, explanation, note, referenceRegulationId);
+  await saveAnswerDetail(questionId, {
+    explanation_sections: explanationSections,
+    model_answer_sections: [],
+    note,
+    reference_regulation_id: referenceRegulationId,
+  });
 }
 
 async function replaceTextAnswer(
   questionId: mongoose.Types.ObjectId,
-  modelAnswer: string,
+  modelAnswerSections: ExplanationSection[] | undefined,
   note?: string,
   referenceRegulationId?: string,
 ) {
   await QuestionOption.deleteMany({ question_id: questionId });
   await QuestionAnswer.deleteMany({ question_id: questionId });
-  await saveAnswerDetail(questionId, modelAnswer, note, referenceRegulationId);
+  await saveAnswerDetail(questionId, {
+    model_answer_sections: modelAnswerSections,
+    explanation_sections: [],
+    note,
+    reference_regulation_id: referenceRegulationId,
+  });
 }
 
 function resolveOptionPayload(dto: CreateQuestionDto, typeCode: string) {
@@ -333,24 +464,63 @@ async function applyAnswerPayload(
   qType: InstanceType<typeof QuestionType>,
   dto: CreateQuestionDto | UpdateQuestionDto,
 ) {
+  const explanationSections =
+    dto.explanation_sections !== undefined
+      ? cleanExplanationSections(dto.explanation_sections)
+      : undefined;
+
+  const modelAnswerSections =
+    dto.model_answer_sections !== undefined
+      ? cleanExplanationSections(dto.model_answer_sections)
+      : undefined;
+
   if (qType.has_options && isMcqOrTf(qType.code)) {
-    const resolved = resolveOptionPayload(dto as CreateQuestionDto, qType.code);
-    await replaceOptionsAndAnswer(
-      questionId,
-      resolved.options,
-      resolved.correctOptionKey,
-      dto.explanation,
-      dto.note,
-      dto.reference_regulation_id,
-    );
+    const hasOptionUpdate =
+      dto.options !== undefined ||
+      dto.correct_option_key !== undefined ||
+      dto.correct_true_false !== undefined;
+
+    if (hasOptionUpdate) {
+      const resolved = resolveOptionPayload(dto as CreateQuestionDto, qType.code);
+      await replaceOptionsAndAnswer(
+        questionId,
+        resolved.options,
+        resolved.correctOptionKey,
+        explanationSections,
+        dto.note,
+        dto.reference_regulation_id,
+      );
+      return;
+    }
+
+    if (
+      explanationSections !== undefined ||
+      dto.note !== undefined ||
+      dto.reference_regulation_id !== undefined
+    ) {
+      await saveAnswerDetail(questionId, {
+        explanation_sections: explanationSections,
+        model_answer_sections: [],
+        note: dto.note,
+        reference_regulation_id: dto.reference_regulation_id,
+      });
+    }
     return;
   }
 
   if (qType.has_options) return;
 
-  const modelAnswer = dto.model_answer?.trim() || dto.explanation?.trim();
-  if (modelAnswer) {
-    await replaceTextAnswer(questionId, modelAnswer, dto.note, dto.reference_regulation_id);
+  if (
+    modelAnswerSections !== undefined ||
+    dto.note !== undefined ||
+    dto.reference_regulation_id !== undefined
+  ) {
+    await replaceTextAnswer(
+      questionId,
+      modelAnswerSections,
+      dto.note,
+      dto.reference_regulation_id,
+    );
   }
 }
 
@@ -654,21 +824,16 @@ export async function updateQuestion(id: string, dto: UpdateQuestionDto) {
     dto.options !== undefined ||
     dto.correct_option_key !== undefined ||
     dto.correct_true_false !== undefined ||
-    dto.model_answer !== undefined ||
-    dto.explanation !== undefined;
+    dto.model_answer_sections !== undefined ||
+    dto.explanation_sections !== undefined;
 
   if (hasAnswerUpdate) {
     await applyAnswerPayload(question._id, qType, dto as CreateQuestionDto);
   } else if (dto.note !== undefined || dto.reference_regulation_id !== undefined) {
-    const existing = await QuestionAnswerDetail.findOne({ question_id: question._id });
-    if (existing?.explanation) {
-      await saveAnswerDetail(
-        question._id,
-        existing.explanation,
-        dto.note ?? existing.note,
-        dto.reference_regulation_id ?? idStr(existing.reference_regulation_id),
-      );
-    }
+    await saveAnswerDetail(question._id, {
+      note: dto.note,
+      reference_regulation_id: dto.reference_regulation_id,
+    });
   }
 
   return loadQuestionDetail(id);
@@ -698,7 +863,11 @@ export async function publishQuestion(id: string, reviewerId: string) {
     if (!hasCorrect) throw badRequest('Question must have a correct answer before publishing');
   } else {
     const detail = await QuestionAnswerDetail.findOne({ question_id: id });
-    if (!detail?.explanation?.trim()) {
+    const modelSections = serializeExplanationSections(detail?.model_answer_sections);
+    const hasModelAnswer =
+      modelSections.length > 0 ||
+      (typeof detail?.model_answer === 'string' && detail.model_answer.trim().length > 0);
+    if (!hasModelAnswer) {
       throw badRequest('Model answer is required before publishing this question type');
     }
   }

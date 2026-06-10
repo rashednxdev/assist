@@ -5,6 +5,7 @@ import {
   QUESTION_DIFFICULTIES,
   QUESTION_LINK_LEVELS,
 } from '@ibas/shared-constants';
+import { explanationSectionSchema } from './explanation.js';
 
 const mongoId = z.string().regex(/^[a-f\d]{24}$/i);
 
@@ -37,7 +38,8 @@ const questionFieldsSchema = z.object({
   negative_marks: z.number().min(0).optional(),
   time_seconds: z.number().int().positive(),
   language: z.enum(BOOK_LANGUAGES).default('both'),
-  explanation: z.string().optional(),
+  explanation_sections: z.array(explanationSectionSchema).optional(),
+  model_answer_sections: z.array(explanationSectionSchema).optional(),
   model_answer: z.string().optional(),
   note: z.string().optional(),
   reference_regulation_id: mongoId.optional(),

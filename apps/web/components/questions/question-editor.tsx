@@ -80,6 +80,24 @@ export const emptyQuestionForm: QuestionFormValues = {
   book_links: [],
 };
 
+/** Clear question fields for another entry while keeping the selected type. */
+export function resetQuestionFormKeepingType(current: QuestionFormValues): QuestionFormValues {
+  const next: QuestionFormValues = {
+    ...emptyQuestionForm,
+    question_type_id: current.question_type_id,
+    question_type_code: current.question_type_code,
+    has_options: current.has_options,
+  };
+
+  if (current.question_type_code === 'MCQ') {
+    next.options = defaultMcqOptions.map((o) => ({ ...o }));
+  } else {
+    next.options = [];
+  }
+
+  return next;
+}
+
 interface QuestionTypeItem {
   id: string;
   code: string;

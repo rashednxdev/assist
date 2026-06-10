@@ -12,9 +12,11 @@ import {
   QuestionEditor,
   emptyQuestionForm,
   questionFormToPayload,
+  resetQuestionFormKeepingType,
   validateQuestionForm,
   type QuestionFormValues,
 } from '@/components/questions/question-editor';
+import { Alert } from '@/components/ui/alert';
 
 interface QuestionType {
   id: string;
@@ -30,6 +32,7 @@ export default function NewQuestionPage() {
   const [form, setForm] = useState<QuestionFormValues>(emptyQuestionForm);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   useEffect(() => {
     fetchMe()
@@ -60,6 +63,7 @@ export default function NewQuestionPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    setSuccess('');
     setBusy(true);
     try {
       const validationError = validateQuestionForm(form);
@@ -68,11 +72,12 @@ export default function NewQuestionPage() {
         return;
       }
       const payload = questionFormToPayload(form);
-      const res = await apiFetch<{ data: { id: string } }>('/questions', {
+      await apiFetch<{ data: { id: string } }>('/questions', {
         method: 'POST',
         body: JSON.stringify(payload),
       });
-      router.push(`/questions/${res.data.id}`);
+      setForm((current) => resetQuestionFormKeepingType(current));
+      setSuccess('Question saved. You can add another question of the same type.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create question');
     } finally {
@@ -96,6 +101,7 @@ export default function NewQuestionPage() {
           </Button>
         }
       />
+      {success && <Alert variant="success">{success}</Alert>}
       <QuestionEditor
         value={form}
         onChange={setForm}

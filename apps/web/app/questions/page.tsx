@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { HelpCircle, Plus, Search } from 'lucide-react';
+import { HelpCircle, Plus, Search, Upload, Download } from 'lucide-react';
 import { QUESTION_DIFFICULTIES } from '@ibas/shared-constants';
 import { apiFetch } from '@/lib/api-client';
 import { confirmDelete } from '@/lib/confirm-action';
@@ -64,6 +64,9 @@ export default function QuestionsPage() {
   const [typeMsg, setTypeMsg] = useState('');
   const [typeErr, setTypeErr] = useState('');
   const [typeBusy, setTypeBusy] = useState(false);
+  const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [listMsg, setListMsg] = useState('');
+  const [listErr, setListErr] = useState('');
   const [editingTypeId, setEditingTypeId] = useState<string | null>(null);
   const [typeForm, setTypeForm] = useState({ name: '', code: '', has_options: true, note: '' });
 
@@ -164,6 +167,26 @@ export default function QuestionsPage() {
       setTypeErr(err instanceof Error ? err.message : 'Failed to remove type');
     } finally {
       setTypeBusy(false);
+    }
+  }
+
+  async function togglePublish(item: QuestionItem, e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setListErr('');
+    setListMsg('');
+    setPublishingId(item.id);
+    try {
+      const path = item.is_published ? `/questions/${item.id}/unpublish` : `/questions/${item.id}/publish`;
+      await apiFetch(path, { method: 'POST' });
+      setItems((prev) =>
+        prev.map((q) => (q.id === item.id ? { ...q, is_published: !q.is_published } : q)),
+      );
+      setListMsg(item.is_published ? 'Question unpublished' : 'Question published');
+    } catch (err) {
+      setListErr(err instanceof Error ? err.message : 'Publish action failed');
+    } finally {
+      setPublishingId(null);
     }
   }
 
@@ -356,6 +379,8 @@ export default function QuestionsPage() {
           </div>
         </CardHeader>
         <CardContent className="p-4">
+          {listMsg && <Alert variant="success" className="mb-4">{listMsg}</Alert>}
+          {listErr && <Alert variant="error" className="mb-4">{listErr}</Alert>}
           {loading ? (
             <div className="space-y-3">
               <Skeleton className="h-20 w-full" />
@@ -374,33 +399,60 @@ export default function QuestionsPage() {
             <div className="space-y-3">
               {items.map((item) => {
                 const link = linkBadge(item);
+                const busy = publishingId === item.id;
                 return (
-                  <Link
+                  <div
                     key={item.id}
-                    href={`/questions/${item.id}`}
-                    className="group flex items-start gap-3 rounded-xl border border-border bg-slate-50/50 p-4 transition-colors hover:border-primary/40 hover:bg-primary-muted/30"
+                    className="group flex items-center gap-3 rounded-xl border border-border bg-slate-50/50 p-4 transition-colors hover:border-primary/40 hover:bg-primary-muted/30"
                   >
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-muted text-primary">
-                      <HelpCircle className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="font-medium text-foreground group-hover:text-primary">{item.body_en}</div>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        <Badge variant="outline">{item.question_type_name ?? item.question_type_code}</Badge>
-                        {link && <Badge variant="secondary">{link}</Badge>}
-                        <Badge variant="secondary">{item.difficulty}</Badge>
-                        <Badge variant="outline">
-                          {item.marks} mark{item.marks !== 1 ? 's' : ''}
-                        </Badge>
-                        {item.option_count > 0 && (
-                          <Badge variant="outline">{item.option_count} options</Badge>
-                        )}
-                        <Badge variant={item.is_published ? 'default' : 'outline'}>
-                          {item.is_published ? 'Published' : 'Draft'}
-                        </Badge>
+                    <Link
+                      href={`/questions/${item.id}`}
+                      className="flex min-w-0 flex-1 items-start gap-3"
+                    >
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-muted text-primary">
+                        <HelpCircle className="h-5 w-5" />
                       </div>
-                    </div>
-                  </Link>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium text-foreground group-hover:text-primary">{item.body_en}</div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          <Badge variant="outline">{item.question_type_name ?? item.question_type_code}</Badge>
+                          {link && <Badge variant="secondary">{link}</Badge>}
+                          <Badge variant="secondary">{item.difficulty}</Badge>
+                          <Badge variant="outline">
+                            {item.marks} mark{item.marks !== 1 ? 's' : ''}
+                          </Badge>
+                          {item.option_count > 0 && (
+                            <Badge variant="outline">{item.option_count} options</Badge>
+                          )}
+                          <Badge variant={item.is_published ? 'default' : 'outline'}>
+                            {item.is_published ? 'Published' : 'Draft'}
+                          </Badge>
+                        </div>
+                      </div>
+                    </Link>
+                    {isAdmin && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="shrink-0"
+                        disabled={busy}
+                        onClick={(e) => togglePublish(item, e)}
+                      >
+                        {item.is_published ? (
+                          <>
+                            <Download className="h-4 w-4" />
+                            Unpublish
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="h-4 w-4" />
+                            Publish
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </div>
                 );
               })}
             </div>

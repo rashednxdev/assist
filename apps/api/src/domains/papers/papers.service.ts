@@ -122,10 +122,21 @@ async function validatePaperForPublish(paper: InstanceType<typeof PaperDetail>) 
   if (questions.length === 0) throw badRequest('Paper must have at least one question before publishing');
 
   for (const pq of questions) {
-    await assertPublishedQuestion(String(pq.question_id));
-    const parts = await ChildQuestion.find({ paper_question_id: pq._id, is_active: true });
-    for (const part of parts) {
-      await assertPublishedQuestion(String(part.question_id));
+    const fromBank = pq.from_question_bank !== false;
+    if (fromBank) {
+      if (!pq.question_id) throw badRequest('Bank question slot is missing its question reference');
+      await assertPublishedQuestion(String(pq.question_id));
+    } else {
+      if (!pq.header_text?.trim()) {
+        throw badRequest(`Composite question #${pq.question_number} needs header text before publishing`);
+      }
+      const parts = await ChildQuestion.find({ paper_question_id: pq._id, is_active: true });
+      if (parts.length === 0) {
+        throw badRequest(`Composite question #${pq.question_number} must have at least one sub-part`);
+      }
+      for (const part of parts) {
+        await assertPublishedQuestion(String(part.question_id));
+      }
     }
   }
 
@@ -135,6 +146,33 @@ async function validatePaperForPublish(paper: InstanceType<typeof PaperDetail>) 
       `Allocated marks (${allocated}) must equal paper total marks (${paper.total_marks}) before publishing`,
     );
   }
+}
+
+function serializePaperQuestionRow(
+  pq: InstanceType<typeof PaperQuestion>,
+  enrichedMap: Map<string, Awaited<ReturnType<typeof enrichQuestion>>>,
+  childrenByPq: Map<string, InstanceType<typeof ChildQuestion>[]>,
+) {
+  return {
+    id: String(pq._id),
+    from_question_bank: pq.from_question_bank !== false,
+    question_id: pq.question_id ? String(pq.question_id) : undefined,
+    header_text: pq.header_text,
+    question_number: pq.question_number,
+    display_question_number: pq.display_question_number,
+    marks: pq.marks,
+    marks_display_bn: pq.marks_display_bn,
+    is_compulsory: pq.is_compulsory,
+    question: pq.question_id ? enrichedMap.get(String(pq.question_id)) : undefined,
+    parts: (childrenByPq.get(String(pq._id)) ?? []).map((c) => ({
+      id: String(c._id),
+      question_id: String(c.question_id),
+      part_label: c.part_label,
+      marks: c.marks,
+      marks_display_bn: c.marks_display_bn,
+      question: enrichedMap.get(String(c.question_id)),
+    })),
+  };
 }
 
 // --- Paper types ---
@@ -230,7 +268,7 @@ export async function getPaperCompose(id: string) {
   });
 
   const questionIds = [
-    ...questions.map((q) => q.question_id),
+    ...questions.map((q) => q.question_id).filter(Boolean),
     ...children.map((c) => c.question_id),
   ];
   const uniqueQIds = [...new Set(questionIds.map(String))];
@@ -261,37 +299,13 @@ export async function getPaperCompose(id: string) {
       group_number: g.group_number,
       marks: g.marks,
       instructions: g.instructions,
-      questions: (questionsByGroup.get(String(g._id)) ?? []).map((pq) => ({
-        id: String(pq._id),
-        question_id: String(pq.question_id),
-        question_number: pq.question_number,
-        marks: pq.marks,
-        is_compulsory: pq.is_compulsory,
-        question: enrichedMap.get(String(pq.question_id)),
-        parts: (childrenByPq.get(String(pq._id)) ?? []).map((c) => ({
-          id: String(c._id),
-          question_id: String(c.question_id),
-          part_label: c.part_label,
-          marks: c.marks,
-          question: enrichedMap.get(String(c.question_id)),
-        })),
-      })),
+      questions: (questionsByGroup.get(String(g._id)) ?? []).map((pq) =>
+        serializePaperQuestionRow(pq, enrichedMap, childrenByPq),
+      ),
     })),
-    ungrouped_questions: (questionsByGroup.get('ungrouped') ?? []).map((pq) => ({
-      id: String(pq._id),
-      question_id: String(pq.question_id),
-      question_number: pq.question_number,
-      marks: pq.marks,
-      is_compulsory: pq.is_compulsory,
-      question: enrichedMap.get(String(pq.question_id)),
-      parts: (childrenByPq.get(String(pq._id)) ?? []).map((c) => ({
-        id: String(c._id),
-        question_id: String(c.question_id),
-        part_label: c.part_label,
-        marks: c.marks,
-        question: enrichedMap.get(String(c.question_id)),
-      })),
-    })),
+    ungrouped_questions: (questionsByGroup.get('ungrouped') ?? []).map((pq) =>
+      serializePaperQuestionRow(pq, enrichedMap, childrenByPq),
+    ),
   };
 }
 
@@ -434,7 +448,17 @@ export async function deletePaperGroup(groupId: string) {
 
 export async function createPaperQuestion(paperId: string, dto: CreatePaperQuestionDto) {
   await getPaperOrThrow(paperId, true);
-  await assertPublishedQuestion(dto.question_id);
+  const fromBank = dto.from_question_bank ?? true;
+
+  if (fromBank) {
+    await assertPublishedQuestion(dto.question_id!);
+    const already = await PaperQuestion.findOne({
+      paper_id: paperId,
+      question_id: dto.question_id,
+      is_active: true,
+    });
+    if (already) throw badRequest('Question is already on this paper');
+  }
 
   const dup = await PaperQuestion.findOne({
     paper_id: paperId,
@@ -442,13 +466,6 @@ export async function createPaperQuestion(paperId: string, dto: CreatePaperQuest
     is_active: true,
   });
   if (dup) throw badRequest('Question number already used on this paper');
-
-  const already = await PaperQuestion.findOne({
-    paper_id: paperId,
-    question_id: dto.question_id,
-    is_active: true,
-  });
-  if (already) throw badRequest('Question is already on this paper');
 
   if (dto.paper_group_id) {
     const group = await PaperGroup.findById(dto.paper_group_id);
@@ -460,19 +477,27 @@ export async function createPaperQuestion(paperId: string, dto: CreatePaperQuest
   const pq = await PaperQuestion.create({
     paper_id: paperId,
     paper_group_id: dto.paper_group_id ? new mongoose.Types.ObjectId(dto.paper_group_id) : undefined,
-    question_id: new mongoose.Types.ObjectId(dto.question_id),
+    from_question_bank: fromBank,
+    question_id: fromBank && dto.question_id ? new mongoose.Types.ObjectId(dto.question_id) : undefined,
+    header_text: fromBank ? undefined : dto.header_text?.trim(),
     question_number: dto.question_number,
+    display_question_number: dto.display_question_number?.trim() || undefined,
     marks: dto.marks,
+    marks_display_bn: dto.marks_display_bn?.trim() || undefined,
     is_compulsory: dto.is_compulsory ?? true,
     is_active: true,
   });
 
-  const q = await Question.findById(pq.question_id);
+  const q = pq.question_id ? await Question.findById(pq.question_id) : null;
   return {
     id: String(pq._id),
-    question_id: String(pq.question_id),
+    from_question_bank: pq.from_question_bank,
+    question_id: pq.question_id ? String(pq.question_id) : undefined,
+    header_text: pq.header_text,
     question_number: pq.question_number,
+    display_question_number: pq.display_question_number,
     marks: pq.marks,
+    marks_display_bn: pq.marks_display_bn,
     is_compulsory: pq.is_compulsory,
     paper_group_id: idStr(pq.paper_group_id),
     question: q ? await enrichQuestion(q) : undefined,
@@ -485,7 +510,9 @@ export async function updatePaperQuestion(pqId: string, dto: UpdatePaperQuestion
   if (!pq || !pq.is_active) throw notFound('Paper question not found');
   await getPaperOrThrow(String(pq.paper_id), true);
 
-  if (dto.question_id) await assertPublishedQuestion(dto.question_id);
+  const fromBank = dto.from_question_bank ?? pq.from_question_bank !== false;
+
+  if (fromBank && dto.question_id) await assertPublishedQuestion(dto.question_id);
   if (dto.question_number !== undefined) {
     const clash = await PaperQuestion.findOne({
       paper_id: pq.paper_id,
@@ -502,26 +529,57 @@ export async function updatePaperQuestion(pqId: string, dto: UpdatePaperQuestion
     }
   }
 
+  if (dto.from_question_bank !== undefined) {
+    pq.from_question_bank = dto.from_question_bank;
+    if (!dto.from_question_bank) {
+      pq.question_id = undefined;
+    } else {
+      pq.header_text = undefined;
+    }
+  }
+
   if (dto.question_id !== undefined) {
-    pq.question_id = new mongoose.Types.ObjectId(dto.question_id);
+    if (fromBank) {
+      pq.question_id = new mongoose.Types.ObjectId(dto.question_id);
+    }
   }
   if (dto.paper_group_id !== undefined) {
     pq.paper_group_id = dto.paper_group_id
       ? new mongoose.Types.ObjectId(dto.paper_group_id)
       : undefined;
   }
+  if (dto.header_text !== undefined) {
+    pq.header_text = dto.header_text.trim() || undefined;
+  }
   if (dto.question_number !== undefined) pq.question_number = dto.question_number;
+  if (dto.display_question_number !== undefined) {
+    pq.display_question_number = dto.display_question_number.trim() || undefined;
+  }
   if (dto.marks !== undefined) pq.marks = dto.marks;
+  if (dto.marks_display_bn !== undefined) {
+    pq.marks_display_bn = dto.marks_display_bn.trim() || undefined;
+  }
   if (dto.is_compulsory !== undefined) pq.is_compulsory = dto.is_compulsory;
   if (dto.is_active !== undefined) pq.is_active = dto.is_active;
 
+  if (pq.from_question_bank !== false && !pq.question_id) {
+    throw badRequest('Select a published question from the bank');
+  }
+  if (pq.from_question_bank === false && !pq.header_text?.trim()) {
+    throw badRequest('Header text is required for composite questions');
+  }
+
   await pq.save();
-  const q = await Question.findById(pq.question_id);
+  const q = pq.question_id ? await Question.findById(pq.question_id) : null;
   return {
     id: String(pq._id),
-    question_id: String(pq.question_id),
+    from_question_bank: pq.from_question_bank,
+    question_id: pq.question_id ? String(pq.question_id) : undefined,
+    header_text: pq.header_text,
     question_number: pq.question_number,
+    display_question_number: pq.display_question_number,
     marks: pq.marks,
+    marks_display_bn: pq.marks_display_bn,
     is_compulsory: pq.is_compulsory,
     paper_group_id: idStr(pq.paper_group_id),
     question: q ? await enrichQuestion(q) : undefined,
@@ -551,6 +609,9 @@ export async function createChildQuestion(pqId: string, dto: CreateChildQuestion
   const pq = await PaperQuestion.findById(pqId);
   if (!pq || !pq.is_active) throw notFound('Paper question not found');
   await getPaperOrThrow(String(pq.paper_id), true);
+  if (pq.from_question_bank !== false) {
+    throw badRequest('Sub-parts can only be added under composite (non-bank) questions');
+  }
   await assertPublishedQuestion(dto.question_id);
 
   const dup = await ChildQuestion.findOne({
@@ -565,6 +626,7 @@ export async function createChildQuestion(pqId: string, dto: CreateChildQuestion
     question_id: new mongoose.Types.ObjectId(dto.question_id),
     part_label: dto.part_label,
     marks: dto.marks,
+    marks_display_bn: dto.marks_display_bn?.trim() || undefined,
     is_active: true,
   });
   const q = await Question.findById(c.question_id);
@@ -573,6 +635,7 @@ export async function createChildQuestion(pqId: string, dto: CreateChildQuestion
     question_id: String(c.question_id),
     part_label: c.part_label,
     marks: c.marks,
+    marks_display_bn: c.marks_display_bn,
     question: q ? await enrichQuestion(q) : undefined,
   };
 }
@@ -598,6 +661,9 @@ export async function updateChildQuestion(partId: string, dto: UpdateChildQuesti
   if (dto.question_id !== undefined) c.question_id = new mongoose.Types.ObjectId(dto.question_id);
   if (dto.part_label !== undefined) c.part_label = dto.part_label;
   if (dto.marks !== undefined) c.marks = dto.marks;
+  if (dto.marks_display_bn !== undefined) {
+    c.marks_display_bn = dto.marks_display_bn.trim() || undefined;
+  }
   if (dto.is_active !== undefined) c.is_active = dto.is_active;
   await c.save();
 
@@ -607,6 +673,7 @@ export async function updateChildQuestion(partId: string, dto: UpdateChildQuesti
     question_id: String(c.question_id),
     part_label: c.part_label,
     marks: c.marks,
+    marks_display_bn: c.marks_display_bn,
     question: q ? await enrichQuestion(q) : undefined,
   };
 }

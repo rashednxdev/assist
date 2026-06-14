@@ -40,6 +40,36 @@ export const OutlinedInput = React.forwardRef<
 });
 OutlinedInput.displayName = 'OutlinedInput';
 
+const textareaClassName =
+  'peer flex min-h-[88px] w-full rounded-lg border border-border bg-surface px-3 pb-2 pt-4 text-sm shadow-sm transition-colors placeholder:text-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:border-primary disabled:cursor-not-allowed disabled:opacity-50';
+
+export const OutlinedTextarea = React.forwardRef<
+  HTMLTextAreaElement,
+  React.ComponentProps<'textarea'> & { label: string }
+>(({ label, id, required, className, rows = 3, ...props }, ref) => {
+  const autoId = React.useId();
+  const inputId = id ?? autoId;
+
+  return (
+    <div className={cn('relative', className)}>
+      <textarea
+        ref={ref}
+        id={inputId}
+        rows={rows}
+        placeholder=" "
+        className={textareaClassName}
+        required={required}
+        {...props}
+      />
+      <label htmlFor={inputId} className={labelClassName}>
+        {label}
+        {required && <span className="text-destructive"> *</span>}
+      </label>
+    </div>
+  );
+});
+OutlinedTextarea.displayName = 'OutlinedTextarea';
+
 export function OutlinedSelect({
   label,
   id,

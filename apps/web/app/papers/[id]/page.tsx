@@ -9,8 +9,7 @@ import { fetchMe } from '@/lib/auth';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { OutlinedInput, OutlinedSelect, OutlinedTextarea } from '@/components/shared/outlined-field';
 import { Badge } from '@/components/ui/badge';
 import { Alert } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -27,14 +26,19 @@ interface PaperPart {
   question_id: string;
   part_label: string;
   marks: number;
+  marks_display_bn?: string;
   question?: QuestionBrief;
 }
 
 interface PaperQuestionRow {
   id: string;
-  question_id: string;
+  from_question_bank: boolean;
+  question_id?: string;
+  header_text?: string;
   question_number: number;
+  display_question_number?: string;
   marks: number;
+  marks_display_bn?: string;
   is_compulsory: boolean;
   question?: QuestionBrief;
   parts: PaperPart[];
@@ -78,11 +82,49 @@ interface BankQuestion {
 type Panel = 'section' | 'question' | 'part';
 
 const emptySection = { name: '', group_number: 1, marks: 0, instructions: '' };
-const emptyQuestion = { paper_group_id: '', question_id: '', question_number: 1, marks: 1, is_compulsory: true };
-const emptyPart = { paper_question_id: '', question_id: '', part_label: '(a)', marks: 1 };
+const emptyQuestion = {
+  paper_group_id: '',
+  from_question_bank: true,
+  question_id: '',
+  header_text: '',
+  question_number: 1,
+  display_question_number: '',
+  marks: 1,
+  marks_display_bn: '',
+  is_compulsory: true,
+};
+const emptyPart = { paper_question_id: '', question_id: '', part_label: '(a)', marks: 1, marks_display_bn: '' };
+
+function displayQuestionLabel(pq: PaperQuestionRow) {
+  return pq.display_question_number?.trim() || String(pq.question_number);
+}
+
+function questionPreviewText(pq: PaperQuestionRow) {
+  if (!pq.from_question_bank) return pq.header_text ?? '';
+  return pq.question?.body_en ?? '';
+}
+
+function marksPreview(pq: { marks: number; marks_display_bn?: string }) {
+  return pq.marks_display_bn?.trim() || `${pq.marks} mark${pq.marks !== 1 ? 's' : ''}`;
+}
 
 function truncate(text: string, len = 120) {
   return text.length > len ? `${text.slice(0, len)}…` : text;
+}
+
+function getAllQuestions(data: ComposeData): PaperQuestionRow[] {
+  return [...data.groups.flatMap((g) => g.questions), ...data.ungrouped_questions];
+}
+
+function nextQuestionNumber(questions: PaperQuestionRow[]): number {
+  return questions.length ? Math.max(...questions.map((q) => q.question_number)) + 1 : 1;
+}
+
+function freshQuestionForm(
+  questions: PaperQuestionRow[],
+  overrides: Partial<typeof emptyQuestion> = {},
+) {
+  return { ...emptyQuestion, question_number: nextQuestionNumber(questions), ...overrides };
 }
 
 export default function PaperComposerPage() {
@@ -174,14 +216,36 @@ export default function PaperComposerPage() {
 
   async function saveQuestion(e: React.FormEvent) {
     e.preventDefault();
-    if (!questionForm.question_id) return;
     setError('');
+    if (!data) return;
+    if (questionForm.from_question_bank && !questionForm.question_id) {
+      setError('Select a question from the bank');
+      return;
+    }
+    if (!questionForm.from_question_bank && !questionForm.header_text.trim()) {
+      setError('Header text is required for composite questions');
+      return;
+    }
+    const existingQuestions = getAllQuestions(data);
+    const serialClash = existingQuestions.find(
+      (q) => q.question_number === questionForm.question_number && q.id !== editQuestionId,
+    );
+    if (serialClash) {
+      setError(
+        `Serial order ${questionForm.question_number} is already used. Try ${nextQuestionNumber(existingQuestions)}.`,
+      );
+      return;
+    }
     try {
       const body = {
-        question_id: questionForm.question_id,
+        from_question_bank: questionForm.from_question_bank,
+        question_id: questionForm.from_question_bank ? questionForm.question_id : undefined,
+        header_text: questionForm.from_question_bank ? undefined : questionForm.header_text.trim(),
         paper_group_id: questionForm.paper_group_id || undefined,
         question_number: questionForm.question_number,
+        display_question_number: questionForm.display_question_number.trim() || undefined,
         marks: questionForm.marks,
+        marks_display_bn: questionForm.marks_display_bn.trim() || undefined,
         is_compulsory: questionForm.is_compulsory,
       };
       if (editQuestionId) {
@@ -207,6 +271,7 @@ export default function PaperComposerPage() {
         question_id: partForm.question_id,
         part_label: partForm.part_label,
         marks: partForm.marks,
+        marks_display_bn: partForm.marks_display_bn.trim() || undefined,
       };
       if (editPartId) {
         await apiFetch(`/papers/parts/${editPartId}`, { method: 'PATCH', body: JSON.stringify(body) });
@@ -266,16 +331,21 @@ export default function PaperComposerPage() {
   }
 
   function renderQuestionRow(pq: PaperQuestionRow, groupId?: string) {
+    const displayNo = displayQuestionLabel(pq);
     return (
       <div key={pq.id} className="rounded-md border border-border bg-slate-50/80 p-3 text-sm">
         <div className="flex items-start justify-between gap-2">
           <div>
-            <span className="font-semibold">Q{pq.question_number}.</span>{' '}
-            <Badge variant="secondary">{pq.question?.question_type_code}</Badge>{' '}
-            <span className="ml-1">{truncate(pq.question?.body_en ?? '')}</span>
+            <span className="font-semibold">{displayNo}.</span>{' '}
+            {!pq.from_question_bank && <Badge variant="outline">Composite</Badge>}{' '}
+            {pq.from_question_bank && pq.question?.question_type_code && (
+              <Badge variant="secondary">{pq.question.question_type_code}</Badge>
+            )}{' '}
+            <span className="ml-1">{truncate(questionPreviewText(pq))}</span>
             <div className="mt-1 text-muted">
-              {pq.marks} mark{pq.marks !== 1 ? 's' : ''}
+              {marksPreview(pq)}
               {pq.is_compulsory ? ' · compulsory' : ''}
+              <span className="text-xs"> · serial #{pq.question_number}</span>
             </div>
           </div>
           {!readOnly && (
@@ -289,9 +359,13 @@ export default function PaperComposerPage() {
                   setEditQuestionId(pq.id);
                   setQuestionForm({
                     paper_group_id: groupId ?? '',
-                    question_id: pq.question_id,
+                    from_question_bank: pq.from_question_bank,
+                    question_id: pq.question_id ?? '',
+                    header_text: pq.header_text ?? '',
                     question_number: pq.question_number,
+                    display_question_number: pq.display_question_number ?? '',
                     marks: pq.marks,
+                    marks_display_bn: pq.marks_display_bn ?? '',
                     is_compulsory: pq.is_compulsory,
                   });
                 }}
@@ -303,7 +377,7 @@ export default function PaperComposerPage() {
                 variant="outline"
                 className="h-7 px-2"
                 onClick={() =>
-                  deleteItem('question', pq.id, `question ${pq.question_number}`)
+                  deleteItem('question', pq.id, `question ${displayNo}`)
                 }
               >
                 <Trash2 className="h-3 w-3" />
@@ -317,7 +391,9 @@ export default function PaperComposerPage() {
               <li key={part.id} className="flex items-start justify-between gap-2">
                 <span>
                   <strong>{part.part_label}</strong> {truncate(part.question?.body_en ?? '')}{' '}
-                  <span className="text-muted">({part.marks}m)</span>
+                  <span className="text-muted">
+                    ({part.marks_display_bn?.trim() || `${part.marks}m`})
+                  </span>
                 </span>
                 {!readOnly && (
                   <div className="flex gap-1">
@@ -333,6 +409,7 @@ export default function PaperComposerPage() {
                           question_id: part.question_id,
                           part_label: part.part_label,
                           marks: part.marks,
+                          marks_display_bn: part.marks_display_bn ?? '',
                         });
                       }}
                     >
@@ -352,7 +429,7 @@ export default function PaperComposerPage() {
             ))}
           </ul>
         )}
-        {!readOnly && (
+        {!readOnly && !pq.from_question_bank && (
           <Button
             size="sm"
             variant="outline"
@@ -387,8 +464,15 @@ export default function PaperComposerPage() {
   const allocated = paper.allocated_marks ?? 0;
   const marksOk = allocated === paper.total_marks;
 
-  const allQuestions = [...groups.flatMap((g) => g.questions), ...ungrouped_questions];
-  const nextQNum = allQuestions.length ? Math.max(...allQuestions.map((q) => q.question_number)) + 1 : 1;
+  const allQuestions = getAllQuestions(data);
+  const compositeQuestions = allQuestions.filter((q) => !q.from_question_bank);
+  const nextQNum = nextQuestionNumber(allQuestions);
+
+  function openNewQuestionForm(overrides: Partial<typeof emptyQuestion> = {}) {
+    setPanel('question');
+    setEditQuestionId('');
+    setQuestionForm(freshQuestionForm(allQuestions, overrides));
+  }
 
   return (
     <div className="space-y-6">
@@ -451,7 +535,18 @@ export default function PaperComposerPage() {
           <CardContent className="space-y-4">
             <div className="flex flex-wrap gap-2">
               {(['section', 'question', 'part'] as Panel[]).map((p) => (
-                <Button key={p} size="sm" variant={panel === p ? 'default' : 'outline'} onClick={() => setPanel(p)}>
+                <Button
+                  key={p}
+                  size="sm"
+                  variant={panel === p ? 'default' : 'outline'}
+                  onClick={() => {
+                    if (p === 'question' && !editQuestionId) {
+                      openNewQuestionForm({ paper_group_id: questionForm.paper_group_id });
+                      return;
+                    }
+                    setPanel(p);
+                  }}
+                >
                   {p === 'section' ? 'Section' : p === 'question' ? 'Question' : 'Sub-part'}
                 </Button>
               ))}
@@ -459,26 +554,26 @@ export default function PaperComposerPage() {
 
             {panel === 'section' && (
               <form onSubmit={saveSection} className="grid gap-3 sm:grid-cols-2">
-                <Input
-                  placeholder="Section name"
+                <OutlinedInput
+                  label="Section name"
                   value={sectionForm.name}
                   onChange={(e) => setSectionForm((f) => ({ ...f, name: e.target.value }))}
                   required
                 />
-                <Input
+                <OutlinedInput
+                  label="Section number"
                   type="number"
-                  placeholder="Section number"
                   value={sectionForm.group_number}
                   onChange={(e) => setSectionForm((f) => ({ ...f, group_number: Number(e.target.value) }))}
                 />
-                <Input
+                <OutlinedInput
+                  label="Section marks"
                   type="number"
-                  placeholder="Section marks"
                   value={sectionForm.marks}
                   onChange={(e) => setSectionForm((f) => ({ ...f, marks: Number(e.target.value) }))}
                 />
-                <Input
-                  placeholder="Instructions (optional)"
+                <OutlinedInput
+                  label="Instructions (optional)"
                   value={sectionForm.instructions}
                   onChange={(e) => setSectionForm((f) => ({ ...f, instructions: e.target.value }))}
                 />
@@ -490,34 +585,83 @@ export default function PaperComposerPage() {
 
             {panel === 'question' && (
               <form onSubmit={saveQuestion} className="space-y-3">
-                <select
+                <OutlinedSelect
+                  label="Section (optional)"
                   value={questionForm.paper_group_id}
                   onChange={(e) => setQuestionForm((f) => ({ ...f, paper_group_id: e.target.value }))}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 >
-                  <option value="">No section (ungrouped)</option>
                   {groups.map((g) => (
                     <option key={g.id} value={g.id}>
                       {g.group_number}. {g.name}
                     </option>
                   ))}
-                </select>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <Input
+                </OutlinedSelect>
+
+                <div className="flex flex-wrap gap-4 rounded-lg border border-border bg-slate-50/60 px-3 py-2 text-sm">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="question_source"
+                      checked={questionForm.from_question_bank}
+                      onChange={() =>
+                        setQuestionForm((f) => ({
+                          ...f,
+                          from_question_bank: true,
+                          header_text: '',
+                        }))
+                      }
+                    />
+                    From question bank
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="question_source"
+                      checked={!questionForm.from_question_bank}
+                      onChange={() =>
+                        setQuestionForm((f) => ({
+                          ...f,
+                          from_question_bank: false,
+                          question_id: '',
+                          ...(editQuestionId ? {} : { question_number: nextQNum }),
+                        }))
+                      }
+                    />
+                    Composite (header + sub-parts)
+                  </label>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <OutlinedInput
+                    label="Serial order"
                     type="number"
-                    placeholder="Q number"
                     value={questionForm.question_number}
                     onChange={(e) =>
                       setQuestionForm((f) => ({ ...f, question_number: Number(e.target.value) }))
                     }
                   />
-                  <Input
+                  <OutlinedInput
+                    label="Display number (on paper)"
+                    value={questionForm.display_question_number}
+                    onChange={(e) =>
+                      setQuestionForm((f) => ({ ...f, display_question_number: e.target.value }))
+                    }
+                  />
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <OutlinedInput
+                    label="Marks (allocation)"
                     type="number"
-                    placeholder="Marks"
                     value={questionForm.marks}
                     onChange={(e) => setQuestionForm((f) => ({ ...f, marks: Number(e.target.value) }))}
                   />
-                  <label className="flex items-center gap-2 text-sm">
+                  <OutlinedInput
+                    label="Marks display (Bangla)"
+                    value={questionForm.marks_display_bn}
+                    onChange={(e) => setQuestionForm((f) => ({ ...f, marks_display_bn: e.target.value }))}
+                  />
+                  <label className="flex h-11 items-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm shadow-sm">
                     <input
                       type="checkbox"
                       checked={questionForm.is_compulsory}
@@ -528,32 +672,45 @@ export default function PaperComposerPage() {
                     Compulsory
                   </label>
                 </div>
-                <Input
-                  placeholder="Search published questions"
-                  value={bankQ}
-                  onChange={(e) => setBankQ(e.target.value)}
-                />
-                <select
-                  required
-                  value={questionForm.question_id}
-                  onChange={(e) => {
-                    const q = bank.find((b) => b.id === e.target.value);
-                    setQuestionForm((f) => ({
-                      ...f,
-                      question_id: e.target.value,
-                      marks: q?.marks ?? f.marks,
-                    }));
-                  }}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  size={Math.min(6, Math.max(3, bank.length))}
-                >
-                  <option value="">Select question from bank</option>
-                  {bank.map((q) => (
-                    <option key={q.id} value={q.id}>
-                      [{q.question_type_code}] {truncate(q.body_en, 80)} ({q.marks}m)
-                    </option>
-                  ))}
-                </select>
+
+                {questionForm.from_question_bank ? (
+                  <>
+                    <OutlinedInput
+                      label="Search published questions"
+                      value={bankQ}
+                      onChange={(e) => setBankQ(e.target.value)}
+                    />
+                    <OutlinedSelect
+                      label="Question from bank"
+                      required
+                      value={questionForm.question_id}
+                      onChange={(e) => {
+                        const q = bank.find((b) => b.id === e.target.value);
+                        setQuestionForm((f) => ({
+                          ...f,
+                          question_id: e.target.value,
+                          marks: q?.marks ?? f.marks,
+                        }));
+                      }}
+                      size={Math.min(6, Math.max(3, bank.length))}
+                    >
+                      {bank.map((q) => (
+                        <option key={q.id} value={q.id}>
+                          [{q.question_type_code}] {truncate(q.body_en, 80)} ({q.marks}m)
+                        </option>
+                      ))}
+                    </OutlinedSelect>
+                  </>
+                ) : (
+                  <OutlinedTextarea
+                    label="Question header (shown on paper)"
+                    value={questionForm.header_text}
+                    onChange={(e) => setQuestionForm((f) => ({ ...f, header_text: e.target.value }))}
+                    rows={4}
+                    required
+                  />
+                )}
+
                 <Button type="submit" size="sm">
                   {editQuestionId ? 'Update question' : 'Add question'}
                 </Button>
@@ -562,51 +719,63 @@ export default function PaperComposerPage() {
 
             {panel === 'part' && (
               <form onSubmit={savePart} className="space-y-3">
-                <select
+                <OutlinedSelect
+                  label="Composite parent question"
                   required
                   value={partForm.paper_question_id}
                   onChange={(e) => setPartForm((f) => ({ ...f, paper_question_id: e.target.value }))}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   disabled={!!editPartId}
                 >
-                  <option value="">Parent question on paper</option>
-                  {allQuestions.map((pq) => (
+                  {compositeQuestions.map((pq) => (
                     <option key={pq.id} value={pq.id}>
-                      Q{pq.question_number} — {truncate(pq.question?.body_en ?? '', 60)}
+                      {displayQuestionLabel(pq)} — {truncate(questionPreviewText(pq), 60)}
                     </option>
                   ))}
-                </select>
+                </OutlinedSelect>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Input
-                    placeholder="Part label e.g. (a)"
+                  <OutlinedInput
+                    label="Part label (e.g. (a))"
                     value={partForm.part_label}
                     onChange={(e) => setPartForm((f) => ({ ...f, part_label: e.target.value }))}
                     required
                   />
-                  <Input
+                  <OutlinedInput
+                    label="Marks (allocation)"
                     type="number"
-                    placeholder="Marks"
                     value={partForm.marks}
                     onChange={(e) => setPartForm((f) => ({ ...f, marks: Number(e.target.value) }))}
                   />
                 </div>
-                <Input placeholder="Search questions" value={bankQ} onChange={(e) => setBankQ(e.target.value)} />
-                <select
+                <OutlinedInput
+                  label="Marks display (Bangla)"
+                  value={partForm.marks_display_bn}
+                  onChange={(e) => setPartForm((f) => ({ ...f, marks_display_bn: e.target.value }))}
+                />
+                <OutlinedInput
+                  label="Search questions"
+                  value={bankQ}
+                  onChange={(e) => setBankQ(e.target.value)}
+                />
+                <OutlinedSelect
+                  label="Sub-part question from bank"
                   required
                   value={partForm.question_id}
                   onChange={(e) => setPartForm((f) => ({ ...f, question_id: e.target.value }))}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 >
-                  <option value="">Select sub-part question</option>
                   {bank.map((q) => (
                     <option key={q.id} value={q.id}>
                       [{q.question_type_code}] {truncate(q.body_en, 80)}
                     </option>
                   ))}
-                </select>
-                <Button type="submit" size="sm">
+                </OutlinedSelect>
+                <Button type="submit" size="sm" disabled={compositeQuestions.length === 0}>
                   {editPartId ? 'Update sub-part' : 'Add sub-part'}
                 </Button>
+                {compositeQuestions.length === 0 && (
+                  <p className="text-xs text-muted">
+                    Add a composite question first, then attach sub-parts under its header.
+                  </p>
+                )}
               </form>
             )}
           </CardContent>
@@ -652,15 +821,7 @@ export default function PaperComposerPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => {
-                    setPanel('question');
-                    setEditQuestionId('');
-                    setQuestionForm({
-                      ...emptyQuestion,
-                      paper_group_id: group.id,
-                      question_number: nextQNum,
-                    });
-                  }}
+                  onClick={() => openNewQuestionForm({ paper_group_id: group.id })}
                 >
                   <Plus className="h-3 w-3" /> Q
                 </Button>
@@ -685,11 +846,7 @@ export default function PaperComposerPage() {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => {
-                  setPanel('question');
-                  setEditQuestionId('');
-                  setQuestionForm({ ...emptyQuestion, question_number: nextQNum });
-                }}
+                onClick={() => openNewQuestionForm()}
               >
                 <Plus className="h-3 w-3" /> Add
               </Button>

@@ -4,6 +4,10 @@ import { ZodError } from 'zod';
 import { AppError } from './AppError.js';
 import { logger } from '../logger.js';
 
+function isMongoDuplicateKeyError(err: unknown): err is { code: number; keyPattern?: Record<string, number> } {
+  return typeof err === 'object' && err !== null && 'code' in err && (err as { code: number }).code === 11000;
+}
+
 export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction): void {
   if (err instanceof multer.MulterError) {
     const message =
@@ -50,6 +54,21 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
         code: 'VALIDATION_ERROR',
         message: field ? `${field}: ${detail}` : detail,
         details: err.flatten(),
+      },
+    });
+    return;
+  }
+
+  if (isMongoDuplicateKeyError(err)) {
+    const keys = err.keyPattern ? Object.keys(err.keyPattern) : [];
+    const message =
+      keys.includes('question_number') && keys.includes('paper_id')
+        ? 'Question number already used on this paper'
+        : 'A record with these values already exists';
+    res.status(400).json({
+      error: {
+        code: 'DUPLICATE_KEY',
+        message,
       },
     });
     return;

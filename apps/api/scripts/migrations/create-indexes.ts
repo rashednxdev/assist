@@ -43,6 +43,11 @@ import { SyllabusGroup } from '../../src/domains/syllabus/models/SyllabusGroup.m
 import { SyllabusTopic } from '../../src/domains/syllabus/models/SyllabusTopic.model.js';
 import { SyllabusSubTopic } from '../../src/domains/syllabus/models/SyllabusSubTopic.model.js';
 import { SyllabusReference } from '../../src/domains/syllabus/models/SyllabusReference.model.js';
+import { PaperDetail } from '../../src/domains/papers/models/PaperDetail.model.js';
+import { PaperType } from '../../src/domains/papers/models/PaperType.model.js';
+import { PaperGroup } from '../../src/domains/papers/models/PaperGroup.model.js';
+import { PaperQuestion } from '../../src/domains/papers/models/PaperQuestion.model.js';
+import { ChildQuestion } from '../../src/domains/papers/models/ChildQuestion.model.js';
 
 async function createIndexes() {
   const uri = process.env.MONGODB_URI;
@@ -94,6 +99,11 @@ async function createIndexes() {
   await SyllabusTopic.syncIndexes();
   await SyllabusSubTopic.syncIndexes();
   await SyllabusReference.syncIndexes();
+  await PaperDetail.syncIndexes();
+  await PaperType.syncIndexes();
+  await PaperGroup.syncIndexes();
+  await PaperQuestion.syncIndexes();
+  await ChildQuestion.syncIndexes();
 
   console.log('Indexes synced');
 

@@ -21,6 +21,9 @@ const schema = new Schema<IChildQuestion>(
   { timestamps: false },
 );
 
-schema.index({ paper_question_id: 1, part_label: 1 }, { unique: true });
+schema.index(
+  { paper_question_id: 1, part_label: 1 },
+  { unique: true, partialFilterExpression: { is_active: true } },
+);
 
 export const ChildQuestion = mongoose.model<IChildQuestion>('ChildQuestion', schema, 'child_questions');

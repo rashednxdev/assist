@@ -127,6 +127,50 @@ function freshQuestionForm(
   return { ...emptyQuestion, question_number: nextQuestionNumber(questions), ...overrides };
 }
 
+const PART_LABEL_ALPHABET = 'abcdefghijklmnopqrstuvwxyz';
+
+function partLabelForIndex(index: number): string {
+  const letter = PART_LABEL_ALPHABET[index];
+  return letter ? `(${letter})` : `(${index + 1})`;
+}
+
+function nextPartLabels(existingLabels: string[], count: number): string[] {
+  const used = new Set(existingLabels.map((l) => l.trim().toLowerCase()));
+  const labels: string[] = [];
+  for (let i = 0; i < PART_LABEL_ALPHABET.length && labels.length < count; i++) {
+    const label = partLabelForIndex(i);
+    if (!used.has(label.toLowerCase())) {
+      labels.push(label);
+      used.add(label.toLowerCase());
+    }
+  }
+  return labels;
+}
+
+function questionFormFromRow(pq: PaperQuestionRow, groupId?: string) {
+  return {
+    paper_group_id: groupId ?? '',
+    from_question_bank: pq.from_question_bank,
+    question_id: pq.question_id ?? '',
+    header_text: pq.header_text ?? '',
+    question_number: pq.question_number,
+    display_question_number: pq.display_question_number ?? '',
+    marks: pq.marks,
+    marks_display_bn: pq.marks_display_bn ?? '',
+    is_compulsory: pq.is_compulsory,
+  };
+}
+
+function partFormFromRow(pq: PaperQuestionRow, part: PaperPart) {
+  return {
+    paper_question_id: pq.id,
+    question_id: part.question_id,
+    part_label: part.part_label,
+    marks: part.marks,
+    marks_display_bn: part.marks_display_bn ?? '',
+  };
+}
+
 export default function PaperComposerPage() {
   const params = useParams();
   const paperId = params.id as string;
@@ -138,6 +182,10 @@ export default function PaperComposerPage() {
   const [panel, setPanel] = useState<Panel>('section');
   const [bank, setBank] = useState<BankQuestion[]>([]);
   const [bankQ, setBankQ] = useState('');
+  const [partBank, setPartBank] = useState<BankQuestion[]>([]);
+  const [partBankQ, setPartBankQ] = useState('');
+  const [selectedPartQuestionIds, setSelectedPartQuestionIds] = useState<string[]>([]);
+  const [partBusy, setPartBusy] = useState(false);
 
   const [sectionForm, setSectionForm] = useState(emptySection);
   const [editSectionId, setEditSectionId] = useState('');
@@ -172,12 +220,31 @@ export default function PaperComposerPage() {
   }, [reload]);
 
   useEffect(() => {
-    const params = new URLSearchParams({ is_published: 'true' });
-    if (bankQ.trim()) params.set('q', bankQ.trim());
-    apiFetch<{ data: BankQuestion[] }>(`/questions?${params.toString()}`)
-      .then((r) => setBank(r.data))
-      .catch(() => setBank([]));
+    const timer = window.setTimeout(() => {
+      const params = new URLSearchParams({ is_published: 'true', limit: '50' });
+      if (bankQ.trim()) params.set('q', bankQ.trim());
+      apiFetch<{ data: BankQuestion[] }>(`/questions?${params.toString()}`)
+        .then((r) => setBank(r.data))
+        .catch(() => setBank([]));
+    }, 300);
+    return () => window.clearTimeout(timer);
   }, [bankQ]);
+
+  useEffect(() => {
+    if (panel !== 'part') return;
+    const timer = window.setTimeout(() => {
+      const params = new URLSearchParams({ is_published: 'true', limit: '50' });
+      if (partBankQ.trim()) params.set('q', partBankQ.trim());
+      apiFetch<{ data: BankQuestion[] }>(`/questions?${params.toString()}`)
+        .then((r) => setPartBank(r.data))
+        .catch(() => setPartBank([]));
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [partBankQ, panel]);
+
+  useEffect(() => {
+    setSelectedPartQuestionIds([]);
+  }, [partForm.paper_question_id]);
 
   function clearEdits() {
     setEditSectionId('');
@@ -186,6 +253,7 @@ export default function PaperComposerPage() {
     setSectionForm(emptySection);
     setQuestionForm(emptyQuestion);
     setPartForm(emptyPart);
+    setSelectedPartQuestionIds([]);
   }
 
   const readOnly = !isAdmin || data?.paper.is_published;
@@ -248,23 +316,96 @@ export default function PaperComposerPage() {
         marks_display_bn: questionForm.marks_display_bn.trim() || undefined,
         is_compulsory: questionForm.is_compulsory,
       };
+      let targetId = editQuestionId;
       if (editQuestionId) {
         await apiFetch(`/papers/questions/${editQuestionId}`, { method: 'PATCH', body: JSON.stringify(body) });
         setMessage('Question updated');
       } else {
-        await apiFetch(`/papers/${paperId}/questions`, { method: 'POST', body: JSON.stringify(body) });
+        const res = await apiFetch<{ data: { id: string } }>(`/papers/${paperId}/questions`, {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
         setMessage('Question added to paper');
+        targetId = res.data.id;
+        setEditQuestionId(res.data.id);
       }
-      clearEdits();
-      await reload();
+      const composeRes = await apiFetch<{ data: ComposeData }>(`/papers/${paperId}/compose`);
+      const paperRes = await apiFetch<{ data: { allocated_marks?: number } }>(`/papers/${paperId}`);
+      const nextData = {
+        ...composeRes.data,
+        paper: { ...composeRes.data.paper, allocated_marks: paperRes.data.allocated_marks },
+      };
+      setData(nextData);
+      if (targetId) {
+        const pq = getAllQuestions(nextData).find((q) => q.id === targetId);
+        if (pq) {
+          const groupId = nextData.groups.find((g) => g.questions.some((q) => q.id === pq.id))?.id;
+          setQuestionForm(questionFormFromRow(pq, groupId));
+          setEditQuestionId(pq.id);
+          setPanel('question');
+        }
+      } else {
+        clearEdits();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed');
     }
   }
 
+  async function addMultipleParts() {
+    if (!data || !partForm.paper_question_id || selectedPartQuestionIds.length === 0) {
+      setError('Select at least one question to add as sub-parts');
+      return;
+    }
+    const parent = getAllQuestions(data).find(
+      (q) => !q.from_question_bank && q.id === partForm.paper_question_id,
+    );
+    if (!parent) return;
+
+    const labels = nextPartLabels(
+      parent.parts.map((p) => p.part_label),
+      selectedPartQuestionIds.length,
+    );
+    if (labels.length < selectedPartQuestionIds.length) {
+      setError('Not enough part labels available — remove some sub-parts or use fewer questions');
+      return;
+    }
+
+    setError('');
+    setPartBusy(true);
+    try {
+      for (let i = 0; i < selectedPartQuestionIds.length; i++) {
+        const questionId = selectedPartQuestionIds[i]!;
+        const bankQ = partBank.find((q) => q.id === questionId);
+        await apiFetch(`/papers/questions/${partForm.paper_question_id}/parts`, {
+          method: 'POST',
+          body: JSON.stringify({
+            question_id: questionId,
+            part_label: labels[i],
+            marks: bankQ?.marks ?? partForm.marks,
+          }),
+        });
+      }
+      setMessage(
+        `Added ${selectedPartQuestionIds.length} sub-part${selectedPartQuestionIds.length !== 1 ? 's' : ''}`,
+      );
+      setSelectedPartQuestionIds([]);
+      setPartForm((f) => ({ ...f, part_label: nextPartLabels([...parent.parts.map((p) => p.part_label), ...labels], 1)[0] ?? '(a)' }));
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add sub-parts');
+      await reload();
+    } finally {
+      setPartBusy(false);
+    }
+  }
+
   async function savePart(e: React.FormEvent) {
     e.preventDefault();
-    if (!partForm.paper_question_id || !partForm.question_id) return;
+    if (!partForm.paper_question_id || !partForm.question_id) {
+      setError('Select a sub-part question from the bank');
+      return;
+    }
     setError('');
     try {
       const body = {
@@ -273,18 +414,37 @@ export default function PaperComposerPage() {
         marks: partForm.marks,
         marks_display_bn: partForm.marks_display_bn.trim() || undefined,
       };
+      let targetPartId = editPartId;
       if (editPartId) {
         await apiFetch(`/papers/parts/${editPartId}`, { method: 'PATCH', body: JSON.stringify(body) });
         setMessage('Sub-part updated');
       } else {
-        await apiFetch(`/papers/questions/${partForm.paper_question_id}/parts`, {
-          method: 'POST',
-          body: JSON.stringify(body),
-        });
+        const res = await apiFetch<{ data: { id: string } }>(
+          `/papers/questions/${partForm.paper_question_id}/parts`,
+          { method: 'POST', body: JSON.stringify(body) },
+        );
         setMessage('Sub-part added');
+        targetPartId = res.data.id;
+        setEditPartId(res.data.id);
       }
-      clearEdits();
-      await reload();
+      const composeRes = await apiFetch<{ data: ComposeData }>(`/papers/${paperId}/compose`);
+      const paperRes = await apiFetch<{ data: { allocated_marks?: number } }>(`/papers/${paperId}`);
+      const nextData = {
+        ...composeRes.data,
+        paper: { ...composeRes.data.paper, allocated_marks: paperRes.data.allocated_marks },
+      };
+      setData(nextData);
+      if (targetPartId) {
+        const parent = getAllQuestions(nextData).find((q) => q.id === partForm.paper_question_id);
+        const part = parent?.parts.find((p) => p.id === targetPartId);
+        if (parent && part) {
+          setPartForm(partFormFromRow(parent, part));
+          setEditPartId(part.id);
+          setPanel('part');
+        }
+      } else {
+        clearEdits();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed');
     }
@@ -357,17 +517,7 @@ export default function PaperComposerPage() {
                 onClick={() => {
                   setPanel('question');
                   setEditQuestionId(pq.id);
-                  setQuestionForm({
-                    paper_group_id: groupId ?? '',
-                    from_question_bank: pq.from_question_bank,
-                    question_id: pq.question_id ?? '',
-                    header_text: pq.header_text ?? '',
-                    question_number: pq.question_number,
-                    display_question_number: pq.display_question_number ?? '',
-                    marks: pq.marks,
-                    marks_display_bn: pq.marks_display_bn ?? '',
-                    is_compulsory: pq.is_compulsory,
-                  });
+                  setQuestionForm(questionFormFromRow(pq, groupId));
                 }}
               >
                 <Pencil className="h-3 w-3" />
@@ -404,13 +554,7 @@ export default function PaperComposerPage() {
                       onClick={() => {
                         setPanel('part');
                         setEditPartId(part.id);
-                        setPartForm({
-                          paper_question_id: pq.id,
-                          question_id: part.question_id,
-                          part_label: part.part_label,
-                          marks: part.marks,
-                          marks_display_bn: part.marks_display_bn ?? '',
-                        });
+                        setPartForm(partFormFromRow(pq, part));
                       }}
                     >
                       <Pencil className="h-3 w-3" />
@@ -437,6 +581,7 @@ export default function PaperComposerPage() {
             onClick={() => {
               setPanel('part');
               setEditPartId('');
+              setSelectedPartQuestionIds([]);
               setPartForm({ ...emptyPart, paper_question_id: pq.id });
             }}
           >
@@ -466,6 +611,9 @@ export default function PaperComposerPage() {
 
   const allQuestions = getAllQuestions(data);
   const compositeQuestions = allQuestions.filter((q) => !q.from_question_bank);
+  const selectedParent = compositeQuestions.find((q) => q.id === partForm.paper_question_id);
+  const usedSubPartQuestionIds = new Set(selectedParent?.parts.map((p) => p.question_id) ?? []);
+  const availablePartQuestions = partBank.filter((q) => !usedSubPartQuestionIds.has(q.id));
   const nextQNum = nextQuestionNumber(allQuestions);
 
   function openNewQuestionForm(overrides: Partial<typeof emptyQuestion> = {}) {
@@ -718,7 +866,7 @@ export default function PaperComposerPage() {
             )}
 
             {panel === 'part' && (
-              <form onSubmit={savePart} className="space-y-3">
+              <div className="space-y-3">
                 <OutlinedSelect
                   label="Composite parent question"
                   required
@@ -726,57 +874,169 @@ export default function PaperComposerPage() {
                   onChange={(e) => setPartForm((f) => ({ ...f, paper_question_id: e.target.value }))}
                   disabled={!!editPartId}
                 >
-                  {compositeQuestions.map((pq) => (
-                    <option key={pq.id} value={pq.id}>
-                      {displayQuestionLabel(pq)} — {truncate(questionPreviewText(pq), 60)}
-                    </option>
-                  ))}
+                  {compositeQuestions.length === 0 ? (
+                    <option value="">No composite questions yet</option>
+                  ) : (
+                    compositeQuestions.map((pq) => (
+                      <option key={pq.id} value={pq.id}>
+                        {displayQuestionLabel(pq)} — {truncate(questionPreviewText(pq), 60)}
+                      </option>
+                    ))
+                  )}
                 </OutlinedSelect>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <OutlinedInput
-                    label="Part label (e.g. (a))"
-                    value={partForm.part_label}
-                    onChange={(e) => setPartForm((f) => ({ ...f, part_label: e.target.value }))}
-                    required
-                  />
-                  <OutlinedInput
-                    label="Marks (allocation)"
-                    type="number"
-                    value={partForm.marks}
-                    onChange={(e) => setPartForm((f) => ({ ...f, marks: Number(e.target.value) }))}
-                  />
-                </div>
-                <OutlinedInput
-                  label="Marks display (Bangla)"
-                  value={partForm.marks_display_bn}
-                  onChange={(e) => setPartForm((f) => ({ ...f, marks_display_bn: e.target.value }))}
-                />
-                <OutlinedInput
-                  label="Search questions"
-                  value={bankQ}
-                  onChange={(e) => setBankQ(e.target.value)}
-                />
-                <OutlinedSelect
-                  label="Sub-part question from bank"
-                  required
-                  value={partForm.question_id}
-                  onChange={(e) => setPartForm((f) => ({ ...f, question_id: e.target.value }))}
-                >
-                  {bank.map((q) => (
-                    <option key={q.id} value={q.id}>
-                      [{q.question_type_code}] {truncate(q.body_en, 80)}
-                    </option>
-                  ))}
-                </OutlinedSelect>
-                <Button type="submit" size="sm" disabled={compositeQuestions.length === 0}>
-                  {editPartId ? 'Update sub-part' : 'Add sub-part'}
-                </Button>
+
+                {editPartId ? (
+                  <form onSubmit={savePart} className="space-y-3">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <OutlinedInput
+                        label="Part label (e.g. (a))"
+                        value={partForm.part_label}
+                        onChange={(e) => setPartForm((f) => ({ ...f, part_label: e.target.value }))}
+                        required
+                      />
+                      <OutlinedInput
+                        label="Marks (allocation)"
+                        type="number"
+                        value={partForm.marks}
+                        onChange={(e) => setPartForm((f) => ({ ...f, marks: Number(e.target.value) }))}
+                      />
+                    </div>
+                    <OutlinedInput
+                      label="Marks display (Bangla)"
+                      value={partForm.marks_display_bn}
+                      onChange={(e) => setPartForm((f) => ({ ...f, marks_display_bn: e.target.value }))}
+                    />
+                    <OutlinedInput
+                      label="Search published questions"
+                      value={partBankQ}
+                      onChange={(e) => setPartBankQ(e.target.value)}
+                    />
+                    <OutlinedSelect
+                      label="Sub-part question from bank"
+                      required
+                      value={partForm.question_id}
+                      onChange={(e) => {
+                        const q = partBank.find((b) => b.id === e.target.value);
+                        setPartForm((f) => ({
+                          ...f,
+                          question_id: e.target.value,
+                          marks: q?.marks ?? f.marks,
+                        }));
+                      }}
+                      size={Math.min(8, Math.max(3, partBank.length))}
+                    >
+                      {partBank.map((q) => (
+                        <option key={q.id} value={q.id}>
+                          [{q.question_type_code}] {truncate(q.body_en, 80)} ({q.marks}m)
+                        </option>
+                      ))}
+                    </OutlinedSelect>
+                    <Button type="submit" size="sm">
+                      Update sub-part
+                    </Button>
+                  </form>
+                ) : (
+                  <>
+                    <OutlinedInput
+                      label="Search published questions"
+                      value={partBankQ}
+                      onChange={(e) => setPartBankQ(e.target.value)}
+                    />
+                    <div className="flex items-center justify-between gap-2 text-sm">
+                      <span className="text-muted">
+                        Select questions to add — labels auto-assigned as (a), (b), (c)…
+                      </span>
+                      {availablePartQuestions.length > 0 && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-7"
+                          onClick={() =>
+                            setSelectedPartQuestionIds(availablePartQuestions.map((q) => q.id))
+                          }
+                        >
+                          Select all
+                        </Button>
+                      )}
+                    </div>
+                    <div className="max-h-72 overflow-y-auto rounded-lg border border-border bg-surface">
+                      {availablePartQuestions.length === 0 ? (
+                        <p className="p-3 text-sm text-muted">
+                          {partBank.length === 0
+                            ? 'No published questions match your search'
+                            : 'All matching questions are already sub-parts of this composite'}
+                        </p>
+                      ) : (
+                        <ul className="divide-y divide-border">
+                          {availablePartQuestions.map((q) => {
+                            const checked = selectedPartQuestionIds.includes(q.id);
+                            return (
+                              <li key={q.id}>
+                                <label className="flex cursor-pointer items-start gap-3 p-3 hover:bg-slate-50/80">
+                                  <input
+                                    type="checkbox"
+                                    className="mt-1"
+                                    checked={checked}
+                                    disabled={partBusy}
+                                    onChange={(e) => {
+                                      setSelectedPartQuestionIds((ids) =>
+                                        e.target.checked
+                                          ? [...ids, q.id]
+                                          : ids.filter((id) => id !== q.id),
+                                      );
+                                    }}
+                                  />
+                                  <span className="min-w-0 flex-1 text-sm">
+                                    <Badge variant="secondary" className="mr-1.5">
+                                      {q.question_type_code}
+                                    </Badge>
+                                    {truncate(q.body_en, 120)}
+                                    <span className="mt-0.5 block text-xs text-muted">{q.marks} marks</span>
+                                  </span>
+                                </label>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={
+                          partBusy ||
+                          compositeQuestions.length === 0 ||
+                          selectedPartQuestionIds.length === 0
+                        }
+                        onClick={addMultipleParts}
+                      >
+                        <Plus className="h-4 w-4" />
+                        Add {selectedPartQuestionIds.length} sub-part
+                        {selectedPartQuestionIds.length === 1 ? '' : 's'}
+                      </Button>
+                      {selectedPartQuestionIds.length > 0 && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={partBusy}
+                          onClick={() => setSelectedPartQuestionIds([])}
+                        >
+                          Clear selection
+                        </Button>
+                      )}
+                    </div>
+                  </>
+                )}
+
                 {compositeQuestions.length === 0 && (
                   <p className="text-xs text-muted">
                     Add a composite question first, then attach sub-parts under its header.
                   </p>
                 )}
-              </form>
+              </div>
             )}
           </CardContent>
         </Card>

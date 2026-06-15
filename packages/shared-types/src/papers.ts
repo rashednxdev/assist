@@ -74,9 +74,35 @@ function validatePaperQuestion(data: z.infer<typeof paperQuestionFieldsSchema>, 
 
 export const createPaperQuestionSchema = paperQuestionFieldsSchema.superRefine(validatePaperQuestion);
 
-export const updatePaperQuestionSchema = paperQuestionFieldsSchema.partial().extend({
-  is_active: z.boolean().optional(),
-});
+export const updatePaperQuestionSchema = z
+  .object({
+    from_question_bank: z.boolean().optional(),
+    question_id: mongoId.optional(),
+    paper_group_id: mongoId.optional(),
+    question_number: z.number().int().positive().optional(),
+    display_question_number: z.string().optional(),
+    header_text: z.string().optional(),
+    marks: z.number().min(0).optional(),
+    marks_display_bn: z.string().optional(),
+    is_compulsory: z.boolean().optional(),
+    is_active: z.boolean().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.from_question_bank === false && data.header_text !== undefined && !data.header_text.trim()) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Header text is required for composite questions',
+        path: ['header_text'],
+      });
+    }
+    if (data.from_question_bank === true && data.question_id !== undefined && !data.question_id) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Select a published question from the bank',
+        path: ['question_id'],
+      });
+    }
+  });
 
 export const createChildQuestionSchema = z.object({
   question_id: mongoId,

@@ -61,10 +61,12 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
 
   if (isMongoDuplicateKeyError(err)) {
     const keys = err.keyPattern ? Object.keys(err.keyPattern) : [];
-    const message =
-      keys.includes('question_number') && keys.includes('paper_id')
-        ? 'Question number already used on this paper'
-        : 'A record with these values already exists';
+    let message = 'A record with these values already exists';
+    if (keys.includes('question_number') && keys.includes('paper_id')) {
+      message = 'Question number already used on this paper';
+    } else if (keys.includes('part_label') && keys.includes('paper_question_id')) {
+      message = 'This part label is already used on this question — choose another label (e.g. (b)) or edit the existing sub-part';
+    }
     res.status(400).json({
       error: {
         code: 'DUPLICATE_KEY',

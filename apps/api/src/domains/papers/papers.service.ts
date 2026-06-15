@@ -122,7 +122,7 @@ async function validatePaperForPublish(paper: InstanceType<typeof PaperDetail>) 
   if (questions.length === 0) throw badRequest('Paper must have at least one question before publishing');
 
   for (const pq of questions) {
-    const fromBank = pq.from_question_bank !== false;
+    const fromBank = !isCompositePaperQuestion(pq);
     if (fromBank) {
       if (!pq.question_id) throw badRequest('Bank question slot is missing its question reference');
       await assertPublishedQuestion(String(pq.question_id));
@@ -148,14 +148,19 @@ async function validatePaperForPublish(paper: InstanceType<typeof PaperDetail>) 
   }
 }
 
+function isCompositePaperQuestion(pq: InstanceType<typeof PaperQuestion>) {
+  return pq.from_question_bank === false || (!pq.question_id && Boolean(pq.header_text?.trim()));
+}
+
 function serializePaperQuestionRow(
   pq: InstanceType<typeof PaperQuestion>,
   enrichedMap: Map<string, Awaited<ReturnType<typeof enrichQuestion>>>,
   childrenByPq: Map<string, InstanceType<typeof ChildQuestion>[]>,
 ) {
+  const isComposite = isCompositePaperQuestion(pq);
   return {
     id: String(pq._id),
-    from_question_bank: pq.from_question_bank !== false,
+    from_question_bank: !isComposite,
     question_id: pq.question_id ? String(pq.question_id) : undefined,
     header_text: pq.header_text,
     question_number: pq.question_number,
@@ -510,7 +515,8 @@ export async function updatePaperQuestion(pqId: string, dto: UpdatePaperQuestion
   if (!pq || !pq.is_active) throw notFound('Paper question not found');
   await getPaperOrThrow(String(pq.paper_id), true);
 
-  const fromBank = dto.from_question_bank ?? pq.from_question_bank !== false;
+  const wasComposite = isCompositePaperQuestion(pq);
+  const fromBank = dto.from_question_bank !== undefined ? dto.from_question_bank : !wasComposite;
 
   if (fromBank && dto.question_id) await assertPublishedQuestion(dto.question_id);
   if (dto.question_number !== undefined) {
@@ -530,18 +536,17 @@ export async function updatePaperQuestion(pqId: string, dto: UpdatePaperQuestion
   }
 
   if (dto.from_question_bank !== undefined) {
-    pq.from_question_bank = dto.from_question_bank;
-    if (!dto.from_question_bank) {
+    const willBeComposite = !dto.from_question_bank;
+    pq.from_question_bank = !willBeComposite;
+    if (willBeComposite) {
       pq.question_id = undefined;
-    } else {
+    } else if (wasComposite) {
       pq.header_text = undefined;
     }
   }
 
-  if (dto.question_id !== undefined) {
-    if (fromBank) {
-      pq.question_id = new mongoose.Types.ObjectId(dto.question_id);
-    }
+  if (dto.question_id !== undefined && fromBank) {
+    pq.question_id = new mongoose.Types.ObjectId(dto.question_id);
   }
   if (dto.paper_group_id !== undefined) {
     pq.paper_group_id = dto.paper_group_id
@@ -562,10 +567,11 @@ export async function updatePaperQuestion(pqId: string, dto: UpdatePaperQuestion
   if (dto.is_compulsory !== undefined) pq.is_compulsory = dto.is_compulsory;
   if (dto.is_active !== undefined) pq.is_active = dto.is_active;
 
-  if (pq.from_question_bank !== false && !pq.question_id) {
+  const isComposite = isCompositePaperQuestion(pq);
+  if (!isComposite && !pq.question_id) {
     throw badRequest('Select a published question from the bank');
   }
-  if (pq.from_question_bank === false && !pq.header_text?.trim()) {
+  if (isComposite && !pq.header_text?.trim()) {
     throw badRequest('Header text is required for composite questions');
   }
 
@@ -573,7 +579,7 @@ export async function updatePaperQuestion(pqId: string, dto: UpdatePaperQuestion
   const q = pq.question_id ? await Question.findById(pq.question_id) : null;
   return {
     id: String(pq._id),
-    from_question_bank: pq.from_question_bank,
+    from_question_bank: !isCompositePaperQuestion(pq),
     question_id: pq.question_id ? String(pq.question_id) : undefined,
     header_text: pq.header_text,
     question_number: pq.question_number,
@@ -609,10 +615,32 @@ export async function createChildQuestion(pqId: string, dto: CreateChildQuestion
   const pq = await PaperQuestion.findById(pqId);
   if (!pq || !pq.is_active) throw notFound('Paper question not found');
   await getPaperOrThrow(String(pq.paper_id), true);
-  if (pq.from_question_bank !== false) {
+  if (!isCompositePaperQuestion(pq)) {
     throw badRequest('Sub-parts can only be added under composite (non-bank) questions');
   }
   await assertPublishedQuestion(dto.question_id);
+
+  const inactive = await ChildQuestion.findOne({
+    paper_question_id: pq._id,
+    part_label: dto.part_label,
+    is_active: false,
+  });
+  if (inactive) {
+    inactive.is_active = true;
+    inactive.question_id = new mongoose.Types.ObjectId(dto.question_id);
+    inactive.marks = dto.marks;
+    inactive.marks_display_bn = dto.marks_display_bn?.trim() || undefined;
+    await inactive.save();
+    const q = await Question.findById(inactive.question_id);
+    return {
+      id: String(inactive._id),
+      question_id: String(inactive.question_id),
+      part_label: inactive.part_label,
+      marks: inactive.marks,
+      marks_display_bn: inactive.marks_display_bn,
+      question: q ? await enrichQuestion(q) : undefined,
+    };
+  }
 
   const dup = await ChildQuestion.findOne({
     paper_question_id: pqId,
@@ -649,6 +677,14 @@ export async function updateChildQuestion(partId: string, dto: UpdateChildQuesti
 
   if (dto.question_id) await assertPublishedQuestion(dto.question_id);
   if (dto.part_label !== undefined) {
+    if (dto.part_label !== c.part_label) {
+      await ChildQuestion.deleteMany({
+        paper_question_id: c.paper_question_id,
+        part_label: dto.part_label,
+        is_active: false,
+        _id: { $ne: c._id },
+      });
+    }
     const clash = await ChildQuestion.findOne({
       paper_question_id: c.paper_question_id,
       part_label: dto.part_label,

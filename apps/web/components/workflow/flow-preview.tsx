@@ -2,7 +2,7 @@
 
 import { RoleBadge } from '@/components/workflow/role-badge';
 
-interface StepPreview {
+export interface StepPreview {
   step_number: number;
   title_en: string;
   description_en: string;
@@ -10,6 +10,7 @@ interface StepPreview {
   fields?: Array<{ label: string; type?: string }>;
   condition_text?: string;
   handoff_msg?: string;
+  handoff_role?: string;
   is_auto?: boolean;
 }
 
@@ -50,6 +51,7 @@ export function FlowPreview({
                 {step.fields.map((f) => (
                   <span key={f.label} className="rounded-full border border-border bg-slate-50 px-2 py-0.5 text-xs">
                     {f.label}
+                    {f.type ? ` (${f.type})` : ''}
                   </span>
                 ))}
               </div>
@@ -58,7 +60,15 @@ export function FlowPreview({
               <p className="mt-1 text-xs text-warning">Condition: {step.condition_text}</p>
             )}
             {step.handoff_msg && (
-              <p className="mt-1 text-xs text-primary">Handoff: {step.handoff_msg}</p>
+              <p className="mt-1 text-xs text-primary">
+                Handoff: {step.handoff_msg}
+                {step.handoff_role && (
+                  <>
+                    {' '}
+                    → <RoleBadge code={step.handoff_role} color={roleColors?.[step.handoff_role]} className="inline-flex align-middle" />
+                  </>
+                )}
+              </p>
             )}
           </div>
         </div>

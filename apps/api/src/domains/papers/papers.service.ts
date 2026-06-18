@@ -127,12 +127,9 @@ async function validatePaperForPublish(paper: InstanceType<typeof PaperDetail>) 
       if (!pq.question_id) throw badRequest('Bank question slot is missing its question reference');
       await assertPublishedQuestion(String(pq.question_id));
     } else {
-      if (!pq.header_text?.trim()) {
-        throw badRequest(`Composite question #${pq.question_number} needs header text before publishing`);
-      }
       const parts = await ChildQuestion.find({ paper_question_id: pq._id, is_active: true });
       if (parts.length === 0) {
-        throw badRequest(`Composite question #${pq.question_number} must have at least one sub-part`);
+        throw badRequest(`Question #${pq.question_number} must have at least one sub-part before publishing`);
       }
       for (const part of parts) {
         await assertPublishedQuestion(String(part.question_id));
@@ -149,7 +146,7 @@ async function validatePaperForPublish(paper: InstanceType<typeof PaperDetail>) 
 }
 
 function isCompositePaperQuestion(pq: InstanceType<typeof PaperQuestion>) {
-  return pq.from_question_bank === false || (!pq.question_id && Boolean(pq.header_text?.trim()));
+  return pq.from_question_bank === false || !pq.question_id;
 }
 
 function serializePaperQuestionRow(
@@ -453,7 +450,7 @@ export async function deletePaperGroup(groupId: string) {
 
 export async function createPaperQuestion(paperId: string, dto: CreatePaperQuestionDto) {
   await getPaperOrThrow(paperId, true);
-  const fromBank = dto.from_question_bank ?? true;
+  const fromBank = dto.from_question_bank === true;
 
   if (fromBank) {
     await assertPublishedQuestion(dto.question_id!);
@@ -568,11 +565,10 @@ export async function updatePaperQuestion(pqId: string, dto: UpdatePaperQuestion
   if (dto.is_active !== undefined) pq.is_active = dto.is_active;
 
   const isComposite = isCompositePaperQuestion(pq);
-  if (!isComposite && !pq.question_id) {
+  if (isComposite && !pq.question_id) {
+    // Composite slot — header optional; sub-parts added separately
+  } else if (!isComposite && !pq.question_id) {
     throw badRequest('Select a published question from the bank');
-  }
-  if (isComposite && !pq.header_text?.trim()) {
-    throw badRequest('Header text is required for composite questions');
   }
 
   await pq.save();

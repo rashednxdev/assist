@@ -14,6 +14,11 @@ import { Alert } from '@/components/ui/alert';
 import { RoleBadge } from '@/components/workflow/role-badge';
 import { TaskGuideSteps, type GuideStep } from '@/components/guided-tasks/task-guide-steps';
 
+interface RoleItem {
+  code: string;
+  color: string;
+}
+
 interface TaskDetail {
   task: {
     id: string;
@@ -38,6 +43,7 @@ export default function GuidedTaskDetailPage() {
   const params = useParams();
   const taskId = params.id as string;
   const [detail, setDetail] = useState<TaskDetail | null>(null);
+  const [roleColors, setRoleColors] = useState<Record<string, string>>({});
   const [user, setUser] = useState<MeUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -45,10 +51,12 @@ export default function GuidedTaskDetailPage() {
   useEffect(() => {
     Promise.all([
       apiFetch<{ data: TaskDetail }>(`/workflow/tasks/${taskId}`),
+      apiFetch<{ data: RoleItem[] }>('/workflow/roles'),
       fetchMe(),
     ])
-      .then(([detailRes, meRes]) => {
+      .then(([detailRes, rolesRes, meRes]) => {
         setDetail(detailRes.data);
+        setRoleColors(Object.fromEntries(rolesRes.data.map((r) => [r.code, r.color])));
         setUser(meRes.data);
       })
       .catch(() => setError('Could not load this guided process.'))
@@ -106,7 +114,7 @@ export default function GuidedTaskDetailPage() {
 
       <div className="flex flex-wrap gap-1">
         {task.roles_involved.map((r) => (
-          <RoleBadge key={r} code={r} />
+          <RoleBadge key={r} code={r} color={roleColors[r]} />
         ))}
       </div>
 
@@ -114,7 +122,7 @@ export default function GuidedTaskDetailPage() {
         <Alert variant="info">
           {user?.user_type === 'officer'
             ? 'Your office role (e.g. SDO) is required to start an interactive run. You can still follow the step-by-step guide below.'
-            : 'Interactive runs require an office workflow role. Follow the guide below to learn the procedure, or register as an officer to run tasks.'}
+            : 'Interactive runs require an office workflow role. Follow the step-by-step guide below to learn the procedure, or register as an officer to run tasks.'}
         </Alert>
       )}
 
@@ -127,14 +135,16 @@ export default function GuidedTaskDetailPage() {
         </Button>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Step-by-step guide</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <TaskGuideSteps steps={steps} />
-        </CardContent>
-      </Card>
+      {steps.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Step by step</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TaskGuideSteps steps={steps} roleColors={roleColors} />
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

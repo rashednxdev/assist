@@ -43,7 +43,7 @@ export const updatePaperGroupSchema = createPaperGroupSchema.partial().extend({
 });
 
 const paperQuestionFieldsSchema = z.object({
-  from_question_bank: z.boolean().default(true),
+  from_question_bank: z.boolean().default(false),
   question_id: mongoId.optional(),
   paper_group_id: mongoId.optional(),
   question_number: z.number().int().positive(),
@@ -63,12 +63,6 @@ function validatePaperQuestion(data: z.infer<typeof paperQuestionFieldsSchema>, 
         path: ['question_id'],
       });
     }
-  } else if (!data.header_text?.trim()) {
-    ctx.addIssue({
-      code: 'custom',
-      message: 'Header text is required for composite questions',
-      path: ['header_text'],
-    });
   }
 }
 
@@ -88,13 +82,6 @@ export const updatePaperQuestionSchema = z
     is_active: z.boolean().optional(),
   })
   .superRefine((data, ctx) => {
-    if (data.from_question_bank === false && data.header_text !== undefined && !data.header_text.trim()) {
-      ctx.addIssue({
-        code: 'custom',
-        message: 'Header text is required for composite questions',
-        path: ['header_text'],
-      });
-    }
     if (data.from_question_bank === true && data.question_id !== undefined && !data.question_id) {
       ctx.addIssue({
         code: 'custom',

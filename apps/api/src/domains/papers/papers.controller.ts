@@ -35,15 +35,18 @@ export async function deletePaperTypeHandler(req: AuthRequest, res: Response): P
 
 export async function listPapersHandler(req: AuthRequest, res: Response): Promise<void> {
   const filters = listPapersQuerySchema.parse(req.query);
-  res.json({ data: await papersService.listPapers(filters) });
+  const publishedOnly =
+    !req.user ||
+    !(req.user.is_super_admin || req.user.user_type === 'system_admin' || req.user.user_type === 'admin');
+  res.json({ data: await papersService.listPapers(filters, { publishedOnly }) });
 }
 
 export async function getPaperHandler(req: AuthRequest, res: Response): Promise<void> {
-  res.json({ data: await papersService.getPaperById(String(req.params.id)) });
+  res.json({ data: await papersService.getPaperById(String(req.params.id), req.user) });
 }
 
 export async function getPaperComposeHandler(req: AuthRequest, res: Response): Promise<void> {
-  res.json({ data: await papersService.getPaperCompose(String(req.params.id)) });
+  res.json({ data: await papersService.getPaperCompose(String(req.params.id), req.user) });
 }
 
 export async function createPaperHandler(req: AuthRequest, res: Response): Promise<void> {

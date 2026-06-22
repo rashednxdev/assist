@@ -39,7 +39,9 @@ interface AuthorityRow {
 interface ExamRow {
   id: string;
   name: string;
+  name_bn?: string;
   short_name: string;
+  short_name_bn?: string;
   authority_id: string;
   authority_name?: string;
   registration_fee: number;
@@ -49,9 +51,12 @@ interface ExamRow {
 interface PartRow {
   id: string;
   name: string;
+  name_bn?: string;
   part_number: number;
   total_marks: number;
+  total_marks_bn?: string;
   pass_marks: number;
+  pass_marks_bn?: string;
   exam_name_id: string;
 }
 
@@ -68,8 +73,11 @@ interface TypeRow {
 interface SubjectRow {
   id: string;
   name: string;
+  name_bn?: string;
   total_marks: number;
+  total_marks_bn?: string;
   pass_marks: number;
+  pass_marks_bn?: string;
   exam_part_id: string;
   exam_type_id: string;
   exam_type_name?: string;
@@ -87,10 +95,19 @@ const STEPS: Step[] = ['department', 'authority', 'exam', 'part', 'type', 'subje
 
 const emptyDept = { name: '', short_name: '', location: '', website: '' };
 const emptyAuth = { name: '', authority_type: 'central' as (typeof AUTHORITY_TYPES)[number], contact_email: '', contact_phone: '' };
-const emptyExam = { name: '', short_name: '', registration_fee: 500, goal: '', description: '' };
-const emptyPart = { name: '', part_number: 1, total_marks: 100, pass_marks: 40, description: '' };
+const emptyExam = { name: '', name_bn: '', short_name: '', short_name_bn: '', registration_fee: 500, goal: '', description: '' };
+const emptyPart = {
+  name: '',
+  name_bn: '',
+  part_number: 1,
+  total_marks: 100,
+  total_marks_bn: '',
+  pass_marks: 40,
+  pass_marks_bn: '',
+  description: '',
+};
 const emptyType = { name: 'Written', code: 'WRITTEN', total_marks: 100, pass_marks: 40, total_time: 180 };
-const emptySubject = { name: '', total_marks: 100, pass_marks: 40 };
+const emptySubject = { name: '', name_bn: '', total_marks: 100, total_marks_bn: '', pass_marks: 40, pass_marks_bn: '' };
 
 export default function ExamsAdminPage() {
   const router = useRouter();
@@ -250,7 +267,9 @@ export default function ExamsAdminPage() {
       const r = await apiFetch<{ data: ExamRow & { description?: string } }>(`/exams/names/${id}`);
       setExamForm({
         name: r.data.name,
+        name_bn: r.data.name_bn ?? '',
         short_name: r.data.short_name,
+        short_name_bn: r.data.short_name_bn ?? '',
         registration_fee: r.data.registration_fee,
         goal: r.data.goal ?? '',
         description: r.data.description ?? '',
@@ -263,9 +282,12 @@ export default function ExamsAdminPage() {
       const r = await apiFetch<{ data: PartRow & { description?: string } }>(`/exams/parts/${id}`);
       setPartForm({
         name: r.data.name,
+        name_bn: r.data.name_bn ?? '',
         part_number: r.data.part_number,
         total_marks: r.data.total_marks,
+        total_marks_bn: r.data.total_marks_bn ?? '',
         pass_marks: r.data.pass_marks,
+        pass_marks_bn: r.data.pass_marks_bn ?? '',
         description: r.data.description ?? '',
       });
       setSelectedExam(r.data.exam_name_id);
@@ -287,8 +309,11 @@ export default function ExamsAdminPage() {
       const r = await apiFetch<{ data: SubjectRow }>(`/exams/subjects/${id}`);
       setSubjectForm({
         name: r.data.name,
+        name_bn: r.data.name_bn ?? '',
         total_marks: r.data.total_marks,
+        total_marks_bn: r.data.total_marks_bn ?? '',
         pass_marks: r.data.pass_marks,
+        pass_marks_bn: r.data.pass_marks_bn ?? '',
       });
       setSelectedPart(r.data.exam_part_id);
       setSelectedType(r.data.exam_type_id);
@@ -340,6 +365,8 @@ export default function ExamsAdminPage() {
         const body = {
           ...examForm,
           authority_id: selectedAuth,
+          name_bn: examForm.name_bn.trim() || undefined,
+          short_name_bn: examForm.short_name_bn.trim() || undefined,
           goal: examForm.goal || undefined,
           description: examForm.description || undefined,
         };
@@ -358,6 +385,9 @@ export default function ExamsAdminPage() {
         const body = {
           ...partForm,
           exam_name_id: selectedExam,
+          name_bn: partForm.name_bn.trim() || undefined,
+          total_marks_bn: partForm.total_marks_bn.trim() || undefined,
+          pass_marks_bn: partForm.pass_marks_bn.trim() || undefined,
           description: partForm.description || undefined,
         };
         const r = isEdit
@@ -381,7 +411,14 @@ export default function ExamsAdminPage() {
         if (!isEdit) goToStep('subject');
       } else if (step === 'subject') {
         if (!selectedPart || !selectedType) throw new Error('Select part and type');
-        const body = { ...subjectForm, exam_part_id: selectedPart, exam_type_id: selectedType };
+        const body = {
+          ...subjectForm,
+          exam_part_id: selectedPart,
+          exam_type_id: selectedType,
+          name_bn: subjectForm.name_bn.trim() || undefined,
+          total_marks_bn: subjectForm.total_marks_bn.trim() || undefined,
+          pass_marks_bn: subjectForm.pass_marks_bn.trim() || undefined,
+        };
         const r = isEdit
           ? await apiFetch<{ data: SubjectRow }>(`/exams/subjects/${editId}`, { method: 'PATCH', body: JSON.stringify(body) })
           : await apiFetch<{ data: { id: string } }>('/exams/subjects', { method: 'POST', body: JSON.stringify(body) });
@@ -578,8 +615,14 @@ export default function ExamsAdminPage() {
                 <div className="rounded-lg bg-slate-50 p-3">
                   <div className="font-semibold">Exam</div>
                   <div>{overview.exam.name}</div>
+                  {overview.exam.name_bn && (
+                    <div className="text-sm text-muted">{overview.exam.name_bn}</div>
+                  )}
                   <div className="mt-1 flex flex-wrap gap-1">
                     <Badge variant="outline">{overview.exam.short_name}</Badge>
+                    {overview.exam.short_name_bn && (
+                      <Badge variant="outline">{overview.exam.short_name_bn}</Badge>
+                    )}
                     <Badge variant="outline">৳{overview.exam.registration_fee}</Badge>
                   </div>
                   <Button
@@ -608,7 +651,16 @@ export default function ExamsAdminPage() {
                 {overview.parts.map((p) => (
                   <div key={p.id} className="rounded-lg border border-border p-3">
                     <div className="font-medium">Part {p.part_number}: {p.name}</div>
-                    <div className="text-muted">{p.total_marks} marks · pass {p.pass_marks}</div>
+                    {p.name_bn && <div className="text-sm text-muted">{p.name_bn}</div>}
+                    <div className="text-muted">
+                      {p.total_marks} marks · pass {p.pass_marks}
+                      {(p.total_marks_bn || p.pass_marks_bn) && (
+                        <span>
+                          {' '}
+                          ({[p.total_marks_bn, p.pass_marks_bn].filter(Boolean).join(' · ')})
+                        </span>
+                      )}
+                    </div>
                     <Button type="button" size="sm" variant="ghost" className="mt-1 h-7 px-2" onClick={() => { goToStep('part'); loadForEdit('part', p.id); }}>
                       <Pencil className="h-3 w-3" /> Edit part
                     </Button>
@@ -616,7 +668,12 @@ export default function ExamsAdminPage() {
                       <ul className="mt-2 space-y-1 border-t border-border pt-2">
                         {p.subjects.map((s) => (
                           <li key={s.id} className="flex flex-wrap items-center justify-between gap-2">
-                            <span>{s.name} ({s.total_marks}m)</span>
+                            <span>
+                              {s.name}
+                              {s.name_bn ? ` (${s.name_bn})` : ''} ({s.total_marks}m
+                              {s.total_marks_bn ? ` / ${s.total_marks_bn}` : ''}
+                              {s.pass_marks_bn ? `, pass ${s.pass_marks_bn}` : ''})
+                            </span>
                             <div className="flex gap-1">
                               <Button type="button" size="sm" variant="ghost" className="h-7 px-2" onClick={() => { goToStep('subject'); loadForEdit('subject', s.id); }}>
                                 <Pencil className="h-3 w-3" />
@@ -771,15 +828,23 @@ export default function ExamsAdminPage() {
                       <Label htmlFor="exam-name">Exam name</Label>
                       <Input id="exam-name" value={examForm.name} onChange={(e) => setExamForm((f) => ({ ...f, name: e.target.value }))} required />
                     </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="exam-name-bn">Exam name (Bangla)</Label>
+                      <Input id="exam-name-bn" value={examForm.name_bn} onChange={(e) => setExamForm((f) => ({ ...f, name_bn: e.target.value }))} />
+                    </div>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div className="space-y-1.5">
                         <Label htmlFor="exam-short">Short name</Label>
                         <Input id="exam-short" value={examForm.short_name} onChange={(e) => setExamForm((f) => ({ ...f, short_name: e.target.value }))} required />
                       </div>
                       <div className="space-y-1.5">
-                        <Label htmlFor="exam-fee">Registration fee (BDT)</Label>
-                        <Input id="exam-fee" type="number" value={examForm.registration_fee} onChange={(e) => setExamForm((f) => ({ ...f, registration_fee: Number(e.target.value) }))} />
+                        <Label htmlFor="exam-short-bn">Short name (Bangla)</Label>
+                        <Input id="exam-short-bn" value={examForm.short_name_bn} onChange={(e) => setExamForm((f) => ({ ...f, short_name_bn: e.target.value }))} />
                       </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="exam-fee">Registration fee (BDT)</Label>
+                      <Input id="exam-fee" type="number" value={examForm.registration_fee} onChange={(e) => setExamForm((f) => ({ ...f, registration_fee: Number(e.target.value) }))} />
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="exam-goal">Goal</Label>
@@ -817,6 +882,10 @@ export default function ExamsAdminPage() {
                       <Label htmlFor="part-name">Part name</Label>
                       <Input id="part-name" value={partForm.name} onChange={(e) => setPartForm((f) => ({ ...f, name: e.target.value }))} required />
                     </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="part-name-bn">Part name (Bangla)</Label>
+                      <Input id="part-name-bn" value={partForm.name_bn} onChange={(e) => setPartForm((f) => ({ ...f, name_bn: e.target.value }))} />
+                    </div>
                     <div className="grid gap-3 sm:grid-cols-3">
                       <div className="space-y-1.5">
                         <Label htmlFor="part-number">Part number</Label>
@@ -829,6 +898,16 @@ export default function ExamsAdminPage() {
                       <div className="space-y-1.5">
                         <Label htmlFor="part-pass">Pass marks</Label>
                         <Input id="part-pass" type="number" min={0} value={partForm.pass_marks} onChange={(e) => setPartForm((f) => ({ ...f, pass_marks: Number(e.target.value) }))} />
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="part-total-bn">Total marks (Bangla)</Label>
+                        <Input id="part-total-bn" value={partForm.total_marks_bn} onChange={(e) => setPartForm((f) => ({ ...f, total_marks_bn: e.target.value }))} placeholder="e.g. ১০০" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="part-pass-bn">Pass marks (Bangla)</Label>
+                        <Input id="part-pass-bn" value={partForm.pass_marks_bn} onChange={(e) => setPartForm((f) => ({ ...f, pass_marks_bn: e.target.value }))} placeholder="e.g. ৪০" />
                       </div>
                     </div>
                     <div className="space-y-1.5">
@@ -923,6 +1002,10 @@ export default function ExamsAdminPage() {
                       <Label htmlFor="subj-name">Subject name</Label>
                       <Input id="subj-name" value={subjectForm.name} onChange={(e) => setSubjectForm((f) => ({ ...f, name: e.target.value }))} required />
                     </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="subj-name-bn">Subject name (Bangla)</Label>
+                      <Input id="subj-name-bn" value={subjectForm.name_bn} onChange={(e) => setSubjectForm((f) => ({ ...f, name_bn: e.target.value }))} />
+                    </div>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div className="space-y-1.5">
                         <Label htmlFor="subj-total">Total marks</Label>
@@ -931,6 +1014,14 @@ export default function ExamsAdminPage() {
                       <div className="space-y-1.5">
                         <Label htmlFor="subj-pass">Pass marks</Label>
                         <Input id="subj-pass" type="number" min={0} value={subjectForm.pass_marks} onChange={(e) => setSubjectForm((f) => ({ ...f, pass_marks: Number(e.target.value) }))} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="subj-total-bn">Total marks (Bangla)</Label>
+                        <Input id="subj-total-bn" value={subjectForm.total_marks_bn} onChange={(e) => setSubjectForm((f) => ({ ...f, total_marks_bn: e.target.value }))} placeholder="e.g. ১০০" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="subj-pass-bn">Pass marks (Bangla)</Label>
+                        <Input id="subj-pass-bn" value={subjectForm.pass_marks_bn} onChange={(e) => setSubjectForm((f) => ({ ...f, pass_marks_bn: e.target.value }))} placeholder="e.g. ৪০" />
                       </div>
                     </div>
                   </>

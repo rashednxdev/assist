@@ -37,6 +37,7 @@ export default function NewPaperPage() {
   const [error, setError] = useState('');
   const [form, setForm] = useState({
     examId: '',
+    session_year: '',
     exam_subject_id: '',
     paper_type_id: '',
     name: '',
@@ -81,13 +82,14 @@ export default function NewPaperPage() {
           exam_subject_id: form.exam_subject_id,
           paper_type_id: form.paper_type_id,
           name: form.name,
+          session_year: form.session_year.trim(),
           total_marks: form.total_marks,
           pass_marks: form.pass_marks,
           duration_minutes: form.duration_minutes,
           instructions: form.instructions || undefined,
         }),
       });
-      router.push(`/papers/${res.data.id}`);
+      router.push(`/papers/${res.data.id}/edit`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create paper');
     }
@@ -131,6 +133,15 @@ export default function NewPaperPage() {
                   </option>
                 ))}
               </select>
+            </div>
+            <div>
+              <Label>Session / Year</Label>
+              <Input
+                required
+                value={form.session_year}
+                onChange={(e) => setForm((f) => ({ ...f, session_year: e.target.value }))}
+                placeholder="e.g. 2024 or 2024-25"
+              />
             </div>
             <div>
               <Label>Subject</Label>

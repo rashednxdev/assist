@@ -16,6 +16,7 @@ export const createPaperSchema = z.object({
   exam_subject_id: mongoId,
   paper_type_id: mongoId,
   name: z.string().min(1),
+  session_year: z.string().min(1).max(32),
   total_marks: z.number().positive(),
   pass_marks: z.number().min(0),
   duration_minutes: z.number().positive(),

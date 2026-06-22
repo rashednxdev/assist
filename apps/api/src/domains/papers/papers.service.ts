@@ -22,7 +22,8 @@ import { ExamPart } from '../exams/models/ExamPart.model.js';
 import { ExamName } from '../exams/models/ExamName.model.js';
 import { Question } from '../questions/models/Question.model.js';
 import { QuestionType } from '../questions/models/QuestionType.model.js';
-import { notFound, badRequest } from '../../shared/errors/AppError.js';
+import { notFound, badRequest, forbidden } from '../../shared/errors/AppError.js';
+import type { AuthUser } from '../../middleware/auth.js';
 
 function idStr(v: mongoose.Types.ObjectId | string | undefined) {
   return v ? String(v) : undefined;
@@ -33,6 +34,16 @@ async function assertPublishedQuestion(questionId: string) {
   if (!q || !q.is_active) throw notFound('Question not found');
   if (!q.is_published) throw badRequest('Only published questions can be added to a paper');
   return q;
+}
+
+function isPlatformAdmin(user?: Pick<AuthUser, 'is_super_admin' | 'user_type'>) {
+  return !!user && (user.is_super_admin || user.user_type === 'system_admin' || user.user_type === 'admin');
+}
+
+function assertPaperReadable(paper: InstanceType<typeof PaperDetail>, user?: AuthUser) {
+  if (!paper.is_published && !isPlatformAdmin(user)) {
+    throw forbidden('Only published papers are available');
+  }
 }
 
 async function getPaperOrThrow(id: string, requireUnpublished = false) {
@@ -51,8 +62,11 @@ async function enrichSubject(examSubjectId: mongoose.Types.ObjectId | string) {
   const exam = part ? await ExamName.findById(part.exam_name_id) : null;
   return {
     exam_subject_name: subject.name,
+    exam_subject_name_bn: subject.name_bn,
     exam_name: exam?.name,
+    exam_name_bn: exam?.name_bn,
     exam_short_name: exam?.short_name,
+    exam_short_name_bn: exam?.short_name_bn,
   };
 }
 
@@ -75,6 +89,7 @@ function serializePaper(
     exam_subject_id: String(p.exam_subject_id),
     paper_type_id: String(p.paper_type_id),
     name: p.name,
+    session_year: p.session_year,
     total_marks: p.total_marks,
     pass_marks: p.pass_marks,
     duration_minutes: p.duration_minutes,
@@ -216,11 +231,15 @@ export async function deletePaperType(id: string) {
 
 // --- Papers ---
 
-export async function listPapers(filters: ListPapersQuery) {
+export async function listPapers(filters: ListPapersQuery, options?: { publishedOnly?: boolean }) {
   const query: Record<string, unknown> = { is_active: true };
   if (filters.exam_subject_id) query.exam_subject_id = filters.exam_subject_id;
-  if (filters.is_published === 'true') query.is_published = true;
-  if (filters.is_published === 'false') query.is_published = false;
+  if (options?.publishedOnly) {
+    query.is_published = true;
+  } else {
+    if (filters.is_published === 'true') query.is_published = true;
+    if (filters.is_published === 'false') query.is_published = false;
+  }
 
   const papers = await PaperDetail.find(query).sort({ created_at: -1 });
   const typeIds = [...new Set(papers.map((p) => String(p.paper_type_id)))];
@@ -243,8 +262,9 @@ export async function listPapers(filters: ListPapersQuery) {
   return enriched;
 }
 
-export async function getPaperById(id: string) {
+export async function getPaperById(id: string, user?: AuthUser) {
   const paper = await getPaperOrThrow(id);
+  assertPaperReadable(paper, user);
   const [subjectInfo, type] = await Promise.all([
     enrichSubject(paper.exam_subject_id),
     PaperType.findById(paper.paper_type_id),
@@ -260,8 +280,8 @@ export async function getPaperById(id: string) {
   });
 }
 
-export async function getPaperCompose(id: string) {
-  const paper = await getPaperById(id);
+export async function getPaperCompose(id: string, user?: AuthUser) {
+  const paper = await getPaperById(id, user);
   const groups = await PaperGroup.find({ paper_id: id, is_active: true }).sort({ group_number: 1 });
   const questions = await PaperQuestion.find({ paper_id: id, is_active: true }).sort({ question_number: 1 });
   const pqIds = questions.map((q) => q._id);

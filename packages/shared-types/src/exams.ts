@@ -32,7 +32,9 @@ export const updateAuthoritySchema = createAuthoritySchema.partial().extend({
 export const createExamNameSchema = z.object({
   authority_id: mongoId,
   name: z.string().min(1),
+  name_bn: z.string().optional(),
   short_name: z.string().min(1),
+  short_name_bn: z.string().optional(),
   goal: z.string().optional(),
   description: z.string().optional(),
   eligibility_criteria: z.string().optional(),
@@ -48,10 +50,13 @@ export const updateExamNameSchema = createExamNameSchema.partial().extend({
 export const createExamPartSchema = z.object({
   exam_name_id: mongoId,
   name: z.string().min(1),
+  name_bn: z.string().optional(),
   part_number: z.number().int().positive(),
   description: z.string().optional(),
   total_marks: z.number().positive(),
+  total_marks_bn: z.string().optional(),
   pass_marks: z.number().min(0),
+  pass_marks_bn: z.string().optional(),
   qualifier_outline: z.string().optional(),
   note: z.string().optional(),
 });
@@ -79,8 +84,11 @@ export const createExamSubjectSchema = z.object({
   exam_part_id: mongoId,
   exam_type_id: mongoId,
   name: z.string().min(1),
+  name_bn: z.string().optional(),
   total_marks: z.number().positive(),
+  total_marks_bn: z.string().optional(),
   pass_marks: z.number().min(0),
+  pass_marks_bn: z.string().optional(),
 });
 
 export const updateExamSubjectSchema = createExamSubjectSchema.partial().extend({

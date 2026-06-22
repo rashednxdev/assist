@@ -107,3 +107,13 @@ body {
 .ibas-tab:not(.ibas-tab-active):hover {
   @apply text-foreground;
 }
+
+/* Physical question paper (Bangla) */
+.paper-sheet {
+  font-family: 'Noto Sans Bengali', 'Hind Siliguri', var(--font-sans), sans-serif;
+  background: #fffdf7;
+}
+
+.paper-sheet-question {
+  @apply py-3 text-[15px] leading-relaxed text-foreground;
+}

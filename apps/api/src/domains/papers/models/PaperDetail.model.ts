@@ -4,6 +4,7 @@ export interface IPaperDetail extends Document {
   exam_subject_id: Types.ObjectId;
   paper_type_id: Types.ObjectId;
   name: string;
+  session_year?: string;
   total_marks: number;
   pass_marks: number;
   duration_minutes: number;
@@ -19,6 +20,7 @@ const schema = new Schema<IPaperDetail>(
     exam_subject_id: { type: Schema.Types.ObjectId, required: true, ref: 'ExamSubject' },
     paper_type_id: { type: Schema.Types.ObjectId, required: true, ref: 'PaperType' },
     name: { type: String, required: true },
+    session_year: { type: String },
     total_marks: { type: Number, required: true },
     pass_marks: { type: Number, required: true },
     duration_minutes: { type: Number, required: true },

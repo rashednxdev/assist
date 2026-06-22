@@ -16,6 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 interface PaperItem {
   id: string;
   name: string;
+  session_year?: string;
   total_marks: number;
   pass_marks: number;
   duration_minutes: number;
@@ -47,11 +48,11 @@ export default function PapersPage() {
   const [subjectId, setSubjectId] = useState('');
   const [published, setPublished] = useState('');
 
-  function load(sub?: string, pub?: string) {
+  function load(sub?: string, pub?: string, admin = isAdmin) {
     setLoading(true);
     const params = new URLSearchParams();
     if (sub) params.set('exam_subject_id', sub);
-    if (pub === 'true' || pub === 'false') params.set('is_published', pub);
+    if (admin && (pub === 'true' || pub === 'false')) params.set('is_published', pub);
     const qs = params.toString() ? `?${params.toString()}` : '';
     apiFetch<{ data: PaperItem[] }>(`/papers${qs}`)
       .then((r) => setPapers(r.data))
@@ -59,15 +60,15 @@ export default function PapersPage() {
   }
 
   useEffect(() => {
-    load();
     apiFetch<{ data: ExamName[] }>('/exams/names').then((r) => setExams(r.data));
     fetchMe()
       .then((res) => {
-        setIsAdmin(
-          res.data.is_super_admin || res.data.user_type === 'system_admin' || res.data.user_type === 'admin',
-        );
+        const admin =
+          res.data.is_super_admin || res.data.user_type === 'system_admin' || res.data.user_type === 'admin';
+        setIsAdmin(admin);
+        load(undefined, published, admin);
       })
-      .catch(() => {});
+      .catch(() => load());
   }, []);
 
   useEffect(() => {
@@ -94,7 +95,11 @@ export default function PapersPage() {
     <div className="space-y-6">
       <PageHeader
         title="Question papers"
-        description="Compose, section, and publish practice and exam papers."
+        description={
+          isAdmin
+            ? 'Compose, section, and publish practice and exam papers.'
+            : 'Browse published practice and exam papers.'
+        }
         action={
           isAdmin ? (
             <Button asChild size="sm">
@@ -146,19 +151,21 @@ export default function PapersPage() {
               ))}
             </select>
           </div>
-          <div>
-            <Label>Status</Label>
-            <select
-              value={published}
-              onChange={(e) => setPublished(e.target.value)}
-              className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            >
-              <option value="">All</option>
-              <option value="true">Published</option>
-              <option value="false">Draft</option>
-            </select>
-          </div>
-          <div className="flex items-end">
+          {isAdmin && (
+            <div>
+              <Label>Status</Label>
+              <select
+                value={published}
+                onChange={(e) => setPublished(e.target.value)}
+                className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">All</option>
+                <option value="true">Published</option>
+                <option value="false">Draft</option>
+              </select>
+            </div>
+          )}
+          <div className={`flex items-end ${isAdmin ? '' : 'sm:col-span-2 lg:col-span-1'}`}>
             <Button onClick={() => load(subjectId || undefined, published)} className="w-full">
               Apply
             </Button>
@@ -173,8 +180,12 @@ export default function PapersPage() {
         </div>
       ) : papers.length === 0 ? (
         <EmptyState
-          title="No papers yet"
-          description="Create a paper and add published questions from the question bank."
+          title={isAdmin ? 'No papers yet' : 'No published papers'}
+          description={
+            isAdmin
+              ? 'Create a paper and add published questions from the question bank.'
+              : 'Published papers will appear here when they are available.'
+          }
           action={
             isAdmin ? (
               <Button asChild>
@@ -190,14 +201,18 @@ export default function PapersPage() {
               <CardHeader className="flex flex-row items-start justify-between gap-2">
                 <div>
                   <CardTitle className="text-base">
-                    <Link href={`/papers/${p.id}`} className="hover:underline">
+                    <Link
+                      href={isAdmin && !p.is_published ? `/papers/${p.id}/edit` : `/papers/${p.id}`}
+                      className="hover:underline"
+                    >
                       {p.name}
                     </Link>
                   </CardTitle>
-                  <p className="mt-1 text-sm text-muted">
-                    {p.exam_short_name && `${p.exam_short_name} · `}
-                    {p.exam_subject_name}
-                  </p>
+                      <p className="mt-1 text-sm text-muted">
+                        {p.exam_short_name && `${p.exam_short_name} · `}
+                        {p.exam_subject_name}
+                        {p.session_year ? ` · ${p.session_year}` : ''}
+                      </p>
                 </div>
                 <Badge variant={p.is_published ? 'default' : 'outline'}>
                   {p.is_published ? 'Published' : 'Draft'}

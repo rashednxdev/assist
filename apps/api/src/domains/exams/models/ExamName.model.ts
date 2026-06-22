@@ -3,7 +3,9 @@ import mongoose, { Schema, type Document, type Types } from 'mongoose';
 export interface IExamName extends Document {
   authority_id: Types.ObjectId;
   name: string;
+  name_bn?: string;
   short_name: string;
+  short_name_bn?: string;
   goal?: string;
   description?: string;
   eligibility_criteria?: string;
@@ -18,7 +20,9 @@ const schema = new Schema<IExamName>(
   {
     authority_id: { type: Schema.Types.ObjectId, required: true, ref: 'Authority' },
     name: { type: String, required: true },
+    name_bn: { type: String },
     short_name: { type: String, required: true, unique: true },
+    short_name_bn: { type: String },
     goal: { type: String },
     description: { type: String },
     eligibility_criteria: { type: String },

@@ -5,6 +5,7 @@ export interface IPaperDetail extends Document {
   paper_type_id: Types.ObjectId;
   name: string;
   session_year?: string;
+  exam_session_id: Types.ObjectId;
   total_marks: number;
   pass_marks: number;
   duration_minutes: number;
@@ -21,6 +22,7 @@ const schema = new Schema<IPaperDetail>(
     paper_type_id: { type: Schema.Types.ObjectId, required: true, ref: 'PaperType' },
     name: { type: String, required: true },
     session_year: { type: String },
+    exam_session_id: { type: Schema.Types.ObjectId, required: true, ref: 'ExamSession' },
     total_marks: { type: Number, required: true },
     pass_marks: { type: Number, required: true },
     duration_minutes: { type: Number, required: true },
@@ -34,6 +36,11 @@ const schema = new Schema<IPaperDetail>(
 );
 
 schema.index({ exam_subject_id: 1, is_published: 1 });
+schema.index({ exam_session_id: 1 });
 schema.index({ paper_type_id: 1 });
+schema.index(
+  { exam_subject_id: 1, exam_session_id: 1, paper_type_id: 1 },
+  { unique: true, partialFilterExpression: { is_active: true } },
+);
 
 export const PaperDetail = mongoose.model<IPaperDetail>('PaperDetail', schema, 'paper_details');

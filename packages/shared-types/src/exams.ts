@@ -47,6 +47,17 @@ export const updateExamNameSchema = createExamNameSchema.partial().extend({
   is_active: z.boolean().optional(),
 });
 
+export const createExamSessionSchema = z.object({
+  exam_name_id: mongoId,
+  label_en: z.string().min(1).max(128),
+  label_bn: z.string().optional(),
+  sort_order: z.number().int().optional(),
+});
+
+export const updateExamSessionSchema = createExamSessionSchema.partial().extend({
+  is_active: z.boolean().optional(),
+});
+
 export const createExamPartSchema = z.object({
   exam_name_id: mongoId,
   name: z.string().min(1),
@@ -101,6 +112,8 @@ export type CreateAuthorityDto = z.infer<typeof createAuthoritySchema>;
 export type UpdateAuthorityDto = z.infer<typeof updateAuthoritySchema>;
 export type CreateExamNameDto = z.infer<typeof createExamNameSchema>;
 export type UpdateExamNameDto = z.infer<typeof updateExamNameSchema>;
+export type CreateExamSessionDto = z.infer<typeof createExamSessionSchema>;
+export type UpdateExamSessionDto = z.infer<typeof updateExamSessionSchema>;
 export type CreateExamPartDto = z.infer<typeof createExamPartSchema>;
 export type UpdateExamPartDto = z.infer<typeof updateExamPartSchema>;
 export type CreateExamTypeDto = z.infer<typeof createExamTypeSchema>;

@@ -29,5 +29,9 @@ const schema = new Schema<IExamSubject>(
 
 schema.index({ exam_part_id: 1, is_active: 1 });
 schema.index({ exam_type_id: 1 });
+schema.index(
+  { exam_part_id: 1, exam_type_id: 1, name: 1 },
+  { unique: true, partialFilterExpression: { is_active: true } },
+);
 
 export const ExamSubject = mongoose.model<IExamSubject>('ExamSubject', schema, 'exam_subjects');

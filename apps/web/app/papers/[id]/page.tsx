@@ -31,9 +31,12 @@ interface ComposeData {
     is_published: boolean;
     exam_subject_name?: string;
     exam_subject_name_bn?: string;
+    exam_part_name?: string;
+    exam_part_name_bn?: string;
     exam_name?: string;
     exam_name_bn?: string;
     exam_short_name?: string;
+    session_label_bn?: string;
     paper_type_name?: string;
   };
   groups: Array<{
@@ -113,8 +116,13 @@ function renderQuestionRow(paperId: string, pq: PaperQuestionRow) {
 
 function PaperHeader({ paper }: { paper: ComposeData['paper'] }) {
   const examName = paper.exam_name_bn?.trim() || paper.exam_name?.trim() || paper.exam_short_name || '';
-  const sessionYear = paper.session_year?.trim() ?? '';
-  const examLine = sessionYear ? `${banglaText(examName)}/${banglaText(sessionYear)}` : banglaText(examName);
+  const partName =
+    paper.exam_part_name_bn?.trim() || paper.exam_part_name?.trim() || '';
+  const sessionLabel = paper.session_label_bn?.trim() || paper.session_year?.trim() || '';
+  const examLine = [examName, partName, sessionLabel]
+    .filter(Boolean)
+    .map((segment) => banglaText(segment))
+    .join('/');
   const subjectLine = paper.exam_subject_name_bn?.trim() || paper.exam_subject_name?.trim() || '';
 
   return (

@@ -6,6 +6,8 @@ import type {
   UpdateAuthorityDto,
   CreateExamNameDto,
   UpdateExamNameDto,
+  CreateExamSessionDto,
+  UpdateExamSessionDto,
   CreateExamPartDto,
   UpdateExamPartDto,
   CreateExamTypeDto,
@@ -19,6 +21,8 @@ import { ExamName } from './models/ExamName.model.js';
 import { ExamPart } from './models/ExamPart.model.js';
 import { ExamType } from './models/ExamType.model.js';
 import { ExamSubject } from './models/ExamSubject.model.js';
+import { ExamSession } from './models/ExamSession.model.js';
+import { PaperDetail } from '../papers/models/PaperDetail.model.js';
 import { notFound, badRequest } from '../../shared/errors/AppError.js';
 
 function idStr(v: mongoose.Types.ObjectId | string | undefined) {
@@ -102,6 +106,18 @@ function serializeExamType(t: InstanceType<typeof ExamType>) {
     total_time: t.total_time,
     note: t.note,
     is_active: t.is_active,
+  };
+}
+
+function serializeExamSession(s: InstanceType<typeof ExamSession>) {
+  return {
+    id: String(s._id),
+    exam_name_id: String(s.exam_name_id),
+    label_en: s.label_en,
+    label_bn: s.label_bn,
+    sort_order: s.sort_order,
+    is_active: s.is_active,
+    created_at: s.created_at,
   };
 }
 
@@ -248,6 +264,7 @@ export async function deleteExamName(id: string) {
     ExamType.find({ exam_name_id: e._id, is_active: true }),
   ]);
   const partIds = parts.map((p) => p._id);
+  await ExamSession.updateMany({ exam_name_id: e._id }, { is_active: false });
   await ExamSubject.updateMany({ exam_part_id: { $in: partIds } }, { is_active: false });
   await ExamPart.updateMany({ exam_name_id: e._id }, { is_active: false });
   await ExamType.updateMany({ exam_name_id: e._id }, { is_active: false });
@@ -263,9 +280,10 @@ export async function getExamTree(examNameId: string) {
   const authority = await Authority.findById(exam.authority_id);
   const department = authority ? await Department.findById(authority.department_id) : null;
 
-  const [parts, types] = await Promise.all([
+  const [parts, types, sessions] = await Promise.all([
     ExamPart.find({ exam_name_id: examNameId, is_active: true }).sort({ part_number: 1 }),
     ExamType.find({ exam_name_id: examNameId, is_active: true }).sort({ name: 1 }),
+    ExamSession.find({ exam_name_id: examNameId, is_active: true }).sort({ sort_order: -1, label_en: -1 }),
   ]);
 
   const partIds = parts.map((p) => p._id);
@@ -283,6 +301,7 @@ export async function getExamTree(examNameId: string) {
     department: department ? serializeDepartment(department) : null,
     authority: authority ? serializeAuthority(authority, department?.name) : null,
     exam: serializeExamName(exam, authority?.name),
+    sessions: sessions.map(serializeExamSession),
     parts: partsWithSubjects,
     types: types.map(serializeExamType),
   };
@@ -311,6 +330,77 @@ export async function getExamTypeById(id: string) {
   const t = await ExamType.findById(id);
   if (!t || !t.is_active) throw notFound('Exam type not found');
   return serializeExamType(t);
+}
+
+// --- Exam sessions ---
+
+export async function listExamSessions(examNameId: string) {
+  const items = await ExamSession.find({ exam_name_id: examNameId, is_active: true }).sort({
+    sort_order: -1,
+    label_en: -1,
+  });
+  return items.map(serializeExamSession);
+}
+
+export async function getExamSessionById(id: string) {
+  const s = await ExamSession.findById(id);
+  if (!s || !s.is_active) throw notFound('Session/year not found');
+  return serializeExamSession(s);
+}
+
+export async function createExamSession(dto: CreateExamSessionDto) {
+  const exam = await ExamName.findById(dto.exam_name_id);
+  if (!exam || !exam.is_active) throw notFound('Exam not found');
+  const clash = await ExamSession.findOne({
+    exam_name_id: dto.exam_name_id,
+    label_en: dto.label_en.trim(),
+    is_active: true,
+  });
+  if (clash) throw badRequest('This session/year/training entry already exists for the exam program');
+  const latest = await ExamSession.findOne({ exam_name_id: dto.exam_name_id })
+    .sort({ sort_order: -1 })
+    .select('sort_order');
+  const s = await ExamSession.create({
+    exam_name_id: dto.exam_name_id,
+    label_en: dto.label_en.trim(),
+    label_bn: dto.label_bn?.trim() || undefined,
+    sort_order: dto.sort_order ?? (latest?.sort_order ?? 0) + 1,
+    is_active: true,
+    created_at: new Date(),
+  });
+  return serializeExamSession(s);
+}
+
+export async function updateExamSession(id: string, dto: UpdateExamSessionDto) {
+  const s = await ExamSession.findById(id);
+  if (!s) throw notFound('Session/year not found');
+  if (dto.label_en && dto.label_en.trim() !== s.label_en) {
+    const clash = await ExamSession.findOne({
+      exam_name_id: s.exam_name_id,
+      label_en: dto.label_en.trim(),
+      is_active: true,
+      _id: { $ne: s._id },
+    });
+    if (clash) throw badRequest('This session/year/training entry already exists for the exam program');
+  }
+  if (dto.label_en !== undefined) s.label_en = dto.label_en.trim();
+  if (dto.label_bn !== undefined) s.label_bn = dto.label_bn.trim() || undefined;
+  if (dto.sort_order !== undefined) s.sort_order = dto.sort_order;
+  if (dto.is_active !== undefined) s.is_active = dto.is_active;
+  await s.save();
+  return serializeExamSession(s);
+}
+
+export async function deleteExamSession(id: string) {
+  const s = await ExamSession.findById(id);
+  if (!s) throw notFound('Session/year not found');
+  const paperCount = await PaperDetail.countDocuments({ exam_session_id: s._id, is_active: true });
+  if (paperCount > 0) {
+    throw badRequest('Remove or reassign question papers under this session/year first');
+  }
+  s.is_active = false;
+  await s.save();
+  return { deleted: true };
 }
 
 // --- Exam parts ---
@@ -409,6 +499,26 @@ export async function getExamSubjectById(id: string) {
   };
 }
 
+async function assertSubjectSlotUnique(
+  examPartId: mongoose.Types.ObjectId | string,
+  examTypeId: mongoose.Types.ObjectId | string,
+  name: string,
+  excludeId?: mongoose.Types.ObjectId | string,
+) {
+  const dup = await ExamSubject.findOne({
+    exam_part_id: examPartId,
+    exam_type_id: examTypeId,
+    name: name.trim(),
+    is_active: true,
+    ...(excludeId ? { _id: { $ne: excludeId } } : {}),
+  });
+  if (dup) {
+    throw badRequest(
+      'This subject already exists for the selected part and type. Use the existing subject to add more question papers.',
+    );
+  }
+}
+
 export async function createExamSubject(dto: CreateExamSubjectDto) {
   const [part, type] = await Promise.all([
     ExamPart.findById(dto.exam_part_id),
@@ -419,6 +529,7 @@ export async function createExamSubject(dto: CreateExamSubjectDto) {
   if (String(part.exam_name_id) !== String(type.exam_name_id)) {
     throw badRequest('Exam part and type must belong to the same exam');
   }
+  await assertSubjectSlotUnique(dto.exam_part_id, dto.exam_type_id, dto.name);
   const s = await ExamSubject.create({ ...dto, is_active: true });
   return serializeExamSubject(s, type.name);
 }
@@ -431,6 +542,10 @@ export async function updateExamSubject(id: string, dto: UpdateExamSubjectDto) {
     if (!type) throw notFound('Exam type not found');
   }
   Object.assign(s, dto);
+  const partId = dto.exam_part_id ?? s.exam_part_id;
+  const typeId = dto.exam_type_id ?? s.exam_type_id;
+  const name = dto.name ?? s.name;
+  await assertSubjectSlotUnique(partId, typeId, name, s._id);
   await s.save();
   const type = await ExamType.findById(s.exam_type_id);
   return serializeExamSubject(s, type?.name);

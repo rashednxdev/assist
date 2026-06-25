@@ -39,6 +39,7 @@ import { ExamName } from '../../src/domains/exams/models/ExamName.model.js';
 import { ExamPart } from '../../src/domains/exams/models/ExamPart.model.js';
 import { ExamType } from '../../src/domains/exams/models/ExamType.model.js';
 import { ExamSubject } from '../../src/domains/exams/models/ExamSubject.model.js';
+import { ExamSession } from '../../src/domains/exams/models/ExamSession.model.js';
 import { SyllabusGroup } from '../../src/domains/syllabus/models/SyllabusGroup.model.js';
 import { SyllabusTopic } from '../../src/domains/syllabus/models/SyllabusTopic.model.js';
 import { SyllabusSubTopic } from '../../src/domains/syllabus/models/SyllabusSubTopic.model.js';
@@ -94,6 +95,7 @@ async function createIndexes() {
   await ExamName.syncIndexes();
   await ExamPart.syncIndexes();
   await ExamType.syncIndexes();
+  await ExamSession.syncIndexes();
   await ExamSubject.syncIndexes();
   await SyllabusGroup.syncIndexes();
   await SyllabusTopic.syncIndexes();

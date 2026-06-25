@@ -24,6 +24,12 @@ interface ExamName {
   name: string;
 }
 
+interface SessionOption {
+  id: string;
+  label_en: string;
+  label_bn?: string;
+}
+
 interface SubjectOption {
   id: string;
   label: string;
@@ -33,11 +39,12 @@ export default function NewPaperPage() {
   const router = useRouter();
   const [types, setTypes] = useState<PaperType[]>([]);
   const [exams, setExams] = useState<ExamName[]>([]);
+  const [sessions, setSessions] = useState<SessionOption[]>([]);
   const [subjects, setSubjects] = useState<SubjectOption[]>([]);
   const [error, setError] = useState('');
   const [form, setForm] = useState({
     examId: '',
-    session_year: '',
+    exam_session_id: '',
     exam_subject_id: '',
     paper_type_id: '',
     name: '',
@@ -54,12 +61,22 @@ export default function NewPaperPage() {
 
   useEffect(() => {
     if (!form.examId) {
+      setSessions([]);
+      return;
+    }
+    apiFetch<{ data: SessionOption[] }>(`/exams/names/${form.examId}/sessions`)
+      .then((r) => setSessions(r.data))
+      .catch(() => setSessions([]));
+  }, [form.examId]);
+
+  useEffect(() => {
+    if (!form.examId) {
       setSubjects([]);
       return;
     }
-    apiFetch<{ data: { parts: { name: string; subjects: { id: string; name: string }[] }[] } }>(
-      `/exams/names/${form.examId}/tree`,
-    )
+    apiFetch<{
+      data: { parts: { name: string; subjects: { id: string; name: string }[] }[] };
+    }>(`/exams/names/${form.examId}/tree`)
       .then((r) => {
         const opts: SubjectOption[] = [];
         for (const part of r.data.parts) {
@@ -80,9 +97,9 @@ export default function NewPaperPage() {
         method: 'POST',
         body: JSON.stringify({
           exam_subject_id: form.exam_subject_id,
+          exam_session_id: form.exam_session_id,
           paper_type_id: form.paper_type_id,
           name: form.name,
-          session_year: form.session_year.trim(),
           total_marks: form.total_marks,
           pass_marks: form.pass_marks,
           duration_minutes: form.duration_minutes,
@@ -123,7 +140,14 @@ export default function NewPaperPage() {
               <select
                 required
                 value={form.examId}
-                onChange={(e) => setForm((f) => ({ ...f, examId: e.target.value, exam_subject_id: '' }))}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    examId: e.target.value,
+                    exam_session_id: '',
+                    exam_subject_id: '',
+                  }))
+                }
                 className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               >
                 <option value="">Select exam</option>
@@ -135,13 +159,28 @@ export default function NewPaperPage() {
               </select>
             </div>
             <div>
-              <Label>Session / Year</Label>
-              <Input
+              <Label>Session / Year / Training & Others</Label>
+              <select
                 required
-                value={form.session_year}
-                onChange={(e) => setForm((f) => ({ ...f, session_year: e.target.value }))}
-                placeholder="e.g. 2024 or 2024-25"
-              />
+                value={form.exam_session_id}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    exam_session_id: e.target.value,
+                    exam_subject_id: '',
+                  }))
+                }
+                disabled={!form.examId}
+                className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">Select session / year</option>
+                {sessions.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label_en}
+                    {s.label_bn ? ` (${s.label_bn})` : ''}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <Label>Subject</Label>
@@ -159,6 +198,9 @@ export default function NewPaperPage() {
                   </option>
                 ))}
               </select>
+              <p className="mt-1 text-xs text-muted">
+                All subjects for this exam program. Each session + subject + paper type can only have one paper.
+              </p>
             </div>
             <div>
               <Label>Paper type</Label>

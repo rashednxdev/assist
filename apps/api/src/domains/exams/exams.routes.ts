@@ -19,6 +19,11 @@ import {
   createExamNameHandler,
   updateExamNameHandler,
   deleteExamNameHandler,
+  listExamSessionsHandler,
+  getExamSessionHandler,
+  createExamSessionHandler,
+  updateExamSessionHandler,
+  deleteExamSessionHandler,
   listExamPartsHandler,
   createExamPartHandler,
   updateExamPartHandler,
@@ -58,6 +63,12 @@ examsRouter.get('/names/:id/tree', asyncHandler(getExamTreeHandler));
 examsRouter.post('/names', requireAdmin, asyncHandler(createExamNameHandler));
 examsRouter.patch('/names/:id', requireAdmin, asyncHandler(updateExamNameHandler));
 examsRouter.delete('/names/:id', requireAdmin, asyncHandler(deleteExamNameHandler));
+
+examsRouter.get('/names/:examId/sessions', asyncHandler(listExamSessionsHandler));
+examsRouter.get('/sessions/:id', asyncHandler(getExamSessionHandler));
+examsRouter.post('/sessions', requireAdmin, asyncHandler(createExamSessionHandler));
+examsRouter.patch('/sessions/:id', requireAdmin, asyncHandler(updateExamSessionHandler));
+examsRouter.delete('/sessions/:id', requireAdmin, asyncHandler(deleteExamSessionHandler));
 
 examsRouter.get('/names/:examId/parts', asyncHandler(listExamPartsHandler));
 examsRouter.get('/parts/:partId/subjects', asyncHandler(listExamSubjectsHandler));

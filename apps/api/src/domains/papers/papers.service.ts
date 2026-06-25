@@ -20,6 +20,7 @@ import { ChildQuestion } from './models/ChildQuestion.model.js';
 import { ExamSubject } from '../exams/models/ExamSubject.model.js';
 import { ExamPart } from '../exams/models/ExamPart.model.js';
 import { ExamName } from '../exams/models/ExamName.model.js';
+import { ExamSession } from '../exams/models/ExamSession.model.js';
 import { Question } from '../questions/models/Question.model.js';
 import { QuestionType } from '../questions/models/QuestionType.model.js';
 import { notFound, badRequest, forbidden } from '../../shared/errors/AppError.js';
@@ -46,6 +47,29 @@ function assertPaperReadable(paper: InstanceType<typeof PaperDetail>, user?: Aut
   }
 }
 
+async function assertPaperComboUnique(
+  subjectId: string,
+  sessionId: string,
+  typeId: string,
+  excludePaperId?: string,
+) {
+  const query: Record<string, unknown> = {
+    exam_subject_id: new mongoose.Types.ObjectId(subjectId),
+    exam_session_id: new mongoose.Types.ObjectId(sessionId),
+    paper_type_id: new mongoose.Types.ObjectId(typeId),
+    is_active: true,
+  };
+  if (excludePaperId) {
+    query._id = { $ne: new mongoose.Types.ObjectId(excludePaperId) };
+  }
+  const existing = await PaperDetail.findOne(query);
+  if (existing) {
+    throw badRequest(
+      'A question paper already exists for this session, subject, and paper type. Choose a different combination or edit the existing paper.',
+    );
+  }
+}
+
 async function getPaperOrThrow(id: string, requireUnpublished = false) {
   const paper = await PaperDetail.findById(id);
   if (!paper || !paper.is_active) throw notFound('Paper not found');
@@ -63,10 +87,34 @@ async function enrichSubject(examSubjectId: mongoose.Types.ObjectId | string) {
   return {
     exam_subject_name: subject.name,
     exam_subject_name_bn: subject.name_bn,
+    exam_part_name: part?.name,
+    exam_part_name_bn: part?.name_bn,
     exam_name: exam?.name,
     exam_name_bn: exam?.name_bn,
     exam_short_name: exam?.short_name,
     exam_short_name_bn: exam?.short_name_bn,
+    exam_name_id: part ? String(part.exam_name_id) : undefined,
+  };
+}
+
+async function resolveSessionFields(
+  examSessionId: string,
+  examSubjectId?: mongoose.Types.ObjectId | string,
+) {
+  const session = await ExamSession.findById(examSessionId);
+  if (!session || !session.is_active) throw notFound('Session/year/training not found');
+  if (examSubjectId) {
+    const subject = await ExamSubject.findById(examSubjectId);
+    if (!subject || !subject.is_active) throw notFound('Exam subject not found');
+    const part = await ExamPart.findById(subject.exam_part_id);
+    if (part && String(session.exam_name_id) !== String(part.exam_name_id)) {
+      throw badRequest('Session/year must belong to the same exam program as the subject');
+    }
+  }
+  return {
+    exam_session_id: new mongoose.Types.ObjectId(examSessionId),
+    session_year: session.label_en,
+    session_label_bn: session.label_bn,
   };
 }
 
@@ -90,6 +138,7 @@ function serializePaper(
     paper_type_id: String(p.paper_type_id),
     name: p.name,
     session_year: p.session_year,
+    exam_session_id: p.exam_session_id ? String(p.exam_session_id) : undefined,
     total_marks: p.total_marks,
     pass_marks: p.pass_marks,
     duration_minutes: p.duration_minutes,
@@ -234,6 +283,7 @@ export async function deletePaperType(id: string) {
 export async function listPapers(filters: ListPapersQuery, options?: { publishedOnly?: boolean }) {
   const query: Record<string, unknown> = { is_active: true };
   if (filters.exam_subject_id) query.exam_subject_id = filters.exam_subject_id;
+  if (filters.exam_session_id) query.exam_session_id = filters.exam_session_id;
   if (options?.publishedOnly) {
     query.is_published = true;
   } else {
@@ -243,16 +293,24 @@ export async function listPapers(filters: ListPapersQuery, options?: { published
 
   const papers = await PaperDetail.find(query).sort({ created_at: -1 });
   const typeIds = [...new Set(papers.map((p) => String(p.paper_type_id)))];
-  const types = await PaperType.find({ _id: { $in: typeIds } });
+  const sessionIds = [...new Set(papers.map((p) => String(p.exam_session_id)).filter((id) => id !== 'undefined'))];
+  const [types, sessions] = await Promise.all([
+    PaperType.find({ _id: { $in: typeIds } }),
+    ExamSession.find({ _id: { $in: sessionIds } }),
+  ]);
   const typeMap = new Map(types.map((t) => [String(t._id), t]));
+  const sessionMap = new Map(sessions.map((s) => [String(s._id), s]));
 
   const enriched = await Promise.all(
     papers.map(async (p) => {
       const subjectInfo = await enrichSubject(p.exam_subject_id);
       const type = typeMap.get(String(p.paper_type_id));
+      const session = p.exam_session_id ? sessionMap.get(String(p.exam_session_id)) : null;
       const questionCount = await PaperQuestion.countDocuments({ paper_id: p._id, is_active: true });
       return serializePaper(p, {
         ...subjectInfo,
+        session_label_en: session?.label_en,
+        session_label_bn: session?.label_bn,
         paper_type_name: type?.name,
         paper_type_code: type?.code,
         question_count: questionCount,
@@ -265,14 +323,17 @@ export async function listPapers(filters: ListPapersQuery, options?: { published
 export async function getPaperById(id: string, user?: AuthUser) {
   const paper = await getPaperOrThrow(id);
   assertPaperReadable(paper, user);
-  const [subjectInfo, type] = await Promise.all([
+  const [subjectInfo, type, session] = await Promise.all([
     enrichSubject(paper.exam_subject_id),
     PaperType.findById(paper.paper_type_id),
+    paper.exam_session_id ? ExamSession.findById(paper.exam_session_id) : null,
   ]);
   const questionCount = await PaperQuestion.countDocuments({ paper_id: paper._id, is_active: true });
   const allocatedMarks = await computePaperMarks(paper._id);
   return serializePaper(paper, {
     ...subjectInfo,
+    session_label_en: session?.label_en,
+    session_label_bn: session?.label_bn,
     paper_type_name: type?.name,
     paper_type_code: type?.code,
     question_count: questionCount,
@@ -340,8 +401,13 @@ export async function createPaper(dto: CreatePaperDto, userId: string) {
   if (!type || !type.is_active) throw notFound('Paper type not found');
   if (dto.pass_marks > dto.total_marks) throw badRequest('Pass marks cannot exceed total marks');
 
+  const sessionFields = await resolveSessionFields(dto.exam_session_id, dto.exam_subject_id);
+
+  await assertPaperComboUnique(dto.exam_subject_id, dto.exam_session_id, dto.paper_type_id);
+
   const paper = await PaperDetail.create({
     ...dto,
+    ...sessionFields,
     is_published: false,
     is_active: true,
     created_by: new mongoose.Types.ObjectId(userId),
@@ -351,10 +417,20 @@ export async function createPaper(dto: CreatePaperDto, userId: string) {
 }
 
 export async function updatePaper(id: string, dto: UpdatePaperDto) {
-  const paper = await getPaperOrThrow(id, true);
+  const paper = await PaperDetail.findById(id);
+  if (!paper || !paper.is_active) throw notFound('Paper not found');
+
+  const subjectId = dto.exam_subject_id ?? paper.exam_subject_id;
   if (dto.exam_subject_id) {
     const subject = await ExamSubject.findById(dto.exam_subject_id);
     if (!subject || !subject.is_active) throw notFound('Exam subject not found');
+    if (dto.exam_session_id) {
+      const session = await ExamSession.findById(dto.exam_session_id);
+      const part = await ExamPart.findById(subject.exam_part_id);
+      if (session && part && String(session.exam_name_id) !== String(part.exam_name_id)) {
+        throw badRequest('Session/year must belong to the same exam program as the subject');
+      }
+    }
   }
   if (dto.paper_type_id) {
     const type = await PaperType.findById(dto.paper_type_id);
@@ -366,6 +442,17 @@ export async function updatePaper(id: string, dto: UpdatePaperDto) {
   const total = dto.total_marks ?? paper.total_marks;
   const pass = dto.pass_marks ?? paper.pass_marks;
   if (pass > total) throw badRequest('Pass marks cannot exceed total marks');
+
+  if (dto.exam_session_id) {
+    const sessionFields = await resolveSessionFields(dto.exam_session_id, subjectId);
+    paper.exam_session_id = sessionFields.exam_session_id;
+    paper.session_year = sessionFields.session_year;
+    delete dto.exam_session_id;
+  }
+
+  const sessionId = String(paper.exam_session_id);
+  const typeId = String(dto.paper_type_id ?? paper.paper_type_id);
+  await assertPaperComboUnique(String(subjectId), sessionId, typeId, id);
 
   Object.assign(paper, dto);
   await paper.save();

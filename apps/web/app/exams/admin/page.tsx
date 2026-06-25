@@ -17,7 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 
-type Step = 'department' | 'authority' | 'exam' | 'part' | 'type' | 'subject';
+type Step = 'department' | 'authority' | 'exam' | 'session' | 'part' | 'type' | 'subject';
 type FormMode = 'create' | 'edit';
 
 interface DepartmentRow {
@@ -46,6 +46,14 @@ interface ExamRow {
   authority_name?: string;
   registration_fee: number;
   goal?: string;
+}
+
+interface SessionRow {
+  id: string;
+  exam_name_id: string;
+  label_en: string;
+  label_bn?: string;
+  sort_order: number;
 }
 
 interface PartRow {
@@ -87,15 +95,27 @@ interface OverviewTree {
   department: DepartmentRow | null;
   authority: AuthorityRow | null;
   exam: ExamRow;
+  sessions: SessionRow[];
   parts: (PartRow & { subjects: SubjectRow[] })[];
   types: TypeRow[];
 }
 
-const STEPS: Step[] = ['department', 'authority', 'exam', 'part', 'type', 'subject'];
+const STEPS: Step[] = ['department', 'authority', 'exam', 'session', 'part', 'type', 'subject'];
+
+const STEP_LABELS: Record<Step, string> = {
+  department: 'Department',
+  authority: 'Authority',
+  exam: 'Exam',
+  session: 'Session / Year / Training & Others',
+  part: 'Part',
+  type: 'Type',
+  subject: 'Subject',
+};
 
 const emptyDept = { name: '', short_name: '', location: '', website: '' };
 const emptyAuth = { name: '', authority_type: 'central' as (typeof AUTHORITY_TYPES)[number], contact_email: '', contact_phone: '' };
 const emptyExam = { name: '', name_bn: '', short_name: '', short_name_bn: '', registration_fee: 500, goal: '', description: '' };
+const emptySession = { label_en: '', label_bn: '', sort_order: 0 };
 const emptyPart = {
   name: '',
   name_bn: '',
@@ -123,18 +143,21 @@ export default function ExamsAdminPage() {
   const [authorities, setAuthorities] = useState<AuthorityRow[]>([]);
   const [exams, setExams] = useState<ExamRow[]>([]);
   const [parts, setParts] = useState<PartRow[]>([]);
+  const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [types, setTypes] = useState<TypeRow[]>([]);
   const [subjects, setSubjects] = useState<SubjectRow[]>([]);
 
   const [selectedDept, setSelectedDept] = useState('');
   const [selectedAuth, setSelectedAuth] = useState('');
   const [selectedExam, setSelectedExam] = useState('');
+  const [selectedSession, setSelectedSession] = useState('');
   const [selectedPart, setSelectedPart] = useState('');
   const [selectedType, setSelectedType] = useState('');
 
   const [deptForm, setDeptForm] = useState(emptyDept);
   const [authForm, setAuthForm] = useState(emptyAuth);
   const [examForm, setExamForm] = useState(emptyExam);
+  const [sessionForm, setSessionForm] = useState(emptySession);
   const [partForm, setPartForm] = useState(emptyPart);
   const [typeForm, setTypeForm] = useState(emptyType);
   const [subjectForm, setSubjectForm] = useState(emptySubject);
@@ -151,16 +174,21 @@ export default function ExamsAdminPage() {
     setOverviewLoading(true);
     try {
       const r = await apiFetch<{ data: OverviewTree }>(`/exams/names/${examId}/tree`);
-      setOverview(r.data);
+      setOverview({
+        ...r.data,
+        sessions: r.data.sessions ?? [],
+      });
       setSelectedExam(examId);
       setSelectedAuth(r.data.exam.authority_id);
       if (r.data.department) setSelectedDept(r.data.department.id);
       await Promise.all([
         r.data.department ? loadAuthorities(r.data.department.id) : Promise.resolve(),
         loadExams(r.data.exam.authority_id),
+        loadSessions(examId),
         loadParts(examId),
         loadTypes(examId),
       ]);
+      setSessions(r.data.sessions ?? []);
       const allSubs = r.data.parts.flatMap((p) => p.subjects);
       setSubjects(allSubs);
     } catch {
@@ -206,6 +234,11 @@ export default function ExamsAdminPage() {
     setExams(r.data);
   }
 
+  async function loadSessions(examId: string) {
+    const r = await apiFetch<{ data: SessionRow[] }>(`/exams/names/${examId}/sessions`);
+    setSessions(r.data);
+  }
+
   async function loadParts(examId: string) {
     const r = await apiFetch<{ data: PartRow[] }>(`/exams/names/${examId}/parts`);
     setParts(r.data);
@@ -228,6 +261,7 @@ export default function ExamsAdminPage() {
     if (s === 'department') setDeptForm(emptyDept);
     if (s === 'authority') setAuthForm(emptyAuth);
     if (s === 'exam') setExamForm(emptyExam);
+    if (s === 'session') setSessionForm(emptySession);
     if (s === 'part') setPartForm(emptyPart);
     if (s === 'type') setTypeForm(emptyType);
     if (s === 'subject') setSubjectForm(emptySubject);
@@ -277,7 +311,17 @@ export default function ExamsAdminPage() {
       setSelectedAuth(r.data.authority_id);
       setSelectedExam(id);
       setOverviewExamId(id);
-      await loadExams(r.data.authority_id);
+      await Promise.all([loadExams(r.data.authority_id), loadSessions(id)]);
+    } else if (s === 'session') {
+      const r = await apiFetch<{ data: SessionRow }>(`/exams/sessions/${id}`);
+      setSessionForm({
+        label_en: r.data.label_en,
+        label_bn: r.data.label_bn ?? '',
+        sort_order: r.data.sort_order,
+      });
+      setSelectedExam(r.data.exam_name_id);
+      setSelectedSession(id);
+      await loadSessions(r.data.exam_name_id);
     } else if (s === 'part') {
       const r = await apiFetch<{ data: PartRow & { description?: string } }>(`/exams/parts/${id}`);
       setPartForm({
@@ -306,7 +350,7 @@ export default function ExamsAdminPage() {
       setSelectedType(id);
       await loadTypes(r.data.exam_name_id);
     } else if (s === 'subject') {
-      const r = await apiFetch<{ data: SubjectRow }>(`/exams/subjects/${id}`);
+      const r = await apiFetch<{ data: SubjectRow & { exam_name_id?: string } }>(`/exams/subjects/${id}`);
       setSubjectForm({
         name: r.data.name,
         name_bn: r.data.name_bn ?? '',
@@ -317,6 +361,10 @@ export default function ExamsAdminPage() {
       });
       setSelectedPart(r.data.exam_part_id);
       setSelectedType(r.data.exam_type_id);
+      if (r.data.exam_name_id) {
+        setSelectedExam(r.data.exam_name_id);
+        await Promise.all([loadParts(r.data.exam_name_id), loadTypes(r.data.exam_name_id)]);
+      }
     }
   }
 
@@ -377,8 +425,24 @@ export default function ExamsAdminPage() {
         setExams(allExams.data);
         setSelectedExam(r.data.id);
         setOverviewExamId(r.data.id);
-        await Promise.all([loadParts(r.data.id), loadTypes(r.data.id), loadOverview(r.data.id)]);
+        await Promise.all([loadParts(r.data.id), loadTypes(r.data.id), loadSessions(r.data.id), loadOverview(r.data.id)]);
         setMessage(isEdit ? 'Exam program updated' : 'Exam program saved');
+        if (!isEdit) goToStep('session');
+      } else if (step === 'session') {
+        if (!selectedExam) throw new Error('Select an exam');
+        const body = {
+          exam_name_id: selectedExam,
+          label_en: sessionForm.label_en.trim(),
+          label_bn: sessionForm.label_bn.trim() || undefined,
+          sort_order: sessionForm.sort_order || undefined,
+        };
+        const r = isEdit
+          ? await apiFetch<{ data: SessionRow }>(`/exams/sessions/${editId}`, { method: 'PATCH', body: JSON.stringify(body) })
+          : await apiFetch<{ data: SessionRow }>('/exams/sessions', { method: 'POST', body: JSON.stringify(body) });
+        await loadSessions(selectedExam);
+        setSelectedSession(r.data.id);
+        if (overviewExamId) await loadOverview(overviewExamId);
+        setMessage(isEdit ? 'Session/year updated' : 'Session/year saved');
         if (!isEdit) goToStep('part');
       } else if (step === 'part') {
         if (!selectedExam) throw new Error('Select an exam');
@@ -423,6 +487,7 @@ export default function ExamsAdminPage() {
           ? await apiFetch<{ data: SubjectRow }>(`/exams/subjects/${editId}`, { method: 'PATCH', body: JSON.stringify(body) })
           : await apiFetch<{ data: { id: string } }>('/exams/subjects', { method: 'POST', body: JSON.stringify(body) });
         if (overviewExamId) await loadOverview(overviewExamId);
+        else if (selectedExam) await loadParts(selectedExam);
         setMessage(isEdit ? 'Subject updated' : 'Subject created');
         if (!isEdit) router.push(`/exams/subjects/${r.data.id}/syllabus`);
       }
@@ -439,6 +504,7 @@ export default function ExamsAdminPage() {
       department: `/exams/departments/${id}`,
       authority: `/exams/authorities/${id}`,
       exam: `/exams/names/${id}`,
+      session: `/exams/sessions/${id}`,
       part: `/exams/parts/${id}`,
       type: `/exams/types/${id}`,
       subject: `/exams/subjects/${id}`,
@@ -461,6 +527,8 @@ export default function ExamsAdminPage() {
           setOverviewExamId('');
           setOverview(null);
         }
+      } else if (s === 'session' && selectedExam) {
+        await loadSessions(selectedExam);
       } else if (s === 'part' && selectedExam) {
         await loadParts(selectedExam);
       } else if (s === 'type' && selectedExam) {
@@ -521,7 +589,7 @@ export default function ExamsAdminPage() {
     <div className="space-y-6">
       <PageHeader
         title="Exam setup wizard"
-        description="Create, view, and update department → authority → exam → part → type → subject."
+        description="Create, view, and update department → authority → exam → session/year/training → part → type → subject."
         action={
           <Button asChild variant="outline" size="sm">
             <Link href="/exams">
@@ -638,6 +706,33 @@ export default function ExamsAdminPage() {
                     <Pencil className="h-3 w-3" /> Edit
                   </Button>
                 </div>
+                {(overview.sessions?.length ?? 0) > 0 && (
+                  <div className="rounded-lg border border-border p-3">
+                    <div className="font-semibold">Session / Year / Training & Others</div>
+                    <ul className="mt-2 space-y-1">
+                      {overview.sessions.map((sess) => (
+                        <li key={sess.id} className="flex flex-wrap items-center justify-between gap-2">
+                          <span>
+                            {sess.label_en}
+                            {sess.label_bn ? ` (${sess.label_bn})` : ''}
+                          </span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 px-2"
+                            onClick={() => {
+                              goToStep('session');
+                              loadForEdit('session', sess.id);
+                            }}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 {overview.types.map((t) => (
                   <div key={t.id} className="rounded-lg border border-border p-2">
                     <span className="font-medium">Type:</span> {t.name}
@@ -701,7 +796,7 @@ export default function ExamsAdminPage() {
           <div className="flex flex-wrap gap-2">
             {STEPS.map((s) => (
               <Button key={s} size="sm" variant={step === s ? 'default' : 'outline'} onClick={() => goToStep(s)}>
-                {s}
+                {STEP_LABELS[s]}
               </Button>
             ))}
           </div>
@@ -711,7 +806,7 @@ export default function ExamsAdminPage() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="capitalize">{step.replace('_', ' ')}</CardTitle>
+              <CardTitle>{STEP_LABELS[step]}</CardTitle>
               <div className="flex gap-2">
                 <Button
                   type="button"
@@ -857,6 +952,67 @@ export default function ExamsAdminPage() {
                   </>
                 )}
 
+                {step === 'session' && (
+                  <>
+                    {editPicker(
+                      'session',
+                      sessions.map((s) => ({
+                        id: s.id,
+                        label: `${s.label_en}${s.label_bn ? ` (${s.label_bn})` : ''}`,
+                      })),
+                    )}
+                    <div className="space-y-1.5">
+                      <Label htmlFor="session-exam">Exam program</Label>
+                      <select
+                        id="session-exam"
+                        required
+                        value={selectedExam}
+                        onChange={(e) => {
+                          setSelectedExam(e.target.value);
+                          loadSessions(e.target.value);
+                        }}
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      >
+                        <option value="">Select exam</option>
+                        {exams.map((x) => (
+                          <option key={x.id} value={x.id}>{x.short_name} — {x.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="session-en">Label (English)</Label>
+                      <Input
+                        id="session-en"
+                        value={sessionForm.label_en}
+                        onChange={(e) => setSessionForm((f) => ({ ...f, label_en: e.target.value }))}
+                        placeholder="e.g. 2024, 2024-25 Training, Others"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="session-bn">Label (Bangla)</Label>
+                      <Input
+                        id="session-bn"
+                        value={sessionForm.label_bn}
+                        onChange={(e) => setSessionForm((f) => ({ ...f, label_bn: e.target.value }))}
+                        placeholder="e.g. ২০২৪, প্রশিক্ষণ ২০২৪"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="session-sort">Sort order (higher = newer first)</Label>
+                      <Input
+                        id="session-sort"
+                        type="number"
+                        value={sessionForm.sort_order}
+                        onChange={(e) => setSessionForm((f) => ({ ...f, sort_order: Number(e.target.value) }))}
+                      />
+                    </div>
+                    <p className="text-xs text-muted">
+                      Use one entry per session/year/training batch. Choose session/year when creating question papers.
+                    </p>
+                  </>
+                )}
+
                 {step === 'part' && (
                   <>
                     {editPicker('part', parts.map((p) => ({ id: p.id, label: `Part ${p.part_number}: ${p.name}` })))}
@@ -966,6 +1122,27 @@ export default function ExamsAdminPage() {
                 {step === 'subject' && (
                   <>
                     {editPicker('subject', subjects.map((s) => ({ id: s.id, label: s.name })))}
+                    <div className="space-y-1.5">
+                      <Label htmlFor="subj-exam">Exam program</Label>
+                      <select
+                        id="subj-exam"
+                        required
+                        value={selectedExam}
+                        onChange={(e) => {
+                          const examId = e.target.value;
+                          setSelectedExam(examId);
+                          setSelectedPart('');
+                          loadParts(examId);
+                          loadTypes(examId);
+                        }}
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      >
+                        <option value="">Select exam</option>
+                        {exams.map((x) => (
+                          <option key={x.id} value={x.id}>{x.short_name} — {x.name}</option>
+                        ))}
+                      </select>
+                    </div>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div className="space-y-1.5">
                         <Label htmlFor="subj-part">Exam part</Label>
@@ -974,6 +1151,7 @@ export default function ExamsAdminPage() {
                           required
                           value={selectedPart}
                           onChange={(e) => setSelectedPart(e.target.value)}
+                          disabled={!selectedExam}
                           className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                         >
                           <option value="">Select part</option>
@@ -989,6 +1167,7 @@ export default function ExamsAdminPage() {
                           required
                           value={selectedType}
                           onChange={(e) => setSelectedType(e.target.value)}
+                          disabled={!selectedExam}
                           className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                         >
                           <option value="">Select type</option>
@@ -998,6 +1177,9 @@ export default function ExamsAdminPage() {
                         </select>
                       </div>
                     </div>
+                    <p className="text-xs text-muted">
+                      One subject per part and type. Set session/year when creating question papers.
+                    </p>
                     <div className="space-y-1.5">
                       <Label htmlFor="subj-name">Subject name</Label>
                       <Input id="subj-name" value={subjectForm.name} onChange={(e) => setSubjectForm((f) => ({ ...f, name: e.target.value }))} required />

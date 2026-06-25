@@ -6,6 +6,8 @@ import {
   updateAuthoritySchema,
   createExamNameSchema,
   updateExamNameSchema,
+  createExamSessionSchema,
+  updateExamSessionSchema,
   createExamPartSchema,
   updateExamPartSchema,
   createExamTypeSchema,
@@ -86,6 +88,28 @@ export async function updateExamNameHandler(req: AuthRequest, res: Response): Pr
 
 export async function deleteExamNameHandler(req: AuthRequest, res: Response): Promise<void> {
   res.json({ data: await examsService.deleteExamName(String(req.params.id)) });
+}
+
+export async function listExamSessionsHandler(req: AuthRequest, res: Response): Promise<void> {
+  res.json({ data: await examsService.listExamSessions(String(req.params.examId)) });
+}
+
+export async function getExamSessionHandler(req: AuthRequest, res: Response): Promise<void> {
+  res.json({ data: await examsService.getExamSessionById(String(req.params.id)) });
+}
+
+export async function createExamSessionHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = createExamSessionSchema.parse(req.body);
+  res.status(201).json({ data: await examsService.createExamSession(dto) });
+}
+
+export async function updateExamSessionHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = updateExamSessionSchema.parse(req.body);
+  res.json({ data: await examsService.updateExamSession(String(req.params.id), dto) });
+}
+
+export async function deleteExamSessionHandler(req: AuthRequest, res: Response): Promise<void> {
+  res.json({ data: await examsService.deleteExamSession(String(req.params.id)) });
 }
 
 export async function listExamPartsHandler(req: AuthRequest, res: Response): Promise<void> {

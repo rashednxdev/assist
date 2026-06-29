@@ -63,3 +63,17 @@ export type AuthorityType = (typeof AUTHORITY_TYPES)[number];
 
 export const SYLLABUS_REF_LEVELS = ['book', 'chapter', 'rule', 'regulation'] as const;
 export type SyllabusRefLevel = (typeof SYLLABUS_REF_LEVELS)[number];
+
+/** Self-assessment levels for descriptive / short-note questions (progress index weights). */
+export const SELF_RATING_LEVELS = ['overall', 'understand', 'confidence'] as const;
+export type SelfRatingLevel = (typeof SELF_RATING_LEVELS)[number];
+
+export const SELF_RATING_PROGRESS: Record<SelfRatingLevel, number> = {
+  overall: 50,
+  understand: 75,
+  confidence: 100,
+};
+
+/** Question types scored from selected options. */
+export const OBJECTIVE_QUESTION_TYPE_CODES = ['MCQ', 'TF'] as const;
+export type ObjectiveQuestionTypeCode = (typeof OBJECTIVE_QUESTION_TYPE_CODES)[number];

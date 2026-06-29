@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { QuestionAnswerView } from '@/components/questions/question-answer-view';
+import { QuestionEvaluator } from '@/components/evaluation/question-evaluator';
 
 interface QuestionDetail {
   id: string;
@@ -104,6 +105,8 @@ export default function PaperQuestionAnswerPage() {
         <Badge variant="outline">{question.question_type_code}</Badge>
         <Badge variant="secondary">{question.marks} marks</Badge>
       </div>
+
+      <QuestionEvaluator questionId={questionId} />
 
       <Card>
         <CardHeader>

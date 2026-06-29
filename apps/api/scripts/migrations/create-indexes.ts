@@ -49,6 +49,7 @@ import { PaperType } from '../../src/domains/papers/models/PaperType.model.js';
 import { PaperGroup } from '../../src/domains/papers/models/PaperGroup.model.js';
 import { PaperQuestion } from '../../src/domains/papers/models/PaperQuestion.model.js';
 import { ChildQuestion } from '../../src/domains/papers/models/ChildQuestion.model.js';
+import { UserQuestionEvaluation } from '../../src/domains/evaluation/models/UserQuestionEvaluation.model.js';
 
 async function createIndexes() {
   const uri = process.env.MONGODB_URI;
@@ -106,6 +107,7 @@ async function createIndexes() {
   await PaperGroup.syncIndexes();
   await PaperQuestion.syncIndexes();
   await ChildQuestion.syncIndexes();
+  await UserQuestionEvaluation.syncIndexes();
 
   console.log('Indexes synced');
 

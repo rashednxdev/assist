@@ -1,15 +1,21 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { ArrowLeft, Pencil } from 'lucide-react';
+import { ProgressLinkButton } from '@/components/evaluation/progress-link-button';
+import { RatingIndicator } from '@/components/evaluation/rating-indicator';
 import { apiFetch } from '@/lib/api-client';
 import { fetchMe } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { banglaText, formatDurationBn, toBanglaDigits } from '@/lib/bangla-format';
+import {
+  collectPaperQuestionIds,
+  type QuestionEvalBrief,
+} from '@/lib/evaluation-display';
 import {
   displayQuestionLabel,
   marksPreview,
@@ -71,7 +77,11 @@ function QuestionLink({
   );
 }
 
-function renderQuestionRow(paperId: string, pq: PaperQuestionRow) {
+function renderQuestionRow(
+  paperId: string,
+  pq: PaperQuestionRow,
+  evalMap: Map<string, QuestionEvalBrief>,
+) {
   const displayNo = toBanglaDigits(displayQuestionLabel(pq));
   const inline = questionInlineText(pq);
   const tapId = primaryQuestionId(pq);
@@ -81,7 +91,7 @@ function renderQuestionRow(paperId: string, pq: PaperQuestionRow) {
 
   return (
     <div key={pq.id} className="paper-sheet-question">
-      <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-1">
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
         <span className="shrink-0 font-semibold">{displayNo}.</span>
         {tapId ? (
           <QuestionLink paperId={paperId} questionId={tapId} className="min-w-0 flex-1">
@@ -90,7 +100,12 @@ function renderQuestionRow(paperId: string, pq: PaperQuestionRow) {
         ) : (
           inline && <span className="min-w-0 flex-1">{inline}</span>
         )}
-        <span className="ml-auto shrink-0 text-sm text-muted">[{marksLine}]</span>
+        <span className="ml-auto flex shrink-0 items-center gap-1.5">
+          {tapId && <RatingIndicator evaluation={evalMap.get(tapId)} />}
+          {(pq.marks > 0 || pq.marks_display_bn?.trim()) && (
+            <span className="text-sm text-muted">[{marksLine}]</span>
+          )}
+        </span>
       </div>
       {showPartsList(pq) && (
         <ul className="mt-2 space-y-2 pl-5">
@@ -99,12 +114,17 @@ function renderQuestionRow(paperId: string, pq: PaperQuestionRow) {
               ? toBanglaDigits(part.marks_display_bn)
               : toBanglaDigits(String(part.marks));
             return (
-              <li key={part.id} className="flex flex-wrap items-baseline gap-x-1.5">
+              <li key={part.id} className="flex flex-wrap items-center gap-x-1.5">
                 <span className="font-semibold">{toBanglaDigits(part.part_label)}</span>
                 <QuestionLink paperId={paperId} questionId={part.question_id} className="min-w-0 flex-1">
                   {part.question?.body_en ?? ''}
                 </QuestionLink>
-                <span className="text-sm text-muted">[{partMarks}]</span>
+                <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                  <RatingIndicator evaluation={evalMap.get(part.question_id)} />
+                  {(part.marks > 0 || part.marks_display_bn?.trim()) && (
+                    <span className="text-sm text-muted">[{partMarks}]</span>
+                  )}
+                </span>
               </li>
             );
           })}
@@ -145,6 +165,7 @@ export default function PaperDetailPage() {
   const params = useParams();
   const paperId = params.id as string;
   const [data, setData] = useState<ComposeData | null>(null);
+  const [evalMap, setEvalMap] = useState<Map<string, QuestionEvalBrief>>(new Map());
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [error, setError] = useState('');
@@ -165,6 +186,38 @@ export default function PaperDetailPage() {
       .catch(() => setError('Paper not found or not available.'))
       .finally(() => setLoading(false));
   }, [paperId]);
+
+  const allQuestionRows = useMemo(() => {
+    if (!data) return [];
+    return [...data.groups.flatMap((g) => g.questions), ...data.ungrouped_questions];
+  }, [data]);
+
+  useEffect(() => {
+    if (allQuestionRows.length === 0) {
+      setEvalMap(new Map());
+      return;
+    }
+    const ids = collectPaperQuestionIds(allQuestionRows);
+    if (ids.length === 0) return;
+
+    function loadEvaluations() {
+      apiFetch<{ data: QuestionEvalBrief[] }>(`/evaluation/questions/batch?ids=${ids.join(',')}`)
+        .then((res) => {
+          const map = new Map<string, QuestionEvalBrief>();
+          for (const row of res.data) {
+            if (row.progress_index > 0 || row.self_rating || row.is_correct !== undefined) {
+              map.set(row.question_id, row);
+            }
+          }
+          setEvalMap(map);
+        })
+        .catch(() => setEvalMap(new Map()));
+    }
+
+    loadEvaluations();
+    window.addEventListener('focus', loadEvaluations);
+    return () => window.removeEventListener('focus', loadEvaluations);
+  }, [allQuestionRows]);
 
   useEffect(() => {
     const link = document.createElement('link');
@@ -214,14 +267,22 @@ export default function PaperDetailPage() {
             Papers
           </Link>
         </Button>
-        {isAdmin && (
-          <Button asChild size="sm" variant="outline">
-            <Link href={`/papers/${paperId}/edit`}>
-              <Pencil className="h-4 w-4" />
-              Compose
-            </Link>
-          </Button>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {paper.is_published && (
+            <ProgressLinkButton
+              href={`/papers/${paperId}/progress`}
+              evaluationPath={`/evaluation/papers/${paperId}`}
+            />
+          )}
+          {isAdmin && (
+            <Button asChild size="sm" variant="outline">
+              <Link href={`/papers/${paperId}/edit`}>
+                <Pencil className="h-4 w-4" />
+                Compose
+              </Link>
+            </Button>
+          )}
+        </div>
       </div>
 
       <article className="paper-sheet mx-auto max-w-3xl rounded-sm border border-amber-900/15 px-6 py-8 shadow-md sm:px-10 sm:py-10">
@@ -244,7 +305,7 @@ export default function PaperDetailPage() {
                   )}
                 </div>
               )}
-              {group.questions.map((pq) => renderQuestionRow(paperId, pq))}
+              {group.questions.map((pq) => renderQuestionRow(paperId, pq, evalMap))}
             </section>
           ))}
 
@@ -253,7 +314,7 @@ export default function PaperDetailPage() {
               {groups.length > 0 && (
                 <p className="mb-3 text-center text-sm font-semibold">প্রশ্ন</p>
               )}
-              {ungrouped_questions.map((pq) => renderQuestionRow(paperId, pq))}
+              {ungrouped_questions.map((pq) => renderQuestionRow(paperId, pq, evalMap))}
             </section>
           )}
 
@@ -266,6 +327,20 @@ export default function PaperDetailPage() {
       <p className="mx-auto max-w-3xl text-center text-xs text-muted">
         প্রশ্নে ট্যাপ করলে উত্তর ও ব্যাখ্যা দেখতে পারবেন।
       </p>
+      <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-muted">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-green-200" aria-hidden />
+          Overall
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-green-400" aria-hidden />
+          Understand
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-green-600" aria-hidden />
+          Confidence
+        </span>
+      </div>
     </div>
   );
 }

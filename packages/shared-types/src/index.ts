@@ -51,3 +51,4 @@ export * from './exams.js';
 export * from './syllabus.js';
 export * from './papers.js';
 export * from './subscription.js';
+export * from './evaluation.js';

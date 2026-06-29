@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Pencil } from 'lucide-react';
+import { ProgressLinkButton } from '@/components/evaluation/progress-link-button';
 import { apiFetch } from '@/lib/api-client';
 import { fetchMe } from '@/lib/auth';
 import { PageHeader } from '@/components/shared/page-header';
@@ -94,6 +95,10 @@ export default function BookDetailPage() {
             Back
           </Link>
         </Button>
+        <ProgressLinkButton
+          href={`/books/${bookId}/progress`}
+          evaluationPath={`/evaluation/books/${bookId}`}
+        />
         {isAdmin && (
           <Button
             size="sm"

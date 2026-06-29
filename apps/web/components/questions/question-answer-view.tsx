@@ -21,35 +21,25 @@ interface QuestionAnswerViewProps {
   showAnswer: boolean;
 }
 
-function FieldBlock({ label, text }: { label: string; text?: string }) {
+function TextBlock({ text }: { text?: string }) {
   if (!text?.trim()) return null;
-  return (
-    <div className="space-y-1">
-      <div className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</div>
-      <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{text}</p>
-    </div>
-  );
+  return <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{text}</p>;
 }
 
-function SubsectionBlock({ sub, index }: { sub: ExplanationSection['subsections'][number]; index: number }) {
+function SubsectionBlock({ sub }: { sub: ExplanationSection['subsections'][number] }) {
   const hasContent = sub.subtitle?.trim() || sub.details?.trim() || sub.note?.trim();
   if (!hasContent) return null;
 
   return (
     <div className="space-y-3 rounded-lg border border-border/70 bg-background/80 p-3">
-      <div className="flex items-center gap-2">
-        <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
-          Sub-title {index + 1}
-        </Badge>
-        {sub.subtitle?.trim() && <span className="text-sm font-semibold text-foreground">{sub.subtitle}</span>}
-      </div>
-      <FieldBlock label="Details" text={sub.details} />
-      <FieldBlock label="Note" text={sub.note} />
+      {sub.subtitle?.trim() && <p className="text-sm font-semibold text-foreground">{sub.subtitle}</p>}
+      <TextBlock text={sub.details} />
+      <TextBlock text={sub.note} />
     </div>
   );
 }
 
-function SectionBlock({ section, index }: { section: ExplanationSection; index: number }) {
+function SectionBlock({ section }: { section: ExplanationSection }) {
   const hasContent =
     section.title?.trim() ||
     section.details?.trim() ||
@@ -60,19 +50,14 @@ function SectionBlock({ section, index }: { section: ExplanationSection; index: 
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Badge variant="secondary" className="text-[10px] uppercase tracking-wide">
-          Title {index + 1}
-        </Badge>
-        {section.title?.trim() && <h4 className="text-base font-semibold text-foreground">{section.title}</h4>}
-      </div>
-      <FieldBlock label="Details" text={section.details} />
-      <FieldBlock label="Note" text={section.note} />
+      {section.title?.trim() && <h4 className="text-base font-semibold text-foreground">{section.title}</h4>}
+      <TextBlock text={section.details} />
+      <TextBlock text={section.note} />
 
       {section.subsections?.length > 0 && (
         <div className="space-y-3 border-l-2 border-primary/25 pl-4">
           {section.subsections.map((sub, subIndex) => (
-            <SubsectionBlock key={subIndex} sub={sub} index={subIndex} />
+            <SubsectionBlock key={subIndex} sub={sub} />
           ))}
         </div>
       )}
@@ -105,7 +90,7 @@ function StructuredSectionsPanel({
         {heading}
       </div>
       {sections.map((section, index) => (
-        <SectionBlock key={index} section={section} index={index} />
+        <SectionBlock key={index} section={section} />
       ))}
     </section>
   );
@@ -172,7 +157,7 @@ export function QuestionAnswerView({
 
       {showAnswer && answer_note?.trim() && (
         <section className="rounded-lg border border-dashed border-border px-4 py-3">
-          <FieldBlock label="Answer note" text={answer_note} />
+          <TextBlock text={answer_note} />
         </section>
       )}
     </div>

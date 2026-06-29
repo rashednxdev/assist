@@ -32,19 +32,40 @@ export function displayQuestionLabel(pq: PaperQuestionRow) {
   return pq.display_question_number?.trim() || String(pq.question_number);
 }
 
+/** Composite row with no header: first sub-part is shown on the main question line. */
+export function promotedFirstPart(pq: PaperQuestionRow): PaperPartRow | undefined {
+  if (pq.from_question_bank || pq.header_text?.trim() || pq.parts.length === 0) return undefined;
+  return pq.parts[0];
+}
+
 export function questionInlineText(pq: PaperQuestionRow): string | null {
   if (pq.header_text?.trim()) return pq.header_text.trim();
-  if (!pq.from_question_bank && pq.parts.length === 1) {
-    return pq.parts[0]?.question?.body_en ?? null;
-  }
+  const promoted = promotedFirstPart(pq);
+  if (promoted) return promoted.question?.body_en ?? null;
   if (pq.from_question_bank && pq.question?.body_en) return pq.question.body_en;
   return null;
 }
 
+/** Sub-parts listed below the main line (excludes promoted first part when header is empty). */
+export function partsForDisplay(pq: PaperQuestionRow): PaperPartRow[] {
+  if (pq.header_text?.trim()) return pq.parts;
+  if (!pq.from_question_bank && pq.parts.length > 1) return pq.parts.slice(1);
+  return [];
+}
+
 export function showPartsList(pq: PaperQuestionRow) {
-  if (pq.parts.length === 0) return false;
-  if (pq.header_text?.trim()) return true;
-  return pq.parts.length > 1;
+  return partsForDisplay(pq).length > 0;
+}
+
+export function mainRowMarks(pq: PaperQuestionRow): {
+  marks: number;
+  marks_display_bn?: string;
+} {
+  const promoted = promotedFirstPart(pq);
+  if (promoted) {
+    return { marks: promoted.marks, marks_display_bn: promoted.marks_display_bn };
+  }
+  return { marks: pq.marks, marks_display_bn: pq.marks_display_bn };
 }
 
 export function marksPreview(pq: { marks: number; marks_display_bn?: string }) {
@@ -57,6 +78,7 @@ export function truncate(text: string, len = 120) {
 
 export function primaryQuestionId(pq: PaperQuestionRow): string | undefined {
   if (pq.from_question_bank && pq.question_id) return pq.question_id;
-  if (!pq.header_text?.trim() && pq.parts.length === 1) return pq.parts[0]?.question_id;
+  const promoted = promotedFirstPart(pq);
+  if (promoted) return promoted.question_id;
   return undefined;
 }

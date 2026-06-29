@@ -18,8 +18,10 @@ import {
 } from '@/lib/evaluation-display';
 import {
   displayQuestionLabel,
-  marksPreview,
+  mainRowMarks,
+  partsForDisplay,
   primaryQuestionId,
+  promotedFirstPart,
   questionInlineText,
   showPartsList,
   type PaperQuestionRow,
@@ -85,31 +87,37 @@ function renderQuestionRow(
   const displayNo = toBanglaDigits(displayQuestionLabel(pq));
   const inline = questionInlineText(pq);
   const tapId = primaryQuestionId(pq);
-  const marksLine = pq.marks_display_bn?.trim()
-    ? toBanglaDigits(pq.marks_display_bn)
-    : toBanglaDigits(marksPreview(pq).replace(/ marks?$/i, ''));
+  const rowMarks = mainRowMarks(pq);
+  const marksLine = rowMarks.marks_display_bn?.trim()
+    ? toBanglaDigits(rowMarks.marks_display_bn)
+    : toBanglaDigits(String(rowMarks.marks));
+  const visibleParts = partsForDisplay(pq);
+  const promoted = promotedFirstPart(pq);
 
   return (
     <div key={pq.id} className="paper-sheet-question">
-      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+      <div className="flex flex-wrap items-center gap-x-1 gap-y-1">
         <span className="shrink-0 font-semibold">{displayNo}.</span>
+        {promoted && (
+          <span className="shrink-0 font-semibold">{toBanglaDigits(promoted.part_label)}</span>
+        )}
         {tapId ? (
           <QuestionLink paperId={paperId} questionId={tapId} className="min-w-0 flex-1">
-            {inline ?? pq.question?.body_en ?? pq.parts[0]?.question?.body_en ?? ''}
+            {inline ?? ''}
           </QuestionLink>
         ) : (
           inline && <span className="min-w-0 flex-1">{inline}</span>
         )}
         <span className="ml-auto flex shrink-0 items-center gap-1.5">
           {tapId && <RatingIndicator evaluation={evalMap.get(tapId)} />}
-          {(pq.marks > 0 || pq.marks_display_bn?.trim()) && (
+          {(rowMarks.marks > 0 || rowMarks.marks_display_bn?.trim()) && (
             <span className="text-sm text-muted">[{marksLine}]</span>
           )}
         </span>
       </div>
       {showPartsList(pq) && (
         <ul className="mt-2 space-y-2 pl-5">
-          {pq.parts.map((part) => {
+          {visibleParts.map((part) => {
             const partMarks = part.marks_display_bn?.trim()
               ? toBanglaDigits(part.marks_display_bn)
               : toBanglaDigits(String(part.marks));

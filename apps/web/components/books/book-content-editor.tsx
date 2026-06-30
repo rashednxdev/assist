@@ -173,7 +173,7 @@ export function BookContentEditor({
     setRegForm((prev) => ({
       ...prev,
       regulation_no: prev.regulation_no || suggestedNo,
-      title: prev.title || topic.name,
+      title: prev.title || topic.name || '',
       full_text:
         prev.full_text ||
         (topic.description ? topic.description.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : ''),
@@ -590,7 +590,7 @@ export function BookContentEditor({
                         <Button size="sm" variant="ghost" className="h-7 text-xs" disabled={busy} onClick={() => {
                           setEditTopicId(t.id);
                           setEditTopicForm({
-                            name: t.name,
+                            name: t.name ?? '',
                             rule_number: t.rule_number,
                             sub_name: t.sub_name ?? '',
                             description: t.description?.replace(/<[^>]+>/g, ' ').trim() ?? '',
@@ -644,7 +644,7 @@ export function BookContentEditor({
                         <Button size="sm" variant="ghost" className="h-7 text-xs" disabled={busy} onClick={() => {
                           setEditSubId(st.id);
                           setEditSubForm({
-                            name: st.name,
+                            name: st.name ?? '',
                             rule_number: st.rule_number ?? '',
                             description: st.description?.replace(/<[^>]+>/g, ' ').trim() ?? '',
                             note: st.note ?? '',

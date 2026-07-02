@@ -12,6 +12,7 @@ import { Alert } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ProgressSummary } from '@/components/evaluation/progress-summary';
 import { ProgressTree, type ProgressNode } from '@/components/evaluation/progress-tree';
+import { bookTheme } from '@/lib/book-theme';
 
 interface BookEvaluationData {
   book: { id: string; name: string; short_name: string };
@@ -70,8 +71,8 @@ export default function BookProgressPage() {
         }
       />
 
-      <Card>
-        <CardHeader>
+      <Card className={bookTheme.panel}>
+        <CardHeader className={bookTheme.divider}>
           <CardTitle className="text-base">Overall performance</CardTitle>
         </CardHeader>
         <CardContent>
@@ -88,8 +89,8 @@ export default function BookProgressPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
+      <Card className={bookTheme.panel}>
+        <CardHeader className={bookTheme.divider}>
           <CardTitle className="text-base">Chapter / topic progress</CardTitle>
         </CardHeader>
         <CardContent>

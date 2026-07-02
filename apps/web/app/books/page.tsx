@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/shared/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
+import { bookTheme } from '@/lib/book-theme';
 
 interface BookItem {
   id: string;
@@ -75,8 +76,8 @@ export default function BooksPage() {
         }
       />
 
-      <Card>
-        <CardHeader className="border-b border-border pb-4">
+      <Card className={`${bookTheme.panel} border-amber-900/15 bg-[#fffef8]`}>
+        <CardHeader className={`border-b pb-4 ${bookTheme.divider}`}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-lg">Library</CardTitle>
             <form
@@ -119,10 +120,10 @@ export default function BooksPage() {
                 <Link
                   key={b.id}
                   href={`/books/${b.id}`}
-                  className="group rounded-xl border border-border bg-slate-50/50 p-4 transition-colors hover:border-primary/40 hover:bg-primary-muted/30"
+                  className={`group block p-4 ${bookTheme.linkCard}`}
                 >
                   <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-muted text-primary">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-amber-900/10 bg-amber-50 text-amber-900">
                       <BookOpen className="h-5 w-5" />
                     </div>
                     <div className="min-w-0 flex-1">

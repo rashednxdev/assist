@@ -24,6 +24,9 @@ import { BookSubTopic } from './models/BookSubTopic.model.js';
 import { BookSubTopicDetail } from './models/BookSubTopicDetail.model.js';
 import { Regulation } from './models/Regulation.model.js';
 import { RegulationAmendment } from './models/RegulationAmendment.model.js';
+import { Question } from '../questions/models/Question.model.js';
+import { QuestionBookLink } from '../questions/models/QuestionBookLink.model.js';
+import { QuestionType } from '../questions/models/QuestionType.model.js';
 import { notFound, badRequest } from '../../shared/errors/AppError.js';
 
 function idStr(v: mongoose.Types.ObjectId | string | undefined) {
@@ -411,6 +414,71 @@ export async function listChapters(bookId: string) {
   return result;
 }
 
+export async function getBookReaderOutline(bookId: string) {
+  const book = await BookInfo.findById(bookId);
+  if (!book || !book.is_active) throw notFound('Book not found');
+  const bookType = await BookType.findById(book.book_type_id);
+
+  const chapters = await BookChapter.find({ book_info_id: bookId, is_active: true }).sort({
+    sort_order: 1,
+  });
+  const chapterIds = chapters.map((c) => c._id);
+  const topics =
+    chapterIds.length > 0
+      ? await BookTopic.find({ book_chapter_id: { $in: chapterIds }, is_active: true }).sort({
+          sort_order: 1,
+        })
+      : [];
+
+  const topicsByChapter = new Map<string, InstanceType<typeof BookTopic>[]>();
+  for (const topic of topics) {
+    const cid = String(topic.book_chapter_id);
+    const list = topicsByChapter.get(cid) ?? [];
+    list.push(topic);
+    topicsByChapter.set(cid, list);
+  }
+
+  const chapterRows = chapters.map((c) => {
+    const chapterTopics = topicsByChapter.get(String(c._id)) ?? [];
+    return {
+      id: String(c._id),
+      chapter_number: c.chapter_number,
+      name: c.name,
+      sub_name: c.sub_name,
+      description: c.description,
+      sort_order: c.sort_order,
+      topics: chapterTopics.map((t) => ({
+        id: String(t._id),
+        rule_number: t.rule_number,
+        name: t.name,
+        sub_name: t.sub_name,
+        is_amended: t.is_amended,
+        sort_order: t.sort_order,
+      })),
+    };
+  });
+
+  const rules = chapters.flatMap((c) => {
+    const chapterTopics = topicsByChapter.get(String(c._id)) ?? [];
+    return chapterTopics.map((t) => ({
+      id: String(t._id),
+      rule_number: t.rule_number,
+      name: t.name,
+      sub_name: t.sub_name,
+      is_amended: t.is_amended,
+      chapter_id: String(c._id),
+      chapter_number: c.chapter_number,
+      chapter_name: c.name,
+    }));
+  });
+
+  return {
+    book: serializeBook(book, bookType?.name),
+    chapters: chapterRows,
+    rules,
+  };
+}
+
 function serializeChapter(chapter: InstanceType<typeof BookChapter>) {
   return {
     id: String(chapter._id),
@@ -442,6 +510,48 @@ export async function getChapterById(chapterId: string) {
       is_amended: t.is_amended,
     })),
   };
+}
+
+export async function listChapterQuestions(chapterId: string) {
+  const chapter = await BookChapter.findById(chapterId);
+  if (!chapter || !chapter.is_active) throw notFound('Chapter not found');
+
+  const chapterOid = chapter._id;
+  const topicIds = await BookTopic.find({ book_chapter_id: chapterOid, is_active: true }).distinct('_id');
+
+  const linkRows = await QuestionBookLink.find({
+    is_active: true,
+    $or: [{ book_chapter_id: chapterOid }, { book_topic_id: { $in: topicIds } }],
+  });
+  const linkedIds = [...new Set(linkRows.map((l) => String(l.question_id)))];
+
+  const direct = await Question.find({
+    book_chapter_id: chapterOid,
+    is_active: true,
+    is_published: true,
+  });
+  const allIds = [...new Set([...linkedIds, ...direct.map((q) => String(q._id))])];
+  if (allIds.length === 0) return [];
+
+  const questions = await Question.find({
+    _id: { $in: allIds },
+    is_active: true,
+    is_published: true,
+  }).sort({ question_type_code: 1, updated_at: -1 });
+
+  const typeIds = [...new Set(questions.map((q) => String(q.question_type_id)))];
+  const types = await QuestionType.find({ _id: { $in: typeIds } });
+  const typeMap = new Map(types.map((t) => [String(t._id), t.name]));
+
+  return questions.map((q) => ({
+    id: String(q._id),
+    question_type_code: q.question_type_code,
+    question_type_name: typeMap.get(String(q.question_type_id)),
+    body_en: q.body_en,
+    body_bn: q.body_bn,
+    marks: q.marks,
+    difficulty: q.difficulty,
+  }));
 }
 
 function serializeSubTopic(sub: InstanceType<typeof BookSubTopic>) {

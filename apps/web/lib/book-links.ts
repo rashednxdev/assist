@@ -20,3 +20,19 @@ export function bookContentHref(ref: {
   const qs = params.toString();
   return `/books/${bookId}${qs ? `?${qs}` : ''}`;
 }
+
+/** Reader URLs for question tags (chapter / rule read screens). */
+export function taggedQuestionLocationHref(ref: {
+  book_info_id?: string;
+  book_chapter_id?: string;
+  book_topic_id?: string;
+  regulation_id?: string;
+}): string | null {
+  if (ref.book_info_id && ref.book_topic_id) {
+    return `/books/${ref.book_info_id}/read/rule/${ref.book_topic_id}`;
+  }
+  if (ref.book_info_id && ref.book_chapter_id) {
+    return `/books/${ref.book_info_id}/read/chapter/${ref.book_chapter_id}`;
+  }
+  return bookContentHref(ref);
+}

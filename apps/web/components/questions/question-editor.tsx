@@ -121,6 +121,7 @@ interface QuestionEditorProps {
   /** Existing question id — enables immediate book-link add/remove. */
   questionId?: string;
   onBookLinksChange?: () => void;
+  isPublished?: boolean;
 }
 
 export function QuestionEditor({
@@ -134,6 +135,7 @@ export function QuestionEditor({
   excludeQuestionId,
   questionId,
   onBookLinksChange,
+  isPublished,
 }: QuestionEditorProps) {
   const [similarQuestions, setSimilarQuestions] = useState<SimilarQuestion[]>([]);
   const [similarLoading, setSimilarLoading] = useState(false);
@@ -465,6 +467,7 @@ export function QuestionEditor({
             onChange={(book_links) => patch({ book_links })}
             questionId={questionId}
             onRemoteChange={onBookLinksChange}
+            isPublished={isPublished}
             disabled={busy}
           />
         </CardContent>

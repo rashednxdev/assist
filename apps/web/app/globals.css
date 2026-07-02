@@ -117,3 +117,40 @@ body {
 .paper-sheet-question {
   @apply py-3 text-[15px] leading-relaxed text-foreground;
 }
+
+/* Rule library / book reader (cream paper theme) */
+.book-panel {
+  @apply rounded-xl border border-amber-900/15 bg-[#fffef8] shadow-sm;
+}
+
+.book-panel-padded {
+  @apply rounded-xl border border-amber-900/15 bg-[#fffef8] shadow-sm p-5 sm:p-6;
+}
+
+.book-panel-header {
+  @apply border-b border-amber-900/10 px-5 py-4 text-center;
+}
+
+.book-divider {
+  @apply border-amber-900/10;
+}
+
+.book-hover-row {
+  @apply transition-colors hover:bg-amber-50/80 hover:text-primary;
+}
+
+.book-link-card {
+  @apply rounded-xl border border-amber-900/15 bg-[#fffef8] transition-colors hover:border-amber-900/25 hover:bg-amber-50/80;
+}
+
+.book-list-item {
+  @apply rounded-lg border border-amber-900/10 bg-[#fffef8]/90 transition-colors hover:border-amber-900/20 hover:bg-amber-50/80 hover:text-primary;
+}
+
+.book-note {
+  @apply rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900;
+}
+
+.book-nav-footer {
+  @apply border-t border-amber-900/10 pt-4;
+}

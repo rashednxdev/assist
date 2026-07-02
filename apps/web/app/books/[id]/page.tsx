@@ -1,90 +1,33 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Pencil } from 'lucide-react';
 import { ProgressLinkButton } from '@/components/evaluation/progress-link-button';
-import { apiFetch } from '@/lib/api-client';
 import { fetchMe } from '@/lib/auth';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
 import { RichTextView } from '@/components/books/rich-text-view';
-import { BookTree } from '@/components/books/book-tree';
+import { BookContents } from '@/components/books/book-contents';
+import { BookReaderGate, useBookReader } from '@/components/books/book-reader-context';
 import { BookContentEditor } from '@/components/books/book-content-editor';
+import { bookTheme } from '@/lib/book-theme';
 
-interface BookDetail {
-  id: string;
-  name: string;
-  name_bn: string;
-  short_name: string;
-  description: string;
-  edition?: string;
-  published_by?: string;
-  effective_date?: string;
-  language: string;
-  tags: string[];
-}
+function BookDetailBody({
+  isAdmin,
+  editMode,
+  onToggleEdit,
+}: {
+  isAdmin: boolean;
+  editMode: boolean;
+  onToggleEdit: () => void;
+}) {
+  const { bookId, outline, reload } = useBookReader();
+  const book = outline?.book;
 
-interface TreeNode {
-  type: 'part' | 'chapter' | 'topic' | 'sub_topic';
-  id: string;
-  name: string;
-  has_children?: boolean;
-  children?: TreeNode[];
-}
-
-export default function BookDetailPage() {
-  const params = useParams();
-  const searchParams = useSearchParams();
-  const bookId = params.id as string;
-  const focusChapterId = searchParams.get('chapter');
-  const focusTopicId = searchParams.get('topic');
-  const [book, setBook] = useState<BookDetail | null>(null);
-  const [nodes, setNodes] = useState<TreeNode[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [editMode, setEditMode] = useState(false);
-  const [treeKey, setTreeKey] = useState(0);
-
-  const reload = useCallback(() => {
-    if (!bookId) return Promise.resolve();
-    return Promise.all([
-      apiFetch<{ data: BookDetail }>(`/books/${bookId}`),
-      apiFetch<{ data: { book: BookDetail; nodes: TreeNode[] } }>(`/books/${bookId}/tree?depth=1`),
-    ]).then(([bookRes, treeRes]) => {
-      setBook(bookRes.data);
-      setNodes(treeRes.data.nodes);
-      setTreeKey((k) => k + 1);
-    });
-  }, [bookId]);
-
-  useEffect(() => {
-    if (!bookId) return;
-    reload().finally(() => setLoading(false));
-    fetchMe()
-      .then((res) => {
-        setIsAdmin(
-          res.data.is_super_admin || res.data.user_type === 'system_admin' || res.data.user_type === 'admin',
-        );
-      })
-      .catch(() => {});
-  }, [bookId, reload]);
-
-  if (loading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-48 w-full" />
-      </div>
-    );
-  }
-
-  if (!book) {
-    return <p className="text-muted">Book not found.</p>;
-  }
+  if (!book) return null;
 
   return (
     <div className="space-y-6">
@@ -100,11 +43,7 @@ export default function BookDetailPage() {
           evaluationPath={`/evaluation/books/${bookId}`}
         />
         {isAdmin && (
-          <Button
-            size="sm"
-            variant={editMode ? 'default' : 'outline'}
-            onClick={() => setEditMode(!editMode)}
-          >
+          <Button size="sm" variant={editMode ? 'default' : 'outline'} onClick={onToggleEdit}>
             <Pencil className="h-4 w-4" />
             {editMode ? 'View mode' : 'Edit content'}
           </Button>
@@ -118,21 +57,59 @@ export default function BookDetailPage() {
         {book.edition && <Badge variant="secondary">Edition {book.edition}</Badge>}
         <Badge variant="outline">{book.language}</Badge>
         {book.published_by && <Badge variant="outline">{book.published_by}</Badge>}
+        {book.book_type_name && <Badge variant="secondary">{book.book_type_name}</Badge>}
       </div>
 
-      {!editMode && <RichTextView html={book.description} className="text-muted" />}
+      {!editMode && book.description?.trim() && (
+        <div className={`${bookTheme.panel} p-5`}>
+          <RichTextView html={book.description} className="text-muted" />
+        </div>
+      )}
 
       {isAdmin && editMode ? (
-        <BookContentEditor bookId={bookId} book={book} onRefresh={() => reload()} />
-      ) : (
-        <BookTree
-          key={`${treeKey}:${focusChapterId ?? ''}:${focusTopicId ?? ''}`}
+        <BookContentEditor
           bookId={bookId}
-          initialNodes={nodes}
-          focusChapterId={focusChapterId}
-          focusTopicId={focusTopicId}
+          book={{
+            id: book.id,
+            name: book.name,
+            name_bn: book.name_bn,
+            short_name: book.short_name,
+            description: book.description,
+            edition: book.edition,
+            published_by: book.published_by,
+            language: book.language,
+            tags: book.tags,
+          }}
+          onRefresh={() => reload()}
         />
+      ) : (
+        <BookContents />
       )}
     </div>
+  );
+}
+
+export default function BookDetailPage() {
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+
+  useEffect(() => {
+    fetchMe()
+      .then((res) => {
+        setIsAdmin(
+          res.data.is_super_admin || res.data.user_type === 'system_admin' || res.data.user_type === 'admin',
+        );
+      })
+      .catch(() => {});
+  }, []);
+
+  return (
+    <BookReaderGate>
+      <BookDetailBody
+        isAdmin={isAdmin}
+        editMode={editMode}
+        onToggleEdit={() => setEditMode((v) => !v)}
+      />
+    </BookReaderGate>
   );
 }

@@ -93,8 +93,18 @@ export async function listChaptersHandler(req: AuthRequest, res: Response): Prom
   res.json({ data });
 }
 
+export async function getBookReaderOutlineHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await booksService.getBookReaderOutline(String(req.params.id));
+  res.json({ data });
+}
+
 export async function getChapterHandler(req: AuthRequest, res: Response): Promise<void> {
   const data = await booksService.getChapterById(String(req.params.chapterId));
+  res.json({ data });
+}
+
+export async function listChapterQuestionsHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await booksService.listChapterQuestions(String(req.params.chapterId));
   res.json({ data });
 }
 

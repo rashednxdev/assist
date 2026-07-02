@@ -22,7 +22,8 @@ import {
   type QuestionFormValues,
 } from '@/components/questions/question-editor';
 import { QuestionAnswerView } from '@/components/questions/question-answer-view';
-import { bookContentHref } from '@/lib/book-links';
+import { taggedQuestionLocationHref } from '@/lib/book-links';
+import { questionDetailToForm } from '@/lib/question-detail-form';
 
 interface QuestionType {
   id: string;
@@ -64,37 +65,6 @@ interface QuestionDetail {
   correct_option_key?: string;
 }
 
-function detailToForm(q: QuestionDetail): QuestionFormValues {
-  const keys = ['a', 'b', 'c', 'd', 'e'] as const;
-  const options = keys.slice(0, Math.max(4, q.options.length)).map((key) => {
-    const found = q.options.find((o) => o.option_key === key);
-    return {
-      option_key: key,
-      option_text_en: found?.option_text_en ?? '',
-      option_text_bn: found?.option_text_bn,
-    };
-  });
-  return {
-    ...emptyQuestionForm,
-    question_type_id: q.question_type_id,
-    question_type_code: q.question_type_code,
-    has_options: q.has_options,
-    body_en: q.body_en,
-    body_bn: q.body_bn ?? '',
-    difficulty: q.difficulty as QuestionFormValues['difficulty'],
-    marks: q.marks,
-    negative_marks: q.negative_marks ?? 0,
-    time_seconds: q.time_seconds,
-    options,
-    correct_option_key: (q.correct_option_key ?? 'a') as QuestionFormValues['correct_option_key'],
-    correct_true_false: q.correct_true_false ?? 'true',
-    model_answer_sections: serializeExplanationSections(q.model_answer_sections),
-    explanation_sections: serializeExplanationSections(q.explanation_sections),
-    note: q.note ?? '',
-    book_links: q.book_links ?? [],
-  };
-}
-
 function linkLabel(level?: string) {
   if (level === 'chapter') return 'Chapter';
   if (level === 'rule') return 'Rule';
@@ -120,7 +90,7 @@ export default function QuestionDetailPage() {
   const reload = useCallback(() => {
     return apiFetch<{ data: QuestionDetail }>(`/questions/${id}`).then((r) => {
       setQuestion(r.data);
-      setForm(detailToForm(r.data));
+      setForm(questionDetailToForm(r.data));
     });
   }, [id]);
 
@@ -275,6 +245,7 @@ export default function QuestionDetailPage() {
           submitLabel="Save changes"
           excludeQuestionId={id}
           questionId={id}
+          isPublished={question.is_published}
           onBookLinksChange={reload}
         />
       ) : (
@@ -299,11 +270,11 @@ export default function QuestionDetailPage() {
             />
 
             {bookLinks.length > 0 && (
-              <div className="space-y-2">
-                <div className="text-sm font-semibold">Book links</div>
+              <div className="space-y-2 border-t border-border pt-4">
+                <div className="text-sm font-semibold">Tagged locations</div>
                 <ul className="space-y-1.5">
                   {bookLinks.map((bl) => {
-                    const href = bookContentHref({
+                    const href = taggedQuestionLocationHref({
                       book_info_id: bl.book_id,
                       book_chapter_id: bl.book_chapter_id,
                       book_topic_id: bl.book_topic_id,

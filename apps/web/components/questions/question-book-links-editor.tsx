@@ -5,9 +5,10 @@ import Link from 'next/link';
 import { ExternalLink, Plus, Trash2 } from 'lucide-react';
 import { QUESTION_LINK_LEVELS, type QuestionLinkLevel } from '@ibas/shared-constants';
 import { apiFetch } from '@/lib/api-client';
-import { bookContentHref } from '@/lib/book-links';
+import { taggedQuestionLocationHref } from '@/lib/book-links';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Alert } from '@/components/ui/alert';
 
 export interface QuestionBookLinkForm {
   id?: string;
@@ -65,6 +66,7 @@ interface QuestionBookLinksEditorProps {
   /** When editing an existing question, new links can be saved immediately. */
   questionId?: string;
   onRemoteChange?: () => void;
+  isPublished?: boolean;
   disabled?: boolean;
 }
 
@@ -94,11 +96,19 @@ function buildDraftLabel(
   return parts.join(' › ');
 }
 
+function linkLevelLabel(level: QuestionBookLinkForm['link_level']) {
+  if (level === 'chapter') return 'Chapter';
+  if (level === 'rule') return 'Rule / topic';
+  if (level === 'sub_rule') return 'Sub-rule';
+  return 'Book link';
+}
+
 export function QuestionBookLinksEditor({
   links,
   onChange,
   questionId,
   onRemoteChange,
+  isPublished,
   disabled,
 }: QuestionBookLinksEditorProps) {
   const [books, setBooks] = useState<BookItem[]>([]);
@@ -180,7 +190,7 @@ export function QuestionBookLinksEditor({
           `/questions/${questionId}/book-links`,
           { method: 'POST', body: JSON.stringify(payload) },
         );
-        onChange([...links, { ...draft, id: res.data.id, label: res.data.label }]);
+        onChange([...links, { ...draft, id: res.data.id, label: res.data.label, book_id: res.data.book_id ?? draft.book_id }]);
         onRemoteChange?.();
       } else {
         onChange([
@@ -216,55 +226,11 @@ export function QuestionBookLinksEditor({
 
   return (
     <div className="space-y-4">
-      {links.length > 0 && (
-        <ul className="space-y-2">
-          {links.map((link, index) => {
-            const href = bookContentHref({
-              book_info_id: link.book_id,
-              book_chapter_id: link.book_chapter_id,
-              book_topic_id: link.book_topic_id,
-              regulation_id: link.regulation_id,
-            });
-            return (
-              <li
-                key={link.id ?? `${link.book_chapter_id}-${index}`}
-                className="flex items-start justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm"
-              >
-                <div className="min-w-0">
-                  <p className="font-medium">{link.label || 'Book link'}</p>
-                  <p className="text-xs text-muted">
-                    {link.link_level === 'chapter'
-                      ? 'Chapter'
-                      : link.link_level === 'rule'
-                        ? 'Rule / topic'
-                        : 'Sub-rule'}
-                  </p>
-                </div>
-                <div className="flex shrink-0 gap-1">
-                  {href && (
-                    <Button asChild type="button" size="sm" variant="ghost" className="h-8 px-2">
-                      <Link href={href} target="_blank" rel="noopener noreferrer">
-                        <ExternalLink className="h-3.5 w-3.5" />
-                        <span className="sr-only">Open in books</span>
-                      </Link>
-                    </Button>
-                  )}
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="h-8 px-2 text-red-600 hover:bg-red-50 hover:text-red-700"
-                    disabled={disabled || busy}
-                    onClick={() => removeLink(index, link)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    <span className="sr-only">Remove link</span>
-                  </Button>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+      {!questionId && links.length > 0 && (
+        <Alert variant="info">
+          These locations will be stored when you save the question. After the first save you can add or remove links
+          immediately.
+        </Alert>
       )}
 
       <div className="rounded-lg border border-dashed border-border p-4">
@@ -419,6 +385,64 @@ export function QuestionBookLinksEditor({
           <Plus className="h-4 w-4" />
           Add this book link
         </Button>
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-sm font-semibold">Tagged locations</p>
+        {links.length === 0 ? (
+          <p className="text-sm text-muted">No book links yet. Add a chapter, rule, or sub-rule above.</p>
+        ) : (
+          <>
+            {isPublished === false && (
+              <Alert variant="warning">
+                Linked locations are saved, but this question is still a draft. Publish it to show under Tag questions
+                on the chapter reader.
+              </Alert>
+            )}
+            <ul className="space-y-2">
+              {links.map((link, index) => {
+                const href = taggedQuestionLocationHref({
+                  book_info_id: link.book_id,
+                  book_chapter_id: link.book_chapter_id,
+                  book_topic_id: link.book_topic_id,
+                  regulation_id: link.regulation_id,
+                });
+                return (
+                  <li
+                    key={link.id ?? `${link.book_chapter_id}-${index}`}
+                    className="flex items-start justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium">{link.label || 'Book link'}</p>
+                      <p className="text-xs text-muted">{linkLevelLabel(link.link_level)}</p>
+                    </div>
+                    <div className="flex shrink-0 gap-1">
+                      {href && (
+                        <Button asChild type="button" size="sm" variant="ghost" className="h-8 px-2">
+                          <Link href={href} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            <span className="sr-only">Open in books</span>
+                          </Link>
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 px-2 text-red-600 hover:bg-red-50 hover:text-red-700"
+                        disabled={disabled || busy}
+                        onClick={() => removeLink(index, link)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        <span className="sr-only">Remove link</span>
+                      </Button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
       </div>
     </div>
   );

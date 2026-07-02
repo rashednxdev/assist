@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "iBAS Learn",
+    "slug": "ibas-learn",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "ibaslearn",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0f3d5c"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "gov.bd.ibas.learn"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0f3d5c"
+      },
+      "package": "gov.bd.ibas.learn"
+    },
+    "plugins": ["expo-router", "expo-secure-store"],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

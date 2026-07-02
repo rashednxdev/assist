@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "dev": "pnpm build:packages && turbo dev --filter=@ibas/api --filter=@ibas/web",
+    "dev:mobile": "pnpm --filter @ibas/mobile dev",
     "build": "turbo build",
     "build:packages": "pnpm --filter @ibas/shared-constants build && pnpm --filter @ibas/shared-types build",
     "lint": "turbo lint",

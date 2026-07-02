@@ -55,6 +55,9 @@ export function questionDetailToForm(q: QuestionDetailForForm): QuestionFormValu
     model_answer_sections: serializeExplanationSections(q.model_answer_sections),
     explanation_sections: serializeExplanationSections(q.explanation_sections),
     note: q.note ?? '',
-    book_links: q.book_links ?? [],
+    book_links: (q.book_links ?? []).map((link) => ({
+      ...link,
+      book_id: link.book_id || '',
+    })),
   };
 }

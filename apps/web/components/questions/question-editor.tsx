@@ -493,7 +493,10 @@ export function validateQuestionForm(form: QuestionFormValues): string | null {
   return null;
 }
 
-export function questionFormToPayload(form: QuestionFormValues) {
+export function questionFormToPayload(
+  form: QuestionFormValues,
+  options?: { includeBookLinks?: boolean },
+) {
   const text = (form.body_bn || form.body_en).trim();
   const isMcqOrTf = form.question_type_code === 'MCQ' || form.question_type_code === 'TF';
   const payload: Record<string, unknown> = {
@@ -507,17 +510,19 @@ export function questionFormToPayload(form: QuestionFormValues) {
     time_seconds: isMcqOrTf ? form.time_seconds : 60,
     language: form.language,
     note: form.note.trim() || undefined,
-    book_links: form.book_links
+  };
+
+  if (options?.includeBookLinks) {
+    payload.book_links = form.book_links
       .filter((l) => l.link_level && l.book_chapter_id)
       .map((l) => ({
-        ...(l.id ? { id: l.id } : {}),
         link_level: l.link_level,
         book_chapter_id: l.book_chapter_id,
         book_topic_id: l.book_topic_id || undefined,
         book_sub_topic_id: l.book_sub_topic_id || undefined,
         regulation_id: l.regulation_id || undefined,
-      })),
-  };
+      }));
+  }
 
   if (form.question_type_code === 'TF') {
     payload.correct_true_false = form.correct_true_false;

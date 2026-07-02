@@ -61,6 +61,8 @@ export function canSeeNavItem(
 
   if (item.requireWorkflowRole && !hasActiveWorkflowRole(user)) return false;
 
+  if (item.requirePlatformAdmin && !isPlatformAdmin(user)) return false;
+
   if (!item.moduleCode) return true;
 
   if (item.requireCreate) {

@@ -87,7 +87,7 @@ export default function NewQuestionPage() {
         setError(validationError);
         return;
       }
-      const payload = questionFormToPayload(form);
+      const payload = questionFormToPayload(form, { includeBookLinks: !savedQuestion?.id });
       if (savedQuestion?.id) {
         await apiFetch(`/questions/${savedQuestion.id}`, {
           method: 'PATCH',
@@ -189,7 +189,15 @@ export default function NewQuestionPage() {
         questionId={savedQuestion?.id}
         isPublished={savedQuestion?.is_published}
         onBookLinksChange={() => {
-          if (savedQuestion?.id) reloadSaved(savedQuestion.id).catch(() => {});
+          if (!savedQuestion?.id) return;
+          apiFetch<{ data: SavedQuestionMeta & Parameters<typeof questionDetailToForm>[0] }>(
+            `/questions/${savedQuestion.id}`,
+          )
+            .then((res) => {
+              setSavedQuestion({ id: res.data.id, is_published: res.data.is_published });
+              setForm((f) => ({ ...f, book_links: res.data.book_links ?? [] }));
+            })
+            .catch(() => {});
         }}
       />
     </div>

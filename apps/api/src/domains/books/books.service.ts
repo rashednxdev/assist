@@ -518,10 +518,18 @@ export async function listChapterQuestions(chapterId: string) {
 
   const chapterOid = chapter._id;
   const topicIds = await BookTopic.find({ book_chapter_id: chapterOid, is_active: true }).distinct('_id');
+  const subTopicIds =
+    topicIds.length > 0
+      ? await BookSubTopic.find({ book_topic_id: { $in: topicIds }, is_active: true }).distinct('_id')
+      : [];
 
   const linkRows = await QuestionBookLink.find({
     is_active: true,
-    $or: [{ book_chapter_id: chapterOid }, { book_topic_id: { $in: topicIds } }],
+    $or: [
+      { book_chapter_id: chapterOid },
+      { book_topic_id: { $in: topicIds } },
+      ...(subTopicIds.length > 0 ? [{ book_sub_topic_id: { $in: subTopicIds } }] : []),
+    ],
   });
   const linkedIds = [...new Set(linkRows.map((l) => String(l.question_id)))];
 

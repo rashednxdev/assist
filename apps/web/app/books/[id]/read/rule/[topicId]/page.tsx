@@ -98,7 +98,7 @@ export default function BookRuleReadPage() {
                 <h2 className="mb-3 text-sm font-semibold text-muted">Sub-rules</h2>
                 <ul className="space-y-3">
                   {topic.sub_topics.map((st) => (
-                    <li key={st.id} className={`border p-3 ${bookTheme.listItem}`}>
+                    <li key={st.id} id={`sub-${st.id}`} className={`border p-3 ${bookTheme.listItem}`}>
                       <p className="font-medium">{subRuleHeading(st)}</p>
                       <BookDetailsBlock html={st.description} note={st.note} />
                     </li>

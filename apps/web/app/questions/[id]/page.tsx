@@ -118,7 +118,7 @@ export default function QuestionDetailPage() {
         setError(validationError);
         return;
       }
-      const payload = questionFormToPayload(form);
+      const payload = questionFormToPayload(form, { includeBookLinks: false });
       await apiFetch(`/questions/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
       setMessage('Question saved');
       setEditMode(false);
@@ -246,7 +246,14 @@ export default function QuestionDetailPage() {
           excludeQuestionId={id}
           questionId={id}
           isPublished={question.is_published}
-          onBookLinksChange={reload}
+          onBookLinksChange={() => {
+            apiFetch<{ data: QuestionDetail }>(`/questions/${id}`)
+              .then((r) => {
+                setQuestion(r.data);
+                setForm((f) => ({ ...f, book_links: r.data.book_links ?? [] }));
+              })
+              .catch(() => {});
+          }}
         />
       ) : (
         <Card>
@@ -278,6 +285,7 @@ export default function QuestionDetailPage() {
                       book_info_id: bl.book_id,
                       book_chapter_id: bl.book_chapter_id,
                       book_topic_id: bl.book_topic_id,
+                      book_sub_topic_id: bl.book_sub_topic_id,
                       regulation_id: bl.regulation_id,
                     });
                     return (

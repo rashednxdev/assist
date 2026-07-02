@@ -24,15 +24,24 @@ export function bookContentHref(ref: {
 /** Reader URLs for question tags (chapter / rule read screens). */
 export function taggedQuestionLocationHref(ref: {
   book_info_id?: string;
+  book_id?: string;
   book_chapter_id?: string;
   book_topic_id?: string;
+  book_sub_topic_id?: string;
   regulation_id?: string;
 }): string | null {
-  if (ref.book_info_id && ref.book_topic_id) {
-    return `/books/${ref.book_info_id}/read/rule/${ref.book_topic_id}`;
+  const bookId = ref.book_info_id?.trim() || ref.book_id?.trim();
+  if (ref.regulation_id && !bookId && !ref.book_chapter_id && !ref.book_topic_id) {
+    return `/books/regulations/${ref.regulation_id}`;
   }
-  if (ref.book_info_id && ref.book_chapter_id) {
-    return `/books/${ref.book_info_id}/read/chapter/${ref.book_chapter_id}`;
+  if (!bookId) return null;
+  if (ref.book_topic_id) {
+    const base = `/books/${bookId}/read/rule/${ref.book_topic_id}`;
+    if (ref.book_sub_topic_id) return `${base}#sub-${ref.book_sub_topic_id}`;
+    return base;
   }
-  return bookContentHref(ref);
+  if (ref.book_chapter_id) {
+    return `/books/${bookId}/read/chapter/${ref.book_chapter_id}`;
+  }
+  return bookContentHref({ book_info_id: bookId, ...ref });
 }

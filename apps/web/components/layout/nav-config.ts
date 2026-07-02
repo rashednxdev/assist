@@ -31,6 +31,8 @@ export interface NavItem {
   requireCreate?: boolean;
   /** Workflow inbox / run guide — requires an active workflow_roles tag */
   requireWorkflowRole?: boolean;
+  /** Regulations and similar — only platform admins (not applicant/officer) */
+  requirePlatformAdmin?: boolean;
 }
 
 export interface NavGroup {
@@ -49,7 +51,7 @@ export const navGroups: NavGroup[] = [
     title: 'Learning',
     items: [
       { href: '/books', label: 'Rule library', icon: Library, moduleCode: 'BOOKS' },
-      { href: '/books/regulations', label: 'Regulations', icon: ScrollText, moduleCode: 'BOOKS' },
+      { href: '/books/regulations', label: 'Regulations', icon: ScrollText, moduleCode: 'BOOKS', requirePlatformAdmin: true },
       { href: '/questions', label: 'Question bank', icon: HelpCircle, moduleCode: 'QUESTIONS' },
       { href: '/exams', label: 'Exam programs', icon: GraduationCap, moduleCode: 'EXAM' },
       { href: '/papers', label: 'Practice papers', icon: FileText, moduleCode: 'PAPER' },

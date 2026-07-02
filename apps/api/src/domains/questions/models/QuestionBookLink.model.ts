@@ -32,6 +32,18 @@ schema.index({ question_id: 1, is_active: 1, sort_order: 1 });
 schema.index({ book_chapter_id: 1, is_active: 1 });
 schema.index({ book_topic_id: 1, is_active: 1 });
 schema.index({ book_sub_topic_id: 1, is_active: 1 });
+schema.index(
+  { question_id: 1, book_chapter_id: 1 },
+  { unique: true, partialFilterExpression: { is_active: true, link_level: 'chapter' } },
+);
+schema.index(
+  { question_id: 1, book_topic_id: 1 },
+  { unique: true, partialFilterExpression: { is_active: true, link_level: 'rule' } },
+);
+schema.index(
+  { question_id: 1, book_sub_topic_id: 1 },
+  { unique: true, partialFilterExpression: { is_active: true, link_level: 'sub_rule' } },
+);
 
 export const QuestionBookLink = mongoose.model<IQuestionBookLink>(
   'QuestionBookLink',

@@ -169,10 +169,22 @@ async function ensureLegacyBookLink(question: InstanceType<typeof Question>) {
 }
 
 async function serializeBookLink(link: InstanceType<typeof QuestionBookLink>) {
-  const chapter = await BookChapter.findById(link.book_chapter_id);
-  const book = chapter ? await BookInfo.findById(chapter.book_info_id) : null;
   const topic = link.book_topic_id ? await BookTopic.findById(link.book_topic_id) : null;
   const subTopic = link.book_sub_topic_id ? await BookSubTopic.findById(link.book_sub_topic_id) : null;
+
+  let chapter = link.book_chapter_id ? await BookChapter.findById(link.book_chapter_id) : null;
+  if (!chapter && topic?.book_chapter_id) {
+    chapter = await BookChapter.findById(topic.book_chapter_id);
+  }
+  if (!chapter && subTopic?.book_topic_id) {
+    const topicFromSub = await BookTopic.findById(subTopic.book_topic_id);
+    if (topicFromSub?.book_chapter_id) {
+      chapter = await BookChapter.findById(topicFromSub.book_chapter_id);
+    }
+  }
+
+  const book = chapter ? await BookInfo.findById(chapter.book_info_id) : null;
+  const bookId = book ? String(book._id) : undefined;
   const parts: string[] = [];
   if (book) parts.push(book.short_name || book.name);
   if (chapter) parts.push(`Ch. ${chapter.chapter_number} ${chapter.name}`.trim());
@@ -181,9 +193,9 @@ async function serializeBookLink(link: InstanceType<typeof QuestionBookLink>) {
   return {
     id: String(link._id),
     link_level: link.link_level,
-    book_id: book ? String(book._id) : undefined,
-    book_chapter_id: idStr(link.book_chapter_id),
-    book_topic_id: idStr(link.book_topic_id),
+    book_id: bookId,
+    book_chapter_id: idStr(link.book_chapter_id ?? chapter?._id),
+    book_topic_id: idStr(link.book_topic_id ?? topic?._id ?? subTopic?.book_topic_id),
     book_sub_topic_id: idStr(link.book_sub_topic_id),
     regulation_id: idStr(link.regulation_id),
     label: parts.join(' › '),
@@ -197,6 +209,53 @@ async function loadSerializedBookLinks(questionId: mongoose.Types.ObjectId | str
   return Promise.all(links.map((link) => serializeBookLink(link)));
 }
 
+function bookLinkPointKey(link: QuestionBookLinkInput): string {
+  if (link.link_level === 'sub_rule' && link.book_sub_topic_id) {
+    return `sub:${link.book_sub_topic_id}`;
+  }
+  if (link.link_level === 'rule' && link.book_topic_id) {
+    return `rule:${link.book_topic_id}`;
+  }
+  return `chapter:${link.book_chapter_id}`;
+}
+
+function assertNoDuplicateBookLinksInList(links: QuestionBookLinkInput[]) {
+  const seen = new Set<string>();
+  for (const link of links) {
+    const key = bookLinkPointKey(link);
+    if (seen.has(key)) {
+      throw badRequest('This question cannot be linked to the same book location more than once.');
+    }
+    seen.add(key);
+  }
+}
+
+async function assertBookLinkPointUnique(
+  questionId: string | mongoose.Types.ObjectId,
+  dto: QuestionBookLinkInput,
+  excludeLinkId?: string,
+) {
+  const query: Record<string, unknown> = {
+    question_id: new mongoose.Types.ObjectId(String(questionId)),
+    link_level: dto.link_level,
+    is_active: true,
+  };
+  if (dto.link_level === 'chapter') {
+    query.book_chapter_id = new mongoose.Types.ObjectId(dto.book_chapter_id);
+  } else if (dto.link_level === 'rule') {
+    query.book_topic_id = new mongoose.Types.ObjectId(dto.book_topic_id!);
+  } else if (dto.link_level === 'sub_rule') {
+    query.book_sub_topic_id = new mongoose.Types.ObjectId(dto.book_sub_topic_id!);
+  }
+  if (excludeLinkId) {
+    query._id = { $ne: new mongoose.Types.ObjectId(excludeLinkId) };
+  }
+  const existing = await QuestionBookLink.findOne(query);
+  if (existing) {
+    throw badRequest('This question is already linked to that book location.');
+  }
+}
+
 async function saveBookLinks(
   questionId: mongoose.Types.ObjectId,
   links: QuestionBookLinkInput[],
@@ -204,6 +263,7 @@ async function saveBookLinks(
 ) {
   await QuestionBookLink.updateMany({ question_id: questionId }, { is_active: false });
   const activeLinks = links.filter((l) => l.link_level && l.book_chapter_id);
+  assertNoDuplicateBookLinksInList(activeLinks);
   for (let i = 0; i < activeLinks.length; i++) {
     const l = activeLinks[i]!;
     await QuestionBookLink.create({
@@ -736,6 +796,8 @@ export async function addQuestionBookLink(questionId: string, dto: QuestionBookL
   const question = await Question.findById(questionId);
   if (!question || !question.is_active) throw notFound('Question not found');
 
+  await assertBookLinkPointUnique(question._id, dto);
+
   const latest = await QuestionBookLink.findOne({ question_id: question._id, is_active: true })
     .sort({ sort_order: -1 })
     .select('sort_order');
@@ -814,7 +876,7 @@ export async function updateQuestion(id: string, dto: UpdateQuestionDto) {
   if (dto.language !== undefined) question.language = dto.language;
   if (dto.is_active !== undefined) question.is_active = dto.is_active;
   const links = linksFromDto(dto);
-  if (links !== undefined) {
+  if (links !== undefined && links.length > 0) {
     await saveBookLinks(question._id, links, question);
   }
 

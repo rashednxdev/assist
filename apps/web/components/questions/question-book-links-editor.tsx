@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ExternalLink, Plus, Trash2 } from 'lucide-react';
 import { QUESTION_LINK_LEVELS, type QuestionLinkLevel } from '@ibas/shared-constants';
@@ -77,6 +77,19 @@ function canAddLink(draft: QuestionBookLinkForm): boolean {
   return true;
 }
 
+function bookLinkPointKey(link: Pick<QuestionBookLinkForm, 'link_level' | 'book_chapter_id' | 'book_topic_id' | 'book_sub_topic_id'>): string {
+  if (link.link_level === 'sub_rule' && link.book_sub_topic_id) return `sub:${link.book_sub_topic_id}`;
+  if (link.link_level === 'rule' && link.book_topic_id) return `rule:${link.book_topic_id}`;
+  if (link.book_chapter_id) return `chapter:${link.book_chapter_id}`;
+  return '';
+}
+
+function isDuplicateBookLink(draft: QuestionBookLinkForm, existing: QuestionBookLinkForm[]): boolean {
+  const key = bookLinkPointKey(draft);
+  if (!key) return false;
+  return existing.some((link) => bookLinkPointKey(link) === key);
+}
+
 function buildDraftLabel(
   draft: QuestionBookLinkForm,
   books: BookItem[],
@@ -103,6 +116,68 @@ function linkLevelLabel(level: QuestionBookLinkForm['link_level']) {
   return 'Book link';
 }
 
+function useChapterBookMap(links: QuestionBookLinkForm[]) {
+  const staticMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const link of links) {
+      if (link.book_chapter_id && link.book_id) {
+        map[link.book_chapter_id] = link.book_id;
+      }
+    }
+    return map;
+  }, [links]);
+
+  const [resolvedMap, setResolvedMap] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const chapterIds = [
+      ...new Set(
+        links
+          .filter((l) => l.book_chapter_id && !l.book_id && !staticMap[l.book_chapter_id])
+          .map((l) => l.book_chapter_id),
+      ),
+    ];
+    if (chapterIds.length === 0) return;
+
+    let cancelled = false;
+    void Promise.all(
+      chapterIds.map(async (chapterId) => {
+        try {
+          const res = await apiFetch<{ data: { book_info_id: string } }>(`/books/chapters/${chapterId}`);
+          return [chapterId, res.data.book_info_id] as const;
+        } catch {
+          return null;
+        }
+      }),
+    ).then((rows) => {
+      if (cancelled) return;
+      setResolvedMap((prev) => {
+        const next = { ...prev };
+        for (const row of rows) {
+          if (row) next[row[0]] = row[1];
+        }
+        return next;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [links, staticMap]);
+
+  return { ...resolvedMap, ...staticMap };
+}
+
+function resolveTaggedHref(link: QuestionBookLinkForm, chapterBookMap: Record<string, string>) {
+  return taggedQuestionLocationHref({
+    book_info_id: link.book_id || chapterBookMap[link.book_chapter_id],
+    book_chapter_id: link.book_chapter_id,
+    book_topic_id: link.book_topic_id,
+    book_sub_topic_id: link.book_sub_topic_id,
+    regulation_id: link.regulation_id,
+  });
+}
+
 export function QuestionBookLinksEditor({
   links,
   onChange,
@@ -112,6 +187,7 @@ export function QuestionBookLinksEditor({
   disabled,
 }: QuestionBookLinksEditorProps) {
   const [books, setBooks] = useState<BookItem[]>([]);
+  const chapterBookMap = useChapterBookMap(links);
   const [draft, setDraft] = useState<QuestionBookLinkForm>(emptyBookLinkForm);
   const [chapters, setChapters] = useState<ChapterItem[]>([]);
   const [topics, setTopics] = useState<TopicItem[]>([]);
@@ -172,6 +248,10 @@ export function QuestionBookLinksEditor({
     setError('');
     if (!canAddLink(draft)) {
       setError('Complete the book link fields before adding');
+      return;
+    }
+    if (isDuplicateBookLink(draft, links)) {
+      setError('This question is already linked to that book location.');
       return;
     }
 
@@ -401,19 +481,25 @@ export function QuestionBookLinksEditor({
             )}
             <ul className="space-y-2">
               {links.map((link, index) => {
-                const href = taggedQuestionLocationHref({
-                  book_info_id: link.book_id,
-                  book_chapter_id: link.book_chapter_id,
-                  book_topic_id: link.book_topic_id,
-                  regulation_id: link.regulation_id,
-                });
+                const href = resolveTaggedHref(link, chapterBookMap);
                 return (
                   <li
                     key={link.id ?? `${link.book_chapter_id}-${index}`}
                     className="flex items-start justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm"
                   >
                     <div className="min-w-0">
-                      <p className="font-medium">{link.label || 'Book link'}</p>
+                      {href ? (
+                        <Link
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-medium text-primary hover:underline"
+                        >
+                          {link.label || 'Book link'}
+                        </Link>
+                      ) : (
+                        <p className="font-medium">{link.label || 'Book link'}</p>
+                      )}
                       <p className="text-xs text-muted">{linkLevelLabel(link.link_level)}</p>
                     </div>
                     <div className="flex shrink-0 gap-1">

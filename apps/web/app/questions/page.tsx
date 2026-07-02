@@ -7,6 +7,7 @@ import { QUESTION_DIFFICULTIES } from '@ibas/shared-constants';
 import { apiFetch } from '@/lib/api-client';
 import { confirmDelete } from '@/lib/confirm-action';
 import { fetchMe } from '@/lib/auth';
+import { isPlatformAdmin } from '@/lib/capabilities';
 import { RowActions } from '@/components/shared/row-actions';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -90,11 +91,7 @@ export default function QuestionsPage() {
     load();
     loadTypes();
     fetchMe()
-      .then((res) => {
-        setIsAdmin(
-          res.data.is_super_admin || res.data.user_type === 'system_admin' || res.data.user_type === 'admin',
-        );
-      })
+      .then((res) => setIsAdmin(isPlatformAdmin(res.data)))
       .catch(() => {});
   }, []);
 
@@ -417,16 +414,20 @@ export default function QuestionsPage() {
                         <div className="mt-2 flex flex-wrap gap-1.5">
                           <Badge variant="outline">{item.question_type_name ?? item.question_type_code}</Badge>
                           {link && <Badge variant="secondary">{link}</Badge>}
-                          <Badge variant="secondary">{item.difficulty}</Badge>
-                          <Badge variant="outline">
-                            {item.marks} mark{item.marks !== 1 ? 's' : ''}
-                          </Badge>
+                          {isAdmin && <Badge variant="secondary">{item.difficulty}</Badge>}
+                          {isAdmin && (
+                            <Badge variant="outline">
+                              {item.marks} mark{item.marks !== 1 ? 's' : ''}
+                            </Badge>
+                          )}
                           {item.option_count > 0 && (
                             <Badge variant="outline">{item.option_count} options</Badge>
                           )}
-                          <Badge variant={item.is_published ? 'default' : 'outline'}>
-                            {item.is_published ? 'Published' : 'Draft'}
-                          </Badge>
+                          {isAdmin && (
+                            <Badge variant={item.is_published ? 'default' : 'outline'}>
+                              {item.is_published ? 'Published' : 'Draft'}
+                            </Badge>
+                          )}
                         </div>
                       </div>
                     </Link>

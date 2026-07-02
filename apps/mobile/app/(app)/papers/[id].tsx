@@ -1,14 +1,21 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
-import { BookBadge } from '@/components/books/BookBadge';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
 import { ProgressSummary } from '@/components/evaluation/ProgressSummary';
+import { RatingIndicator } from '@/components/evaluation/RatingIndicator';
+import { PaperSheetHeader } from '@/components/papers/PaperSheetHeader';
 import {
-  buildPaperQuestionProgressMap,
+  collectPaperQuestionIds,
+  type QuestionEvalBrief,
+} from '@/lib/evaluation-display';
+import {
   fetchPaperEvaluation,
+  fetchQuestionEvaluationsBatch,
   type PaperEvaluationData,
 } from '@/lib/evaluation-api';
+import { bookNavTitle } from '@/lib/book-display';
+import { toBanglaDigits } from '@/lib/bangla-format';
 import { fetchPaperCompose } from '@/lib/papers-api';
 import {
   displayQuestionLabel,
@@ -22,8 +29,8 @@ import { questionDetailHref } from '@/lib/question-routes';
 import type { PaperComposeData, PaperQuestionPart, PaperQuestionRow } from '@/types/papers';
 import { colors, spacing } from '@/theme';
 
-function marksLabel(marks: number, marksBn?: string): string {
-  return marksBn?.trim() ? marksBn : `${marks} marks`;
+function marksLine(marks: number, marksBn?: string): string {
+  return marksBn?.trim() ? toBanglaDigits(marksBn) : toBanglaDigits(String(marks));
 }
 
 export default function PaperDetailScreen() {
@@ -32,9 +39,16 @@ export default function PaperDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [data, setData] = useState<PaperComposeData | null>(null);
   const [evaluation, setEvaluation] = useState<PaperEvaluationData | null>(null);
-  const [questionProgress, setQuestionProgress] = useState<Map<string, number>>(new Map());
+  const [evalMap, setEvalMap] = useState<Map<string, QuestionEvalBrief>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      title: loading ? ' ' : data?.paper.name ? bookNavTitle(data.paper.name) : ' ',
+      headerBackTitle: 'Papers',
+    });
+  }, [navigation, loading, data?.paper.name]);
 
   const loadPaper = useCallback(async () => {
     if (!id) return;
@@ -43,42 +57,63 @@ export default function PaperDetailScreen() {
     try {
       const compose = await fetchPaperCompose(id);
       setData(compose);
-      navigation.setOptions({ title: compose.paper.name || 'Paper' });
       try {
         const evalData = await fetchPaperEvaluation(id);
         setEvaluation(evalData);
-        setQuestionProgress(buildPaperQuestionProgressMap(evalData.overall));
       } catch {
         setEvaluation(null);
-        setQuestionProgress(new Map());
       }
     } catch (err) {
       setData(null);
       setEvaluation(null);
-      setQuestionProgress(new Map());
+      setEvalMap(new Map());
       setError(err instanceof Error ? err.message : 'Failed to load paper');
     } finally {
       setLoading(false);
     }
-  }, [id, navigation]);
+  }, [id]);
 
   useEffect(() => {
     void loadPaper();
   }, [loadPaper]);
 
+  const allQuestionRows = useMemo(() => {
+    if (!data) return [];
+    return [...data.groups.flatMap((group) => group.questions), ...data.ungrouped_questions];
+  }, [data]);
+
+  const loadEvaluations = useCallback(async () => {
+    const ids = collectPaperQuestionIds(allQuestionRows);
+    if (ids.length === 0) {
+      setEvalMap(new Map());
+      return;
+    }
+    try {
+      const rows = await fetchQuestionEvaluationsBatch(ids);
+      const map = new Map<string, QuestionEvalBrief>();
+      for (const row of rows) {
+        if (row.progress_index > 0 || row.self_rating || row.is_correct !== undefined) {
+          map.set(row.question_id, row);
+        }
+      }
+      setEvalMap(map);
+    } catch {
+      setEvalMap(new Map());
+    }
+  }, [allQuestionRows]);
+
+  useEffect(() => {
+    void loadEvaluations();
+  }, [loadEvaluations]);
+
   useFocusEffect(
     useCallback(() => {
       if (!id || loading) return;
       fetchPaperEvaluation(id)
-        .then((evalData) => {
-          setEvaluation(evalData);
-          setQuestionProgress(buildPaperQuestionProgressMap(evalData.overall));
-        })
-        .catch(() => {
-          setEvaluation(null);
-          setQuestionProgress(new Map());
-        });
-    }, [id, loading]),
+        .then((evalData) => setEvaluation(evalData))
+        .catch(() => setEvaluation(null));
+      void loadEvaluations();
+    }, [id, loading, loadEvaluations]),
   );
 
   if (loading) return <BookLoading />;
@@ -91,14 +126,27 @@ export default function PaperDetailScreen() {
 
   function renderPart(part: PaperQuestionPart) {
     const title = part.question?.body_en?.trim() || 'Open question detail';
+    const partMarksText = marksLine(part.marks, part.marks_display_bn);
+    const showMarks = part.marks > 0 || part.marks_display_bn?.trim();
+
     return (
       <Pressable
         key={part.id}
         style={({ pressed }) => [styles.partRow, pressed && styles.pressed]}
         onPress={() => router.push(questionDetailHref(part.question_id))}
       >
-        <Text style={styles.partLabel}>{part.part_label}.</Text>
-        <Text style={styles.partText}>{title}</Text>
+        <Text style={styles.sheetText}>{part.part_label}.</Text>
+        <View style={styles.questionBody}>
+          <View style={styles.titleWithRating}>
+            <Text style={[styles.sheetText, styles.partBody]}>{title}</Text>
+            <RatingIndicator evaluation={evalMap.get(part.question_id)} />
+          </View>
+          {showMarks ? (
+            <View style={styles.marksCol}>
+              <Text style={[styles.sheetText, styles.marksLine]}>[{partMarksText}]</Text>
+            </View>
+          ) : null}
+        </View>
       </Pressable>
     );
   }
@@ -108,36 +156,42 @@ export default function PaperDetailScreen() {
     const inline = questionInlineText(row);
     const tapId = primaryQuestionId(row);
     const rowMarks = mainRowMarks(row);
+    const marksText = marksLine(rowMarks.marks, rowMarks.marks_display_bn);
     const promoted = promotedFirstPart(row);
     const visibleParts = partsForDisplay(row);
     const hasSubQuestions = visibleParts.length > 0;
-    const rowProgress = questionProgress.get(row.id);
+    const questionEval = tapId ? evalMap.get(tapId) : undefined;
 
     const mainContent = (
       <View style={styles.questionMain}>
-        <Text style={styles.questionNo}>{label}.</Text>
+        <Text style={styles.sheetText}>{label}.</Text>
         <View style={styles.questionBody}>
-          <View style={styles.questionTopRow}>
-            <View style={styles.questionTextRow}>
-            {promoted ? <Text style={styles.promotedLabel}>{promoted.part_label}.</Text> : null}
+          <View style={styles.questionTextRow}>
+            {promoted ? <Text style={styles.sheetText}>{promoted.part_label}.</Text> : null}
             {tapId ? (
               <Pressable
                 style={({ pressed }) => [styles.questionTap, pressed && styles.pressed]}
                 onPress={() => router.push(questionDetailHref(tapId))}
               >
-                <Text style={styles.questionText}>{inline || 'Open question detail'}</Text>
+                <View style={styles.titleWithRating}>
+                  <Text style={[styles.sheetText, styles.questionTitle]}>
+                    {inline || 'Open question detail'}
+                  </Text>
+                  <RatingIndicator evaluation={questionEval} />
+                </View>
               </Pressable>
             ) : (
-              <Text style={styles.questionText}>{inline || 'Composite question'}</Text>
+              <View style={styles.titleWithRating}>
+                <Text style={[styles.sheetText, styles.questionTitle]}>
+                  {inline || 'Composite question'}
+                </Text>
+              </View>
             )}
-            </View>
-            {rowProgress !== undefined && rowProgress > 0 ? (
-              <Text style={styles.questionProgress}>{rowProgress}%</Text>
-            ) : null}
           </View>
-          <View style={styles.badges}>
-            <BookBadge label={marksLabel(rowMarks.marks, rowMarks.marks_display_bn)} variant="muted" />
-            {!row.is_compulsory ? <BookBadge label="Optional" variant="muted" /> : null}
+          <View style={styles.marksCol}>
+            {(rowMarks.marks > 0 || rowMarks.marks_display_bn?.trim()) ? (
+              <Text style={[styles.sheetText, styles.marksLine]}>[{marksText}]</Text>
+            ) : null}
           </View>
         </View>
       </View>
@@ -157,60 +211,51 @@ export default function PaperDetailScreen() {
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>{paper.name}</Text>
-      <Text style={styles.subTitle}>
-        {[paper.exam_short_name, paper.exam_subject_name, paper.session_label_en].filter(Boolean).join(' · ')}
-      </Text>
-
-      <View style={styles.badges}>
-        <BookBadge label={paper.paper_type_name ?? 'Paper'} variant="muted" />
-        <BookBadge label={`${paper.total_marks} marks`} variant="muted" />
-        <BookBadge label={`${paper.pass_marks} pass`} variant="muted" />
-        <BookBadge label={`${paper.duration_minutes} min`} variant="muted" />
-        <BookBadge label={`${totalQuestions} questions`} variant="muted" />
-      </View>
-
       {evaluation && evaluation.overall.total_questions > 0 ? (
-        <View style={styles.panel}>
+        <View style={styles.evalPanel}>
           <Text style={styles.sectionTitle}>Overall evaluation</Text>
           <ProgressSummary summary={evaluation.overall} />
-          <Text style={styles.evalHint}>
-            Average mastery across all questions on this paper.
-          </Text>
         </View>
       ) : null}
 
-      {paper.instructions?.trim() ? (
-        <View style={styles.panel}>
-          <Text style={styles.sectionTitle}>Instructions</Text>
-          <Text style={styles.instructions}>{paper.instructions}</Text>
-        </View>
-      ) : null}
+      <View style={styles.paperSheet}>
+        <PaperSheetHeader paper={paper} />
 
-      {data.groups.map((group) => (
-        <View key={group.id} style={styles.panel}>
-          <Text style={styles.sectionTitle}>
-            Group {group.group_number}: {group.name}
-          </Text>
-          {group.instructions?.trim() ? <Text style={styles.groupHint}>{group.instructions}</Text> : null}
-          {group.questions.length === 0 ? (
-            <Text style={styles.muted}>No questions in this group.</Text>
-          ) : (
-            <View style={styles.questionList}>{group.questions.map(renderQuestionRow)}</View>
-          )}
-        </View>
-      ))}
+        {paper.instructions?.trim() ? (
+          <View style={styles.instructionsBlock}>
+            <Text style={styles.instructions}>{toBanglaDigits(paper.instructions)}</Text>
+          </View>
+        ) : null}
 
-      {data.ungrouped_questions.length > 0 ? (
-        <View style={styles.panel}>
-          <Text style={styles.sectionTitle}>Questions</Text>
-          <View style={styles.questionList}>{data.ungrouped_questions.map(renderQuestionRow)}</View>
-        </View>
-      ) : null}
+        {data.groups.map((group) => (
+          <View key={group.id} style={styles.groupBlock}>
+            {(group.name || group.instructions?.trim()) ? (
+              <View style={styles.groupHeading}>
+                {group.name ? <Text style={styles.groupTitle}>{group.name}</Text> : null}
+                {group.instructions?.trim() ? (
+                  <Text style={styles.groupHint}>{group.instructions}</Text>
+                ) : null}
+              </View>
+            ) : null}
+            {group.questions.length === 0 ? (
+              <Text style={styles.muted}>No questions in this group.</Text>
+            ) : (
+              <View style={styles.questionList}>{group.questions.map(renderQuestionRow)}</View>
+            )}
+          </View>
+        ))}
 
-      {totalQuestions === 0 ? (
-        <BookEmpty title="No questions added yet" subtitle="This paper has no configured questions." />
-      ) : null}
+        {data.ungrouped_questions.length > 0 ? (
+          <View style={styles.groupBlock}>
+            {data.groups.length > 0 ? <Text style={styles.groupTitle}>প্রশ্ন</Text> : null}
+            <View style={styles.questionList}>{data.ungrouped_questions.map(renderQuestionRow)}</View>
+          </View>
+        ) : null}
+
+        {totalQuestions === 0 ? (
+          <BookEmpty title="No questions added yet" subtitle="This paper has no configured questions." />
+        ) : null}
+      </View>
     </ScrollView>
   );
 }
@@ -225,21 +270,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     paddingBottom: spacing.xl,
   },
-  title: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: colors.text,
-  },
-  subTitle: {
-    fontSize: 14,
-    color: colors.textMuted,
-  },
-  badges: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  panel: {
+  evalPanel: {
     backgroundColor: colors.surface,
     borderRadius: 14,
     borderWidth: 1,
@@ -247,108 +278,126 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.sm,
   },
+  paperSheet: {
+    backgroundColor: '#fffdf7',
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(120, 53, 15, 0.15)',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.lg,
+    gap: spacing.md,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
   sectionTitle: {
     fontSize: 15,
     fontWeight: '700',
     color: colors.text,
   },
+  instructionsBlock: {
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(120, 53, 15, 0.12)',
+    paddingBottom: spacing.md,
+  },
   instructions: {
-    fontSize: 14,
+    fontSize: 15,
     color: colors.text,
-    lineHeight: 21,
+    lineHeight: 24,
+    textAlign: 'center',
+  },
+  groupBlock: {
+    gap: spacing.sm,
+  },
+  groupHeading: {
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: spacing.xs,
+  },
+  groupTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'center',
   },
   groupHint: {
-    fontSize: 13,
+    fontSize: 14,
     color: colors.textMuted,
-  },
-  evalHint: {
-    fontSize: 12,
-    color: colors.textMuted,
-    lineHeight: 18,
+    textAlign: 'center',
+    lineHeight: 21,
   },
   questionList: {
     gap: spacing.sm,
   },
   questionGroup: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    backgroundColor: colors.background,
-    overflow: 'hidden',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(120, 53, 15, 0.08)',
   },
   questionMain: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
     gap: spacing.sm,
-    padding: spacing.sm,
   },
-  questionNo: {
-    width: 32,
-    fontSize: 14,
-    fontWeight: '700',
+  sheetText: {
+    fontSize: 15,
     color: colors.text,
+    lineHeight: 24,
   },
   questionBody: {
     flex: 1,
-    gap: 6,
-  },
-  questionTopRow: {
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.sm,
   },
   questionTextRow: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'flex-start',
     gap: 4,
   },
-  promotedLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.text,
-  },
   questionTap: {
     flex: 1,
+    minWidth: 0,
   },
-  questionText: {
+  titleWithRating: {
     flex: 1,
-    fontSize: 14,
-    color: colors.text,
-    lineHeight: 20,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
-  questionProgress: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.primary,
-    minWidth: 36,
+  questionTitle: {
+    flex: 1,
+    minWidth: 0,
+  },
+  marksCol: {
+    flexShrink: 0,
+    alignItems: 'flex-end',
+    gap: 2,
+    maxWidth: 72,
+  },
+  marksLine: {
     textAlign: 'right',
   },
   subQuestionWrap: {
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: colors.surface,
-    padding: spacing.sm,
-    gap: 6,
+    marginTop: spacing.sm,
+    marginLeft: spacing.lg,
+    gap: spacing.sm,
   },
   partRow: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
     gap: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    padding: spacing.sm,
-    backgroundColor: colors.background,
   },
-  partLabel: {
-    width: 24,
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  partText: {
+  partBody: {
     flex: 1,
-    fontSize: 13,
-    color: colors.text,
-    lineHeight: 19,
+    minWidth: 0,
   },
   muted: {
     fontSize: 14,

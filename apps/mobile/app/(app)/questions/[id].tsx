@@ -5,7 +5,9 @@ import { useNavigation } from '@react-navigation/native';
 import { SELF_RATING_PROGRESS } from '@ibas/shared-constants';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
 import { EvaluationCelebrate } from '@/components/evaluation/EvaluationCelebrate';
+import { RatingIndicator } from '@/components/evaluation/RatingIndicator';
 import { fetchQuestionDetail } from '@/lib/questions-api';
+import { formatEvaluationStatusLabel } from '@/lib/evaluation-display';
 import {
   fetchQuestionEvaluation,
   fetchQuestionPracticeStem,
@@ -67,9 +69,12 @@ export default function QuestionDetailScreen() {
       title: '',
       headerTitleAlign: 'center',
       headerTitle: () => (
-        <Text style={headerStyles.evalTitle} numberOfLines={1}>
-          {formatEvaluationLabel(evaluation, item?.has_options)}
-        </Text>
+        <View style={headerStyles.evalTitleRow}>
+          <RatingIndicator evaluation={evaluation} size={12} />
+          <Text style={headerStyles.evalTitle} numberOfLines={1}>
+            {formatEvaluationStatusLabel(evaluation, item?.has_options)}
+          </Text>
+        </View>
       ),
       headerRight: () => (
         <Pressable
@@ -203,9 +208,12 @@ export default function QuestionDetailScreen() {
               </Text>
             </Pressable>
             {evaluation?.is_correct !== undefined ? (
-              <Text style={[styles.evalResult, evaluation.is_correct ? styles.correct : styles.wrong]}>
-                {evaluation.is_correct ? 'Last result: Correct (100%)' : 'Last result: Incorrect (0%)'}
-              </Text>
+              <View style={styles.evalSavedRow}>
+                <RatingIndicator evaluation={evaluation} />
+                <Text style={[styles.evalResult, evaluation.is_correct ? styles.correct : styles.wrong]}>
+                  {evaluation.is_correct ? 'Last result: Correct' : 'Last result: Incorrect'}
+                </Text>
+              </View>
             ) : null}
           </View>
         ) : (
@@ -235,7 +243,10 @@ export default function QuestionDetailScreen() {
               ))}
             </View>
             {evaluation?.self_rating ? (
-              <Text style={styles.evalHint}>{evaluation.progress_index}% saved</Text>
+              <View style={styles.evalSavedRow}>
+                <RatingIndicator evaluation={evaluation} />
+                <Text style={styles.evalHint}>{formatEvaluationStatusLabel(evaluation, item?.has_options)} saved</Text>
+              </View>
             ) : null}
           </View>
         )}
@@ -251,22 +262,6 @@ const SELF_LABELS: Record<SelfRatingLevel, string> = {
   understand: 'Understand (75%)',
   confidence: 'Confidence (100%)',
 };
-
-function formatEvaluationLabel(
-  evaluation: QuestionEvaluationRecord | null,
-  hasOptions?: boolean,
-): string {
-  if (!evaluation || evaluation.progress_index <= 0) {
-    return 'Not evaluated';
-  }
-  if (hasOptions && evaluation.is_correct !== undefined) {
-    return evaluation.is_correct ? 'Correct · 100%' : 'Incorrect · 0%';
-  }
-  if (evaluation.self_rating) {
-    return `${SELF_LABELS[evaluation.self_rating]} · ${evaluation.progress_index}%`;
-  }
-  return `${evaluation.progress_index}%`;
-}
 
 function normalizeSections(sections?: ExplanationSection[]) {
   return (sections ?? []).filter(
@@ -295,11 +290,17 @@ function renderSection(sec: ExplanationSection, idx: number, keyPrefix: string) 
 }
 
 const headerStyles = StyleSheet.create({
+  evalTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    maxWidth: 220,
+  },
   evalTitle: {
     color: colors.white,
     fontSize: 14,
     fontWeight: '700',
-    maxWidth: 220,
+    flexShrink: 1,
     textAlign: 'center',
   },
   answerBtn: {
@@ -423,6 +424,11 @@ const styles = StyleSheet.create({
   },
   evalWrap: {
     gap: spacing.sm,
+  },
+  evalSavedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   evalHint: {
     fontSize: 13,

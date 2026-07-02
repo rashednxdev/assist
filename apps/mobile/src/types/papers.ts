@@ -18,8 +18,12 @@ export interface PaperItem {
   instructions?: string;
   is_published: boolean;
   exam_subject_name?: string;
+  exam_subject_name_bn?: string;
+  exam_part_name?: string;
+  exam_part_name_bn?: string;
   exam_short_name?: string;
   exam_name?: string;
+  exam_name_bn?: string;
   session_label_en?: string;
   session_label_bn?: string;
   paper_type_name?: string;

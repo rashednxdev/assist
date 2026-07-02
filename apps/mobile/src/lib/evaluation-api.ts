@@ -45,6 +45,22 @@ export interface QuestionEvaluationRecord {
   selected_option_id?: string;
 }
 
+export interface QuestionEvalBrief {
+  question_id: string;
+  progress_index: number;
+  is_correct?: boolean;
+  self_rating?: SelfRatingLevel;
+}
+
+export async function fetchQuestionEvaluationsBatch(questionIds: string[]) {
+  const unique = [...new Set(questionIds.filter(Boolean))];
+  if (unique.length === 0) return [] as QuestionEvalBrief[];
+  const res = await apiFetch<{ data: QuestionEvalBrief[] }>(
+    `/evaluation/questions/batch?ids=${unique.join(',')}`,
+  );
+  return res.data;
+}
+
 export async function fetchQuestionPracticeStem(questionId: string) {
   const res = await apiFetch<{ data: QuestionPracticeStem }>(`/evaluation/questions/${questionId}/practice`);
   return res.data;

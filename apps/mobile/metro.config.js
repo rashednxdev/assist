@@ -13,5 +13,9 @@ config.resolver.nodeModulesPaths = [
   path.resolve(monorepoRoot, 'node_modules'),
 ];
 config.resolver.disableHierarchicalLookup = true;
+config.resolver.blockList = [
+  ...(Array.isArray(config.resolver.blockList) ? config.resolver.blockList : []),
+  /\.expo-test-bundle\/.*/,
+];
 
 module.exports = config;

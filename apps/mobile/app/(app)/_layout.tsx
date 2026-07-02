@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { Redirect, Stack } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
@@ -22,16 +21,17 @@ export default function AppLayout() {
   return (
     <Stack
       screenOptions={{
+        headerShown: false,
         headerStyle: { backgroundColor: colors.primaryDark },
         headerTintColor: colors.white,
         headerTitleStyle: { fontWeight: '700' },
       }}
     >
-      <Stack.Screen name="home" options={{ headerShown: false }} />
-      <Stack.Screen name="books/index" options={{ title: 'Rule Library & Tools' }} />
-      <Stack.Screen name="questions/index" options={{ title: 'Question Bank' }} />
-      <Stack.Screen name="exams/index" options={{ title: 'Exam Programs' }} />
-      <Stack.Screen name="papers/index" options={{ title: 'Practice Papers' }} />
+      <Stack.Screen name="home" />
+      <Stack.Screen name="books" />
+      <Stack.Screen name="questions" />
+      <Stack.Screen name="exams" />
+      <Stack.Screen name="papers" />
     </Stack>
   );
 }

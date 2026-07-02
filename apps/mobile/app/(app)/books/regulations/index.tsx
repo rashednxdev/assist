@@ -6,50 +6,39 @@ import {
   FlatList,
   TextInput,
   Pressable,
-  RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { BookCard } from '@/components/books/BookCard';
+import { BookBadge } from '@/components/books/BookBadge';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
-import { fetchBooks } from '@/lib/books-api';
-import { bookDetailHref } from '@/lib/book-routes';
-import type { BookListItem } from '@/types/books';
+import { searchRegulations } from '@/lib/books-api';
+import { regulationDetailHref } from '@/lib/book-routes';
+import type { RegulationSearchRow } from '@/types/books';
 import { colors, spacing } from '@/theme';
 
-export default function BooksLibraryScreen() {
+export default function RegulationsSearchScreen() {
   const router = useRouter();
-  const [books, setBooks] = useState<BookListItem[]>([]);
   const [query, setQuery] = useState('');
+  const [items, setItems] = useState<RegulationSearchRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  const load = useCallback(async (search?: string) => {
+  const search = useCallback(async (term?: string) => {
     setError('');
+    setLoading(true);
     try {
-      const data = await fetchBooks({ q: search });
-      setBooks(data);
+      const data = await searchRegulations({ q: term });
+      setItems(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load books');
+      setError(err instanceof Error ? err.message : 'Search failed');
+    } finally {
+      setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    setLoading(true);
-    void load().finally(() => setLoading(false));
-  }, [load]);
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await load(query);
-    setRefreshing(false);
-  }, [load, query]);
-
-  const onSearch = useCallback(() => {
-    setLoading(true);
-    void load(query).finally(() => setLoading(false));
-  }, [load, query]);
+    void search('');
+  }, [search]);
 
   return (
     <View style={styles.root}>
@@ -60,38 +49,44 @@ export default function BooksLibraryScreen() {
             style={styles.searchInput}
             value={query}
             onChangeText={setQuery}
-            placeholder="Search by title or tag..."
+            placeholder="Regulation no, title, keyword..."
             placeholderTextColor={colors.textMuted}
             returnKeyType="search"
-            onSubmitEditing={onSearch}
+            onSubmitEditing={() => void search(query)}
           />
         </View>
-        <Pressable style={styles.searchBtn} onPress={onSearch}>
+        <Pressable style={styles.searchBtn} onPress={() => void search(query)}>
           <Text style={styles.searchBtnText}>Search</Text>
         </Pressable>
       </View>
 
-      {loading && books.length === 0 ? (
+      {loading && items.length === 0 ? (
         <BookLoading />
       ) : error ? (
         <BookError message={error} />
       ) : (
         <FlatList
-          data={books}
+          data={items}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           ListEmptyComponent={
-            <BookEmpty
-              title="No books found"
-              subtitle="Try a different search or check back later."
-            />
+            <BookEmpty title="No regulations found" subtitle="Try a different search term." />
           }
           renderItem={({ item }) => (
-            <BookCard
-              book={item}
-              onPress={() => router.push(bookDetailHref(item.id))}
-            />
+            <Pressable
+              style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+              onPress={() => router.push(regulationDetailHref(item.id))}
+            >
+              <View style={styles.rowBody}>
+                <Text style={styles.regNo}>{item.regulation_no}</Text>
+                <Text style={styles.regTitle}>{item.title}</Text>
+              </View>
+              <View style={styles.badges}>
+                <BookBadge label={item.regulation_type} variant="muted" />
+                {item.is_amended ? <BookBadge label="Amended" variant="warning" /> : null}
+                {item.payment_related ? <BookBadge label="Payment" variant="muted" /> : null}
+              </View>
+            </Pressable>
           )}
         />
       )}
@@ -108,7 +103,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
     padding: spacing.md,
-    paddingBottom: spacing.sm,
   },
   searchRow: {
     flex: 1,
@@ -141,7 +135,36 @@ const styles = StyleSheet.create({
   },
   list: {
     padding: spacing.md,
-    gap: spacing.md,
+    gap: spacing.sm,
     paddingBottom: spacing.xl,
+  },
+  row: {
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  rowBody: {
+    gap: 4,
+  },
+  regNo: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  regTitle: {
+    fontSize: 14,
+    color: colors.textMuted,
+    lineHeight: 20,
+  },
+  badges: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  pressed: {
+    opacity: 0.9,
   },
 });

@@ -31,7 +31,7 @@ const MODULES: Array<{
 }> = [
   {
     code: 'BOOKS' as const,
-    title: 'Rule Library',
+    title: 'Library & Tools',
     subtitle: 'Books & regulatory tools',
     icon: 'library-outline' as const,
     color: '#0f5c8c',

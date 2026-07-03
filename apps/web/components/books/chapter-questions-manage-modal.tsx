@@ -1,11 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ExternalLink, Plus, Search, X } from 'lucide-react';
+import { ExternalLink, Plus, Search, Upload, X } from 'lucide-react';
 import { QUESTION_LINK_LEVELS, type QuestionLinkLevel } from '@ibas/shared-constants';
 import { apiFetch } from '@/lib/api-client';
 import { chapterHeading } from '@/lib/book-display';
+import { buildNewQuestionHref } from '@/lib/question-book-context';
 import type { ReaderChapter } from '@/components/books/book-reader-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -48,6 +49,8 @@ interface RegulationItem {
   title: string;
 }
 
+type FilterMode = 'all' | 'draft' | 'published';
+
 function truncate(text: string, len = 90) {
   const plain = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
   return plain.length > len ? `${plain.slice(0, len)}…` : plain;
@@ -74,6 +77,9 @@ export function ChapterQuestionsManageModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [filter, setFilter] = useState<FilterMode>('all');
+  const [publishBusyId, setPublishBusyId] = useState<string | null>(null);
+  const [publishAllBusy, setPublishAllBusy] = useState(false);
 
   const [searchQ, setSearchQ] = useState('');
   const [searchResults, setSearchResults] = useState<SearchQuestion[]>([]);
@@ -114,8 +120,18 @@ export function ChapterQuestionsManageModal({
     setTopicId('');
     setSubTopicId('');
     setRegulationId('');
+    setFilter('all');
     setMessage('');
     setError('');
+  }, [open, loadRows]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onFocus = () => {
+      void loadRows();
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
   }, [open, loadRows]);
 
   useEffect(() => {
@@ -153,6 +169,22 @@ export function ChapterQuestionsManageModal({
     }, 300);
     return () => clearTimeout(timer);
   }, [open, searchQ]);
+
+  const stats = useMemo(() => {
+    const unique = new Map<string, ManageQuestionRow>();
+    for (const row of rows) {
+      if (!unique.has(row.question_id)) unique.set(row.question_id, row);
+    }
+    const list = [...unique.values()];
+    const published = list.filter((r) => r.is_published).length;
+    return { total: list.length, published, drafts: list.length - published };
+  }, [rows]);
+
+  const filteredRows = useMemo(() => {
+    if (filter === 'draft') return rows.filter((r) => !r.is_published);
+    if (filter === 'published') return rows.filter((r) => r.is_published);
+    return rows;
+  }, [rows, filter]);
 
   async function linkSelectedQuestion() {
     if (!selectedQuestionId || !linkLevel) return;
@@ -206,7 +238,48 @@ export function ChapterQuestionsManageModal({
     }
   }
 
-  const newQuestionHref = `/questions/new?book_id=${bookId}&chapter_id=${chapter.id}&link_level=chapter`;
+  async function togglePublishRow(row: ManageQuestionRow) {
+    setPublishBusyId(row.question_id);
+    setError('');
+    try {
+      const path = row.is_published
+        ? `/questions/${row.question_id}/unpublish`
+        : `/questions/${row.question_id}/publish`;
+      await apiFetch(path, { method: 'POST' });
+      setMessage(row.is_published ? 'Question unpublished' : 'Question published for learners');
+      await loadRows();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Publish action failed');
+    } finally {
+      setPublishBusyId(null);
+    }
+  }
+
+  async function publishAllDrafts() {
+    const draftIds = [...new Set(rows.filter((r) => !r.is_published).map((r) => r.question_id))];
+    if (draftIds.length === 0) return;
+    setPublishAllBusy(true);
+    setError('');
+    try {
+      await Promise.all(
+        draftIds.map((id) => apiFetch(`/questions/${id}/publish`, { method: 'POST' })),
+      );
+      setMessage(`Published ${draftIds.length} draft question${draftIds.length !== 1 ? 's' : ''}`);
+      await loadRows();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to publish all drafts');
+    } finally {
+      setPublishAllBusy(false);
+    }
+  }
+
+  const newQuestionHref = buildNewQuestionHref({
+    bookId,
+    chapterId: chapter.id,
+    linkLevel: 'chapter',
+    topicId: '',
+    subTopicId: '',
+  });
 
   if (!open) return null;
 
@@ -227,6 +300,11 @@ export function ChapterQuestionsManageModal({
           <div className="min-w-0">
             <h2 className="text-lg font-semibold">Chapter questions</h2>
             <p className="mt-0.5 text-sm text-muted">{chapterHeading(chapter)}</p>
+            {!loading && stats.total > 0 && (
+              <p className="mt-1 text-xs text-muted">
+                {stats.published} published · {stats.drafts} draft
+              </p>
+            )}
           </div>
           <Button type="button" size="sm" variant="ghost" onClick={() => onOpenChange(false)}>
             <X className="h-4 w-4" />
@@ -238,27 +316,61 @@ export function ChapterQuestionsManageModal({
           {error && <Alert variant="error">{error}</Alert>}
 
           <section className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-sm font-semibold">Tagged in this chapter</h3>
-              <Button asChild size="sm">
-                <Link href={newQuestionHref} target="_blank" rel="noopener noreferrer">
-                  <Plus className="h-4 w-4" />
-                  New question
-                </Link>
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                {stats.drafts > 0 && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={publishAllBusy || linkBusy}
+                    onClick={() => void publishAllDrafts()}
+                  >
+                    <Upload className="h-4 w-4" />
+                    Publish all drafts
+                  </Button>
+                )}
+                <Button asChild size="sm">
+                  <Link href={newQuestionHref}>
+                    <Plus className="h-4 w-4" />
+                    New question
+                  </Link>
+                </Button>
+              </div>
             </div>
+
+            {rows.length > 0 && (
+              <div className="flex gap-1">
+                {(['all', 'draft', 'published'] as const).map((mode) => (
+                  <Button
+                    key={mode}
+                    type="button"
+                    size="sm"
+                    variant={filter === mode ? 'default' : 'ghost'}
+                    className="h-8"
+                    onClick={() => setFilter(mode)}
+                  >
+                    {mode === 'all' ? 'All' : mode === 'draft' ? 'Drafts' : 'Published'}
+                  </Button>
+                ))}
+              </div>
+            )}
+
             {loading ? (
               <div className="space-y-2">
                 <Skeleton className="h-10 w-full" />
                 <Skeleton className="h-10 w-full" />
               </div>
-            ) : rows.length === 0 ? (
+            ) : filteredRows.length === 0 ? (
               <p className="text-sm text-muted">
-                No questions linked yet. Create a new question or link one from the bank below.
+                {rows.length === 0
+                  ? 'No questions linked yet. Create a new question or link one from the bank below.'
+                  : 'No questions match this filter.'}
               </p>
             ) : (
               <ul className="divide-y divide-border rounded-lg border border-border">
-                {rows.map((row) => (
+                {filteredRows.map((row) => (
                   <li key={row.link_id} className="flex items-start justify-between gap-3 px-3 py-2.5 text-sm">
                     <div className="min-w-0 flex-1">
                       <div className="mb-1 flex flex-wrap gap-1.5">
@@ -272,9 +384,20 @@ export function ChapterQuestionsManageModal({
                       <p className="line-clamp-2">{truncate(row.body_en)}</p>
                       <p className="mt-0.5 text-xs text-muted">{row.link_label}</p>
                     </div>
-                    <div className="flex shrink-0 gap-1">
+                    <div className="flex shrink-0 flex-col gap-1 sm:flex-row">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 px-2"
+                        disabled={publishBusyId === row.question_id || linkBusy || publishAllBusy}
+                        onClick={() => void togglePublishRow(row)}
+                      >
+                        <Upload className="h-3.5 w-3.5" />
+                        {row.is_published ? 'Unpublish' : 'Publish'}
+                      </Button>
                       <Button asChild size="sm" variant="ghost" className="h-8 px-2">
-                        <Link href={`/questions/${row.question_id}`} target="_blank" rel="noopener noreferrer">
+                        <Link href={`/questions/${row.question_id}`}>
                           <ExternalLink className="h-3.5 w-3.5" />
                           <span className="sr-only">Edit question</span>
                         </Link>
@@ -284,7 +407,7 @@ export function ChapterQuestionsManageModal({
                         size="sm"
                         variant="ghost"
                         className="h-8 px-2 text-destructive"
-                        disabled={linkBusy}
+                        disabled={linkBusy || publishAllBusy}
                         onClick={() => void unlinkRow(row)}
                       >
                         Remove
@@ -444,6 +567,18 @@ export function ChapterQuestionsManageModal({
               </div>
             )}
           </section>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
+          <Button asChild type="button" size="sm" variant="outline">
+            <Link href={newQuestionHref}>
+              <Plus className="h-4 w-4" />
+              Add question for chapter
+            </Link>
+          </Button>
+          <Button type="button" size="sm" onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
         </div>
       </div>
     </div>

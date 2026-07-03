@@ -1,12 +1,17 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Upload } from 'lucide-react';
+import { ArrowLeft, Plus, Upload } from 'lucide-react';
 import { apiFetch, ApiError } from '@/lib/api-client';
 import { fetchMe } from '@/lib/auth';
 import { questionDetailToForm } from '@/lib/question-detail-form';
+import {
+  buildPresetBookLink,
+  bookLinkPayloadFromContext,
+  parseQuestionBookContext,
+} from '@/lib/question-book-context';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -14,11 +19,10 @@ import {
   QuestionEditor,
   emptyQuestionForm,
   questionFormToPayload,
+  resetQuestionFormKeepingType,
   validateQuestionForm,
   type QuestionFormValues,
 } from '@/components/questions/question-editor';
-import { emptyBookLinkForm } from '@/components/questions/question-book-links-editor';
-import type { QuestionLinkLevel } from '@ibas/shared-constants';
 import { Alert } from '@/components/ui/alert';
 
 interface QuestionType {
@@ -36,6 +40,8 @@ interface SavedQuestionMeta {
 export default function NewQuestionPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const chapterContext = useMemo(() => parseQuestionBookContext(searchParams), [searchParams]);
+
   const [allowed, setAllowed] = useState<boolean | null>(null);
   const [types, setTypes] = useState<QuestionType[]>([]);
   const [form, setForm] = useState<QuestionFormValues>(emptyQuestionForm);
@@ -43,6 +49,7 @@ export default function NewQuestionPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [showAddAnotherOffer, setShowAddAnotherOffer] = useState(false);
 
   const reloadSaved = useCallback(async (id: string) => {
     const res = await apiFetch<{ data: SavedQuestionMeta & Parameters<typeof questionDetailToForm>[0] }>(
@@ -52,6 +59,17 @@ export default function NewQuestionPage() {
     setForm(questionDetailToForm(res.data));
     return res.data;
   }, []);
+
+  const ensureChapterLink = useCallback(
+    async (questionId: string) => {
+      if (!chapterContext.hasPreset) return;
+      await apiFetch(`/questions/${questionId}/book-links`, {
+        method: 'POST',
+        body: JSON.stringify(bookLinkPayloadFromContext(chapterContext)),
+      });
+    },
+    [chapterContext],
+  );
 
   useEffect(() => {
     fetchMe()
@@ -66,20 +84,7 @@ export default function NewQuestionPage() {
         return apiFetch<{ data: QuestionType[] }>('/questions/types').then((r) => {
           setTypes(r.data);
           const mcq = r.data.find((t) => t.code === 'MCQ') ?? r.data[0];
-          const bookId = searchParams.get('book_id') ?? '';
-          const chapterId = searchParams.get('chapter_id') ?? '';
-          const linkLevel = (searchParams.get('link_level') ?? 'chapter') as QuestionLinkLevel;
-          const topicId = searchParams.get('topic_id') ?? '';
-          const presetLink =
-            bookId && chapterId
-              ? {
-                  ...emptyBookLinkForm(),
-                  link_level: linkLevel,
-                  book_id: bookId,
-                  book_chapter_id: chapterId,
-                  book_topic_id: topicId,
-                }
-              : null;
+          const presetLink = chapterContext.hasPreset ? buildPresetBookLink(chapterContext) : null;
           if (mcq) {
             setForm((f) => ({
               ...f,
@@ -94,12 +99,26 @@ export default function NewQuestionPage() {
         });
       })
       .catch(() => router.replace('/login'));
-  }, [router, searchParams]);
+  }, [router, chapterContext]);
+
+  function startAnotherQuestion() {
+    const presetLink = chapterContext.hasPreset ? buildPresetBookLink(chapterContext) : null;
+    setSavedQuestion(null);
+    setSuccess('');
+    setError('');
+    setShowAddAnotherOffer(false);
+    setForm({
+      ...resetQuestionFormKeepingType(form),
+      book_links: presetLink ? [presetLink] : [],
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     setSuccess('');
+    setShowAddAnotherOffer(false);
     setBusy(true);
     try {
       const validationError = validateQuestionForm(form);
@@ -115,6 +134,7 @@ export default function NewQuestionPage() {
         });
         await reloadSaved(savedQuestion.id);
         setSuccess('Question updated.');
+        if (chapterContext.hasPreset) setShowAddAnotherOffer(true);
       } else {
         const res = await apiFetch<{ data: SavedQuestionMeta & Parameters<typeof questionDetailToForm>[0] }>(
           '/questions',
@@ -123,11 +143,20 @@ export default function NewQuestionPage() {
             body: JSON.stringify(payload),
           },
         );
-        setSavedQuestion({ id: res.data.id, is_published: res.data.is_published });
-        setForm(questionDetailToForm(res.data));
+        let detail = res.data;
+        if (chapterContext.hasPreset && (detail.book_links?.length ?? 0) === 0) {
+          await ensureChapterLink(detail.id);
+          detail = await reloadSaved(detail.id);
+        } else {
+          setSavedQuestion({ id: detail.id, is_published: detail.is_published });
+          setForm(questionDetailToForm(detail));
+        }
         setSuccess(
-          'Question saved. Add book links below, then publish so it appears under Tag questions on the chapter reader.',
+          chapterContext.hasPreset
+            ? 'Question saved and linked to this chapter. Publish it, or add another question below.'
+            : 'Question saved. Add book links below, then publish so it appears under Tag questions on the chapter reader.',
         );
+        if (chapterContext.hasPreset) setShowAddAnotherOffer(true);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save question');
@@ -156,14 +185,18 @@ export default function NewQuestionPage() {
 
   if (allowed === null) return null;
 
+  const backToBookHref = chapterContext.bookId ? `/books/${chapterContext.bookId}` : null;
+
   return (
     <div className="space-y-6">
       <PageHeader
         title={savedQuestion ? 'Edit question' : 'New question'}
         description={
-          savedQuestion
-            ? 'Update the question, tag book locations below, and publish when ready.'
-            : 'Create MCQ, true/false, descriptive, or short-note questions linked to chapters, rules, or sub-rules.'
+          chapterContext.hasPreset
+            ? 'Create questions for this chapter. After each save you can add another for the same chapter.'
+            : savedQuestion
+              ? 'Update the question, tag book locations below, and publish when ready.'
+              : 'Create MCQ, true/false, descriptive, or short-note questions linked to chapters, rules, or sub-rules.'
         }
         action={
           <div className="flex flex-wrap gap-2">
@@ -181,16 +214,53 @@ export default function NewQuestionPage() {
                 </Button>
               </>
             )}
+            {backToBookHref && (
+              <Button asChild variant="outline" size="sm">
+                <Link href={backToBookHref}>
+                  <ArrowLeft className="h-4 w-4" />
+                  Back to book
+                </Link>
+              </Button>
+            )}
             <Button asChild variant="outline" size="sm">
               <Link href="/questions">
                 <ArrowLeft className="h-4 w-4" />
-                Back
+                Question bank
               </Link>
             </Button>
           </div>
         }
       />
+
       {success && <Alert variant="success">{success}</Alert>}
+
+      {(showAddAnotherOffer || (savedQuestion && chapterContext.hasPreset)) && chapterContext.hasPreset && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/20 bg-primary-muted/30 px-4 py-3">
+          <p className="min-w-0 flex-1 text-sm">
+            {savedQuestion?.is_published
+              ? 'Question is published for this chapter.'
+              : 'Publish this question so learners see it under Tag questions.'}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {!savedQuestion?.is_published && savedQuestion && (
+              <Button type="button" size="sm" disabled={busy} onClick={togglePublish}>
+                <Upload className="h-4 w-4" />
+                Publish
+              </Button>
+            )}
+            <Button type="button" size="sm" variant="default" disabled={busy} onClick={startAnotherQuestion}>
+              <Plus className="h-4 w-4" />
+              Add another for this chapter
+            </Button>
+            {backToBookHref && (
+              <Button asChild type="button" size="sm" variant="outline">
+                <Link href={backToBookHref}>Back to book</Link>
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
       {savedQuestion && form.book_links.length > 0 && !savedQuestion.is_published && (
         <Alert variant="warning">
           This question is linked to {form.book_links.length} book location
@@ -198,6 +268,7 @@ export default function NewQuestionPage() {
           the chapter reader.
         </Alert>
       )}
+
       <QuestionEditor
         value={form}
         onChange={setForm}

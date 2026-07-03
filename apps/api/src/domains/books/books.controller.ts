@@ -98,6 +98,11 @@ export async function getBookReaderOutlineHandler(req: AuthRequest, res: Respons
   res.json({ data });
 }
 
+export async function getBookReaderFullHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await booksService.getBookReaderFull(String(req.params.id));
+  res.json({ data });
+}
+
 export async function getChapterHandler(req: AuthRequest, res: Response): Promise<void> {
   const data = await booksService.getChapterById(String(req.params.chapterId));
   res.json({ data });
@@ -105,6 +110,11 @@ export async function getChapterHandler(req: AuthRequest, res: Response): Promis
 
 export async function listChapterQuestionsHandler(req: AuthRequest, res: Response): Promise<void> {
   const data = await booksService.listChapterQuestions(String(req.params.chapterId));
+  res.json({ data });
+}
+
+export async function listChapterQuestionsManageHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await booksService.listChapterQuestionsForManage(String(req.params.chapterId));
   res.json({ data });
 }
 

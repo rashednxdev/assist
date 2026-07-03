@@ -59,7 +59,7 @@ interface BookReaderContextValue {
   outline: BookReaderOutline | null;
   loading: boolean;
   error: string;
-  reload: () => Promise<void>;
+  reload: (options?: { silent?: boolean }) => Promise<void>;
   getChapter: (chapterId: string) => ReaderChapter | undefined;
   getRuleNav: (topicId: string) => ReaderRuleNav | undefined;
   getAdjacentRules: (topicId: string) => { prev: ReaderRuleNav | null; next: ReaderRuleNav | null };
@@ -74,18 +74,23 @@ export function BookReaderProvider({ children }: { children: React.ReactNode }) 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (options?: { silent?: boolean }) => {
     if (!bookId) return;
-    setLoading(true);
-    setError('');
+    const silent = options?.silent ?? false;
+    if (!silent) {
+      setLoading(true);
+      setError('');
+    }
     try {
       const res = await apiFetch<{ data: BookReaderOutline }>(`/books/${bookId}/reader-outline`);
       setOutline(res.data);
     } catch (err) {
-      setOutline(null);
-      setError(err instanceof Error ? err.message : 'Failed to load book');
+      if (!silent) {
+        setOutline(null);
+        setError(err instanceof Error ? err.message : 'Failed to load book');
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [bookId]);
 

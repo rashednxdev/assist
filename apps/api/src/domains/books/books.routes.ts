@@ -14,8 +14,11 @@ import {
   getTopicHandler,
   listChaptersHandler,
   getBookReaderOutlineHandler,
+  getBookReaderFullHandler,
+  getBookReaderFullHandler,
   getChapterHandler,
   listChapterQuestionsHandler,
+  listChapterQuestionsManageHandler,
   createBookHandler,
   updateBookHandler,
   deleteBookHandler,
@@ -52,6 +55,7 @@ booksRouter.get('/regulations/search', asyncHandler(searchRegulationsHandler));
 booksRouter.get('/regulations/:id', asyncHandler(getRegulationHandler));
 booksRouter.get('/regulations/:id/amendments', asyncHandler(listAmendmentsHandler));
 booksRouter.get('/topics/:topicId', asyncHandler(getTopicHandler));
+booksRouter.get('/chapters/:chapterId/questions/manage', requireAdmin, asyncHandler(listChapterQuestionsManageHandler));
 booksRouter.get('/chapters/:chapterId/questions', asyncHandler(listChapterQuestionsHandler));
 booksRouter.get('/chapters/:chapterId', asyncHandler(getChapterHandler));
 booksRouter.get('/sub-topics/:subTopicId', asyncHandler(getSubTopicHandler));
@@ -60,6 +64,7 @@ booksRouter.get('/children', asyncHandler(getBookChildrenHandler));
 booksRouter.get('/', asyncHandler(listBooksHandler));
 booksRouter.get('/:id/chapters', asyncHandler(listChaptersHandler));
 booksRouter.get('/:id/reader-outline', asyncHandler(getBookReaderOutlineHandler));
+booksRouter.get('/:id/reader-full', asyncHandler(getBookReaderFullHandler));
 booksRouter.get('/:id/regulations', asyncHandler(listBookRegulationsHandler));
 booksRouter.get('/:id', asyncHandler(getBookHandler));
 booksRouter.get('/:id/tree', asyncHandler(getBookTreeHandler));

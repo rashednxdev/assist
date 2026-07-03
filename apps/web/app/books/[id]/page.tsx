@@ -80,10 +80,10 @@ function BookDetailBody({
             language: book.language,
             tags: book.tags,
           }}
-          onRefresh={() => reload()}
+          onRefresh={() => reload({ silent: true })}
         />
       ) : (
-        <BookContents />
+        <BookContents isAdmin={isAdmin} />
       )}
     </div>
   );

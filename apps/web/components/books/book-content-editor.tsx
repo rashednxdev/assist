@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { REGULATION_TYPES, BOOK_LANGUAGES } from '@ibas/shared-constants';
 import { apiFetch } from '@/lib/api-client';
@@ -105,10 +105,13 @@ export function BookContentEditor({
 
   const [chapters, setChapters] = useState<ChapterRow[]>([]);
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
-  const [topics, setTopics] = useState<TopicRow[]>([]);
+  const [topicsByChapter, setTopicsByChapter] = useState<Record<string, TopicRow[]>>({});
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
-  const [subTopics, setSubTopics] = useState<SubTopicRow[]>([]);
+  const [subTopicsByTopic, setSubTopicsByTopic] = useState<Record<string, SubTopicRow[]>>({});
   const [regulations, setRegulations] = useState<RegulationRow[]>([]);
+
+  const topics = selectedChapterId ? (topicsByChapter[selectedChapterId] ?? []) : [];
+  const subTopics = selectedTopicId ? (subTopicsByTopic[selectedTopicId] ?? []) : [];
 
   const [chapterForm, setChapterForm] = useState({ name: '', chapter_number: '', sub_name: '', description: '' });
   const [editChapterId, setEditChapterId] = useState<string | null>(null);
@@ -130,20 +133,25 @@ export function BookContentEditor({
     applicable_to: 'all',
   });
 
+  const loadedChapterTopicsRef = useRef(new Set<string>());
+  const loadedTopicSubsRef = useRef(new Set<string>());
+
   const loadChapters = useCallback(() => {
     return apiFetch<{ data: ChapterRow[] }>(`/books/${bookId}/chapters`).then((r) => setChapters(r.data));
   }, [bookId]);
 
-  const loadChapterTopics = useCallback((chapterId: string) => {
-    return apiFetch<{ data: { topics: TopicRow[] } }>(`/books/chapters/${chapterId}`).then((r) =>
-      setTopics(r.data.topics),
-    );
+  const ensureChapterTopics = useCallback(async (chapterId: string) => {
+    if (loadedChapterTopicsRef.current.has(chapterId)) return;
+    const r = await apiFetch<{ data: { topics: TopicRow[] } }>(`/books/chapters/${chapterId}`);
+    loadedChapterTopicsRef.current.add(chapterId);
+    setTopicsByChapter((prev) => ({ ...prev, [chapterId]: r.data.topics }));
   }, []);
 
-  const loadTopicDetail = useCallback((topicId: string) => {
-    return apiFetch<{ data: { sub_topics: SubTopicRow[] } }>(`/books/topics/${topicId}`).then((r) =>
-      setSubTopics(r.data.sub_topics),
-    );
+  const ensureTopicSubTopics = useCallback(async (topicId: string) => {
+    if (loadedTopicSubsRef.current.has(topicId)) return;
+    const r = await apiFetch<{ data: { sub_topics: SubTopicRow[] } }>(`/books/topics/${topicId}`);
+    loadedTopicSubsRef.current.add(topicId);
+    setSubTopicsByTopic((prev) => ({ ...prev, [topicId]: r.data.sub_topics }));
   }, []);
 
   const loadRegulations = useCallback(() => {
@@ -156,14 +164,12 @@ export function BookContentEditor({
   }, [loadChapters, loadRegulations]);
 
   useEffect(() => {
-    if (selectedChapterId) loadChapterTopics(selectedChapterId);
-    else setTopics([]);
-  }, [selectedChapterId, loadChapterTopics]);
+    if (selectedChapterId) void ensureChapterTopics(selectedChapterId);
+  }, [selectedChapterId, ensureChapterTopics]);
 
   useEffect(() => {
-    if (selectedTopicId) loadTopicDetail(selectedTopicId);
-    else setSubTopics([]);
-  }, [selectedTopicId, loadTopicDetail]);
+    if (selectedTopicId) void ensureTopicSubTopics(selectedTopicId);
+  }, [selectedTopicId, ensureTopicSubTopics]);
 
   useEffect(() => {
     if (!selectedTopicId) return;
@@ -219,7 +225,7 @@ export function BookContentEditor({
     clearFeedback();
     setBusy(true);
     try {
-      await apiFetch(`/books/${bookId}/chapters`, {
+      const res = await apiFetch<{ data: Omit<ChapterRow, 'topic_count'> }>(`/books/${bookId}/chapters`, {
         method: 'POST',
         body: JSON.stringify({
           name: chapterForm.name.trim(),
@@ -228,10 +234,12 @@ export function BookContentEditor({
           description: chapterForm.description.trim() ? wrapHtml(chapterForm.description) : undefined,
         }),
       });
+      const created: ChapterRow = { ...res.data, topic_count: 0 };
+      setChapters((prev) => [...prev, created]);
+      setTopicsByChapter((prev) => ({ ...prev, [created.id]: [] }));
+      loadedChapterTopicsRef.current.add(created.id);
       setChapterForm({ name: '', chapter_number: '', sub_name: '', description: '' });
       setMessage('Chapter added');
-      await loadChapters();
-      onRefresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add chapter');
     } finally {
@@ -244,7 +252,7 @@ export function BookContentEditor({
     clearFeedback();
     setBusy(true);
     try {
-      await apiFetch(`/books/chapters/${editChapterId}`, {
+      const res = await apiFetch<{ data: Omit<ChapterRow, 'topic_count'> }>(`/books/chapters/${editChapterId}`, {
         method: 'PATCH',
         body: JSON.stringify({
           name: editChapterForm.name.trim(),
@@ -253,11 +261,21 @@ export function BookContentEditor({
           description: editChapterForm.description.trim() ? wrapHtml(editChapterForm.description) : undefined,
         }),
       });
+      setChapters((prev) =>
+        prev.map((c) =>
+          c.id === editChapterId
+            ? {
+                ...c,
+                name: res.data.name,
+                chapter_number: res.data.chapter_number,
+                sub_name: res.data.sub_name,
+                description: res.data.description,
+              }
+            : c,
+        ),
+      );
       setEditChapterId(null);
       setMessage('Chapter updated');
-      await loadChapters();
-      if (selectedChapterId === editChapterId) await loadChapterTopics(editChapterId);
-      onRefresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update chapter');
     } finally {
@@ -275,9 +293,14 @@ export function BookContentEditor({
         setSelectedChapterId(null);
         setSelectedTopicId(null);
       }
+      setChapters((prev) => prev.filter((c) => c.id !== id));
+      setTopicsByChapter((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      loadedChapterTopicsRef.current.delete(id);
       setMessage('Chapter removed');
-      await loadChapters();
-      onRefresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to remove chapter');
     } finally {
@@ -290,7 +313,9 @@ export function BookContentEditor({
     clearFeedback();
     setBusy(true);
     try {
-      await apiFetch(`/books/chapters/${selectedChapterId}/topics`, {
+      const res = await apiFetch<{
+        data: { id: string; name: string; rule_number: string; sort_order: number };
+      }>(`/books/chapters/${selectedChapterId}/topics`, {
         method: 'POST',
         body: JSON.stringify({
           name: topicForm.name.trim() || undefined,
@@ -300,10 +325,26 @@ export function BookContentEditor({
           note: topicForm.note.trim() || undefined,
         }),
       });
+      const created: TopicRow = {
+        id: res.data.id,
+        name: res.data.name,
+        rule_number: res.data.rule_number,
+        sub_name: topicForm.sub_name.trim() || undefined,
+        description: topicForm.description.trim() ? wrapHtml(topicForm.description) : undefined,
+        note: topicForm.note.trim() || undefined,
+        sort_order: res.data.sort_order,
+        is_amended: false,
+      };
+      setTopicsByChapter((prev) => ({
+        ...prev,
+        [selectedChapterId]: [...(prev[selectedChapterId] ?? []), created],
+      }));
+      loadedChapterTopicsRef.current.add(selectedChapterId);
+      setChapters((prev) =>
+        prev.map((c) => (c.id === selectedChapterId ? { ...c, topic_count: c.topic_count + 1 } : c)),
+      );
       setTopicForm({ name: '', rule_number: '', sub_name: '', description: '', note: '' });
       setMessage('Rule / topic added');
-      await loadChapterTopics(selectedChapterId);
-      onRefresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add topic');
     } finally {
@@ -316,7 +357,9 @@ export function BookContentEditor({
     clearFeedback();
     setBusy(true);
     try {
-      await apiFetch(`/books/topics/${editTopicId}`, {
+      const res = await apiFetch<{
+        data: { id: string; name: string; rule_number: string; sort_order: number };
+      }>(`/books/topics/${editTopicId}`, {
         method: 'PATCH',
         body: JSON.stringify({
           name: editTopicForm.name.trim(),
@@ -326,11 +369,24 @@ export function BookContentEditor({
           note: editTopicForm.note.trim() || undefined,
         }),
       });
+      setTopicsByChapter((prev) => ({
+        ...prev,
+        [selectedChapterId]: (prev[selectedChapterId] ?? []).map((t) =>
+          t.id === editTopicId
+            ? {
+                ...t,
+                name: res.data.name,
+                rule_number: res.data.rule_number,
+                sub_name: editTopicForm.sub_name.trim() || undefined,
+                description: editTopicForm.description.trim() ? wrapHtml(editTopicForm.description) : undefined,
+                note: editTopicForm.note.trim() || undefined,
+                sort_order: res.data.sort_order,
+              }
+            : t,
+        ),
+      }));
       setEditTopicId(null);
       setMessage('Rule updated');
-      await loadChapterTopics(selectedChapterId);
-      if (selectedTopicId === editTopicId) await loadTopicDetail(editTopicId);
-      onRefresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update topic');
     } finally {
@@ -345,9 +401,24 @@ export function BookContentEditor({
     try {
       await apiFetch(`/books/topics/${id}`, { method: 'DELETE' });
       if (selectedTopicId === id) setSelectedTopicId(null);
-      if (selectedChapterId) await loadChapterTopics(selectedChapterId);
+      if (selectedChapterId) {
+        setTopicsByChapter((prev) => ({
+          ...prev,
+          [selectedChapterId]: (prev[selectedChapterId] ?? []).filter((t) => t.id !== id),
+        }));
+        setChapters((prev) =>
+          prev.map((c) =>
+            c.id === selectedChapterId ? { ...c, topic_count: Math.max(0, c.topic_count - 1) } : c,
+          ),
+        );
+      }
+      setSubTopicsByTopic((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      loadedTopicSubsRef.current.delete(id);
       setMessage('Rule removed');
-      onRefresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to remove topic');
     } finally {
@@ -360,7 +431,7 @@ export function BookContentEditor({
     clearFeedback();
     setBusy(true);
     try {
-      await apiFetch(`/books/topics/${selectedTopicId}/sub-topics`, {
+      const res = await apiFetch<{ data: SubTopicRow }>(`/books/topics/${selectedTopicId}/sub-topics`, {
         method: 'POST',
         body: JSON.stringify({
           name: subForm.name.trim() || undefined,
@@ -369,10 +440,13 @@ export function BookContentEditor({
           note: subForm.note.trim() || undefined,
         }),
       });
+      setSubTopicsByTopic((prev) => ({
+        ...prev,
+        [selectedTopicId]: [...(prev[selectedTopicId] ?? []), res.data],
+      }));
+      loadedTopicSubsRef.current.add(selectedTopicId);
       setSubForm({ name: '', rule_number: '', description: '', note: '' });
       setMessage('Sub-rule added');
-      await loadTopicDetail(selectedTopicId);
-      onRefresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add sub-rule');
     } finally {
@@ -385,7 +459,7 @@ export function BookContentEditor({
     clearFeedback();
     setBusy(true);
     try {
-      await apiFetch(`/books/sub-topics/${editSubId}`, {
+      const res = await apiFetch<{ data: SubTopicRow }>(`/books/sub-topics/${editSubId}`, {
         method: 'PATCH',
         body: JSON.stringify({
           name: editSubForm.name.trim(),
@@ -394,10 +468,14 @@ export function BookContentEditor({
           note: editSubForm.note.trim() || undefined,
         }),
       });
+      setSubTopicsByTopic((prev) => ({
+        ...prev,
+        [selectedTopicId]: (prev[selectedTopicId] ?? []).map((st) =>
+          st.id === editSubId ? res.data : st,
+        ),
+      }));
       setEditSubId(null);
       setMessage('Sub-rule updated');
-      await loadTopicDetail(selectedTopicId);
-      onRefresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update sub-rule');
     } finally {
@@ -411,9 +489,13 @@ export function BookContentEditor({
     setBusy(true);
     try {
       await apiFetch(`/books/sub-topics/${id}`, { method: 'DELETE' });
-      if (selectedTopicId) await loadTopicDetail(selectedTopicId);
+      if (selectedTopicId) {
+        setSubTopicsByTopic((prev) => ({
+          ...prev,
+          [selectedTopicId]: (prev[selectedTopicId] ?? []).filter((st) => st.id !== id),
+        }));
+      }
       setMessage('Sub-rule removed');
-      onRefresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to remove sub-rule');
     } finally {
@@ -438,7 +520,7 @@ export function BookContentEditor({
     }
     setBusy(true);
     try {
-      await apiFetch(`/books/${bookId}/regulations`, {
+      const res = await apiFetch<{ data: RegulationRow }>(`/books/${bookId}/regulations`, {
         method: 'POST',
         body: JSON.stringify({
           book_chapter_id: selectedChapterId ?? undefined,
@@ -453,6 +535,7 @@ export function BookContentEditor({
           receipt_related: false,
         }),
       });
+      setRegulations((prev) => [...prev, res.data]);
       setRegForm({ regulation_no: '', title: '', full_text: '', regulation_type: 'rule', applicable_to: 'all' });
       setMessage(
         selectedTopicId
@@ -461,8 +544,6 @@ export function BookContentEditor({
             ? 'Regulation created and linked to the selected chapter'
             : 'Regulation created for this book',
       );
-      await loadRegulations();
-      onRefresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add regulation');
     } finally {
@@ -529,7 +610,12 @@ export function BookContentEditor({
             <ul className="max-h-48 space-y-1 overflow-y-auto">
               {chapters.map((c) => (
                 <li key={c.id} className={`rounded-lg border px-2 py-1.5 text-sm ${selectedChapterId === c.id ? 'border-primary bg-primary-muted' : 'border-border'}`}>
-                  <button type="button" className="w-full text-left" onClick={() => { setSelectedChapterId(c.id); setSelectedTopicId(null); }}>
+                  <button type="button" className="w-full text-left" onClick={() => {
+                    if (selectedChapterId !== c.id) {
+                      setSelectedChapterId(c.id);
+                      setSelectedTopicId(null);
+                    }
+                  }}>
                     <span className="font-medium">{c.chapter_number} — {c.name}</span>
                     <span className="ml-1 text-xs text-muted">({c.topic_count} rules)</span>
                   </button>
@@ -582,7 +668,9 @@ export function BookContentEditor({
                 <ul className="max-h-48 space-y-1 overflow-y-auto">
                   {topics.map((t) => (
                     <li key={t.id} className={`rounded-lg border px-2 py-1.5 text-sm ${selectedTopicId === t.id ? 'border-primary bg-primary-muted' : 'border-border'}`}>
-                      <button type="button" className="w-full text-left" onClick={() => setSelectedTopicId(t.id)}>
+                      <button type="button" className="w-full text-left" onClick={() => {
+                        if (selectedTopicId !== t.id) setSelectedTopicId(t.id);
+                      }}>
                         <span className="font-medium">{topicLabel(t)}</span>
                         {t.is_amended && <Badge variant="warning" className="ml-1">Amended</Badge>}
                       </button>

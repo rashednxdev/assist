@@ -2,7 +2,7 @@
   "name": "@ibas/mobile",
   "version": "0.0.1",
   "private": true,
-  "main": "expo-router/entry",
+  "main": "index.js",
   "scripts": {
     "dev": "cross-env NODE_OPTIONS=--max-old-space-size=8192 expo start --lan",
     "android": "expo start --android",

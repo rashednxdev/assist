@@ -479,6 +479,60 @@ export async function getBookReaderOutline(bookId: string) {
   };
 }
 
+export async function getBookReaderFull(bookId: string) {
+  const outline = await getBookReaderOutline(bookId);
+  const topicIds = outline.chapters.flatMap((c) => c.topics.map((t) => t.id));
+  if (topicIds.length === 0) return outline;
+
+  const topicOids = topicIds.map((id) => new mongoose.Types.ObjectId(id));
+  const [topicRows, detailRows, subTopicRows] = await Promise.all([
+    BookTopic.find({ _id: { $in: topicOids }, is_active: true }),
+    BookTopicDetail.find({ book_topic_id: { $in: topicOids }, is_active: true }).sort({ sort_order: 1 }),
+    BookSubTopic.find({ book_topic_id: { $in: topicOids }, is_active: true }).sort({ sort_order: 1 }),
+  ]);
+
+  const topicById = new Map(topicRows.map((t) => [String(t._id), t]));
+  const detailsByTopic = new Map<string, { id: string; detail_text: string }[]>();
+  for (const detail of detailRows) {
+    const key = String(detail.book_topic_id);
+    const list = detailsByTopic.get(key) ?? [];
+    list.push({ id: String(detail._id), detail_text: detail.detail_text });
+    detailsByTopic.set(key, list);
+  }
+  const subTopicsByTopic = new Map<
+    string,
+    { id: string; name?: string; rule_number?: string; description?: string; note?: string }[]
+  >();
+  for (const sub of subTopicRows) {
+    const key = String(sub.book_topic_id);
+    const list = subTopicsByTopic.get(key) ?? [];
+    list.push({
+      id: String(sub._id),
+      name: sub.name,
+      rule_number: sub.rule_number,
+      description: sub.description,
+      note: sub.note,
+    });
+    subTopicsByTopic.set(key, list);
+  }
+
+  const chapters = outline.chapters.map((chapter) => ({
+    ...chapter,
+    topics: chapter.topics.map((topic) => {
+      const row = topicById.get(topic.id);
+      return {
+        ...topic,
+        description: row?.description,
+        note: row?.note,
+        details: detailsByTopic.get(topic.id) ?? [],
+        sub_topics: subTopicsByTopic.get(topic.id) ?? [],
+      };
+    }),
+  }));
+
+  return { book: outline.book, chapters, rules: outline.rules };
+}
+
 function serializeChapter(chapter: InstanceType<typeof BookChapter>) {
   return {
     id: String(chapter._id),
@@ -560,6 +614,68 @@ export async function listChapterQuestions(chapterId: string) {
     marks: q.marks,
     difficulty: q.difficulty,
   }));
+}
+
+export async function listChapterQuestionsForManage(chapterId: string) {
+  const chapter = await BookChapter.findById(chapterId);
+  if (!chapter || !chapter.is_active) throw notFound('Chapter not found');
+
+  const chapterOid = chapter._id;
+  const topics = await BookTopic.find({ book_chapter_id: chapterOid, is_active: true }).sort({ sort_order: 1 });
+  const topicIds = topics.map((t) => t._id);
+  const subTopics =
+    topicIds.length > 0
+      ? await BookSubTopic.find({ book_topic_id: { $in: topicIds }, is_active: true }).sort({ sort_order: 1 })
+      : [];
+  const subTopicIds = subTopics.map((s) => s._id);
+
+  const linkRows = await QuestionBookLink.find({
+    is_active: true,
+    $or: [
+      { book_chapter_id: chapterOid },
+      ...(topicIds.length > 0 ? [{ book_topic_id: { $in: topicIds } }] : []),
+      ...(subTopicIds.length > 0 ? [{ book_sub_topic_id: { $in: subTopicIds } }] : []),
+    ],
+  }).sort({ sort_order: 1 });
+
+  const topicMap = new Map(topics.map((t) => [String(t._id), t]));
+  const subTopicMap = new Map(subTopics.map((s) => [String(s._id), s]));
+  const book = await BookInfo.findById(chapter.book_info_id);
+
+  const questionIds = [...new Set(linkRows.map((l) => String(l.question_id)))];
+  if (questionIds.length === 0) return [];
+
+  const questions = await Question.find({ _id: { $in: questionIds }, is_active: true });
+  const qMap = new Map(questions.map((q) => [String(q._id), q]));
+
+  return linkRows
+    .map((link) => {
+      const q = qMap.get(String(link.question_id));
+      if (!q) return null;
+
+      const topic = link.book_topic_id ? topicMap.get(String(link.book_topic_id)) : undefined;
+      const subTopic = link.book_sub_topic_id ? subTopicMap.get(String(link.book_sub_topic_id)) : undefined;
+      const parts: string[] = [];
+      if (book) parts.push(book.short_name || book.name);
+      parts.push(`Ch. ${chapter.chapter_number} ${chapter.name}`.trim());
+      if (topic) parts.push(topic.rule_number ? `Rule ${topic.rule_number}` : topic.name || 'Rule');
+      if (subTopic) parts.push(subTopic.rule_number || subTopic.name || 'Sub-rule');
+
+      return {
+        link_id: String(link._id),
+        question_id: String(q._id),
+        link_level: link.link_level,
+        link_label: parts.join(' › '),
+        book_topic_id: idStr(link.book_topic_id),
+        book_sub_topic_id: idStr(link.book_sub_topic_id),
+        regulation_id: idStr(link.regulation_id),
+        body_en: q.body_en,
+        marks: q.marks,
+        question_type_code: q.question_type_code,
+        is_published: q.is_published,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row !== null);
 }
 
 function serializeSubTopic(sub: InstanceType<typeof BookSubTopic>) {

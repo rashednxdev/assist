@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Upload } from 'lucide-react';
 import { apiFetch, ApiError } from '@/lib/api-client';
@@ -17,6 +17,8 @@ import {
   validateQuestionForm,
   type QuestionFormValues,
 } from '@/components/questions/question-editor';
+import { emptyBookLinkForm } from '@/components/questions/question-book-links-editor';
+import type { QuestionLinkLevel } from '@ibas/shared-constants';
 import { Alert } from '@/components/ui/alert';
 
 interface QuestionType {
@@ -33,6 +35,7 @@ interface SavedQuestionMeta {
 
 export default function NewQuestionPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [allowed, setAllowed] = useState<boolean | null>(null);
   const [types, setTypes] = useState<QuestionType[]>([]);
   const [form, setForm] = useState<QuestionFormValues>(emptyQuestionForm);
@@ -63,18 +66,35 @@ export default function NewQuestionPage() {
         return apiFetch<{ data: QuestionType[] }>('/questions/types').then((r) => {
           setTypes(r.data);
           const mcq = r.data.find((t) => t.code === 'MCQ') ?? r.data[0];
+          const bookId = searchParams.get('book_id') ?? '';
+          const chapterId = searchParams.get('chapter_id') ?? '';
+          const linkLevel = (searchParams.get('link_level') ?? 'chapter') as QuestionLinkLevel;
+          const topicId = searchParams.get('topic_id') ?? '';
+          const presetLink =
+            bookId && chapterId
+              ? {
+                  ...emptyBookLinkForm(),
+                  link_level: linkLevel,
+                  book_id: bookId,
+                  book_chapter_id: chapterId,
+                  book_topic_id: topicId,
+                }
+              : null;
           if (mcq) {
             setForm((f) => ({
               ...f,
               question_type_id: mcq.id,
               question_type_code: mcq.code,
               has_options: mcq.has_options,
+              book_links: presetLink ? [presetLink] : f.book_links,
             }));
+          } else if (presetLink) {
+            setForm((f) => ({ ...f, book_links: [presetLink] }));
           }
         });
       })
       .catch(() => router.replace('/login'));
-  }, [router]);
+  }, [router, searchParams]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

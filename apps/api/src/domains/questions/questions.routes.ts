@@ -10,6 +10,7 @@ import {
   listQuestionsHandler,
   similarQuestionsHandler,
   getQuestionHandler,
+  generateQuestionDraftHandler,
   createQuestionHandler,
   updateQuestionHandler,
   deleteQuestionHandler,
@@ -31,6 +32,7 @@ questionsRouter.get('/', asyncHandler(listQuestionsHandler));
 questionsRouter.get('/similar', asyncHandler(similarQuestionsHandler));
 questionsRouter.get('/:id', asyncHandler(getQuestionHandler));
 
+questionsRouter.post('/ai-generate', requireAdmin, asyncHandler(generateQuestionDraftHandler));
 questionsRouter.post('/', requireAdmin, asyncHandler(createQuestionHandler));
 questionsRouter.patch('/:id', requireAdmin, asyncHandler(updateQuestionHandler));
 questionsRouter.delete('/:id', requireAdmin, asyncHandler(deleteQuestionHandler));

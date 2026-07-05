@@ -5,7 +5,7 @@ import {
   QUESTION_DIFFICULTIES,
   QUESTION_LINK_LEVELS,
 } from '@ibas/shared-constants';
-import { explanationSectionSchema } from './explanation.js';
+import { explanationSectionSchema, type ExplanationSection } from './explanation.js';
 
 const mongoId = z.string().regex(/^[a-f\d]{24}$/i);
 
@@ -161,6 +161,27 @@ export const createQuestionTypeSchema = z.object({
 export const updateQuestionTypeSchema = createQuestionTypeSchema.partial().extend({
   is_active: z.boolean().optional(),
 });
+
+export const generateQuestionAiSchema = z.object({
+  question_type_id: mongoId,
+  book_chapter_id: mongoId,
+  book_topic_id: mongoId.optional(),
+  book_sub_topic_id: mongoId.optional(),
+  difficulty: z.enum(QUESTION_DIFFICULTIES).optional(),
+  instructions: z.string().max(500).optional(),
+});
+
+export type GenerateQuestionAiDto = z.infer<typeof generateQuestionAiSchema>;
+
+export interface GeneratedQuestionDraft {
+  body_en: string;
+  body_bn: string;
+  options: QuestionOptionInput[];
+  correct_option_key?: (typeof OPTION_KEYS)[number];
+  correct_true_false?: 'true' | 'false';
+  explanation_sections: ExplanationSection[];
+  model_answer_sections: ExplanationSection[];
+}
 
 export type CreateQuestionDto = z.infer<typeof createQuestionSchema>;
 export type UpdateQuestionDto = z.infer<typeof updateQuestionSchema>;

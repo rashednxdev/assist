@@ -33,6 +33,29 @@ export interface ReaderChapter {
   topics: ReaderChapterTopic[];
 }
 
+export interface ReaderTopicFull {
+  id: string;
+  rule_number: string;
+  name?: string;
+  sub_name?: string;
+  is_amended: boolean;
+  sort_order: number;
+  description?: string;
+  note?: string;
+  details: Array<{ id: string; detail_text: string }>;
+  sub_topics: Array<{
+    id: string;
+    name?: string;
+    rule_number?: string;
+    description?: string;
+    note?: string;
+  }>;
+}
+
+export interface ReaderChapterFull extends Omit<ReaderChapter, 'topics'> {
+  topics: ReaderTopicFull[];
+}
+
 export interface ReaderRuleNav {
   id: string;
   rule_number: string;

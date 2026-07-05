@@ -18,6 +18,8 @@ config.resolver.disableHierarchicalLookup = true;
 // resolution (it computes paths relative to this project's root instead).
 // Keep the server root here so native release builds (./gradlew assembleRelease)
 // can resolve the entry file correctly.
+// Pair with EXPO_NO_METRO_WORKSPACE_ROOT=1 in the dev script so Expo's bundle
+// URL rewrite uses the same root (otherwise /.expo/.virtual-metro-entry 404s).
 config.server.unstable_serverRoot = projectRoot;
 config.resolver.blockList = [
   ...(Array.isArray(config.resolver.blockList) ? config.resolver.blockList : []),

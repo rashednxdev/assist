@@ -23,14 +23,22 @@ const tagsStyles = {
   em: { fontStyle: 'italic' as const },
 };
 
+/** Match web RichTextView: wrap plain text in a paragraph so RenderHtml displays it. */
+export function normalizeBookHtml(html?: string) {
+  const trimmed = html?.trim();
+  if (!trimmed) return '';
+  return trimmed.startsWith('<') ? trimmed : `<p>${trimmed}</p>`;
+}
+
 export function HtmlContent({ html }: HtmlContentProps) {
   const { width } = useWindowDimensions();
-  if (!html?.trim()) return null;
+  const normalized = normalizeBookHtml(html);
+  if (!normalized) return null;
 
   return (
     <RenderHtml
       contentWidth={width - 48}
-      source={{ html }}
+      source={{ html: normalized }}
       baseStyle={baseStyle}
       tagsStyles={tagsStyles}
     />

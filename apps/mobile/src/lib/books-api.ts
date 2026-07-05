@@ -1,12 +1,39 @@
 import { apiFetch } from './api';
+import {
+  cacheBookReaderFull,
+  cacheBookReaderOutline,
+  cacheTopicDetail,
+  getInflightFull,
+  getInflightOutline,
+  getInflightTopic,
+  peekBookReaderFull,
+  peekBookReaderOutline,
+  peekTopicDetail,
+  setInflightFull,
+  setInflightOutline,
+  setInflightTopic,
+} from './book-cache';
 import type {
   BookListItem,
   BookReaderOutline,
   ChapterQuestionBrief,
+  ReaderChapter,
+  ReaderChapterFull,
+  ReaderTopicFull,
   RegulationDetail,
   RegulationSearchRow,
   TopicDetail,
 } from '@/types/books';
+
+async function fetchBookReaderOutlineRaw(bookId: string) {
+  const res = await apiFetch<{ data: BookReaderOutline }>(`/books/${bookId}/reader-outline`);
+  return res.data;
+}
+
+async function fetchTopicDetailRaw(topicId: string) {
+  const res = await apiFetch<{ data: TopicDetail }>(`/books/topics/${topicId}`);
+  return res.data;
+}
 
 export async function fetchBooks(params?: { q?: string; book_type_id?: string }) {
   const search = new URLSearchParams();
@@ -18,13 +45,103 @@ export async function fetchBooks(params?: { q?: string; book_type_id?: string })
 }
 
 export async function fetchBookReaderOutline(bookId: string) {
-  const res = await apiFetch<{ data: BookReaderOutline }>(`/books/${bookId}/reader-outline`);
-  return res.data;
+  const cached = peekBookReaderOutline(bookId);
+  if (cached) return cached;
+
+  const inflight = getInflightOutline(bookId);
+  if (inflight) return inflight;
+
+  const promise = fetchBookReaderOutlineRaw(bookId).then((data) => {
+    cacheBookReaderOutline(bookId, data);
+    return data;
+  });
+  setInflightOutline(bookId, promise);
+  return promise;
+}
+
+function toReaderTopicFull(topic: ReaderChapter['topics'][number], detail?: TopicDetail): ReaderTopicFull {
+  return {
+    ...topic,
+    description: detail?.description,
+    note: detail?.note,
+    details: detail?.details ?? [],
+    sub_topics: detail?.sub_topics ?? [],
+  };
+}
+
+async function enrichChaptersFromTopicDetails(
+  outlineChapters: ReaderChapter[],
+): Promise<ReaderChapterFull[]> {
+  const topicIds = outlineChapters.flatMap((c) => c.topics.map((t) => t.id));
+  if (topicIds.length === 0) {
+    return outlineChapters.map((chapter) => ({ ...chapter, topics: [] }));
+  }
+
+  const details = await Promise.all(topicIds.map((id) => fetchTopicDetail(id)));
+  const detailById = new Map(details.map((d) => [d.id, d]));
+
+  return outlineChapters.map((chapter) => ({
+    ...chapter,
+    topics: chapter.topics.map((topic) => toReaderTopicFull(topic, detailById.get(topic.id))),
+  }));
+}
+
+function hasEnrichedTopics(chapters: ReaderChapterFull[]) {
+  return chapters.some((chapter) =>
+    chapter.topics.some(
+      (topic) =>
+        Boolean(topic.description?.trim()) ||
+        Boolean(topic.note?.trim()) ||
+        (topic.details?.length ?? 0) > 0 ||
+        (topic.sub_topics?.length ?? 0) > 0,
+    ),
+  );
+}
+
+async function fetchBookReaderFullRaw(bookId: string, outlineChapters: ReaderChapter[]) {
+  try {
+    const res = await apiFetch<{ data: BookReaderOutline & { chapters: ReaderChapterFull[] } }>(
+      `/books/${bookId}/reader-full`,
+    );
+    const chapters = res.data?.chapters ?? [];
+    if (chapters.length > 0 && hasEnrichedTopics(chapters)) {
+      return chapters;
+    }
+  } catch {
+    /* fall back to per-topic fetch */
+  }
+
+  return enrichChaptersFromTopicDetails(outlineChapters);
+}
+
+export async function fetchBookReaderFull(bookId: string, outlineChapters: ReaderChapter[]) {
+  const cached = peekBookReaderFull(bookId);
+  if (cached) return cached;
+
+  const inflight = getInflightFull(bookId);
+  if (inflight) return inflight;
+
+  const promise = fetchBookReaderFullRaw(bookId, outlineChapters).then((data) => {
+    cacheBookReaderFull(bookId, data);
+    return data;
+  });
+  setInflightFull(bookId, promise);
+  return promise;
 }
 
 export async function fetchTopicDetail(topicId: string) {
-  const res = await apiFetch<{ data: TopicDetail }>(`/books/topics/${topicId}`);
-  return res.data;
+  const cached = peekTopicDetail(topicId);
+  if (cached) return cached;
+
+  const inflight = getInflightTopic(topicId);
+  if (inflight) return inflight;
+
+  const promise = fetchTopicDetailRaw(topicId).then((data) => {
+    cacheTopicDetail(topicId, data);
+    return data;
+  });
+  setInflightTopic(topicId, promise);
+  return promise;
 }
 
 export async function fetchChapterQuestions(chapterId: string) {
@@ -49,3 +166,5 @@ export async function fetchRegulationDetail(id: string) {
   const res = await apiFetch<{ data: RegulationDetail }>(`/books/regulations/${id}`);
   return res.data;
 }
+
+export { peekBookReaderFull, peekBookReaderOutline } from './book-cache';

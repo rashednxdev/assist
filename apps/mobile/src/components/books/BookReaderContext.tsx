@@ -7,14 +7,22 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { fetchBookReaderOutline } from '@/lib/books-api';
-import type { BookReaderOutline, ReaderChapter, ReaderRuleNav } from '@/types/books';
+import {
+  fetchBookReaderFull,
+  fetchBookReaderOutline,
+  peekBookReaderFull,
+  peekBookReaderOutline,
+} from '@/lib/books-api';
+import type { BookReaderOutline, ReaderChapter, ReaderChapterFull, ReaderRuleNav } from '@/types/books';
 
 interface BookReaderContextValue {
   bookId: string;
   outline: BookReaderOutline | null;
+  fullChapters: ReaderChapterFull[] | null;
   loading: boolean;
+  fullLoading: boolean;
   error: string;
+  fullError: string;
   reload: () => Promise<void>;
   getChapter: (chapterId: string) => ReaderChapter | undefined;
   getRuleNav: (topicId: string) => ReaderRuleNav | undefined;
@@ -24,28 +32,68 @@ interface BookReaderContextValue {
 const BookReaderContext = createContext<BookReaderContextValue | null>(null);
 
 export function BookReaderProvider({ bookId, children }: { bookId: string; children: ReactNode }) {
-  const [outline, setOutline] = useState<BookReaderOutline | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [outline, setOutline] = useState<BookReaderOutline | null>(() =>
+    bookId ? peekBookReaderOutline(bookId) : null,
+  );
+  const [fullChapters, setFullChapters] = useState<ReaderChapterFull[] | null>(() =>
+    bookId ? peekBookReaderFull(bookId) : null,
+  );
+  const [loading, setLoading] = useState(() => !peekBookReaderOutline(bookId));
+  const [fullLoading, setFullLoading] = useState(
+    () => Boolean(bookId) && !peekBookReaderFull(bookId),
+  );
   const [error, setError] = useState('');
+  const [fullError, setFullError] = useState('');
+
+  const prefetchFull = useCallback(async (chapters: ReaderChapter[]) => {
+    if (!bookId) return;
+    if (peekBookReaderFull(bookId)) {
+      setFullChapters(peekBookReaderFull(bookId));
+      return;
+    }
+    setFullLoading(true);
+    setFullError('');
+    try {
+      const data = await fetchBookReaderFull(bookId, chapters);
+      setFullChapters(data);
+    } catch (err) {
+      setFullError(err instanceof Error ? err.message : 'Failed to load full book');
+      setFullChapters(null);
+    } finally {
+      setFullLoading(false);
+    }
+  }, [bookId]);
 
   const reload = useCallback(async () => {
     if (!bookId) return;
-    setLoading(true);
+    const hadOutline = Boolean(peekBookReaderOutline(bookId));
+    if (!hadOutline) setLoading(true);
     setError('');
     try {
       const data = await fetchBookReaderOutline(bookId);
       setOutline(data);
+      void prefetchFull(data.chapters);
     } catch (err) {
       setOutline(null);
       setError(err instanceof Error ? err.message : 'Failed to load book');
     } finally {
       setLoading(false);
     }
-  }, [bookId]);
+  }, [bookId, prefetchFull]);
 
   useEffect(() => {
+    if (!bookId) return;
+
+    setOutline(peekBookReaderOutline(bookId));
+    const cachedFull = peekBookReaderFull(bookId);
+    setFullChapters(cachedFull);
+    setLoading(!peekBookReaderOutline(bookId));
+    setFullLoading(!cachedFull);
+    setError('');
+    setFullError('');
+
     void reload();
-  }, [reload]);
+  }, [bookId, reload]);
 
   const getChapter = useCallback(
     (chapterId: string) => outline?.chapters.find((c) => c.id === chapterId),
@@ -74,14 +122,29 @@ export function BookReaderProvider({ bookId, children }: { bookId: string; child
     () => ({
       bookId,
       outline,
+      fullChapters,
       loading,
+      fullLoading,
       error,
+      fullError,
       reload,
       getChapter,
       getRuleNav,
       getAdjacentRules,
     }),
-    [bookId, outline, loading, error, reload, getChapter, getRuleNav, getAdjacentRules],
+    [
+      bookId,
+      outline,
+      fullChapters,
+      loading,
+      fullLoading,
+      error,
+      fullError,
+      reload,
+      getChapter,
+      getRuleNav,
+      getAdjacentRules,
+    ],
   );
 
   return <BookReaderContext.Provider value={value}>{children}</BookReaderContext.Provider>;

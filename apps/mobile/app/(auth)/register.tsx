@@ -121,7 +121,7 @@ export default function RegisterScreen() {
           {form.accept_terms ? <Text style={styles.checkMark}>✓</Text> : null}
         </View>
         <Text style={styles.termsText}>
-          I agree to the terms of use and privacy policy for iBAS Learn.
+          I agree to the terms of use and privacy policy for ProAssist.
         </Text>
       </Pressable>
 

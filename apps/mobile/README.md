@@ -1,4 +1,4 @@
-# iBAS Learn (Mobile)
+# ProAssist (Mobile)
 
 Expo mobile app scoped to **User** authentication and **Learning** modules only.
 
@@ -42,6 +42,14 @@ Start mobile:
 ```bash
 npx pnpm@9.15.9 dev:mobile
 ```
+
+If Expo Go shows **"Failed to download remote update"**:
+
+1. Stop any old Metro process and restart with `dev:mobile` (uses `--clear` and monorepo-safe Metro paths).
+2. Phone and PC must be on the **same Wi‑Fi**; scan the QR code from the terminal (LAN URL).
+3. If LAN still fails, use tunnel mode: `pnpm --filter @ibas/mobile dev:tunnel`
+4. Update **Expo Go** to SDK 54 on the device.
+5. For a native debug APK, rebuild after manifest changes: `npx expo run:android`
 
 ## Stack
 

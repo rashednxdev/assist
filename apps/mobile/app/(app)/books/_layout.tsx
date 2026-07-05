@@ -14,7 +14,7 @@ export default function BooksLayout() {
       <Stack.Screen
         name="index"
         options={{
-          title: 'Library & Tools',
+          title: 'Books and Tools',
           headerBackTitle: 'Home',
         }}
       />

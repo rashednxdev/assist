@@ -12,6 +12,11 @@ export const colors = {
   warning: '#d97706',
   error: '#dc2626',
   white: '#ffffff',
+  gold: '#d4af37',
+  goldDark: '#b8941f',
+  goldLight: '#f0d78c',
+  premiumBg: '#071018',
+  premiumSurface: '#0f1c2e',
 };
 
 export const spacing = {

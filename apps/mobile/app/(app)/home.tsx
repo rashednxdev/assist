@@ -31,7 +31,7 @@ const MODULES: Array<{
 }> = [
   {
     code: 'BOOKS' as const,
-    title: 'Library & Tools',
+    title: 'Books and Tools',
     subtitle: 'Books & regulatory tools',
     icon: 'library-outline' as const,
     color: '#0f5c8c',
@@ -106,8 +106,8 @@ export default function HomeScreen() {
         <SafeAreaView edges={['top']}>
           <View style={styles.heroInner}>
             <View>
-              <Text style={styles.greet}>Hello, {greeting}</Text>
-              <Text style={styles.heroSub}>Learning dashboard</Text>
+              <Text style={styles.greet}>{greeting}</Text>
+              <Text style={styles.heroSub}>Preparation Dashboard</Text>
             </View>
             <Pressable onPress={() => void signOut()} style={styles.signOutBtn}>
               <Text style={styles.signOutText}>Sign out</Text>

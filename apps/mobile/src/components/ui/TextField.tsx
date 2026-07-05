@@ -15,6 +15,7 @@ interface TextFieldProps extends TextInputProps {
   hint?: string;
   error?: string;
   secureToggle?: boolean;
+  variant?: 'default' | 'premium';
 }
 
 export function TextField({
@@ -23,18 +24,26 @@ export function TextField({
   error,
   secureToggle,
   secureTextEntry,
+  variant = 'default',
   style,
   ...rest
 }: TextFieldProps) {
   const [hidden, setHidden] = useState(!!secureTextEntry);
+  const premium = variant === 'premium';
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.label}>{label}</Text>
-      <View style={[styles.inputRow, error ? styles.inputError : null]}>
+      <Text style={[styles.label, premium && styles.labelPremium]}>{label}</Text>
+      <View
+        style={[
+          styles.inputRow,
+          premium && styles.inputRowPremium,
+          error ? styles.inputError : null,
+        ]}
+      >
         <TextInput
-          style={[styles.input, style]}
-          placeholderTextColor={colors.textMuted}
+          style={[styles.input, premium && styles.inputPremium, style]}
+          placeholderTextColor={premium ? 'rgba(255,255,255,0.35)' : colors.textMuted}
           secureTextEntry={secureToggle ? hidden : secureTextEntry}
           autoCapitalize="none"
           {...rest}
@@ -44,12 +53,12 @@ export function TextField({
             <Ionicons
               name={hidden ? 'eye-off-outline' : 'eye-outline'}
               size={20}
-              color={colors.textMuted}
+              color={premium ? 'rgba(255,255,255,0.55)' : colors.textMuted}
             />
           </Pressable>
         )}
       </View>
-      {hint && !error ? <Text style={styles.hint}>{hint}</Text> : null}
+      {hint && !error ? <Text style={[styles.hint, premium && styles.hintPremium]}>{hint}</Text> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
     </View>
   );
@@ -64,6 +73,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
   },
+  labelPremium: {
+    color: 'rgba(255,255,255,0.88)',
+  },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -74,6 +86,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     minHeight: 48,
   },
+  inputRowPremium: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: 'rgba(212, 175, 55, 0.22)',
+  },
   inputError: {
     borderColor: colors.error,
   },
@@ -83,9 +99,15 @@ const styles = StyleSheet.create({
     color: colors.text,
     paddingVertical: spacing.sm,
   },
+  inputPremium: {
+    color: colors.white,
+  },
   hint: {
     fontSize: 12,
     color: colors.textMuted,
+  },
+  hintPremium: {
+    color: 'rgba(255,255,255,0.45)',
   },
   error: {
     fontSize: 12,

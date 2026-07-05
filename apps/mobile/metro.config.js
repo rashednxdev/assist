@@ -21,6 +21,15 @@ config.resolver.disableHierarchicalLookup = true;
 // Pair with EXPO_NO_METRO_WORKSPACE_ROOT=1 in the dev script so Expo's bundle
 // URL rewrite uses the same root (otherwise /.expo/.virtual-metro-entry 404s).
 config.server.unstable_serverRoot = projectRoot;
+// Monorepo: Expo Go may request /apps/mobile/... while Metro serves from projectRoot.
+config.server.enhanceMiddleware = (middleware) => {
+  return (req, res, next) => {
+    if (req.url?.startsWith('/apps/mobile/')) {
+      req.url = req.url.slice('/apps/mobile'.length) || '/';
+    }
+    return middleware(req, res, next);
+  };
+};
 config.resolver.blockList = [
   ...(Array.isArray(config.resolver.blockList) ? config.resolver.blockList : []),
   /\.expo-test-bundle\/.*/,

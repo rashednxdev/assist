@@ -37,11 +37,12 @@ export default function LoginScreen() {
 
   return (
     <AuthScreenShell
+      variant="premium"
       title="Welcome back"
-      subtitle="Sign in to continue your learning journey"
+      subtitle="Sign in to your preparation dashboard"
       footer={
         <View style={styles.footer}>
-          <Text style={styles.footerText}>New to iBAS Learn?</Text>
+          <Text style={styles.footerText}>New to ProAssist?</Text>
           <Link href="/(auth)/register" asChild>
             <Pressable>
               <Text style={styles.footerLink}>Create free account</Text>
@@ -52,6 +53,7 @@ export default function LoginScreen() {
     >
       <TextField
         label="Email"
+        variant="premium"
         value={email}
         onChangeText={setEmail}
         keyboardType="email-address"
@@ -60,6 +62,7 @@ export default function LoginScreen() {
       />
       <TextField
         label="Password"
+        variant="premium"
         value={password}
         onChangeText={setPassword}
         secureToggle
@@ -68,15 +71,24 @@ export default function LoginScreen() {
         placeholder="••••••••"
       />
       {error ? <Text style={styles.error}>{error}</Text> : null}
-      <Button title="Sign in" onPress={handleLogin} loading={loading} />
+      <Button title="Sign in" variant="premium" onPress={handleLogin} loading={loading} />
+      {loading ? (
+        <Text style={styles.loadingHint}>Connecting to server — this may take a moment on first load.</Text>
+      ) : null}
     </AuthScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
   error: {
-    color: colors.error,
+    color: '#f87171',
     fontSize: 14,
+  },
+  loadingHint: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: -4,
   },
   footer: {
     flexDirection: 'row',
@@ -85,11 +97,11 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
   },
   footerText: {
-    color: colors.textMuted,
+    color: 'rgba(255,255,255,0.55)',
     fontSize: 14,
   },
   footerLink: {
-    color: colors.primary,
+    color: colors.goldLight,
     fontSize: 14,
     fontWeight: '700',
   },

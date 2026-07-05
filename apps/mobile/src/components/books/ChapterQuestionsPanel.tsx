@@ -192,7 +192,6 @@ export function ChapterQuestionsPanel({
               >
                 <View style={styles.listBadges}>
                   <BookBadge label={q.question_type_code} variant="muted" />
-                  <Text style={styles.marks}>{q.marks}m</Text>
                 </View>
                 <Text style={styles.listBody} numberOfLines={2}>
                   {truncate(q.body_en || q.body_bn)}
@@ -300,10 +299,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-  },
-  marks: {
-    fontSize: 12,
-    color: colors.textMuted,
   },
   listBody: {
     fontSize: 14,

@@ -406,12 +406,6 @@ export function QuestionEditor({
                   placeholder="Option text"
                   value={opt.option_text_en}
                   onChange={(e) => updateOption(opt.option_key, 'option_text_en', e.target.value)}
-                  className="mb-2"
-                />
-                <Input
-                  placeholder="Option text (Bengali, optional)"
-                  value={opt.option_text_bn ?? ''}
-                  onChange={(e) => updateOption(opt.option_key, 'option_text_bn', e.target.value)}
                 />
               </div>
             ))}

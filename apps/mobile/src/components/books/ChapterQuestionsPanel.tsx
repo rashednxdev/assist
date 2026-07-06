@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Modal,
   View,
@@ -11,12 +11,18 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { BookBadge } from '@/components/books/BookBadge';
 import { BookLoading } from '@/components/books/BookStates';
+import { ChapterMcqExam } from '@/components/books/ChapterMcqExam';
+import { ChapterQuestionEvaluator } from '@/components/books/ChapterQuestionEvaluator';
+import { RatingIndicator } from '@/components/evaluation/RatingIndicator';
 import { fetchChapterQuestions } from '@/lib/books-api';
+import { fetchQuestionEvaluationsBatch, type QuestionEvalBrief } from '@/lib/evaluation-api';
 import { fetchQuestionDetail } from '@/lib/questions-api';
 import { stripHtml } from '@/lib/book-display';
 import type { ChapterQuestionBrief } from '@/types/books';
 import type { ExplanationSection, QuestionDetail } from '@/types/questions';
 import { colors, spacing } from '@/theme';
+
+type PanelView = 'list' | 'detail' | 'mcq-exam';
 
 function truncate(text: string, len = 100) {
   const plain = stripHtml(text);
@@ -70,21 +76,67 @@ export function ChapterQuestionsPanel({
   onClose: () => void;
 }) {
   const [questions, setQuestions] = useState<ChapterQuestionBrief[]>([]);
+  const [evalMap, setEvalMap] = useState<Map<string, QuestionEvalBrief>>(new Map());
   const [loadingList, setLoadingList] = useState(false);
   const [listError, setListError] = useState('');
+  const [panelView, setPanelView] = useState<PanelView>('list');
+  const [typeFilter, setTypeFilter] = useState('ALL');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [question, setQuestion] = useState<QuestionDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
+  const typeOptions = useMemo(() => {
+    const types = [...new Set(questions.map((q) => q.question_type_code))].sort();
+    return ['ALL', ...types];
+  }, [questions]);
+
+  const displayedQuestions = useMemo(() => {
+    let list = questions;
+    if (typeFilter !== 'ALL') {
+      list = list.filter((q) => q.question_type_code === typeFilter);
+    }
+    return [...list].sort(
+      (a, b) =>
+        a.question_type_code.localeCompare(b.question_type_code) ||
+        (a.body_en || a.body_bn).localeCompare(b.body_en || b.body_bn),
+    );
+  }, [questions, typeFilter]);
+
+  const mcqQuestions = useMemo(
+    () => questions.filter((q) => q.question_type_code === 'MCQ'),
+    [questions],
+  );
+
+  const selectedIndex = useMemo(
+    () => (selectedId ? displayedQuestions.findIndex((q) => q.id === selectedId) : -1),
+    [displayedQuestions, selectedId],
+  );
+
   useEffect(() => {
     if (!open) {
+      setPanelView('list');
       setSelectedId(null);
+      setTypeFilter('ALL');
       return;
     }
     setLoadingList(true);
     setListError('');
     fetchChapterQuestions(chapterId)
-      .then(setQuestions)
+      .then(async (rows) => {
+        setQuestions(rows);
+        if (rows.length === 0) {
+          setEvalMap(new Map());
+          return;
+        }
+        const evals = await fetchQuestionEvaluationsBatch(rows.map((q) => q.id));
+        const map = new Map<string, QuestionEvalBrief>();
+        for (const row of evals) {
+          if (row.progress_index > 0 || row.self_rating || row.is_correct !== undefined) {
+            map.set(row.question_id, row);
+          }
+        }
+        setEvalMap(map);
+      })
       .catch((err) => {
         setListError(err instanceof Error ? err.message : 'Failed to load questions');
         setQuestions([]);
@@ -93,7 +145,7 @@ export function ChapterQuestionsPanel({
   }, [open, chapterId]);
 
   useEffect(() => {
-    if (!selectedId) {
+    if (!selectedId || panelView !== 'detail') {
       setQuestion(null);
       return;
     }
@@ -102,14 +154,64 @@ export function ChapterQuestionsPanel({
       .then(setQuestion)
       .catch(() => setQuestion(null))
       .finally(() => setLoadingDetail(false));
-  }, [selectedId]);
+  }, [selectedId, panelView]);
+
+  function openDetail(id: string) {
+    setSelectedId(id);
+    setPanelView('detail');
+  }
+
+  function backToList() {
+    setPanelView('list');
+    setSelectedId(null);
+  }
+
+  function goPrev() {
+    if (selectedIndex > 0) {
+      setSelectedId(displayedQuestions[selectedIndex - 1].id);
+    }
+  }
+
+  function goNext() {
+    if (selectedIndex >= 0 && selectedIndex < displayedQuestions.length - 1) {
+      setSelectedId(displayedQuestions[selectedIndex + 1].id);
+    }
+  }
+
+  function handleEvalUpdated(record: { question_id: string; progress_index: number; is_correct?: boolean; self_rating?: QuestionEvalBrief['self_rating'] }) {
+    setEvalMap((prev) => {
+      const next = new Map(prev);
+      next.set(record.question_id, record);
+      return next;
+    });
+  }
+
+  function handleMcqExamComplete(results: { question_id: string; progress_index: number; is_correct?: boolean; self_rating?: QuestionEvalBrief['self_rating'] }[]) {
+    setEvalMap((prev) => {
+      const next = new Map(prev);
+      for (const row of results) {
+        next.set(row.question_id, row);
+      }
+      return next;
+    });
+  }
+
+  const headerTitle =
+    panelView === 'mcq-exam'
+      ? 'MCQ exam'
+      : panelView === 'detail'
+        ? `Question ${selectedIndex + 1}/${displayedQuestions.length}`
+        : 'Tagged questions';
 
   return (
     <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <SafeAreaView style={styles.modalRoot}>
         <View style={styles.modalHeader}>
-          {selectedId ? (
-            <Pressable style={styles.headerBtn} onPress={() => setSelectedId(null)}>
+          {panelView !== 'list' ? (
+            <Pressable
+              style={styles.headerBtn}
+              onPress={() => (panelView === 'detail' ? backToList() : setPanelView('list'))}
+            >
               <Ionicons name="chevron-back" size={20} color={colors.primary} />
               <Text style={styles.headerBtnText}>Back</Text>
             </Pressable>
@@ -118,9 +220,9 @@ export function ChapterQuestionsPanel({
           )}
           <View style={styles.headerTitleWrap}>
             <Text style={styles.modalTitle} numberOfLines={1}>
-              {selectedId ? 'Question' : 'Tagged questions'}
+              {headerTitle}
             </Text>
-            {!selectedId && chapterTitle ? (
+            {panelView === 'list' && chapterTitle ? (
               <Text style={styles.modalSubtitle} numberOfLines={1}>
                 {chapterTitle}
               </Text>
@@ -131,75 +233,174 @@ export function ChapterQuestionsPanel({
           </Pressable>
         </View>
 
-        <ScrollView style={styles.modalBody} contentContainerStyle={styles.modalBodyContent}>
-          {selectedId ? (
-            loadingDetail ? (
-              <BookLoading />
-            ) : !question ? (
-              <Text style={styles.muted}>Question not found.</Text>
-            ) : (
-              <View style={styles.detailWrap}>
-                <View style={styles.badges}>
-                  <BookBadge label={question.question_type_code} variant="muted" />
-                  <BookBadge label={`${question.marks} marks`} variant="muted" />
-                </View>
-                <Text style={styles.questionBody}>{question.body_en}</Text>
-                {question.body_bn?.trim() ? (
-                  <Text style={styles.questionBn}>{question.body_bn}</Text>
-                ) : null}
-
-                {question.options.length > 0 ? (
-                  <View style={styles.optionsWrap}>
-                    <Text style={styles.sectionLabel}>Options</Text>
-                    {question.options.map((opt) => (
-                      <View
-                        key={opt.id}
-                        style={[styles.optionRow, opt.is_correct && styles.optionCorrect]}
-                      >
-                        <Text style={styles.optionKey}>{opt.option_key.toUpperCase()}.</Text>
-                        <Text style={styles.optionText}>
-                          {opt.option_text_en?.trim() || opt.option_text_bn?.trim()}
-                        </Text>
-                      </View>
-                    ))}
+        {panelView === 'mcq-exam' ? (
+          <View style={styles.modalBody}>
+            <ChapterMcqExam
+              questions={mcqQuestions}
+              onBack={() => setPanelView('list')}
+              onComplete={handleMcqExamComplete}
+            />
+          </View>
+        ) : (
+          <ScrollView style={styles.modalBody} contentContainerStyle={styles.modalBodyContent}>
+            {panelView === 'detail' ? (
+              loadingDetail ? (
+                <BookLoading />
+              ) : !question ? (
+                <Text style={styles.muted}>Question not found.</Text>
+              ) : (
+                <View style={styles.detailWrap}>
+                  <View style={styles.badges}>
+                    <BookBadge label={question.question_type_code} variant="muted" />
+                    <BookBadge label={`${question.marks} marks`} variant="muted" />
                   </View>
+                  <Text style={styles.questionBody}>{question.body_en}</Text>
+                  {question.body_bn?.trim() ? (
+                    <Text style={styles.questionBn}>{question.body_bn}</Text>
+                  ) : null}
+
+                  {question.options.length > 0 ? (
+                    <View style={styles.optionsWrap}>
+                      <Text style={styles.sectionLabel}>Options</Text>
+                      {question.options.map((opt) => (
+                        <View
+                          key={opt.id}
+                          style={[styles.optionRow, opt.is_correct && styles.optionCorrect]}
+                        >
+                          <Text style={styles.optionKey}>{opt.option_key.toUpperCase()}.</Text>
+                          <Text style={styles.optionText}>
+                            {opt.option_text_en?.trim() || opt.option_text_bn?.trim()}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+
+                  <View style={styles.answerWrap}>
+                    <Text style={styles.sectionLabel}>Answer</Text>
+                    {(question.model_answer_sections ?? []).map(renderSection)}
+                    {(question.explanation_sections ?? []).map(renderSection)}
+                    {question.note?.trim() ? (
+                      <Text style={styles.answerNote}>{question.note}</Text>
+                    ) : null}
+                  </View>
+
+                  <View style={styles.navRow}>
+                    <Pressable
+                      style={[styles.navBtn, selectedIndex <= 0 && styles.navBtnDisabled]}
+                      disabled={selectedIndex <= 0}
+                      onPress={goPrev}
+                    >
+                      <Ionicons name="chevron-back" size={18} color={selectedIndex <= 0 ? colors.textMuted : colors.primary} />
+                      <Text style={[styles.navBtnText, selectedIndex <= 0 && styles.navBtnTextDisabled]}>
+                        Previous
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={[
+                        styles.navBtn,
+                        selectedIndex >= displayedQuestions.length - 1 && styles.navBtnDisabled,
+                      ]}
+                      disabled={selectedIndex >= displayedQuestions.length - 1}
+                      onPress={goNext}
+                    >
+                      <Text
+                        style={[
+                          styles.navBtnText,
+                          selectedIndex >= displayedQuestions.length - 1 && styles.navBtnTextDisabled,
+                        ]}
+                      >
+                        Next
+                      </Text>
+                      <Ionicons
+                        name="chevron-forward"
+                        size={18}
+                        color={
+                          selectedIndex >= displayedQuestions.length - 1 ? colors.textMuted : colors.primary
+                        }
+                      />
+                    </Pressable>
+                  </View>
+
+                  <ChapterQuestionEvaluator
+                    questionId={question.id}
+                    onUpdated={handleEvalUpdated}
+                  />
+                </View>
+              )
+            ) : loadingList ? (
+              <BookLoading />
+            ) : listError ? (
+              <Text style={styles.error}>{listError}</Text>
+            ) : questions.length === 0 ? (
+              <Text style={styles.muted}>
+                No published questions are tagged to this chapter yet.
+              </Text>
+            ) : (
+              <>
+                {mcqQuestions.length > 0 ? (
+                  <Pressable
+                    style={({ pressed }) => [styles.examBtn, pressed && styles.pressed]}
+                    onPress={() => setPanelView('mcq-exam')}
+                  >
+                    <Ionicons name="timer-outline" size={20} color={colors.white} />
+                    <View style={styles.examBtnTextWrap}>
+                      <Text style={styles.examBtnTitle}>MCQ exam at a glance</Text>
+                      <Text style={styles.examBtnSub}>
+                        {mcqQuestions.length} MCQ · {mcqQuestions.length * 60}s countdown
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={colors.white} />
+                  </Pressable>
                 ) : null}
 
-                <View style={styles.answerWrap}>
-                  <Text style={styles.sectionLabel}>Answer</Text>
-                  {(question.model_answer_sections ?? []).map(renderSection)}
-                  {(question.explanation_sections ?? []).map(renderSection)}
-                  {question.note?.trim() ? (
-                    <Text style={styles.answerNote}>{question.note}</Text>
-                  ) : null}
-                </View>
-              </View>
-            )
-          ) : loadingList ? (
-            <BookLoading />
-          ) : listError ? (
-            <Text style={styles.error}>{listError}</Text>
-          ) : questions.length === 0 ? (
-            <Text style={styles.muted}>
-              No published questions are tagged to this chapter yet.
-            </Text>
-          ) : (
-            questions.map((q) => (
-              <Pressable
-                key={q.id}
-                style={({ pressed }) => [styles.listRow, pressed && styles.pressed]}
-                onPress={() => setSelectedId(q.id)}
-              >
-                <View style={styles.listBadges}>
-                  <BookBadge label={q.question_type_code} variant="muted" />
-                </View>
-                <Text style={styles.listBody} numberOfLines={2}>
-                  {truncate(q.body_en || q.body_bn)}
-                </Text>
-              </Pressable>
-            ))
-          )}
-        </ScrollView>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.filterRow}
+                >
+                  {typeOptions.map((code) => {
+                    const active = typeFilter === code;
+                    const label = code === 'ALL' ? 'All types' : code;
+                    return (
+                      <Pressable
+                        key={code}
+                        style={[styles.filterChip, active && styles.filterChipActive]}
+                        onPress={() => setTypeFilter(code)}
+                      >
+                        <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
+                          {label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+
+                {displayedQuestions.length === 0 ? (
+                  <Text style={styles.muted}>No questions for this type.</Text>
+                ) : (
+                  displayedQuestions.map((q) => (
+                    <Pressable
+                      key={q.id}
+                      style={({ pressed }) => [styles.listRow, pressed && styles.pressed]}
+                      onPress={() => openDetail(q.id)}
+                    >
+                      <View style={styles.listRowTop}>
+                        <View style={styles.listBadges}>
+                          <BookBadge label={q.question_type_code} variant="muted" />
+                        </View>
+                        <RatingIndicator evaluation={evalMap.get(q.id)} />
+                      </View>
+                      <Text style={styles.listBody} numberOfLines={2}>
+                        {truncate(q.body_en || q.body_bn)}
+                      </Text>
+                    </Pressable>
+                  ))
+                )}
+              </>
+            )}
+          </ScrollView>
+        )}
       </SafeAreaView>
     </Modal>
   );
@@ -281,11 +482,59 @@ const styles = StyleSheet.create({
   },
   modalBody: {
     flex: 1,
+    paddingHorizontal: spacing.md,
   },
   modalBodyContent: {
-    padding: spacing.md,
+    paddingVertical: spacing.md,
     gap: spacing.sm,
     paddingBottom: spacing.xl,
+  },
+  examBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    padding: spacing.md,
+    marginBottom: spacing.xs,
+  },
+  examBtnTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  examBtnTitle: {
+    color: colors.white,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  examBtnSub: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 12,
+  },
+  filterRow: {
+    gap: 8,
+    paddingVertical: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  filterChip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: colors.surface,
+  },
+  filterChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  filterChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textMuted,
+  },
+  filterChipTextActive: {
+    color: colors.white,
   },
   listRow: {
     backgroundColor: colors.surface,
@@ -294,6 +543,11 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: spacing.md,
     gap: 6,
+  },
+  listRowTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   listBadges: {
     flexDirection: 'row',
@@ -381,6 +635,38 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: colors.textMuted,
     fontStyle: 'italic',
+  },
+  navRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: spacing.md,
+  },
+  navBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    backgroundColor: colors.surface,
+    minWidth: 120,
+    justifyContent: 'center',
+  },
+  navBtnDisabled: {
+    opacity: 0.45,
+  },
+  navBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  navBtnTextDisabled: {
+    color: colors.textMuted,
   },
   muted: {
     fontSize: 14,

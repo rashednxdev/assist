@@ -87,12 +87,12 @@ export const PENSION_LEAVE_DEDUCTION_RULES = [
 ] as const;
 export type PensionLeaveDeductionRule = (typeof PENSION_LEAVE_DEDUCTION_RULES)[number];
 
-/** Leave account category for pension (÷11 vs ÷12 earning). REST is separate. */
+/** Leave account category for pension (÷11 vs ÷12 earning). */
 export const PENSION_LEAVE_PAY_CATEGORIES = [
   'average_salary',
   'half_average_salary',
   'without_pay',
-  'rest',
+  'regular_working_period',
 ] as const;
 export type PensionLeavePayCategory = (typeof PENSION_LEAVE_PAY_CATEGORIES)[number];
 
@@ -106,3 +106,10 @@ export const PENSION_REST_LEAVE_CODE = 'REST';
 export const PENSION_REST_DAYS_PER_CYCLE = 15;
 export const PENSION_REST_CYCLE_YEARS = 3;
 export const PENSION_REST_ALLOWANCE_BASIC_MONTHS = 1;
+
+/** Maternity leave — days depend on start date vs rule change. */
+export const PENSION_MATERNITY_LEAVE_CODE = 'MATERNITY';
+/** Inclusive cutoff: start date before this → 120 days; on/after → 180 days. */
+export const PENSION_MATERNITY_RULE_CHANGE_DATE = '2021-05-18';
+export const PENSION_MATERNITY_DAYS_BEFORE_RULE = 120;
+export const PENSION_MATERNITY_DAYS_FROM_RULE = 180;

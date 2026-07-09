@@ -22,7 +22,7 @@ const schema = new Schema<IPensionLeaveType>(
     name_en: { type: String, required: true },
     name_bn: { type: String },
     description_en: { type: String },
-    pay_category: { type: String, required: true, enum: ['average_salary', 'half_average_salary', 'without_pay', 'rest'] },
+    pay_category: { type: String, required: true, enum: ['average_salary', 'half_average_salary', 'without_pay', 'regular_working_period'] },
     deduction_rule: { type: String, required: true, enum: ['leave_earning_only', 'both', 'none'] },
     sort_order: { type: Number, default: 0 },
     is_active: { type: Boolean, default: true },

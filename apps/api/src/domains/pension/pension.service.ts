@@ -7,7 +7,7 @@ import {
   type PensionCalculateInput,
   type PensionLeaveTypeCalc,
 } from '@ibas/shared-types';
-import { PENSION_REST_LEAVE_CODE } from '@ibas/shared-constants';import { badRequest, notFound } from '../../shared/errors/AppError.js';
+import { badRequest, notFound } from '../../shared/errors/AppError.js';
 import { PensionLeaveType } from './models/PensionLeaveType.model.js';
 
 function serializeLeaveType(doc: InstanceType<typeof PensionLeaveType>) {
@@ -103,10 +103,7 @@ export async function calculatePensionAccount(dto: ReturnType<typeof pensionCalc
     join_date: dto.join_date,
     end_date: dto.end_date,
     last_basic_salary: dto.last_basic_salary,
-    enjoyed_leaves: dto.enjoyed_leaves.filter((row) => {
-      const type = types.find((t) => t.id === row.leave_type_id);
-      return type && !type.is_auto_entitlement && type.code !== PENSION_REST_LEAVE_CODE && type.pay_category !== 'rest';
-    }),
+    enjoyed_leaves: dto.enjoyed_leaves,
   };
 
   return calculatePension(input, calcTypes);

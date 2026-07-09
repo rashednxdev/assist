@@ -25,12 +25,22 @@ const DEFAULT_LEAVE_TYPES = [
     sort_order: 15,
   },
   {
+    code: 'REGULAR_WORKING_PERIOD',
+    name_en: 'Regular working period',
+    name_bn: 'নিয়মিত কর্মসময়',
+    description_en:
+      'Deducted from leave-earning period only; counts as regular working period (not average or half-average leave account).',
+    pay_category: 'regular_working_period' as const,
+    deduction_rule: 'leave_earning_only' as const,
+    sort_order: 20,
+  },
+  {
     code: 'REST',
     name_en: 'REST leave',
     name_bn: 'বিশ্রাম ছুটি',
     description_en:
-      '15 days every 3 years of service; allowance equal to one month basic salary per cycle. Separate from pension leave account — auto-calculated from service.',
-    pay_category: 'rest' as const,
+      '15 days every 3 years of service; allowance equal to one month basic salary per cycle. Auto-deducted from leave account by default; can also be added in enjoyed leave list.',
+    pay_category: 'average_salary' as const,
     deduction_rule: 'none' as const,
     is_auto_entitlement: true,
     entitlement_days_per_cycle: PENSION_REST_DAYS_PER_CYCLE,
@@ -42,7 +52,8 @@ const DEFAULT_LEAVE_TYPES = [
     code: 'MATERNITY',
     name_en: 'Maternity leave',
     name_bn: 'প্রসূতি ছুটি',
-    description_en: 'Deducted from leave-earning period only; counts as working period.',
+    description_en:
+      'Enter start date only. Before 18 May 2021: 120 days; on/after 18 May 2021: 180 days. Deducted from leave-earning period only; counts as working period.',
     pay_category: 'half_average_salary' as const,
     deduction_rule: 'leave_earning_only' as const,
     sort_order: 30,

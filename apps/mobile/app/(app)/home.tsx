@@ -22,10 +22,10 @@ import {
 import { colors, spacing } from '@/theme';
 
 const MODULES: Array<{
-  code: 'BOOKS' | 'QUESTIONS' | 'EXAM' | 'PAPER';
+  code: 'BOOKS' | 'QUESTIONS' | 'EXAM' | 'PAPER' | 'PENSION';
   title: string;
   subtitle: string;
-  icon: 'library-outline' | 'help-circle-outline' | 'school-outline' | 'document-text-outline';
+  icon: 'library-outline' | 'help-circle-outline' | 'school-outline' | 'document-text-outline' | 'calculator-outline';
   color: string;
   href: Href;
 }> = [
@@ -60,6 +60,14 @@ const MODULES: Array<{
     icon: 'document-text-outline' as const,
     color: '#d97706',
     href: '/(app)/papers',
+  },
+  {
+    code: 'PENSION' as const,
+    title: 'Pension Calculator',
+    subtitle: 'Leave account & lamp grant',
+    icon: 'calculator-outline' as const,
+    color: '#0e7490',
+    href: '/(app)/pension' as Href,
   },
 ];
 

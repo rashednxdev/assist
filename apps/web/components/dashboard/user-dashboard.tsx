@@ -13,6 +13,7 @@ import {
   Route,
   Settings,
   Sparkles,
+  Calculator,
 } from 'lucide-react';
 import type { MeUser } from '@/lib/auth';
 import { hasModuleRead, hasOfficeModuleRead, isSuperAdmin } from '@/lib/capabilities';
@@ -71,6 +72,13 @@ const learnLinks = [
     desc: 'Model tests for your subject',
     icon: FileText,
     moduleCode: 'PAPER',
+  },
+  {
+    href: '/pension',
+    label: 'Pension calculator',
+    desc: 'Leave account and lamp grant',
+    icon: Calculator,
+    moduleCode: 'PENSION',
   },
 ] as const;
 

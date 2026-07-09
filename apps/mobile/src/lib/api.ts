@@ -57,7 +57,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   }
 }
 
-export const LEARNING_MODULE_CODES = ['BOOKS', 'QUESTIONS', 'EXAM', 'PAPER', 'OCR'] as const;
+export const LEARNING_MODULE_CODES = ['BOOKS', 'QUESTIONS', 'EXAM', 'PAPER', 'OCR', 'PENSION'] as const;
 
 export type LearningModuleCode = (typeof LEARNING_MODULE_CODES)[number];
 

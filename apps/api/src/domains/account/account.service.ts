@@ -98,7 +98,7 @@ async function assignDefaultWorkflowRoles(user: InstanceType<typeof User>) {
 }
 
 /** Exam candidates browse rules, exams, questions, and preview guided processes. */
-const APPLICANT_LEARNING_MODULE_CODES = ['BOOKS', 'QUESTIONS', 'EXAM', 'PAPER', 'WORKFLOW'] as const;
+const APPLICANT_LEARNING_MODULE_CODES = ['BOOKS', 'QUESTIONS', 'EXAM', 'PAPER', 'PENSION', 'WORKFLOW'] as const;
 
 async function assignDefaultLearningAccess(user: InstanceType<typeof User>) {
   if (user.user_type !== 'applicant') return;

@@ -20,6 +20,7 @@ import { papersRouter } from './domains/papers/papers.routes.js';
 import { accountRouter } from './domains/account/account.routes.js';
 import { ocrRouter } from './domains/ocr/ocr.routes.js';
 import { evaluationRouter } from './domains/evaluation/evaluation.routes.js';
+import { pensionRouter } from './domains/pension/pension.routes.js';
 
 export function createApp(): Application {
   const app = express();
@@ -65,6 +66,7 @@ export function createApp(): Application {
   app.use('/api/v1/account', accountRouter);
   app.use('/api/v1/ocr', ocrRouter);
   app.use('/api/v1/evaluation', evaluationRouter);
+  app.use('/api/v1/pension', pensionRouter);
 
   app.use(errorHandler);
   return app;

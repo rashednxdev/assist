@@ -18,6 +18,7 @@ import {
   FileText,
   Settings,
   ScanText,
+  Calculator,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -55,6 +56,7 @@ export const navGroups: NavGroup[] = [
       { href: '/questions', label: 'Question bank', icon: HelpCircle, moduleCode: 'QUESTIONS' },
       { href: '/exams', label: 'Exam programs', icon: GraduationCap, moduleCode: 'EXAM' },
       { href: '/papers', label: 'Practice papers', icon: FileText, moduleCode: 'PAPER' },
+      { href: '/pension', label: 'Pension calculator', icon: Calculator, moduleCode: 'PENSION' },
     ],
   },
   {
@@ -118,6 +120,7 @@ export const navGroups: NavGroup[] = [
       { href: '/questions/new', label: 'New question', icon: HelpCircle, moduleCode: 'QUESTIONS', requireCreate: true },
       { href: '/exams/admin', label: 'Exam setup', icon: GraduationCap, moduleCode: 'EXAM', requireCreate: true },
       { href: '/papers/new', label: 'New paper', icon: FileText, moduleCode: 'PAPER', requireCreate: true },
+      { href: '/admin/setup/pension-leaves', label: 'Pension leave types', icon: Calculator, moduleCode: 'SETUP', requireCreate: true },
     ],
   },
   {

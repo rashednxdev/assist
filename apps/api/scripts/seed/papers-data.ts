@@ -3,6 +3,9 @@ import { PaperDetail } from '../../src/domains/papers/models/PaperDetail.model.j
 import { PaperGroup } from '../../src/domains/papers/models/PaperGroup.model.js';
 import { PaperQuestion } from '../../src/domains/papers/models/PaperQuestion.model.js';
 import { ExamSubject } from '../../src/domains/exams/models/ExamSubject.model.js';
+import { ExamPart } from '../../src/domains/exams/models/ExamPart.model.js';
+import { ExamName } from '../../src/domains/exams/models/ExamName.model.js';
+import { ExamSession } from '../../src/domains/exams/models/ExamSession.model.js';
 import { Question } from '../../src/domains/questions/models/Question.model.js';
 import { User } from '../../src/domains/users/models/User.model.js';
 
@@ -30,11 +33,33 @@ export async function seedPapersData() {
     return;
   }
 
+  const part = await ExamPart.findById(subject.exam_part_id);
+  const exam = part ? await ExamName.findById(part.exam_name_id) : null;
+  if (!exam) {
+    console.log('Skipping paper seed — exam name not found for subject');
+    return;
+  }
+
+  let session = await ExamSession.findOne({ exam_name_id: exam._id, label_en: '2025' });
+  if (!session) {
+    session = await ExamSession.create({
+      exam_name_id: exam._id,
+      label_en: '2025',
+      label_bn: '২০২৫',
+      sort_order: 2025,
+      is_active: true,
+      created_at: new Date(),
+    });
+    console.log('Created exam session: 2025');
+  }
+
   let paper = await PaperDetail.findOne({ name: /GFR Practice Paper/i, exam_subject_id: subject._id });
   if (!paper) {
     paper = await PaperDetail.create({
       exam_subject_id: subject._id,
       paper_type_id: practiceType._id,
+      exam_session_id: session._id,
+      session_year: '2025',
       name: 'GFR Practice Paper — Receipts & Payments',
       total_marks: 5,
       pass_marks: 2,

@@ -52,3 +52,5 @@ export * from './syllabus.js';
 export * from './papers.js';
 export * from './subscription.js';
 export * from './evaluation.js';
+export * from './pension.js';
+export * from './pension-calculator.js';

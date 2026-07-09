@@ -11,6 +11,7 @@ import { seedQuestionsData } from './questions-data.js';
 import { seedExamsData } from './exams-data.js';
 import { seedPapersData } from './papers-data.js';
 import { seedSubscriptionPlans } from './subscription-data.js';
+import { seedPensionData } from './pension-data.js';
 
 async function seed() {
   const uri = process.env.MONGODB_URI;
@@ -64,6 +65,7 @@ async function seed() {
   await seedBooksData();
   await seedQuestionsData();
   await seedExamsData();
+  await seedPensionData();
   await seedPapersData();
   await seedSubscriptionPlans();
 

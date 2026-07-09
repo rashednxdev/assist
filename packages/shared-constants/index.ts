@@ -23,6 +23,7 @@ export const MODULE_CODES = [
   'CANDIDATE',
   'AUDIT',
   'OCR',
+  'PENSION',
 ] as const;
 export type ModuleCode = (typeof MODULE_CODES)[number];
 
@@ -77,3 +78,31 @@ export const SELF_RATING_PROGRESS: Record<SelfRatingLevel, number> = {
 /** Question types scored from selected options. */
 export const OBJECTIVE_QUESTION_TYPE_CODES = ['MCQ', 'TF'] as const;
 export type ObjectiveQuestionTypeCode = (typeof OBJECTIVE_QUESTION_TYPE_CODES)[number];
+
+/** How enjoyed leave affects service period (pension calculator). */
+export const PENSION_LEAVE_DEDUCTION_RULES = [
+  'leave_earning_only',
+  'both',
+  'none',
+] as const;
+export type PensionLeaveDeductionRule = (typeof PENSION_LEAVE_DEDUCTION_RULES)[number];
+
+/** Leave account category for pension (÷11 vs ÷12 earning). REST is separate. */
+export const PENSION_LEAVE_PAY_CATEGORIES = [
+  'average_salary',
+  'half_average_salary',
+  'without_pay',
+  'rest',
+] as const;
+export type PensionLeavePayCategory = (typeof PENSION_LEAVE_PAY_CATEGORIES)[number];
+
+export const PENSION_DAYS_PER_MONTH = 30;
+export const PENSION_DAYS_PER_YEAR = 360;
+export const PENSION_LAMP_GRANT_MONTHS = 18;
+export const PENSION_BASIC_SALARY_BONUS_RATE = 0.05;
+
+/** REST leave — auto-entitlement (15 days per 3 years of service). */
+export const PENSION_REST_LEAVE_CODE = 'REST';
+export const PENSION_REST_DAYS_PER_CYCLE = 15;
+export const PENSION_REST_CYCLE_YEARS = 3;
+export const PENSION_REST_ALLOWANCE_BASIC_MONTHS = 1;

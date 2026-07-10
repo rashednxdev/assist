@@ -80,6 +80,13 @@ const learnLinks = [
     icon: Calculator,
     moduleCode: 'PENSION',
   },
+  {
+    href: '/joining-period',
+    label: 'Joining period',
+    desc: 'Transfer / posting joining time',
+    icon: Calculator,
+    moduleCode: 'PENSION',
+  },
 ] as const;
 
 export function UserDashboard({

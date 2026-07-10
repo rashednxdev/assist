@@ -1,5 +1,6 @@
 import { useWindowDimensions } from 'react-native';
 import RenderHtml from 'react-native-render-html';
+import { insertShortBracketLineBreaks } from '@ibas/shared-constants';
 import { colors } from '@/theme';
 
 interface HtmlContentProps {
@@ -27,7 +28,8 @@ const tagsStyles = {
 export function normalizeBookHtml(html?: string) {
   const trimmed = html?.trim();
   if (!trimmed) return '';
-  return trimmed.startsWith('<') ? trimmed : `<p>${trimmed}</p>`;
+  const withBreaks = insertShortBracketLineBreaks(trimmed, '<br/>');
+  return withBreaks.startsWith('<') ? withBreaks : `<p>${withBreaks}</p>`;
 }
 
 export function HtmlContent({ html }: HtmlContentProps) {

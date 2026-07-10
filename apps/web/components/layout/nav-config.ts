@@ -57,6 +57,7 @@ export const navGroups: NavGroup[] = [
       { href: '/exams', label: 'Exam programs', icon: GraduationCap, moduleCode: 'EXAM' },
       { href: '/papers', label: 'Practice papers', icon: FileText, moduleCode: 'PAPER' },
       { href: '/pension', label: 'Pension calculator', icon: Calculator, moduleCode: 'PENSION' },
+      { href: '/joining-period', label: 'Joining period', icon: Calculator, moduleCode: 'PENSION' },
     ],
   },
   {

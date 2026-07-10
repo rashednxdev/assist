@@ -113,3 +113,116 @@ export const PENSION_MATERNITY_LEAVE_CODE = 'MATERNITY';
 export const PENSION_MATERNITY_RULE_CHANGE_DATE = '2021-05-18';
 export const PENSION_MATERNITY_DAYS_BEFORE_RULE = 120;
 export const PENSION_MATERNITY_DAYS_FROM_RULE = 180;
+
+/** Joining period (যোগদানকাল) — transfer / posting rules. */
+export const JOINING_SAME_STATION_DAYS = 1;
+export const JOINING_PREPARATION_DAYS = 6;
+export const JOINING_MAX_DAYS_INCLUDING_WEEKLY = 30;
+export const JOINING_APPROACH_EXCLUDE_MILES = 5;
+export const JOINING_APPROACH_EXCLUDE_KM = 8;
+
+/** Travel day divisors (legacy distance method). */
+export const JOINING_TRAVEL_PER_DAY = {
+  rail: { miles: 250, km: 400 },
+  sea: { miles: 200, km: 320 },
+  river: { miles: 80, km: 128 },
+  bus: { miles: 80, km: 128 },
+  road: { miles: 15, km: 15 },
+} as const;
+
+export const JOINING_TRAVEL_MODES = ['rail', 'sea', 'river', 'bus', 'road', 'air'] as const;
+export type JoiningTravelMode = (typeof JOINING_TRAVEL_MODES)[number];
+
+export const JOINING_CALC_METHODS = ['distance', 'actual'] as const;
+export type JoiningCalcMethod = (typeof JOINING_CALC_METHODS)[number];
+
+export const JOINING_HANDOVER_TIMES = ['morning', 'afternoon', 'unspecified'] as const;
+export type JoiningHandoverTime = (typeof JOINING_HANDOVER_TIMES)[number];
+
+export const JOINING_WEEKLY_HOLIDAYS = ['friday', 'friday_saturday', 'sunday'] as const;
+export type JoiningWeeklyHoliday = (typeof JOINING_WEEKLY_HOLIDAYS)[number];
+
+/**
+ * Short parenthetical list markers in book descriptions, e.g. (ক), (খ), (a), (1).
+ * Content inside () must be 1–2 characters; longer phrases like (বেতন ও ভাতাদি) are ignored.
+ *
+ * A marker only counts when it has whitespace both before `(` and after `)`.
+ * Examples that count: ` (ক) `, `; (খ) text`
+ * Examples that skip: `—(ক) `, `(ক)text`, `word(ক) word`
+ *
+ * When a description has 2+ spaced short markers, each is shown on its own line (Enter).
+ *
+ * Note: avoid the `u` regex flag — Hermes has historically crashed on it.
+ * Avoid a shared /g RegExp instance (mutable lastIndex) across calls.
+ */
+function shortBracketRegex() {
+  return /\(([^)\n\r]{1,2})\)/g;
+}
+
+function isWhitespaceChar(ch: string | undefined): boolean {
+  return Boolean(ch && /\s/.test(ch));
+}
+
+/** True when `(…)` has whitespace immediately before and after. */
+function hasSpaceBeforeAndAfter(text: string, start: number, end: number): boolean {
+  const before = start > 0 ? text[start - 1] : undefined;
+  const after = end < text.length ? text[end] : undefined;
+  return isWhitespaceChar(before) && isWhitespaceChar(after);
+}
+
+function findSpacedShortBrackets(text: string): Array<{ start: number; end: number; match: string }> {
+  const re = shortBracketRegex();
+  const found: Array<{ start: number; end: number; match: string }> = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const start = m.index;
+    const end = start + m[0].length;
+    if (!hasSpaceBeforeAndAfter(text, start, end)) continue;
+    found.push({ start, end, match: m[0] });
+  }
+  return found;
+}
+
+export function insertShortBracketLineBreaks(
+  text: string,
+  lineBreak: string = '\n',
+): string {
+  if (!text) return text;
+
+  try {
+    const parts = text.split(/(<[^>]+>)/g);
+    const plainForCount = parts
+      .filter((part) => !(part.startsWith('<') && part.endsWith('>')))
+      .join('');
+    if (findSpacedShortBrackets(plainForCount).length < 2) {
+      return text;
+    }
+
+    return parts
+      .map((part) => {
+        if (part.startsWith('<') && part.endsWith('>')) return part;
+
+        const markers = findSpacedShortBrackets(part);
+        if (markers.length === 0) return part;
+
+        let result = '';
+        let cursor = 0;
+        for (const marker of markers) {
+          result += part.slice(cursor, marker.start);
+          const before = part.slice(0, marker.start);
+          const alreadyOnNewLine =
+            before.length === 0 || /(?:\n|<br\s*\/?>)\s*$/i.test(before);
+          if (!alreadyOnNewLine) {
+            result += lineBreak;
+          }
+          result += marker.match;
+          cursor = marker.end;
+        }
+        result += part.slice(cursor);
+        return result;
+      })
+      .join('');
+  } catch {
+    return text;
+  }
+}

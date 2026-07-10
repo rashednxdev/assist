@@ -445,14 +445,19 @@ export default function PensionCalculatorPage() {
         title="Pension leave account & lamp grant"
         description="Calculate government pension leave balances and lamp grant from service and enjoyed leave."
         action={
-          isAdmin ? (
+          <div className="flex flex-wrap gap-2">
             <Button asChild size="sm" variant="outline">
-              <Link href="/admin/setup/pension-leaves">
-                <Settings className="h-4 w-4" />
-                Leave type setup
-              </Link>
+              <Link href="/joining-period">Joining period</Link>
             </Button>
-          ) : null
+            {isAdmin ? (
+              <Button asChild size="sm" variant="outline">
+                <Link href="/admin/setup/pension-leaves">
+                  <Settings className="h-4 w-4" />
+                  Leave type setup
+                </Link>
+              </Button>
+            ) : null}
+          </div>
         }
       />
 

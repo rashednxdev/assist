@@ -69,6 +69,14 @@ const MODULES: Array<{
     color: '#0e7490',
     href: '/(app)/pension' as Href,
   },
+  {
+    code: 'PENSION' as const,
+    title: 'Joining Period',
+    subtitle: 'Transfer joining time',
+    icon: 'calculator-outline' as const,
+    color: '#0369a1',
+    href: '/(app)/joining-period' as Href,
+  },
 ];
 
 export default function HomeScreen() {

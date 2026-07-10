@@ -32,6 +32,8 @@ export default function AppLayout() {
       <Stack.Screen name="questions" />
       <Stack.Screen name="exams" />
       <Stack.Screen name="papers" />
+      <Stack.Screen name="pension" />
+      <Stack.Screen name="joining-period" />
     </Stack>
   );
 }

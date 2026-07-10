@@ -64,7 +64,7 @@ const MODULES: Array<{
   {
     code: 'PENSION' as const,
     title: 'Pension Calculator',
-    subtitle: 'Leave account & lamp grant',
+    subtitle: 'Leave math & lamp grant',
     icon: 'calculator-outline' as const,
     color: '#0e7490',
     href: '/(app)/pension' as Href,
@@ -72,7 +72,7 @@ const MODULES: Array<{
   {
     code: 'PENSION' as const,
     title: 'Joining Period',
-    subtitle: 'Transfer joining time',
+    subtitle: 'Prep + travel math',
     icon: 'calculator-outline' as const,
     color: '#0369a1',
     href: '/(app)/joining-period' as Href,

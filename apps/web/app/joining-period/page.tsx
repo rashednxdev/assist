@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { Plus, Trash2, Calculator } from 'lucide-react';
 import {
   calculateJoiningPeriod,
@@ -18,6 +19,9 @@ import {
   type JoiningWeeklyHoliday,
 } from '@ibas/shared-constants';
 import { apiFetch } from '@/lib/api-client';
+import { joiningModeLabel, buildJoiningRulesLocalized } from '@/lib/joining-i18n';
+import { CalcLocaleProvider } from '@/components/shared/calc-locale-provider';
+import { LocaleSwitcher } from '@/components/shared/locale-switcher';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -25,6 +29,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+
+const TRAVEL_MODES: JoiningTravelMode[] = ['rail', 'sea', 'river', 'bus', 'road', 'air'];
 
 interface JourneyRow {
   key: string;
@@ -48,15 +54,6 @@ function emptyJourney(): JourneyRow {
   };
 }
 
-const MODE_LABELS: Record<JoiningTravelMode, string> = {
-  rail: 'Rail',
-  sea: 'Sea / steamer',
-  river: 'River',
-  bus: 'Bus',
-  road: 'Road / other',
-  air: 'Air',
-};
-
 function ResultStat({ label, value, note }: { label: string; value: string | number; note?: string }) {
   return (
     <div className="rounded-lg border border-border bg-slate-50/80 p-4">
@@ -68,6 +65,16 @@ function ResultStat({ label, value, note }: { label: string; value: string | num
 }
 
 export default function JoiningPeriodPage() {
+  return (
+    <CalcLocaleProvider>
+      <JoiningPeriodInner />
+    </CalcLocaleProvider>
+  );
+}
+
+function JoiningPeriodInner() {
+  const t = useTranslations('joining');
+  const tc = useTranslations('common');
   const [residenceChange, setResidenceChange] = useState(true);
   const [handoverDate, setHandoverDate] = useState('');
   const [handoverTime, setHandoverTime] = useState<JoiningHandoverTime>('unspecified');
@@ -131,7 +138,7 @@ export default function JoiningPeriodPage() {
         setResult(calculateJoiningPeriod(body));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Calculation failed');
+      setError(err instanceof Error ? err.message : t('calcFailed'));
     } finally {
       setLoading(false);
     }
@@ -140,85 +147,88 @@ export default function JoiningPeriodPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Joining period calculator"
-        description="Calculate joining time (যোগদানকাল) for transfer or posting under Bangladesh service rules."
+        title={t('title')}
+        description={t('description')}
         action={
-          <Button asChild variant="outline" size="sm">
-            <Link href="/pension">
-              <Calculator className="h-4 w-4" />
-              Pension calculator
-            </Link>
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <LocaleSwitcher />
+            <Button asChild variant="outline" size="sm">
+              <Link href="/pension">
+                <Calculator className="h-4 w-4" />
+                {t('pensionLink')}
+              </Link>
+            </Button>
+          </div>
         }
       />
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Instructions</CardTitle>
+          <CardTitle className="text-base">{t('instructions')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-muted">
           <p>
-            <strong className="text-foreground">Same station</strong> (no change of residence): only{' '}
-            <strong className="text-foreground">1 day</strong> of joining period (leave is counted in
-            that day).
+            <strong className="text-foreground">{t('sameStationIntro')}</strong>
           </p>
           <p>
-            <strong className="text-foreground">Change of residence</strong>: preparation{' '}
-            {JOINING_PREPARATION_DAYS} days (weekly holidays excluded from the{' '}
-            {JOINING_PREPARATION_DAYS}; government/optional holidays count) + travel days.
+            <strong className="text-foreground">
+              {t('changeResidenceIntro', { prep: JOINING_PREPARATION_DAYS })}
+            </strong>
           </p>
           <ul className="list-disc space-y-1 pl-5">
             <li>
-              Rail: {JOINING_TRAVEL_PER_DAY.rail.miles} miles / {JOINING_TRAVEL_PER_DAY.rail.km} km per
-              day
+              {t('railRate', {
+                miles: JOINING_TRAVEL_PER_DAY.rail.miles,
+                km: JOINING_TRAVEL_PER_DAY.rail.km,
+              })}
             </li>
             <li>
-              Sea: {JOINING_TRAVEL_PER_DAY.sea.miles} miles / {JOINING_TRAVEL_PER_DAY.sea.km} km per day
+              {t('seaRate', {
+                miles: JOINING_TRAVEL_PER_DAY.sea.miles,
+                km: JOINING_TRAVEL_PER_DAY.sea.km,
+              })}
             </li>
             <li>
-              River: {JOINING_TRAVEL_PER_DAY.river.miles} miles / {JOINING_TRAVEL_PER_DAY.river.km} km
-              per day
+              {t('riverRate', {
+                miles: JOINING_TRAVEL_PER_DAY.river.miles,
+                km: JOINING_TRAVEL_PER_DAY.river.km,
+              })}
             </li>
             <li>
-              Bus: {JOINING_TRAVEL_PER_DAY.bus.miles} miles / {JOINING_TRAVEL_PER_DAY.bus.km} km per
-              day
+              {t('busRate', {
+                miles: JOINING_TRAVEL_PER_DAY.bus.miles,
+                km: JOINING_TRAVEL_PER_DAY.bus.km,
+              })}
             </li>
             <li>
-              Road: {JOINING_TRAVEL_PER_DAY.road.miles} miles / {JOINING_TRAVEL_PER_DAY.road.km} km per
-              day
+              {t('roadRate', {
+                miles: JOINING_TRAVEL_PER_DAY.road.miles,
+                km: JOINING_TRAVEL_PER_DAY.road.km,
+              })}
             </li>
-            <li>Any fraction of a travel day counts as a full day</li>
-            <li>
-              Approach ≤ {JOINING_APPROACH_EXCLUDE_KM} km (5 miles) to/from station or ghat is not
-              counted
-            </li>
-            <li>Air: {JOINING_PREPARATION_DAYS} days preparation + actual journey time</li>
-            <li>Steamer delay for unavoidable reasons counts as preparation</li>
-            <li>Multiple similar journeys are added together</li>
-            <li>
-              Maximum {JOINING_MAX_DAYS_INCLUDING_WEEKLY} days including weekly holidays; HoD may
-              extend for unavoidable delay within that cap
-            </li>
-            <li>
-              If handover time is not mentioned as morning/afternoon, morning is assumed
-            </li>
+            <li>{t('fractionRule')}</li>
+            <li>{t('approachRule', { km: JOINING_APPROACH_EXCLUDE_KM })}</li>
+            <li>{t('airRule', { prep: JOINING_PREPARATION_DAYS })}</li>
+            <li>{t('steamerRule')}</li>
+            <li>{t('multiJourneyRule')}</li>
+            <li>{t('maxRule', { max: JOINING_MAX_DAYS_INCLUDING_WEEKLY })}</li>
+            <li>{t('handoverRule')}</li>
           </ul>
           <p>
-            <strong className="text-foreground">Current practice:</strong> travel is usually taken
-            from actual journey time instead of the legacy distance formula.
+            <strong className="text-foreground">{t('currentPractice')}</strong>
           </p>
         </CardContent>
       </Card>
 
-      {error ? <Alert variant="destructive">{error}</Alert> : null}
+      {error ? <Alert variant="error">{error}</Alert> : null}
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Transfer details</CardTitle>
+          <CardTitle className="text-base">{t('transferDetails')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>Change of residence required?</Label>
+            <Label>{t('residenceChange')}</Label>
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
@@ -226,7 +236,7 @@ export default function JoiningPeriodPage() {
                 variant={residenceChange ? 'default' : 'outline'}
                 onClick={() => setResidenceChange(true)}
               >
-                Yes — station to station
+                {t('yesStation')}
               </Button>
               <Button
                 type="button"
@@ -234,7 +244,7 @@ export default function JoiningPeriodPage() {
                 variant={!residenceChange ? 'default' : 'outline'}
                 onClick={() => setResidenceChange(false)}
               >
-                No — same station
+                {t('noSameStation')}
               </Button>
             </div>
           </div>
@@ -243,7 +253,7 @@ export default function JoiningPeriodPage() {
             <>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <div className="space-y-2">
-                  <Label htmlFor="handover_date">Handover / charge date</Label>
+                  <Label htmlFor="handover_date">{t('handoverDate')}</Label>
                   <Input
                     id="handover_date"
                     type="date"
@@ -252,45 +262,45 @@ export default function JoiningPeriodPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="handover_time">Handover time</Label>
+                  <Label htmlFor="handover_time">{t('handoverTime')}</Label>
                   <select
                     id="handover_time"
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                     value={handoverTime}
                     onChange={(e) => setHandoverTime(e.target.value as JoiningHandoverTime)}
                   >
-                    <option value="unspecified">Not mentioned (assume morning)</option>
-                    <option value="morning">Morning</option>
-                    <option value="afternoon">Afternoon</option>
+                    <option value="unspecified">{t('handoverUnspecified')}</option>
+                    <option value="morning">{t('handoverMorning')}</option>
+                    <option value="afternoon">{t('handoverAfternoon')}</option>
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="weekly_holiday">Weekly holiday</Label>
+                  <Label htmlFor="weekly_holiday">{t('weeklyHoliday')}</Label>
                   <select
                     id="weekly_holiday"
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                     value={weeklyHoliday}
                     onChange={(e) => setWeeklyHoliday(e.target.value as JoiningWeeklyHoliday)}
                   >
-                    <option value="friday">Friday</option>
-                    <option value="friday_saturday">Friday + Saturday</option>
-                    <option value="sunday">Sunday</option>
+                    <option value="friday">{t('weeklyFriday')}</option>
+                    <option value="friday_saturday">{t('weeklyFriSat')}</option>
+                    <option value="sunday">{t('weeklySunday')}</option>
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="calc_method">Travel calculation</Label>
+                  <Label htmlFor="calc_method">{t('calcMethod')}</Label>
                   <select
                     id="calc_method"
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                     value={calcMethod}
                     onChange={(e) => setCalcMethod(e.target.value as JoiningCalcMethod)}
                   >
-                    <option value="actual">Actual journey time (current practice)</option>
-                    <option value="distance">Distance formula (legacy)</option>
+                    <option value="actual">{t('methodActual')}</option>
+                    <option value="distance">{t('methodDistance')}</option>
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="hod_extension">HoD extension (days)</Label>
+                  <Label htmlFor="hod_extension">{t('hodExtension')}</Label>
                   <Input
                     id="hod_extension"
                     type="number"
@@ -303,9 +313,7 @@ export default function JoiningPeriodPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="gov_holidays">
-                  Government / optional holidays (YYYY-MM-DD, comma or new line)
-                </Label>
+                <Label htmlFor="gov_holidays">{t('govHolidays')}</Label>
                 <textarea
                   id="gov_holidays"
                   className="min-h-[72px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -313,9 +321,7 @@ export default function JoiningPeriodPage() {
                   value={govHolidaysText}
                   onChange={(e) => setGovHolidaysText(e.target.value)}
                 />
-                <p className="text-xs text-muted">
-                  These dates count within the joining period (unlike weekly holidays).
-                </p>
+                <p className="text-xs text-muted">{t('govHolidaysHint')}</p>
               </div>
             </>
           ) : null}
@@ -325,17 +331,22 @@ export default function JoiningPeriodPage() {
       {residenceChange ? (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2">
-            <CardTitle className="text-base">Journeys</CardTitle>
-            <Button type="button" size="sm" variant="outline" onClick={() => setJourneys((r) => [...r, emptyJourney()])}>
+            <CardTitle className="text-base">{t('journeys')}</CardTitle>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setJourneys((r) => [...r, emptyJourney()])}
+            >
               <Plus className="h-4 w-4" />
-              Add journey
+              {t('addJourney')}
             </Button>
           </CardHeader>
           <CardContent className="space-y-4">
             {journeys.map((j, idx) => (
               <div key={j.key} className="space-y-3 rounded-lg border border-border p-4">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-semibold">Journey {idx + 1}</span>
+                  <span className="text-sm font-semibold">{t('journeyN', { n: idx + 1 })}</span>
                   {journeys.length > 1 ? (
                     <Button
                       type="button"
@@ -349,7 +360,7 @@ export default function JoiningPeriodPage() {
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   <div className="space-y-2">
-                    <Label>Mode</Label>
+                    <Label>{t('mode')}</Label>
                     <select
                       className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                       value={j.mode}
@@ -357,16 +368,16 @@ export default function JoiningPeriodPage() {
                         updateJourney(j.key, { mode: e.target.value as JoiningTravelMode })
                       }
                     >
-                      {(Object.keys(MODE_LABELS) as JoiningTravelMode[]).map((m) => (
+                      {TRAVEL_MODES.map((m) => (
                         <option key={m} value={m}>
-                          {MODE_LABELS[m]}
+                          {joiningModeLabel(t, m)}
                         </option>
                       ))}
                     </select>
                   </div>
                   {calcMethod === 'distance' && j.mode !== 'air' ? (
                     <div className="space-y-2">
-                      <Label>Distance (km)</Label>
+                      <Label>{t('distanceKm')}</Label>
                       <Input
                         type="number"
                         min={0}
@@ -377,7 +388,7 @@ export default function JoiningPeriodPage() {
                   ) : null}
                   {calcMethod === 'actual' || j.mode === 'air' ? (
                     <div className="space-y-2">
-                      <Label>Actual journey days</Label>
+                      <Label>{t('actualDays')}</Label>
                       <Input
                         type="number"
                         min={0}
@@ -392,7 +403,7 @@ export default function JoiningPeriodPage() {
                   {calcMethod === 'distance' && j.mode === 'road' ? (
                     <>
                       <div className="space-y-2">
-                        <Label>Approach start (km)</Label>
+                        <Label>{t('approachStart')}</Label>
                         <Input
                           type="number"
                           min={0}
@@ -403,7 +414,7 @@ export default function JoiningPeriodPage() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>Approach end (km)</Label>
+                        <Label>{t('approachEnd')}</Label>
                         <Input
                           type="number"
                           min={0}
@@ -415,7 +426,7 @@ export default function JoiningPeriodPage() {
                   ) : null}
                   {j.mode === 'sea' || j.mode === 'river' ? (
                     <div className="space-y-2">
-                      <Label>Steamer delay (days)</Label>
+                      <Label>{t('steamerDelay')}</Label>
                       <Input
                         type="number"
                         min={0}
@@ -434,48 +445,58 @@ export default function JoiningPeriodPage() {
       ) : null}
 
       <Button type="button" onClick={() => void handleCalculate()} disabled={loading}>
-        {loading ? 'Calculating…' : 'Calculate joining period'}
+        {loading ? tc('calculating') : t('calculateBtn')}
       </Button>
 
       {result ? (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Results</CardTitle>
+            <CardTitle className="text-base">{t('results')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-wrap gap-2">
-              {result.capped ? <Badge variant="warning">Capped at {JOINING_MAX_DAYS_INCLUDING_WEEKLY} days</Badge> : null}
+              {result.capped ? (
+                <Badge variant="warning">
+                  {t('capped', { max: JOINING_MAX_DAYS_INCLUDING_WEEKLY })}
+                </Badge>
+              ) : null}
               <Badge variant="secondary">
-                {result.residence_change ? 'Residence change' : 'Same station'}
+                {result.residence_change ? t('badgeResidence') : t('badgeSame')}
               </Badge>
               <Badge variant="secondary">
-                {result.calc_method === 'actual' ? 'Actual journey' : 'Distance formula'}
+                {result.calc_method === 'actual' ? t('badgeActual') : t('badgeDistance')}
               </Badge>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <ResultStat
-                label="Allowed joining period"
-                value={`${result.allowed_calendar_days} day(s)`}
-                note="Calendar span including weekly holidays (max 30)"
+                label={t('allowedPeriod')}
+                value={t('daysUnit', { n: result.allowed_calendar_days })}
+                note={t('allowedNote')}
               />
               {result.residence_change ? (
                 <>
-                  <ResultStat label="Preparation" value={`${result.preparation_days} day(s)`} />
-                  <ResultStat label="Travel" value={`${result.travel_days} day(s)`} />
                   <ResultStat
-                    label="Joining credit"
-                    value={`${result.joining_period_days} day(s)`}
-                    note="Prep + travel + delays + HoD extension"
+                    label={t('preparation')}
+                    value={t('daysUnit', { n: result.preparation_days })}
                   />
                   <ResultStat
-                    label="Weekly holidays in span"
-                    value={`${result.weekly_holiday_days} day(s)`}
-                    note="Additional — not counted in joining credit"
+                    label={t('travel')}
+                    value={t('daysUnit', { n: result.travel_days })}
                   />
                   <ResultStat
-                    label="Gov. holidays in span"
-                    value={`${result.government_holiday_days_in_span} day(s)`}
+                    label={t('joiningCredit')}
+                    value={t('daysUnit', { n: result.joining_period_days })}
+                    note={t('joiningCreditNote')}
+                  />
+                  <ResultStat
+                    label={t('weeklyInSpan')}
+                    value={t('daysUnit', { n: result.weekly_holiday_days })}
+                    note={t('weeklyNote')}
+                  />
+                  <ResultStat
+                    label={t('govInSpan')}
+                    value={t('daysUnit', { n: result.government_holiday_days_in_span })}
                   />
                 </>
               ) : null}
@@ -483,21 +504,23 @@ export default function JoiningPeriodPage() {
 
             {result.start_date && result.end_date ? (
               <p className="text-sm text-muted">
-                Period: <strong className="text-foreground">{result.start_date}</strong> →{' '}
-                <strong className="text-foreground">{result.end_date}</strong>
+                {t('periodRange', { start: result.start_date, end: result.end_date })}
               </p>
             ) : null}
 
             {result.journeys.length > 0 ? (
               <div className="space-y-2">
-                <h3 className="text-sm font-semibold">Journey breakdown</h3>
+                <h3 className="text-sm font-semibold">{t('journeyBreakdown')}</h3>
                 <ul className="space-y-2">
                   {result.journeys.map((j, i) => (
                     <li key={i} className="rounded-lg border border-border p-3 text-sm">
                       <div className="font-medium">
-                        {MODE_LABELS[j.mode]} — {j.travel_days} travel day(s)
+                        {t('travelDays', {
+                          mode: joiningModeLabel(t, j.mode),
+                          days: j.travel_days,
+                        })}
                         {j.steamer_delay_days > 0
-                          ? ` + ${j.steamer_delay_days} steamer delay`
+                          ? ` ${t('steamerExtra', { days: j.steamer_delay_days })}`
                           : ''}
                       </div>
                       {j.notes.map((n) => (
@@ -512,9 +535,9 @@ export default function JoiningPeriodPage() {
             ) : null}
 
             <div className="space-y-2">
-              <h3 className="text-sm font-semibold">Rules applied</h3>
+              <h3 className="text-sm font-semibold">{t('rulesApplied')}</h3>
               <ul className="list-disc space-y-1 pl-5 text-sm text-muted">
-                {result.rules_applied.map((r) => (
+                {buildJoiningRulesLocalized(result, t).map((r) => (
                   <li key={r}>{r}</li>
                 ))}
               </ul>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { Settings, Plus, Trash2, ChevronDown } from 'lucide-react';
 import {
   breakdownFromDays,
@@ -23,7 +24,14 @@ import {
 } from '@ibas/shared-constants';
 import { apiFetch } from '@/lib/api-client';
 import { fetchMe } from '@/lib/auth';
-import { DEDUCTION_RULE_LABELS, PAY_CATEGORY_LABELS } from '@/lib/pension-labels';
+import {
+  payCategoryLabel,
+  deductionRuleLabel,
+  leaveTypeDisplayName,
+} from '@/lib/pension-labels';
+import { CalcLocaleProvider, useCalcLocale } from '@/components/shared/calc-locale-provider';
+import { LocaleSwitcher } from '@/components/shared/locale-switcher';
+import type { AppLocale } from '@/i18n/config';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -36,6 +44,7 @@ interface LeaveTypeRow {
   id: string;
   code: string;
   name_en: string;
+  name_bn?: string;
   pay_category: PensionLeavePayCategory;
   deduction_rule: 'leave_earning_only' | 'both' | 'none';
   is_auto_entitlement?: boolean;
@@ -51,6 +60,8 @@ interface EnjoyedRow {
   from_date: string;
   to_date: string;
 }
+
+type TranslateFn = (key: string, values?: Record<string, string | number | Date>) => string;
 
 function leaveTypeCode(leaveTypes: LeaveTypeRow[], leaveTypeId: string): string | undefined {
   return leaveTypes.find((t) => t.id === leaveTypeId)?.code;
@@ -89,11 +100,24 @@ const SUMMARY_CATEGORIES: PensionLeavePayCategory[] = [
   'regular_working_period',
 ];
 
-function PeriodCard({ title, period }: { title: string; period: { years: number; months: number; days: number } }) {
+function PeriodCard({
+  title,
+  period,
+}: {
+  title: string;
+  period: { years: number; months: number; days: number; total_days?: number };
+}) {
   return (
     <div className="rounded-lg border border-border bg-slate-50/80 p-4">
       <div className="text-xs font-semibold uppercase tracking-wide text-muted">{title}</div>
-      <div className="mt-1 text-lg font-semibold">{formatPeriodLabel(period)}</div>
+      <div className="mt-1 text-lg font-semibold">
+        {formatPeriodLabel({
+          years: period.years,
+          months: period.months,
+          days: period.days,
+          total_days: period.total_days ?? period.years * 360 + period.months * 30 + period.days,
+        })}
+      </div>
     </div>
   );
 }
@@ -124,9 +148,12 @@ function MathRow({
   );
 }
 
-function formatDaysLabel(days: number): string {
+function formatDaysLabel(t: TranslateFn, days: number): string {
   const rounded = roundHalfUp(days);
-  return `${rounded} days (${formatPeriodLabel(breakdownFromDays(rounded))})`;
+  return t('formatDays', {
+    days: rounded,
+    period: formatPeriodLabel(breakdownFromDays(rounded)),
+  });
 }
 
 interface AppliedRuleStage {
@@ -144,18 +171,29 @@ function buildAppliedRules(args: {
   restDays: number;
   restAutoApplied: boolean;
   restCycles: number;
+  t: TranslateFn;
+  locale: AppLocale;
 }): AppliedRuleStage[] {
-  const { joinDate, endDate, lastBasic, enjoyed, leaveTypes, result, restDays, restAutoApplied, restCycles } = args;
+  const {
+    joinDate,
+    endDate,
+    lastBasic,
+    enjoyed,
+    leaveTypes,
+    result,
+    restDays,
+    restAutoApplied,
+    restCycles,
+    t,
+    locale,
+  } = args;
   const stages: AppliedRuleStage[] = [];
 
   if (joinDate && endDate) {
     const serviceDays = result?.service_period.total_days ?? daysBetweenInclusive(joinDate, endDate);
     stages.push({
-      title: '1. Service period',
-      rules: [
-        `Join date is included; service days = inclusive days from join to end (${serviceDays} days).`,
-        '1 year = 360 days; 1 month = 30 days.',
-      ],
+      title: t('stageService'),
+      rules: [t('stageService1', { days: serviceDays }), t('stageService2')],
     });
   }
 
@@ -174,120 +212,142 @@ function buildAppliedRules(args: {
 
   const inputRules: string[] = [];
   if (dayRows.length > 0) {
-    inputRules.push(`Days input used for ${dayRows.length} enjoyed-leave row(s).`);
+    inputRules.push(t('stageInputDays', { count: dayRows.length }));
   }
   if (dateRangeRows.length > 0) {
-    inputRules.push(
-      `From–to dates used for ${dateRangeRows.length} row(s); days = inclusive calendar days.`,
-    );
+    inputRules.push(t('stageInputDates', { count: dateRangeRows.length }));
   }
   for (const row of maternityRows) {
     const days = maternityDaysFromStartDate(row.from_date);
+    const detail =
+      row.from_date < PENSION_MATERNITY_RULE_CHANGE_DATE
+        ? t('maternityBefore', {
+            date: PENSION_MATERNITY_RULE_CHANGE_DATE,
+            days: PENSION_MATERNITY_DAYS_BEFORE_RULE,
+          })
+        : t('maternityAfter', {
+            date: PENSION_MATERNITY_RULE_CHANGE_DATE,
+            days: PENSION_MATERNITY_DAYS_FROM_RULE,
+          });
     inputRules.push(
-      `Maternity start ${row.from_date}: ${
-        row.from_date < PENSION_MATERNITY_RULE_CHANGE_DATE
-          ? `before ${PENSION_MATERNITY_RULE_CHANGE_DATE} → ${PENSION_MATERNITY_DAYS_BEFORE_RULE} days`
-          : `on/after ${PENSION_MATERNITY_RULE_CHANGE_DATE} → ${PENSION_MATERNITY_DAYS_FROM_RULE} days`
-      } (applied ${days} days).`,
+      t('stageInputMaternity', {
+        date: row.from_date,
+        detail,
+        days,
+      }),
     );
   }
   if (restDays > 0) {
     inputRules.push(
       restAutoApplied
-        ? `REST (R&R) auto-applied: ${restCycles} complete 3-year cycle(s) × 15 days = ${restDays} days on average-salary account.`
-        : `REST (R&R) taken from enjoyed-leave list: ${restDays} days (manual override of auto entitlement).`,
+        ? t('stageInputRestAuto', { cycles: restCycles, days: restDays })
+        : t('stageInputRestManual', { days: restDays }),
     );
   } else if (joinDate && endDate) {
-    inputRules.push('REST (R&R): no complete 3-year cycle yet — 0 days auto-applied.');
+    inputRules.push(t('stageInputRestNone'));
   }
   if (inputRules.length > 0) {
-    stages.push({ title: '2. Enjoyed leave input rules', rules: inputRules });
+    stages.push({ title: t('stageInput'), rules: inputRules });
   }
 
-  const usedTypes = new Map<string, { name: string; days: number; deduction: string; category: string }>();
+  const usedTypes = new Map<
+    string,
+    { name: string; days: number; deduction: string; category: string }
+  >();
   for (const row of enjoyed) {
     const days = resolveEnjoyedDays(row, leaveTypes);
     if (!row.leave_type_id || days <= 0) continue;
-    const type = leaveTypes.find((t) => t.id === row.leave_type_id);
+    const type = leaveTypes.find((lt) => lt.id === row.leave_type_id);
     if (!type) continue;
     const existing = usedTypes.get(type.id);
     if (existing) {
       existing.days += days;
     } else {
       usedTypes.set(type.id, {
-        name: type.name_en,
+        name: leaveTypeDisplayName(locale, type),
         days,
-        deduction: DEDUCTION_RULE_LABELS[type.deduction_rule],
-        category: PAY_CATEGORY_LABELS[type.pay_category],
+        deduction: deductionRuleLabel(t, type.deduction_rule),
+        category: payCategoryLabel(t, type.pay_category),
       });
     }
   }
   if (restAutoApplied && restDays > 0) {
-    const restType = leaveTypes.find((t) => t.code === 'REST');
+    const restType = leaveTypes.find((lt) => lt.code === 'REST');
     if (restType && !usedTypes.has(restType.id)) {
       usedTypes.set(restType.id, {
-        name: restType.name_en,
+        name: leaveTypeDisplayName(locale, restType),
         days: restDays,
-        deduction: DEDUCTION_RULE_LABELS[restType.deduction_rule],
-        category: PAY_CATEGORY_LABELS[restType.pay_category],
+        deduction: deductionRuleLabel(t, restType.deduction_rule),
+        category: payCategoryLabel(t, restType.pay_category),
       });
     }
   }
 
   if (usedTypes.size > 0) {
     stages.push({
-      title: '3. Service deduction rules (applied leave types)',
-      rules: [...usedTypes.values()].map(
-        (t) => `${t.name}: ${t.days} days · ${t.category} · ${t.deduction}.`,
+      title: t('stageDeduction'),
+      rules: [...usedTypes.values()].map((row) =>
+        t('stageDeductionRow', {
+          name: row.name,
+          days: row.days,
+          category: row.category,
+          deduction: row.deduction,
+        }),
       ),
     });
   }
 
   if (result) {
     stages.push({
-      title: '4. Leave earning & account balances',
+      title: t('stageEarning'),
       rules: [
-        `Leave-earning period after deductions: ${result.leave_earning_period.total_days} days.`,
-        `Average-salary earning = leave-earning ÷ 11 → ${result.average_salary_leave_earned_days} days (round .5+ up).`,
-        `Half-average earning = leave-earning ÷ 12 → ${result.half_average_leave_earned_days} days (round .5+ up).`,
-        `Average balance = earning − enjoyed (${result.enjoyed_average_salary_days} days) → ${formatPeriodLabel(result.average_salary_leave)}.`,
-        `Half-average balance = earning − enjoyed (${result.enjoyed_half_average_days} days) → ${formatPeriodLabel(result.half_average_leave)}.`,
-        `Half-average → average pay = half balance ÷ 2 (round .5+ up).`,
-        `Total leave balance = average balance + converted half-average → ${formatPeriodLabel(result.total_average_salary_leave)} (${result.average_salary_leave_months.toFixed(2)} months).`,
+        t('stageEarning1', { days: result.leave_earning_period.total_days }),
+        t('stageEarning2', { days: result.average_salary_leave_earned_days }),
+        t('stageEarning3', { days: result.half_average_leave_earned_days }),
+        t('stageEarning4', {
+          enjoyed: result.enjoyed_average_salary_days,
+          balance: formatPeriodLabel(result.average_salary_leave),
+        }),
+        t('stageEarning5', {
+          enjoyed: result.enjoyed_half_average_days,
+          balance: formatPeriodLabel(result.half_average_leave),
+        }),
+        t('stageEarning6'),
+        t('stageEarning7', {
+          balance: formatPeriodLabel(result.total_average_salary_leave),
+          months: result.average_salary_leave_months.toFixed(2),
+        }),
       ],
     });
 
     if (lastBasic) {
       stages.push({
-        title: '5. Lamp grant',
+        title: t('stageLamp'),
         rules: result.lamp_grant_uses_bonus_salary
           ? [
-              `Total average leave ≥ 18 months (${result.average_salary_leave_months.toFixed(2)} months).`,
-              `Lamp grant = (last basic + 5%) × 18 months.`,
+              t('stageLampBonus1', { months: result.average_salary_leave_months.toFixed(2) }),
+              t('stageLampBonus2'),
             ]
           : [
-              `Total average leave < 18 months (${result.average_salary_leave_months.toFixed(2)} months).`,
-              `Lamp grant = last basic × ${result.lamp_grant_months_used.toFixed(2)} months (no 5% increase).`,
+              t('stageLampNoBonus1', { months: result.average_salary_leave_months.toFixed(2) }),
+              t('stageLampNoBonus2', { months: result.lamp_grant_months_used.toFixed(2) }),
             ],
       });
     }
   } else if (joinDate && endDate) {
     stages.push({
-      title: '4. Leave earning (pending calculate)',
+      title: t('stageEarningPending'),
       rules: [
-        'Average-salary leave earned = leave-earning period ÷ 11 (round .5+ up).',
-        'Half-average leave earned = leave-earning period ÷ 12 (round .5+ up).',
-        'Balance = earning − enjoyed days for each account.',
-        'Total leave = average balance + (half-average balance ÷ 2, round .5+ up).',
+        t('stageEarningPending1'),
+        t('stageEarningPending2'),
+        t('stageEarningPending3'),
+        t('stageEarningPending4'),
       ],
     });
     if (lastBasic) {
       stages.push({
-        title: '5. Lamp grant (pending calculate)',
-        rules: [
-          'If total average leave ≥ 18 months: (last basic + 5%) × 18.',
-          'If less than 18 months: last basic × remaining months (no 5%).',
-        ],
+        title: t('stageLampPending'),
+        rules: [t('stageLampPending1'), t('stageLampPending2')],
       });
     }
   }
@@ -306,7 +366,7 @@ function sumEnjoyedByCategory(
   excludeTypeId?: string,
 ): number {
   const typeIds = new Set(
-    leaveTypes.filter((t) => t.pay_category === category && t.id !== excludeTypeId).map((t) => t.id),
+    leaveTypes.filter((lt) => lt.pay_category === category && lt.id !== excludeTypeId).map((lt) => lt.id),
   );
   return rows
     .filter((r) => typeIds.has(r.leave_type_id))
@@ -314,6 +374,17 @@ function sumEnjoyedByCategory(
 }
 
 export default function PensionCalculatorPage() {
+  return (
+    <CalcLocaleProvider>
+      <PensionCalculatorInner />
+    </CalcLocaleProvider>
+  );
+}
+
+function PensionCalculatorInner() {
+  const t = useTranslations('pension');
+  const tc = useTranslations('common');
+  const { locale } = useCalcLocale();
   const [leaveTypes, setLeaveTypes] = useState<LeaveTypeRow[]>([]);
   const [joinDate, setJoinDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -328,7 +399,7 @@ export default function PensionCalculatorPage() {
   useEffect(() => {
     apiFetch<{ data: LeaveTypeRow[] }>('/pension/leave-types')
       .then((res) => setLeaveTypes(res.data))
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load leave types'))
+      .catch((err) => setError(err instanceof Error ? err.message : t('loadError')))
       .finally(() => setLoading(false));
     fetchMe()
       .then((res) => {
@@ -337,19 +408,20 @@ export default function PensionCalculatorPage() {
         );
       })
       .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load once on mount
   }, []);
 
-  const restType = leaveTypes.find((t) => t.code === 'REST');
+  const restType = leaveTypes.find((lt) => lt.code === 'REST');
   const enjoyedForPreview: PensionEnjoyedLeaveInput[] = enjoyed
     .map((r) => ({ leave_type_id: r.leave_type_id, days: resolveEnjoyedDays(r, leaveTypes) }))
     .filter((r) => r.leave_type_id && r.days > 0);
-  const calcLeaveTypes: PensionLeaveTypeCalc[] = leaveTypes.map((t) => ({
-    id: t.id,
-    code: t.code,
-    name_en: t.name_en,
-    pay_category: t.pay_category,
-    deduction_rule: t.deduction_rule,
-    is_auto_entitlement: t.is_auto_entitlement,
+  const calcLeaveTypes: PensionLeaveTypeCalc[] = leaveTypes.map((lt) => ({
+    id: lt.id,
+    code: lt.code,
+    name_en: lt.name_en,
+    pay_category: lt.pay_category,
+    deduction_rule: lt.deduction_rule,
+    is_auto_entitlement: lt.is_auto_entitlement,
   }));
   const restPreview = previewRestLeaveDeduction(joinDate, endDate, enjoyedForPreview, calcLeaveTypes);
   const restDays = result?.rest_leave?.enjoyed_days ?? restPreview.days;
@@ -421,7 +493,7 @@ export default function PensionCalculatorPage() {
       });
       setResult(res.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Calculation failed');
+      setError(err instanceof Error ? err.message : t('loadError'));
     } finally {
       setCalculating(false);
     }
@@ -437,23 +509,26 @@ export default function PensionCalculatorPage() {
     restDays,
     restAutoApplied,
     restCycles,
+    t,
+    locale,
   });
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Pension leave account & lamp grant"
-        description="Calculate government pension leave balances and lamp grant from service and enjoyed leave."
+        title={t('title')}
+        description={t('description')}
         action={
           <div className="flex flex-wrap gap-2">
+            <LocaleSwitcher />
             <Button asChild size="sm" variant="outline">
-              <Link href="/joining-period">Joining period</Link>
+              <Link href="/joining-period">{t('joiningLink')}</Link>
             </Button>
             {isAdmin ? (
               <Button asChild size="sm" variant="outline">
                 <Link href="/admin/setup/pension-leaves">
                   <Settings className="h-4 w-4" />
-                  Leave type setup
+                  {t('leaveTypeSetup')}
                 </Link>
               </Button>
             ) : null}
@@ -463,46 +538,30 @@ export default function PensionCalculatorPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Instructions</CardTitle>
+          <CardTitle className="text-lg">{t('instructions')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 text-sm leading-relaxed text-muted">
           <p>
-            While calculating pension, government employees must work out <strong className="text-foreground">two things</strong>:
+            {t.rich('instructionsIntro', {
+              strong: (chunks) => <strong className="text-foreground">{chunks}</strong>,
+            })}
           </p>
           <div className="space-y-3">
             <div>
-              <p className="font-semibold text-foreground">1. Leave account</p>
+              <p className="font-semibold text-foreground">{t('leaveAccountTitle')}</p>
               <ul className="mt-2 list-disc space-y-1 pl-5">
-                <li>Complete service period and leave earned during service.</li>
-                <li>
-                  Leave is of four account types: <em>on average salary</em>, <em>on half-average salary</em>,
-                  <em> without pay</em>, and <em>regular working period</em>, with sub-types under each.
-                </li>
-                <li>
-                  Add all enjoyed leave in one list. For each row choose <strong>days</strong> or{' '}
-                  <strong>from–to dates</strong> (days are calculated automatically from the date range). The
-                  summary groups totals by leave account type.
-                </li>
-                <li>
-                  <strong>Maternity leave</strong>: enter start date only. Before 18 May 2021 → 120 days; on/after
-                  18 May 2021 → 180 days.
-                </li>
-                <li>
-                  <strong>REST leave</strong> is auto-deducted on the average-salary account (15 days every 3 years)
-                  unless you add a REST row to override.
-                </li>
+                <li>{t('leaveAccount1')}</li>
+                <li>{t('leaveAccount2')}</li>
+                <li>{t('leaveAccount3')}</li>
+                <li>{t('leaveAccount4')}</li>
+                <li>{t('leaveAccount5')}</li>
               </ul>
             </div>
             <div>
-              <p className="font-semibold text-foreground">2. Lamp grant</p>
+              <p className="font-semibold text-foreground">{t('lampGrantTitle')}</p>
               <ul className="mt-2 list-disc space-y-1 pl-5">
-                <li>
-                  If total average-salary leave is <strong>18 months or more</strong>: last basic salary + 5% × 18
-                  months.
-                </li>
-                <li>
-                  If less than 18 months: last basic salary × remaining months (no 5% increase).
-                </li>
+                <li>{t('lampGrant1')}</li>
+                <li>{t('lampGrant2')}</li>
               </ul>
             </div>
           </div>
@@ -511,13 +570,11 @@ export default function PensionCalculatorPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Rules applied</CardTitle>
+          <CardTitle className="text-lg">{t('rulesApplied')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 text-sm leading-relaxed">
           {appliedRuleStages.length === 0 ? (
-            <p className="text-muted">
-              Enter service dates and enjoyed leave to see which calculation rules apply at each stage.
-            </p>
+            <p className="text-muted">{t('rulesEmpty')}</p>
           ) : (
             appliedRuleStages.map((stage) => (
               <div key={stage.title}>
@@ -537,19 +594,19 @@ export default function PensionCalculatorPage() {
 
       <Card className="max-w-2xl">
         <CardHeader>
-          <CardTitle>Service & salary</CardTitle>
+          <CardTitle>{t('serviceSalary')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="join_date">Date of joining service</Label>
+            <Label htmlFor="join_date">{t('joinDate')}</Label>
             <Input id="join_date" type="date" value={joinDate} onChange={(e) => setJoinDate(e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="end_date">Retirement / calculation end date</Label>
+            <Label htmlFor="end_date">{t('endDate')}</Label>
             <Input id="end_date" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="last_basic">Last basic salary (৳)</Label>
+            <Label htmlFor="last_basic">{t('lastBasic')}</Label>
             <Input
               id="last_basic"
               type="number"
@@ -564,52 +621,46 @@ export default function PensionCalculatorPage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
-            <CardTitle>Enjoyed leave</CardTitle>
-            <p className="mt-1 text-sm text-muted">
-              One list for all leave types. Enter days directly, or choose dates and days are calculated
-              automatically. Summary below groups by leave account type.
-            </p>
+            <CardTitle>{t('enjoyedLeave')}</CardTitle>
+            <p className="mt-1 text-sm text-muted">{t('enjoyedLeaveHint')}</p>
           </div>
           <Button type="button" size="sm" variant="outline" disabled={!leaveTypes.length} onClick={addEnjoyedRow}>
             <Plus className="h-4 w-4" />
-            Add row
+            {t('addRow')}
           </Button>
         </CardHeader>
         <CardContent className="space-y-3">
           {loading ? (
-            <p className="text-sm text-muted">Loading leave types…</p>
+            <p className="text-sm text-muted">{t('loadingTypes')}</p>
           ) : leaveTypes.length === 0 ? (
-            <p className="text-sm text-muted">No leave types configured. Contact an administrator.</p>
+            <p className="text-sm text-muted">{t('noTypes')}</p>
           ) : enjoyed.length === 0 ? (
-            <p className="text-sm text-muted">
-              Add rows for leave enjoyed during service. For each row you can enter days or a from–to date range.
-              REST is auto-deducted on the average-salary account if not listed.
-            </p>
+            <p className="text-sm text-muted">{t('noRows')}</p>
           ) : (
             enjoyed.map((row, idx) => {
-              const selectedType = leaveTypes.find((t) => t.id === row.leave_type_id);
+              const selectedType = leaveTypes.find((lt) => lt.id === row.leave_type_id);
               const isMaternity = isMaternityLeaveCode(selectedType?.code);
               const resolvedDays = resolveEnjoyedDays(row, leaveTypes);
               return (
                 <div key={row.key} className="space-y-3 rounded-lg border p-3">
                   <div className="flex flex-wrap items-end gap-2">
                     <div className="min-w-[220px] flex-1 space-y-1">
-                      <Label>Leave type</Label>
+                      <Label>{t('leaveType')}</Label>
                       <select
                         className="ibas-select"
                         value={row.leave_type_id}
                         onChange={(e) => updateEnjoyedRow(idx, { leave_type_id: e.target.value })}
                       >
                         {SUMMARY_CATEGORIES.map((category) => {
-                          const types = leaveTypes.filter((t) => t.pay_category === category);
+                          const types = leaveTypes.filter((lt) => lt.pay_category === category);
                           if (types.length === 0) return null;
                           return (
-                            <optgroup key={category} label={PAY_CATEGORY_LABELS[category]}>
-                              {types.map((t) => (
-                                <option key={t.id} value={t.id}>
-                                  {t.name_en}
-                                  {t.code === 'REST' ? ' (auto if not listed)' : ''}
-                                  {t.code === 'MATERNITY' ? ' (start date only)' : ''}
+                            <optgroup key={category} label={payCategoryLabel(t, category)}>
+                              {types.map((lt) => (
+                                <option key={lt.id} value={lt.id}>
+                                  {leaveTypeDisplayName(locale, lt)}
+                                  {lt.code === 'REST' ? ` ${t('restSuffix')}` : ''}
+                                  {lt.code === 'MATERNITY' ? ` ${t('maternitySuffix')}` : ''}
                                 </option>
                               ))}
                             </optgroup>
@@ -619,7 +670,7 @@ export default function PensionCalculatorPage() {
                     </div>
                     {!isMaternity ? (
                       <div className="w-36 space-y-1">
-                        <Label>Input</Label>
+                        <Label>{t('input')}</Label>
                         <select
                           className="ibas-select"
                           value={row.input_mode === 'maternity_start' ? 'days' : row.input_mode}
@@ -629,8 +680,8 @@ export default function PensionCalculatorPage() {
                             })
                           }
                         >
-                          <option value="days">Days</option>
-                          <option value="dates">From–to dates</option>
+                          <option value="days">{t('inputDays')}</option>
+                          <option value="dates">{t('inputDates')}</option>
                         </select>
                       </div>
                     ) : null}
@@ -647,7 +698,7 @@ export default function PensionCalculatorPage() {
                   {isMaternity ? (
                     <div className="flex flex-wrap items-end gap-2">
                       <div className="space-y-1">
-                        <Label>Start date</Label>
+                        <Label>{t('startDate')}</Label>
                         <Input
                           type="date"
                           value={row.from_date}
@@ -655,27 +706,35 @@ export default function PensionCalculatorPage() {
                         />
                       </div>
                       <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm">
-                        <span className="text-muted">Days: </span>
+                        <span className="text-muted">{t('daysLabel')}: </span>
                         <span className="font-semibold">
                           {resolvedDays > 0 ? resolvedDays : '—'}
                         </span>
                         {row.from_date ? (
                           <span className="ml-2 text-xs text-muted">
                             {row.from_date < PENSION_MATERNITY_RULE_CHANGE_DATE
-                              ? `before ${PENSION_MATERNITY_RULE_CHANGE_DATE} → ${PENSION_MATERNITY_DAYS_BEFORE_RULE} days`
-                              : `on/after ${PENSION_MATERNITY_RULE_CHANGE_DATE} → ${PENSION_MATERNITY_DAYS_FROM_RULE} days`}
+                              ? t('maternityBefore', {
+                                  date: PENSION_MATERNITY_RULE_CHANGE_DATE,
+                                  days: PENSION_MATERNITY_DAYS_BEFORE_RULE,
+                                })
+                              : t('maternityAfter', {
+                                  date: PENSION_MATERNITY_RULE_CHANGE_DATE,
+                                  days: PENSION_MATERNITY_DAYS_FROM_RULE,
+                                })}
                           </span>
                         ) : (
                           <span className="ml-2 text-xs text-muted">
-                            Before 18 May 2021: {PENSION_MATERNITY_DAYS_BEFORE_RULE} days; otherwise{' '}
-                            {PENSION_MATERNITY_DAYS_FROM_RULE} days
+                            {t('maternityHint', {
+                              before: PENSION_MATERNITY_DAYS_BEFORE_RULE,
+                              after: PENSION_MATERNITY_DAYS_FROM_RULE,
+                            })}
                           </span>
                         )}
                       </div>
                     </div>
                   ) : row.input_mode === 'days' ? (
                     <div className="w-36 space-y-1">
-                      <Label>Days</Label>
+                      <Label>{t('daysLabel')}</Label>
                       <Input
                         type="number"
                         min={1}
@@ -686,7 +745,7 @@ export default function PensionCalculatorPage() {
                   ) : (
                     <div className="flex flex-wrap items-end gap-2">
                       <div className="space-y-1">
-                        <Label>From date</Label>
+                        <Label>{t('fromDate')}</Label>
                         <Input
                           type="date"
                           value={row.from_date}
@@ -694,7 +753,7 @@ export default function PensionCalculatorPage() {
                         />
                       </div>
                       <div className="space-y-1">
-                        <Label>To date</Label>
+                        <Label>{t('toDate')}</Label>
                         <Input
                           type="date"
                           value={row.to_date}
@@ -703,12 +762,12 @@ export default function PensionCalculatorPage() {
                         />
                       </div>
                       <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm">
-                        <span className="text-muted">Days: </span>
+                        <span className="text-muted">{t('daysLabel')}: </span>
                         <span className="font-semibold">
                           {resolvedDays > 0 ? resolvedDays : '—'}
                         </span>
                         {row.from_date && row.to_date && resolvedDays <= 0 ? (
-                          <span className="ml-2 text-xs text-destructive">Invalid date range</span>
+                          <span className="ml-2 text-xs text-destructive">{t('invalidRange')}</span>
                         ) : null}
                       </div>
                     </div>
@@ -718,10 +777,10 @@ export default function PensionCalculatorPage() {
             })
           )}
           <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm">
-            <span className="text-muted">Rows in list: </span>
+            <span className="text-muted">{t('rowsInList')}: </span>
             <span className="font-semibold">{enjoyed.length}</span>
             <span className="mx-2 text-muted">·</span>
-            <span className="text-muted">Days entered: </span>
+            <span className="text-muted">{t('daysEntered')}: </span>
             <span className="font-semibold">{sumEnjoyedDays(enjoyed, leaveTypes)}</span>
           </div>
         </CardContent>
@@ -729,80 +788,90 @@ export default function PensionCalculatorPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Enjoyed leave summary</CardTitle>
+          <CardTitle>{t('enjoyedSummary')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
-            {SUMMARY_CATEGORIES.map((category) => {
-              const typesInCategory = leaveTypes.filter((t) => t.pay_category === category);
-              if (typesInCategory.length === 0 && category !== 'average_salary') return null;
+          {SUMMARY_CATEGORIES.map((category) => {
+            const typesInCategory = leaveTypes.filter((lt) => lt.pay_category === category);
+            if (typesInCategory.length === 0 && category !== 'average_salary') return null;
 
-              const total = summaryByCategory[category];
-              const isAverage = category === 'average_salary';
+            const total = summaryByCategory[category];
+            const isAverage = category === 'average_salary';
 
-              return (
-                <div key={category} className="rounded-lg border px-3 py-2">
-                  <div className="flex justify-between">
-                    <span>{PAY_CATEGORY_LABELS[category]}</span>
-                    <span className="font-semibold">{total} days</span>
-                  </div>
-                  {isAverage && restDays === 0 && joinDate && endDate ? (
-                    <p className="mt-1 text-xs text-muted">REST (R&amp;R): no complete 3-year cycle yet</p>
-                  ) : null}
-                  {isAverage && restAutoApplied && restCycles > 0 ? (
-                    <p className="mt-1 text-xs text-muted">
-                      REST auto: {restCycles} cycle{restCycles === 1 ? '' : 's'} × 15 days
-                    </p>
-                  ) : null}
-                  {total > 0 || (isAverage && restDays > 0) ? (
-                    <div className="mt-2 space-y-1 border-t border-border/60 pt-2 text-xs">
-                      {isAverage && restDays > 0 ? (
-                        <div className="flex justify-between">
-                          <span className="text-muted">
-                            REST (R&amp;R) leave
-                            {restAutoApplied ? ' (auto)' : ''}
-                          </span>
-                          <span className="font-medium">{restDays} days</span>
-                        </div>
-                      ) : null}
-                      {typesInCategory.map((type) => {
-                        if (type.id === restType?.id && restAutoApplied) return null;
-                        const days = enjoyed
-                          .filter((r) => r.leave_type_id === type.id)
-                          .reduce((s, r) => s + resolveEnjoyedDays(r, leaveTypes), 0);
-                        if (days <= 0) return null;
-                        return (
-                          <div key={type.id} className="flex justify-between">
-                            <span className="text-muted">{type.name_en}</span>
-                            <span className="font-medium">{days} days</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : null}
+            return (
+              <div key={category} className="rounded-lg border px-3 py-2">
+                <div className="flex justify-between">
+                  <span>{payCategoryLabel(t, category)}</span>
+                  <span className="font-semibold">
+                    {total} {tc('days')}
+                  </span>
                 </div>
-              );
-            })}
-            <div className="flex justify-between rounded-lg bg-slate-50 px-3 py-2 font-medium">
-              <span>Days entered in list</span>
-              <span>{sumEnjoyedDays(enjoyed, leaveTypes)} days</span>
-            </div>
+                {isAverage && restDays === 0 && joinDate && endDate ? (
+                  <p className="mt-1 text-xs text-muted">{t('restNoCycle')}</p>
+                ) : null}
+                {isAverage && restAutoApplied && restCycles > 0 ? (
+                  <p className="mt-1 text-xs text-muted">
+                    {t('restAutoCycles', { cycles: restCycles })}
+                  </p>
+                ) : null}
+                {total > 0 || (isAverage && restDays > 0) ? (
+                  <div className="mt-2 space-y-1 border-t border-border/60 pt-2 text-xs">
+                    {isAverage && restDays > 0 ? (
+                      <div className="flex justify-between">
+                        <span className="text-muted">
+                          {t('restLeave')}
+                          {restAutoApplied ? ` ${t('restAuto')}` : ''}
+                        </span>
+                        <span className="font-medium">
+                          {restDays} {tc('days')}
+                        </span>
+                      </div>
+                    ) : null}
+                    {typesInCategory.map((type) => {
+                      if (type.id === restType?.id && restAutoApplied) return null;
+                      const days = enjoyed
+                        .filter((r) => r.leave_type_id === type.id)
+                        .reduce((s, r) => s + resolveEnjoyedDays(r, leaveTypes), 0);
+                      if (days <= 0) return null;
+                      return (
+                        <div key={type.id} className="flex justify-between">
+                          <span className="text-muted">{leaveTypeDisplayName(locale, type)}</span>
+                          <span className="font-medium">
+                            {days} {tc('days')}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+          <div className="flex justify-between rounded-lg bg-slate-50 px-3 py-2 font-medium">
+            <span>{t('daysEnteredInList')}</span>
+            <span>
+              {sumEnjoyedDays(enjoyed, leaveTypes)} {tc('days')}
+            </span>
+          </div>
         </CardContent>
       </Card>
 
       <details className="group rounded-lg border border-border bg-card">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-6 py-4 [&::-webkit-details-marker]:hidden">
-          <span className="text-lg font-semibold">Leave type reference</span>
+          <span className="text-lg font-semibold">{t('leaveTypeReference')}</span>
           <ChevronDown className="h-5 w-5 shrink-0 text-muted transition-transform group-open:rotate-180" />
         </summary>
         <div className="grid gap-3 border-t border-border px-6 pb-6 pt-4 sm:grid-cols-2">
-          {leaveTypes.map((t) => (
-            <div key={t.id} className="rounded-lg border p-3 text-sm">
-              <div className="font-medium">{t.name_en}</div>
+          {leaveTypes.map((lt) => (
+            <div key={lt.id} className="rounded-lg border p-3 text-sm">
+              <div className="font-medium">{leaveTypeDisplayName(locale, lt)}</div>
               <div className="mt-1 flex flex-wrap gap-1">
-                <Badge variant="outline">{PAY_CATEGORY_LABELS[t.pay_category]}</Badge>
-                {t.is_auto_entitlement ? <Badge variant="secondary">Auto-deducted from service</Badge> : null}
+                <Badge variant="outline">{payCategoryLabel(t, lt.pay_category)}</Badge>
+                {lt.is_auto_entitlement ? (
+                  <Badge variant="secondary">{t('autoDeducted')}</Badge>
+                ) : null}
               </div>
-              <p className="mt-2 text-xs text-muted">{DEDUCTION_RULE_LABELS[t.deduction_rule]}</p>
+              <p className="mt-2 text-xs text-muted">{deductionRuleLabel(t, lt.deduction_rule)}</p>
             </div>
           ))}
         </div>
@@ -813,65 +882,67 @@ export default function PensionCalculatorPage() {
         disabled={calculating || !joinDate || !endDate || !lastBasic}
         onClick={() => void calculate()}
       >
-        {calculating ? 'Calculating…' : 'Calculate leave account & lamp grant'}
+        {calculating ? tc('calculating') : t('calculateBtn')}
       </Button>
 
       {result ? (
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Service periods</CardTitle>
+              <CardTitle>{t('servicePeriods')}</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-3">
-              <PeriodCard title="Total service" period={result.service_period} />
-              <PeriodCard title="Working period" period={result.working_period} />
-              <PeriodCard title="Leave-earning period" period={result.leave_earning_period} />
+              <PeriodCard title={t('completeService')} period={result.service_period} />
+              <PeriodCard title={t('workingPeriod')} period={result.working_period} />
+              <PeriodCard title={t('leaveEarning')} period={result.leave_earning_period} />
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>Leave account balances</CardTitle>
+              <CardTitle>{t('leaveBalances')}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="rounded-lg border p-4">
-                <div className="mb-2 text-sm font-semibold">On average salary</div>
+                <div className="mb-2 text-sm font-semibold">
+                  {payCategoryLabel(t, 'average_salary')}
+                </div>
                 <MathRow
-                  label="Earning"
-                  note="leave-earning period ÷ 11"
-                  value={formatDaysLabel(result.average_salary_leave_earned_days)}
+                  label={t('averageEarning')}
+                  value={formatDaysLabel(t, result.average_salary_leave_earned_days)}
                 />
                 <MathRow
-                  label="Less: deduction (enjoyed)"
+                  label={t('averageDeduction')}
                   note={
                     result.rest_leave
                       ? result.rest_leave.auto_applied
-                        ? `includes REST auto ${result.rest_leave.enjoyed_days} days`
-                        : `includes REST ${result.rest_leave.enjoyed_days} days`
+                        ? `${t('restLeave')} ${t('restAuto')} ${result.rest_leave.enjoyed_days} ${tc('days')}`
+                        : `${t('restLeave')} ${result.rest_leave.enjoyed_days} ${tc('days')}`
                       : undefined
                   }
-                  value={`− ${formatDaysLabel(result.enjoyed_average_salary_days)}`}
+                  value={`− ${formatDaysLabel(t, result.enjoyed_average_salary_days)}`}
                 />
                 <MathRow
-                  label="Balance"
+                  label={t('averageBalance')}
                   emphasize
                   value={formatPeriodLabel(result.average_salary_leave)}
                 />
               </div>
 
               <div className="rounded-lg border p-4">
-                <div className="mb-2 text-sm font-semibold">On half-average salary</div>
+                <div className="mb-2 text-sm font-semibold">
+                  {payCategoryLabel(t, 'half_average_salary')}
+                </div>
                 <MathRow
-                  label="Earning"
-                  note="leave-earning period ÷ 12"
-                  value={formatDaysLabel(result.half_average_leave_earned_days)}
+                  label={t('halfEarning')}
+                  value={formatDaysLabel(t, result.half_average_leave_earned_days)}
                 />
                 <MathRow
-                  label="Less: deduction (enjoyed)"
-                  value={`− ${formatDaysLabel(result.enjoyed_half_average_days)}`}
+                  label={t('halfDeduction')}
+                  value={`− ${formatDaysLabel(t, result.enjoyed_half_average_days)}`}
                 />
                 <MathRow
-                  label="Balance"
+                  label={t('halfBalance')}
                   emphasize
                   value={formatPeriodLabel(result.half_average_leave)}
                 />
@@ -881,14 +952,16 @@ export default function PensionCalculatorPage() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   {result.enjoyed_without_pay_days > 0 ? (
                     <div className="rounded-lg border p-4">
-                      <div className="mb-2 text-sm font-semibold">Without pay</div>
-                      <MathRow label="Earning" value="—" note="not earned on this account" />
+                      <div className="mb-2 text-sm font-semibold">
+                        {payCategoryLabel(t, 'without_pay')}
+                      </div>
+                      <MathRow label={t('averageEarning')} value="—" />
                       <MathRow
-                        label="Deduction (enjoyed)"
-                        value={formatDaysLabel(result.enjoyed_without_pay_days)}
+                        label={t('averageDeduction')}
+                        value={formatDaysLabel(t, result.enjoyed_without_pay_days)}
                       />
                       <MathRow
-                        label="Recorded"
+                        label={t('averageBalance')}
                         emphasize
                         value={formatPeriodLabel(result.without_pay_leave)}
                       />
@@ -896,14 +969,16 @@ export default function PensionCalculatorPage() {
                   ) : null}
                   {result.enjoyed_regular_working_days > 0 ? (
                     <div className="rounded-lg border p-4">
-                      <div className="mb-2 text-sm font-semibold">Regular working period</div>
-                      <MathRow label="Earning" value="—" note="not earned on this account" />
+                      <div className="mb-2 text-sm font-semibold">
+                        {payCategoryLabel(t, 'regular_working_period')}
+                      </div>
+                      <MathRow label={t('averageEarning')} value="—" />
                       <MathRow
-                        label="Deduction (enjoyed)"
-                        value={formatDaysLabel(result.enjoyed_regular_working_days)}
+                        label={t('averageDeduction')}
+                        value={formatDaysLabel(t, result.enjoyed_regular_working_days)}
                       />
                       <MathRow
-                        label="Recorded"
+                        label={t('averageBalance')}
                         emphasize
                         value={formatPeriodLabel(result.regular_working_period)}
                       />
@@ -913,20 +988,19 @@ export default function PensionCalculatorPage() {
               )}
 
               <div className="rounded-lg border border-primary/30 bg-primary/5 p-4">
-                <div className="mb-2 text-sm font-semibold">Total leave balance (as average pay)</div>
+                <div className="mb-2 text-sm font-semibold">{t('totalLeaveBalance')}</div>
                 <MathRow
-                  label="Average pay balance"
+                  label={t('averageBalance')}
                   value={formatPeriodLabel(result.average_salary_leave)}
                 />
                 <MathRow
-                  label="Half-average pay → average pay"
-                  note="half-average balance ÷ 2 (round .5+ up)"
-                  value={formatDaysLabel(roundHalfUp(result.half_average_leave.total_days / 2))}
+                  label={t('halfToAverage')}
+                  value={formatDaysLabel(t, roundHalfUp(result.half_average_leave.total_days / 2))}
                 />
                 <MathRow
-                  label="Total balances of leave"
+                  label={t('totalLeaveBalance')}
                   emphasize
-                  value={`${formatPeriodLabel(result.total_average_salary_leave)} · ${result.average_salary_leave_months.toFixed(2)} months`}
+                  value={`${formatPeriodLabel(result.total_average_salary_leave)} · ${result.average_salary_leave_months.toFixed(2)}`}
                 />
               </div>
             </CardContent>
@@ -934,7 +1008,7 @@ export default function PensionCalculatorPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Lamp grant</CardTitle>
+              <CardTitle>{t('lampGrant')}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
               <div className="text-3xl font-bold text-primary">
@@ -942,8 +1016,10 @@ export default function PensionCalculatorPage() {
               </div>
               <p className="text-sm text-muted">
                 {result.lamp_grant_uses_bonus_salary
-                  ? `Last basic + 5% × 18 months (${result.lamp_grant_months_used} months used).`
-                  : `Last basic × ${result.lamp_grant_months_used.toFixed(2)} months (under 18-month threshold).`}
+                  ? t('stageLampBonus2')
+                  : t('stageLampNoBonus2', {
+                      months: result.lamp_grant_months_used.toFixed(2),
+                    })}
               </p>
             </CardContent>
           </Card>

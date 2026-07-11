@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>যৌথ বাহিনী নির্দেশাবলী — JSI 01/2016</title>
+  <style>
+    :root {
+      --ink: #1a1a1a;
+      --muted: #5c5c5c;
+      --paper: #f7f4ee;
+      --surface: #ffffff;
+      --line: #d9d2c5;
+      --accent: #1f4d3a;
+      --accent-soft: #e8f0eb;
+      --shadow: 0 10px 30px rgba(40, 30, 10, 0.12);
+      --max: 920px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: "Noto Sans Bengali", "SolaimanLipi", "Nikosh", "Siyam Rupali", Georgia, serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top, #fffdf8 0%, var(--paper) 55%, #efe8da 100%);
+      min-height: 100vh;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      backdrop-filter: blur(10px);
+      background: rgba(247, 244, 238, 0.92);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .topbar-inner {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 0.75rem 1rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem 1rem;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .brand {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+      min-width: 0;
+    }
+
+    .brand strong {
+      font-size: 1rem;
+      color: var(--accent);
+    }
+
+    .brand span {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    button, .link-btn, select, input[type="number"] {
+      font: inherit;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink);
+      border-radius: 0.55rem;
+      padding: 0.4rem 0.7rem;
+      min-height: 2.2rem;
+    }
+
+    button, .link-btn {
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    button:hover, .link-btn:hover { border-color: var(--accent); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    button.primary {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    .layout {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 1rem;
+      display: grid;
+      grid-template-columns: 240px minmax(0, 1fr);
+      gap: 1rem;
+      align-items: start;
+    }
+
+    .toc {
+      position: sticky;
+      top: 5.25rem;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 1rem;
+      box-shadow: var(--shadow);
+      padding: 0.9rem;
+      max-height: calc(100vh - 6.5rem);
+      overflow: auto;
+    }
+
+    .toc h2 {
+      margin: 0 0 0.75rem;
+      font-size: 0.85rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .toc button {
+      width: 100%;
+      text-align: left;
+      margin-bottom: 0.4rem;
+      background: transparent;
+      border-color: transparent;
+    }
+
+    .toc button:hover,
+    .toc button.active {
+      background: var(--accent-soft);
+      border-color: transparent;
+      color: var(--accent);
+    }
+
+    .reader {
+      min-width: 0;
+    }
+
+    .page-card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 1rem;
+      box-shadow: var(--shadow);
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .page-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.75rem;
+      align-items: center;
+      margin-bottom: 0.75rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .page-frame {
+      overflow: auto;
+      border-radius: 0.6rem;
+      background: #ece7db;
+      display: flex;
+      justify-content: center;
+    }
+
+    .page-frame img {
+      display: block;
+      width: var(--zoom, 100%);
+      max-width: none;
+      height: auto;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+      background: #fff;
+    }
+
+    .footer-note {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.85rem;
+      padding: 1rem 0 2rem;
+    }
+
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+      .toc {
+        position: static;
+        max-height: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <strong>যৌথ বাহিনী নির্দেশাবলী (জেএসআই)</strong>
+        <span>JSI 01/2016 — Static reference reader</span>
+      </div>
+      <div class="controls">
+        <button type="button" id="prevBtn">← পূর্ববর্তী</button>
+        <label>
+          পৃষ্ঠা
+          <input id="pageInput" type="number" min="1" max="55" value="1" style="width:4.5rem" />
+          / <span id="pageCount">55</span>
+        </label>
+        <button type="button" id="nextBtn">পরবর্তী →</button>
+        <label>
+          জুম
+          <select id="zoomSelect">
+            <option value="80">80%</option>
+            <option value="100" selected>100%</option>
+            <option value="125">125%</option>
+            <option value="150">150%</option>
+          </select>
+        </label>
+        <a class="link-btn primary" href="jsi.pdf" download>PDF ডাউনলোড</a>
+      </div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="toc" aria-label="Contents">
+      <h2>সূচি / Chapters</h2>
+      <button type="button" data-page="1">প্রচ্ছদ</button>
+      <button type="button" data-page="3">সূচিপত্র</button>
+      <button type="button" data-page="5">ভূমিকা / সাধারণ</button>
+      <button type="button" data-page="16">মূল নির্দেশাবলী</button>
+      <button type="button" data-page="31">বিস্তারিত বিধান</button>
+      <button type="button" data-page="43">পরিশিষ্ট</button>
+      <button type="button" data-page="55">শেষ পৃষ্ঠা</button>
+    </aside>
+
+    <main class="reader">
+      <section class="page-card">
+        <div class="page-meta">
+          <span id="pageLabel">পৃষ্ঠা 1</span>
+          <span>স্ক্যানকৃত মূল পৃষ্ঠা</span>
+        </div>
+        <div class="page-frame">
+          <img id="pageImage" alt="JSI page" src="pages/page-01.jpg" />
+        </div>
+      </section>
+      <p class="footer-note">
+        Joint Services Instruction (JSI) 01/2016 — image-based static reference.
+      </p>
+    </main>
+  </div>
+
+  <script>
+    const TOTAL = 55;
+    let page = 1;
+    const img = document.getElementById('pageImage');
+    const pageInput = document.getElementById('pageInput');
+    const pageLabel = document.getElementById('pageLabel');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const zoomSelect = document.getElementById('zoomSelect');
+    const tocButtons = Array.from(document.querySelectorAll('.toc button[data-page]'));
+
+    function pageFile(n) {
+      return 'pages/page-' + String(n).padStart(2, '0') + '.jpg';
+    }
+
+    function setPage(n) {
+      page = Math.min(TOTAL, Math.max(1, Number(n) || 1));
+      img.src = pageFile(page);
+      img.alt = 'JSI page ' + page;
+      pageInput.value = String(page);
+      pageLabel.textContent = 'পৃষ্ঠা ' + page;
+      prevBtn.disabled = page <= 1;
+      nextBtn.disabled = page >= TOTAL;
+      tocButtons.forEach((btn) => {
+        btn.classList.toggle('active', Number(btn.dataset.page) === page);
+      });
+      history.replaceState(null, '', '#' + page);
+    }
+
+    function setZoom(pct) {
+      img.style.setProperty('--zoom', pct + '%');
+      img.style.width = pct + '%';
+    }
+
+    prevBtn.addEventListener('click', () => setPage(page - 1));
+    nextBtn.addEventListener('click', () => setPage(page + 1));
+    pageInput.addEventListener('change', () => setPage(pageInput.value));
+    zoomSelect.addEventListener('change', () => setZoom(zoomSelect.value));
+    tocButtons.forEach((btn) => {
+      btn.addEventListener('click', () => setPage(btn.dataset.page));
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft') setPage(page - 1);
+      if (e.key === 'ArrowRight') setPage(page + 1);
+    });
+
+    const hashPage = Number((location.hash || '').replace('#', ''));
+    setZoom(100);
+    setPage(hashPage || 1);
+  </script>
+</body>
+</html>

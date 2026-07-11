@@ -775,6 +775,30 @@ export async function createTopic(chapterId: string, dto: CreateBookTopicDto) {
 export async function updateTopic(topicId: string, dto: UpdateBookTopicDto) {
   const topic = await BookTopic.findById(topicId);
   if (!topic) throw notFound('Topic not found');
+
+  if (dto.book_chapter_id !== undefined) {
+    if (!mongoose.isValidObjectId(dto.book_chapter_id)) throw badRequest('Invalid chapter id');
+    const targetChapter = await BookChapter.findById(dto.book_chapter_id);
+    if (!targetChapter || !targetChapter.is_active) throw notFound('Target chapter not found');
+
+    const currentChapter = await BookChapter.findById(topic.book_chapter_id);
+    if (!currentChapter) throw notFound('Current chapter not found');
+    if (String(currentChapter.book_info_id) !== String(targetChapter.book_info_id)) {
+      throw badRequest('Cannot move rule to a chapter in a different book');
+    }
+
+    if (String(topic.book_chapter_id) !== String(targetChapter._id)) {
+      topic.book_chapter_id = targetChapter._id;
+      if (dto.sort_order === undefined) {
+        const count = await BookTopic.countDocuments({
+          book_chapter_id: targetChapter._id,
+          is_active: true,
+        });
+        topic.sort_order = count + 1;
+      }
+    }
+  }
+
   if (dto.name !== undefined) topic.name = dto.name.trim();
   if (dto.sub_name !== undefined) topic.sub_name = dto.sub_name;
   if (dto.rule_number !== undefined) topic.rule_number = dto.rule_number;
@@ -788,6 +812,7 @@ export async function updateTopic(topicId: string, dto: UpdateBookTopicDto) {
     id: String(topic._id),
     name: topic.name,
     rule_number: topic.rule_number,
+    book_chapter_id: String(topic.book_chapter_id),
     sort_order: topic.sort_order,
   };
 }

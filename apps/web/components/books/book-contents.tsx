@@ -22,7 +22,7 @@ function viewModeStorageKey(bookId: string) {
 }
 
 export function BookContents({ isAdmin = false }: { isAdmin?: boolean }) {
-  const { bookId, outline } = useBookReader();
+  const { bookId, outline, reload } = useBookReader();
   const [questionsChapter, setQuestionsChapter] = useState<ReaderChapter | null>(null);
   const [viewMode, setViewMode] = useState<BookContentsViewMode>('short');
   const [fullChapters, setFullChapters] = useState<ReaderChapterFull[] | null>(null);
@@ -73,6 +73,10 @@ export function BookContents({ isAdmin = false }: { isAdmin?: boolean }) {
     }
   }
 
+  const refreshFullContent = useCallback(async () => {
+    await Promise.all([loadFullContent(), reload({ silent: true })]);
+  }, [loadFullContent, reload]);
+
   if (!outline) return null;
 
   const { book, chapters } = outline;
@@ -99,6 +103,9 @@ export function BookContents({ isAdmin = false }: { isAdmin?: boolean }) {
               loading={fullLoading && !fullChapters}
               isAdmin={isAdmin}
               onManageQuestions={setQuestionsChapter}
+              onContentChanged={() => {
+                void refreshFullContent();
+              }}
             />
           </>
         ) : chapters.length === 0 ? (

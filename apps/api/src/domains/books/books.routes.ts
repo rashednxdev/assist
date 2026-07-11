@@ -15,7 +15,6 @@ import {
   listChaptersHandler,
   getBookReaderOutlineHandler,
   getBookReaderFullHandler,
-  getBookReaderFullHandler,
   getChapterHandler,
   listChapterQuestionsHandler,
   listChapterQuestionsManageHandler,

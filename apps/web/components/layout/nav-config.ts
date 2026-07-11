@@ -19,6 +19,7 @@ import {
   Settings,
   ScanText,
   Calculator,
+  Bookmark,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -78,6 +79,21 @@ export const navGroups: NavGroup[] = [
         icon: ListTodo,
         moduleCode: 'WORKFLOW',
         requireWorkflowRole: true,
+      },
+    ],
+  },
+  {
+    title: 'Static Ref',
+    items: [
+      {
+        href: '/static-ref/jsi-2016',
+        label: 'JSI 2016',
+        icon: Bookmark,
+      },
+      {
+        href: '/static-ref/jsi-2016-p',
+        label: 'JSI 2016 P',
+        icon: Bookmark,
       },
     ],
   },

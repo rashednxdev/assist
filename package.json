@@ -12,6 +12,12 @@
     "migrate:indexes": "pnpm --filter @ibas/api migrate:indexes",
     "manual:pdf": "node docs/scripts/generate-manual-pdfs.mjs"
   },
+  "pnpm": {
+    "overrides": {
+      "react": "19.1.0",
+      "react-dom": "19.1.0"
+    }
+  },
   "devDependencies": {
     "turbo": "^2.5.4",
     "typescript": "^5.8.3"

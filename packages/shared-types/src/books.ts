@@ -67,6 +67,8 @@ export const createBookTopicSchema = z.object({
 
 export const updateBookTopicSchema = createBookTopicSchema.partial().extend({
   is_active: z.boolean().optional(),
+  /** Move rule to another chapter in the same book. */
+  book_chapter_id: z.string().regex(/^[a-f\d]{24}$/i).optional(),
 });
 
 const bookSubTopicFieldsSchema = z.object({

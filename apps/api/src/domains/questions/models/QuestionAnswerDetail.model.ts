@@ -13,11 +13,24 @@ export interface IExplanationSection {
   subsections: IExplanationSubsection[];
 }
 
+export interface IComparisonTableRow {
+  feature: string;
+  values: string[];
+}
+
+export interface IComparisonTable {
+  feature_header: string;
+  columns: string[];
+  rows: IComparisonTableRow[];
+}
+
 export interface IQuestionAnswerDetail extends Document {
   question_id: Types.ObjectId;
   /** @deprecated Legacy plain-text model answer; use model_answer_sections */
   model_answer?: string;
   model_answer_sections?: IExplanationSection[];
+  /** Comparison table for DIFFERENCES question type. */
+  model_answer_comparison?: IComparisonTable;
   /** @deprecated Legacy plain-text explanation; use explanation_sections */
   explanation?: string;
   explanation_sections?: IExplanationSection[];
@@ -44,11 +57,29 @@ const sectionSchema = new Schema<IExplanationSection>(
   { _id: false },
 );
 
+const comparisonRowSchema = new Schema<IComparisonTableRow>(
+  {
+    feature: { type: String, default: '' },
+    values: { type: [String], default: [] },
+  },
+  { _id: false },
+);
+
+const comparisonTableMongooseSchema = new Schema<IComparisonTable>(
+  {
+    feature_header: { type: String, default: 'Feature' },
+    columns: { type: [String], default: [] },
+    rows: { type: [comparisonRowSchema], default: [] },
+  },
+  { _id: false },
+);
+
 const schema = new Schema<IQuestionAnswerDetail>(
   {
     question_id: { type: Schema.Types.ObjectId, required: true, ref: 'Question', unique: true },
     model_answer: { type: String },
     model_answer_sections: { type: [sectionSchema], default: undefined },
+    model_answer_comparison: { type: comparisonTableMongooseSchema, default: undefined },
     explanation: { type: String },
     explanation_sections: { type: [sectionSchema], default: undefined },
     note: { type: String },

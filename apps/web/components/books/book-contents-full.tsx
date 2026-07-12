@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { BookDetailsBlock } from '@/components/books/book-details-block';
 import { RichTextView } from '@/components/books/rich-text-view';
+import { RuleContentLinkEmbed } from '@/components/books/rule-content-link-embed';
 import {
   ChapterInlineEdit,
   InlineEditTrigger,
@@ -27,6 +28,7 @@ export interface ReaderTopicFull {
   sort_order: number;
   description?: string;
   note?: string;
+  content_link?: string;
   details: Array<{ id: string; detail_text: string }>;
   sub_topics: Array<{
     id: string;
@@ -198,6 +200,13 @@ export function BookContentsFull({
 
                       {!editingTopic && (topic.description?.trim() || topic.note?.trim()) && (
                         <BookDetailsBlock html={topic.description} note={topic.note} />
+                      )}
+
+                      {!editingTopic && topic.content_link?.trim() && (
+                        <RuleContentLinkEmbed
+                          contentLink={topic.content_link}
+                          title={ruleHeading(topic)}
+                        />
                       )}
 
                       {topic.details.length > 0 && (

@@ -15,7 +15,7 @@ import {
   type QuestionEvaluationRecord,
   type SelfRatingLevel,
 } from '@/lib/evaluation-api';
-import type { ExplanationSection, QuestionDetail, QuestionOption } from '@/types/questions';
+import type { ComparisonTable, ExplanationSection, QuestionDetail, QuestionOption } from '@/types/questions';
 import { colors, spacing } from '@/theme';
 
 function renderOptionText(option: QuestionOption) {
@@ -155,6 +155,13 @@ export default function QuestionDetailScreen() {
         </View>
       ) : null}
 
+      {showAnswer && item.model_answer_comparison?.columns?.length ? (
+        <View style={styles.panel}>
+          <Text style={styles.sectionTitle}>Model answer</Text>
+          {renderComparisonTable(item.model_answer_comparison)}
+        </View>
+      ) : null}
+
       {showAnswer && modelSections.length ? (
         <View style={styles.panel}>
           {modelSections.map((sec, idx) => renderSection(sec, idx, 'model'))}
@@ -268,6 +275,36 @@ function normalizeSections(sections?: ExplanationSection[]) {
     (sec) =>
       Boolean(sec.title?.trim() || sec.content?.trim() || sec.details?.trim() || sec.note?.trim()) ||
       (sec.subsections?.length ?? 0) > 0,
+  );
+}
+
+function renderComparisonTable(table: ComparisonTable) {
+  const columns = table.columns ?? [];
+  const rows = table.rows ?? [];
+  if (columns.length < 2 || rows.length === 0) return null;
+  return (
+    <View style={styles.tableWrap}>
+      <View style={[styles.tableRow, styles.tableHeaderRow]}>
+        <Text style={[styles.tableCell, styles.tableHeaderCell, styles.tableFeatureCell]}>
+          {table.feature_header?.trim() || 'Feature'}
+        </Text>
+        {columns.map((col, i) => (
+          <Text key={`h-${i}`} style={[styles.tableCell, styles.tableHeaderCell]}>
+            {col}
+          </Text>
+        ))}
+      </View>
+      {rows.map((row, ri) => (
+        <View key={`r-${ri}`} style={styles.tableRow}>
+          <Text style={[styles.tableCell, styles.tableFeatureCell]}>{row.feature}</Text>
+          {columns.map((_, ci) => (
+            <Text key={`c-${ri}-${ci}`} style={styles.tableCell}>
+              {row.values?.[ci] ?? ''}
+            </Text>
+          ))}
+        </View>
+      ))}
+    </View>
   );
 }
 
@@ -421,6 +458,34 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: colors.text,
+  },
+  tableWrap: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  tableRow: {
+    flexDirection: 'row',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  tableHeaderRow: {
+    backgroundColor: '#f8fafc',
+  },
+  tableCell: {
+    flex: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.text,
+  },
+  tableHeaderCell: {
+    fontWeight: '700',
+  },
+  tableFeatureCell: {
+    fontWeight: '600',
   },
   evalWrap: {
     gap: spacing.sm,

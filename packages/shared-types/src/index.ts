@@ -46,6 +46,7 @@ export * from './users.js';
 export * from './setup.js';
 export * from './books.js';
 export * from './explanation.js';
+export * from './comparison-table.js';
 export * from './questions.js';
 export * from './exams.js';
 export * from './syllabus.js';

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { chapterHeading } from '@/lib/book-display';
+import { STATIC_REF_PAGE_OPTIONS } from '@/lib/static-ref-pages';
 
 function wrapHtml(text: string) {
   const t = text.trim();
@@ -153,6 +154,7 @@ export function TopicInlineEdit({
     sub_name?: string;
     description?: string;
     note?: string;
+    content_link?: string;
   };
   onCancel: () => void;
   onSaved: () => void;
@@ -165,6 +167,7 @@ export function TopicInlineEdit({
     sub_name: initial.sub_name ?? '',
     description: stripHtml(initial.description),
     note: initial.note ?? '',
+    content_link: initial.content_link ?? '',
     book_chapter_id: currentChapterId,
   });
 
@@ -182,6 +185,7 @@ export function TopicInlineEdit({
         sub_name: form.sub_name.trim() || undefined,
         description: form.description.trim() ? wrapHtml(form.description) : '',
         note: form.note.trim() || undefined,
+        content_link: form.content_link.trim(),
       };
       if (form.book_chapter_id !== currentChapterId) {
         body.book_chapter_id = form.book_chapter_id;
@@ -236,6 +240,44 @@ export function TopicInlineEdit({
             </option>
           ))}
         </select>
+      </Field>
+      <Field label="Page link (optional)">
+        <select
+          className="ibas-select text-sm mb-2"
+          disabled={busy}
+          value={
+            STATIC_REF_PAGE_OPTIONS.some((o) => o.href === form.content_link)
+              ? form.content_link
+              : form.content_link
+                ? '__custom__'
+                : ''
+          }
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v === '__custom__') return;
+            setForm({ ...form, content_link: v });
+          }}
+        >
+          <option value="">No linked page</option>
+          {STATIC_REF_PAGE_OPTIONS.map((o) => (
+            <option key={o.href} value={o.href}>
+              {o.label}
+            </option>
+          ))}
+          {form.content_link &&
+            !STATIC_REF_PAGE_OPTIONS.some((o) => o.href === form.content_link) && (
+              <option value="__custom__">Custom path</option>
+            )}
+        </select>
+        <Input
+          disabled={busy}
+          value={form.content_link}
+          placeholder="/static-ref/jsi-2016-p"
+          onChange={(e) => setForm({ ...form, content_link: e.target.value })}
+        />
+        <p className="mt-1 text-[11px] text-muted">
+          Shown as an embedded page in Full book view (like Static Ref).
+        </p>
       </Field>
       <Field label="Details">
         <textarea

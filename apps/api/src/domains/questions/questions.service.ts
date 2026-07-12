@@ -9,8 +9,12 @@ import type {
 } from '@ibas/shared-types';
 import {
   cleanExplanationSections,
+  cleanComparisonTable,
+  hasComparisonTableContent,
   parseLegacyExplanation,
+  serializeComparisonTable,
   serializeExplanationSections,
+  type ComparisonTable,
   type ExplanationSection,
 } from '@ibas/shared-types';
 import { BookChapter } from '../books/models/BookChapter.model.js';
@@ -50,10 +54,16 @@ function isMcqOrTf(code: string) {
   return code === 'MCQ' || code === 'TF';
 }
 
+function isDifferencesType(code: string) {
+  return code === 'DIFFERENCES';
+}
+
 interface AnswerDetailInput {
   /** Omit to leave existing sections unchanged; pass [] to clear. */
   explanation_sections?: ExplanationSection[];
   model_answer_sections?: ExplanationSection[];
+  /** Omit to leave unchanged; pass null/undefined after explicit clear via empty cleaned table. */
+  model_answer_comparison?: ComparisonTable | null;
   model_answer?: string;
   note?: string;
   reference_regulation_id?: string;
@@ -371,7 +381,13 @@ async function loadQuestionDetail(questionId: string) {
           : 'false'
         : undefined,
     model_answer_sections:
-      qType && !qType.has_options ? await loadModelAnswerSections(question._id, detail) : undefined,
+      qType && !qType.has_options && !isDifferencesType(question.question_type_code)
+        ? await loadModelAnswerSections(question._id, detail)
+        : undefined,
+    model_answer_comparison:
+      qType && !qType.has_options && isDifferencesType(question.question_type_code)
+        ? serializeComparisonTable(detail?.model_answer_comparison as ComparisonTable | undefined)
+        : undefined,
     explanation_sections:
       qType?.has_options && isMcqOrTf(question.question_type_code)
         ? await loadExplanationSections(question._id, detail)
@@ -394,6 +410,11 @@ async function saveAnswerDetail(questionId: mongoose.Types.ObjectId, input: Answ
       ? cleanExplanationSections(input.model_answer_sections)
       : undefined;
 
+  const comparisonExplicit = Object.prototype.hasOwnProperty.call(input, 'model_answer_comparison');
+  const comparisonToSave = comparisonExplicit
+    ? cleanComparisonTable(input.model_answer_comparison ?? undefined) ?? null
+    : undefined;
+
   const note = input.note !== undefined ? input.note.trim() || undefined : undefined;
 
   const finalSections =
@@ -406,10 +427,18 @@ async function saveAnswerDetail(questionId: mongoose.Types.ObjectId, input: Answ
       ? modelSectionsToSave
       : serializeExplanationSections(existing?.model_answer_sections as ExplanationSection[] | undefined);
 
+  const finalComparison =
+    comparisonToSave !== undefined
+      ? comparisonToSave
+      : serializeComparisonTable(existing?.model_answer_comparison as ComparisonTable | undefined) ?? null;
+
   const finalNote = note !== undefined ? note : existing?.note?.trim() || undefined;
 
   const hasContent =
-    finalSections.length > 0 || finalModelSections.length > 0 || Boolean(finalNote);
+    finalSections.length > 0 ||
+    finalModelSections.length > 0 ||
+    Boolean(finalComparison) ||
+    Boolean(finalNote);
 
   if (!hasContent) {
     await QuestionAnswerDetail.deleteOne({ question_id: questionId });
@@ -427,6 +456,11 @@ async function saveAnswerDetail(questionId: mongoose.Types.ObjectId, input: Answ
   if (modelSectionsToSave !== undefined) {
     if (modelSectionsToSave.length > 0) $set.model_answer_sections = modelSectionsToSave;
     else $unset.model_answer_sections = '';
+  }
+
+  if (comparisonToSave !== undefined) {
+    if (comparisonToSave) $set.model_answer_comparison = comparisonToSave;
+    else $unset.model_answer_comparison = '';
   }
 
   if (note !== undefined) {
@@ -496,11 +530,14 @@ async function replaceTextAnswer(
   modelAnswerSections: ExplanationSection[] | undefined,
   note?: string,
   referenceRegulationId?: string,
+  modelAnswerComparison?: ComparisonTable | null,
 ) {
   await QuestionOption.deleteMany({ question_id: questionId });
   await QuestionAnswer.deleteMany({ question_id: questionId });
   await saveAnswerDetail(questionId, {
-    model_answer_sections: modelAnswerSections,
+    model_answer_sections: modelAnswerSections ?? [],
+    model_answer_comparison:
+      modelAnswerComparison === undefined ? null : modelAnswerComparison,
     explanation_sections: [],
     note,
     reference_regulation_id: referenceRegulationId,
@@ -535,6 +572,11 @@ async function applyAnswerPayload(
       ? cleanExplanationSections(dto.model_answer_sections)
       : undefined;
 
+  const comparisonExplicit = Object.prototype.hasOwnProperty.call(dto, 'model_answer_comparison');
+  const comparisonTable = comparisonExplicit
+    ? cleanComparisonTable(dto.model_answer_comparison) ?? null
+    : undefined;
+
   if (qType.has_options && isMcqOrTf(qType.code)) {
     const hasOptionUpdate =
       dto.options !== undefined ||
@@ -562,6 +604,7 @@ async function applyAnswerPayload(
       await saveAnswerDetail(questionId, {
         explanation_sections: explanationSections,
         model_answer_sections: [],
+        model_answer_comparison: null,
         note: dto.note,
         reference_regulation_id: dto.reference_regulation_id,
       });
@@ -570,6 +613,25 @@ async function applyAnswerPayload(
   }
 
   if (qType.has_options) return;
+
+  if (isDifferencesType(qType.code)) {
+    if (
+      comparisonTable !== undefined ||
+      dto.note !== undefined ||
+      dto.reference_regulation_id !== undefined
+    ) {
+      await QuestionOption.deleteMany({ question_id: questionId });
+      await QuestionAnswer.deleteMany({ question_id: questionId });
+      await saveAnswerDetail(questionId, {
+        model_answer_sections: [],
+        explanation_sections: [],
+        ...(comparisonTable !== undefined ? { model_answer_comparison: comparisonTable } : {}),
+        note: dto.note,
+        reference_regulation_id: dto.reference_regulation_id,
+      });
+    }
+    return;
+  }
 
   if (
     modelAnswerSections !== undefined ||
@@ -581,6 +643,7 @@ async function applyAnswerPayload(
       modelAnswerSections,
       dto.note,
       dto.reference_regulation_id,
+      null,
     );
   }
 }
@@ -888,6 +951,7 @@ export async function updateQuestion(id: string, dto: UpdateQuestionDto) {
     dto.correct_option_key !== undefined ||
     dto.correct_true_false !== undefined ||
     dto.model_answer_sections !== undefined ||
+    dto.model_answer_comparison !== undefined ||
     dto.explanation_sections !== undefined;
 
   if (hasAnswerUpdate) {
@@ -926,12 +990,18 @@ export async function publishQuestion(id: string, reviewerId: string) {
     if (!hasCorrect) throw badRequest('Question must have a correct answer before publishing');
   } else {
     const detail = await QuestionAnswerDetail.findOne({ question_id: id });
-    const modelSections = serializeExplanationSections(detail?.model_answer_sections);
-    const hasModelAnswer =
-      modelSections.length > 0 ||
-      (typeof detail?.model_answer === 'string' && detail.model_answer.trim().length > 0);
-    if (!hasModelAnswer) {
-      throw badRequest('Model answer is required before publishing this question type');
+    if (isDifferencesType(qType.code)) {
+      if (!hasComparisonTableContent(detail?.model_answer_comparison as ComparisonTable | undefined)) {
+        throw badRequest('Comparison table model answer is required before publishing');
+      }
+    } else {
+      const modelSections = serializeExplanationSections(detail?.model_answer_sections);
+      const hasModelAnswer =
+        modelSections.length > 0 ||
+        (typeof detail?.model_answer === 'string' && detail.model_answer.trim().length > 0);
+      if (!hasModelAnswer) {
+        throw badRequest('Model answer is required before publishing this question type');
+      }
     }
   }
 

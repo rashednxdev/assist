@@ -332,6 +332,7 @@ export async function getTopicDetail(topicId: string) {
     rule_number: topic.rule_number,
     description: topic.description,
     note: topic.note,
+    content_link: topic.content_link,
     is_amended: topic.is_amended,
     chapter: chapter ? { id: String(chapter._id), name: chapter.name, chapter_number: chapter.chapter_number } : null,
     details: details.map((d) => ({ id: String(d._id), detail_text: d.detail_text })),
@@ -524,6 +525,7 @@ export async function getBookReaderFull(bookId: string) {
         ...topic,
         description: row?.description,
         note: row?.note,
+        content_link: row?.content_link,
         details: detailsByTopic.get(topic.id) ?? [],
         sub_topics: subTopicsByTopic.get(topic.id) ?? [],
       };
@@ -560,6 +562,7 @@ export async function getChapterById(chapterId: string) {
       rule_number: t.rule_number,
       description: t.description,
       note: t.note,
+      content_link: t.content_link,
       sort_order: t.sort_order,
       is_amended: t.is_amended,
     })),
@@ -759,6 +762,7 @@ export async function createTopic(chapterId: string, dto: CreateBookTopicDto) {
     rule_number: dto.rule_number,
     description: dto.description,
     note: dto.note,
+    content_link: dto.content_link?.trim() || undefined,
     effective_date: dto.effective_date,
     sort_order: sortOrder,
     is_amended: false,
@@ -768,6 +772,7 @@ export async function createTopic(chapterId: string, dto: CreateBookTopicDto) {
     id: String(topic._id),
     name: topic.name,
     rule_number: topic.rule_number,
+    content_link: topic.content_link,
     sort_order: topic.sort_order,
   };
 }
@@ -804,6 +809,11 @@ export async function updateTopic(topicId: string, dto: UpdateBookTopicDto) {
   if (dto.rule_number !== undefined) topic.rule_number = dto.rule_number;
   if (dto.description !== undefined) topic.description = dto.description;
   if (dto.note !== undefined) topic.note = dto.note;
+  if (dto.content_link !== undefined) {
+    const link = dto.content_link.trim();
+    topic.content_link = link || undefined;
+    if (!link) topic.set('content_link', undefined);
+  }
   if (dto.effective_date !== undefined) topic.effective_date = dto.effective_date;
   if (dto.sort_order !== undefined) topic.sort_order = dto.sort_order;
   if (dto.is_active !== undefined) topic.is_active = dto.is_active;
@@ -813,6 +823,7 @@ export async function updateTopic(topicId: string, dto: UpdateBookTopicDto) {
     name: topic.name,
     rule_number: topic.rule_number,
     book_chapter_id: String(topic.book_chapter_id),
+    content_link: topic.content_link,
     sort_order: topic.sort_order,
   };
 }

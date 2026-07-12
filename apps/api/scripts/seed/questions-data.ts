@@ -36,6 +36,12 @@ const STANDARD_TYPES = [
     has_options: false,
     note: 'Brief written answer (typically 2–5 sentences)',
   },
+  {
+    name: 'Differences',
+    code: 'DIFFERENCES',
+    has_options: false,
+    note: 'Compare two or more items in a feature table (model answer)',
+  },
 ] as const;
 
 async function ensureQuestionTypes() {
@@ -49,10 +55,25 @@ async function ensureQuestionTypes() {
       row.name = t.name;
       row.has_options = t.has_options;
       row.note = t.note;
+      row.is_active = true;
       await row.save();
     }
     map.set(t.code, row);
   }
+
+  // Remove legacy singular "Difference" (keep "Differences")
+  const legacy = await QuestionType.find({
+    $or: [{ name: /^Difference$/i }, { code: /^DIFFERENCE$/i }, { code: 'DF' }],
+  });
+  for (const row of legacy) {
+    if (row.code === 'DIFFERENCES' || row.name === 'Differences') continue;
+    if (row.is_active) {
+      row.is_active = false;
+      await row.save();
+      console.log(`Deactivated legacy question type: ${row.name} (${row.code})`);
+    }
+  }
+
   return map;
 }
 

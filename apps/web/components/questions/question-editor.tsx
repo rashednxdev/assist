@@ -4,13 +4,15 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ExternalLink } from 'lucide-react';
 import { BOOK_LANGUAGES, OPTION_KEYS, QUESTION_DIFFICULTIES } from '@ibas/shared-constants';
-import type { ExplanationSection } from '@ibas/shared-types';
+import type { ComparisonTable, ExplanationSection } from '@ibas/shared-types';
+import { emptyComparisonTable } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import {
   QuestionBookLinksEditor,
   type QuestionBookLinkForm,
 } from '@/components/questions/question-book-links-editor';
 import { ExplanationSectionsEditor } from '@/components/questions/explanation-sections-editor';
+import { ComparisonTableEditor } from '@/components/questions/comparison-table-editor';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -48,6 +50,7 @@ export interface QuestionFormValues {
   correct_option_key: (typeof OPTION_KEYS)[number];
   correct_true_false: 'true' | 'false';
   model_answer_sections: ExplanationSection[];
+  model_answer_comparison: ComparisonTable;
   explanation_sections: ExplanationSection[];
   note: string;
   book_links: QuestionBookLinkForm[];
@@ -77,6 +80,7 @@ export const emptyQuestionForm: QuestionFormValues = {
   correct_option_key: 'a',
   correct_true_false: 'true',
   model_answer_sections: [],
+  model_answer_comparison: emptyComparisonTable(2),
   explanation_sections: [],
   note: '',
   book_links: [],
@@ -149,6 +153,7 @@ export function QuestionEditor({
   const isTf = value.question_type_code === 'TF';
   const isMcqOrTf = isMcq || isTf;
   const isShortNote = value.question_type_code === 'SHORT_NOTE';
+  const isDifferences = value.question_type_code === 'DIFFERENCES';
   const isTextAnswer = !value.has_options;
   const questionText = value.body_bn || value.body_en;
 
@@ -198,8 +203,17 @@ export function QuestionEditor({
     if (!t.has_options) {
       next.negative_marks = 0;
       next.explanation_sections = [];
+      if (t.code === 'DIFFERENCES') {
+        next.model_answer_sections = [];
+        next.model_answer_comparison = value.model_answer_comparison?.columns?.length
+          ? value.model_answer_comparison
+          : emptyComparisonTable(2);
+      } else {
+        next.model_answer_comparison = emptyComparisonTable(2);
+      }
     } else {
       next.model_answer_sections = [];
+      next.model_answer_comparison = emptyComparisonTable(2);
     }
     onChange({ ...value, ...next });
   }
@@ -417,18 +431,38 @@ export function QuestionEditor({
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">
-              {isShortNote ? 'Model short answer (optional)' : 'Model answer (optional)'}
+              {isDifferences
+                ? 'Model answer — differences table'
+                : isShortNote
+                  ? 'Model short answer (optional)'
+                  : 'Model answer (optional)'}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            <p className="text-xs text-muted">
-              Add one or more titles. Under each title you can add sub-titles with their own details and notes.
-            </p>
-            <ExplanationSectionsEditor
-              sections={value.model_answer_sections}
-              onChange={(model_answer_sections) => patch({ model_answer_sections })}
-              disabled={busy}
-            />
+            {isDifferences ? (
+              <>
+                <p className="text-xs text-muted">
+                  Build a comparison table: Feature column plus columns for each item being compared
+                  (e.g. Data vs Information).
+                </p>
+                <ComparisonTableEditor
+                  value={value.model_answer_comparison}
+                  onChange={(model_answer_comparison) => patch({ model_answer_comparison })}
+                  disabled={busy}
+                />
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-muted">
+                  Add one or more titles. Under each title you can add sub-titles with their own details and notes.
+                </p>
+                <ExplanationSectionsEditor
+                  sections={value.model_answer_sections}
+                  onChange={(model_answer_sections) => patch({ model_answer_sections })}
+                  disabled={busy}
+                />
+              </>
+            )}
           </CardContent>
         </Card>
       )}
@@ -531,6 +565,9 @@ export function questionFormToPayload(
       }));
     payload.correct_option_key = form.correct_option_key;
     payload.explanation_sections = form.explanation_sections;
+  } else if (form.question_type_code === 'DIFFERENCES') {
+    payload.model_answer_comparison = form.model_answer_comparison;
+    payload.model_answer_sections = [];
   } else if (!form.has_options) {
     payload.model_answer_sections = form.model_answer_sections;
   }

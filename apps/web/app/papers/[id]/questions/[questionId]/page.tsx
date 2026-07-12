@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
-import { serializeExplanationSections, type ExplanationSection } from '@ibas/shared-types';
+import { serializeExplanationSections, type ComparisonTable, type ExplanationSection } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,6 +24,7 @@ interface QuestionDetail {
   question_type_name?: string;
   has_options: boolean;
   model_answer_sections?: ExplanationSection[];
+  model_answer_comparison?: ComparisonTable;
   explanation_sections?: ExplanationSection[];
   note?: string;
   options: {
@@ -121,6 +122,7 @@ export default function PaperQuestionAnswerPage() {
             has_options={question.has_options}
             options={question.options}
             model_answer_sections={serializeExplanationSections(question.model_answer_sections)}
+            model_answer_comparison={question.model_answer_comparison}
             explanation_sections={serializeExplanationSections(question.explanation_sections)}
             answer_note={question.note}
             showAnswer

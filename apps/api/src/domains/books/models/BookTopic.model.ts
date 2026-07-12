@@ -7,6 +7,8 @@ export interface IBookTopic extends Document {
   rule_number: string;
   description?: string;
   note?: string;
+  /** Optional in-app or absolute URL to embed (e.g. /static-ref/jsi-2016-p). */
+  content_link?: string;
   effective_date?: Date;
   is_amended: boolean;
   sort_order: number;
@@ -21,6 +23,7 @@ const schema = new Schema<IBookTopic>(
     rule_number: { type: String, required: true },
     description: { type: String },
     note: { type: String },
+    content_link: { type: String },
     effective_date: { type: Date },
     is_amended: { type: Boolean, default: false },
     sort_order: { type: Number, required: true },

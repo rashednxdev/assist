@@ -46,6 +46,12 @@ export interface ExplanationSection {
   }[];
 }
 
+export interface ComparisonTable {
+  feature_header?: string;
+  columns: string[];
+  rows: Array<{ feature: string; values: string[] }>;
+}
+
 export interface QuestionBookLink {
   id?: string;
   link_level: 'chapter' | 'rule' | 'sub_rule';
@@ -75,6 +81,7 @@ export interface QuestionDetail {
   correct_true_false?: 'true' | 'false';
   explanation_sections?: ExplanationSection[];
   model_answer_sections?: ExplanationSection[];
+  model_answer_comparison?: ComparisonTable;
   note?: string;
   book_links?: QuestionBookLink[];
 }

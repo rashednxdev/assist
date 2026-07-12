@@ -1,6 +1,7 @@
-import type { ExplanationSection } from '@ibas/shared-types';
-import { hasExplanationContent } from '@ibas/shared-types';
+import type { ComparisonTable, ExplanationSection } from '@ibas/shared-types';
+import { hasComparisonTableContent, hasExplanationContent } from '@ibas/shared-types';
 import { Badge } from '@/components/ui/badge';
+import { ComparisonTableView } from '@/components/questions/comparison-table-view';
 
 interface QuestionOptionView {
   id?: string;
@@ -16,6 +17,7 @@ interface QuestionAnswerViewProps {
   has_options: boolean;
   options?: QuestionOptionView[];
   model_answer_sections?: ExplanationSection[];
+  model_answer_comparison?: ComparisonTable | null;
   explanation_sections?: ExplanationSection[];
   answer_note?: string;
   showAnswer: boolean;
@@ -102,6 +104,7 @@ export function QuestionAnswerView({
   has_options,
   options = [],
   model_answer_sections,
+  model_answer_comparison,
   explanation_sections,
   answer_note,
   showAnswer,
@@ -109,7 +112,10 @@ export function QuestionAnswerView({
   const explanation = explanation_sections ?? [];
   const modelAnswer = model_answer_sections ?? [];
   const showStructuredExplanation = showAnswer && has_options && hasExplanationContent(explanation);
-  const showStructuredModelAnswer = showAnswer && !has_options && hasExplanationContent(modelAnswer);
+  const showComparisonModel =
+    showAnswer && !has_options && hasComparisonTableContent(model_answer_comparison);
+  const showStructuredModelAnswer =
+    showAnswer && !has_options && !showComparisonModel && hasExplanationContent(modelAnswer);
 
   return (
     <div className="space-y-6">
@@ -146,6 +152,8 @@ export function QuestionAnswerView({
           </div>
         </section>
       )}
+
+      {showComparisonModel && <ComparisonTableView table={model_answer_comparison} />}
 
       {showStructuredModelAnswer && (
         <StructuredSectionsPanel heading="Model answer" sections={modelAnswer} variant="primary" />

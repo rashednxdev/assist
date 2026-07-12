@@ -19,7 +19,7 @@ import { fetchQuestionEvaluationsBatch, type QuestionEvalBrief } from '@/lib/eva
 import { fetchQuestionDetail } from '@/lib/questions-api';
 import { stripHtml } from '@/lib/book-display';
 import type { ChapterQuestionBrief } from '@/types/books';
-import type { ExplanationSection, QuestionDetail } from '@/types/questions';
+import type { ComparisonTable, ExplanationSection, QuestionDetail } from '@/types/questions';
 import { colors, spacing } from '@/theme';
 
 type PanelView = 'list' | 'detail' | 'mcq-exam';
@@ -36,6 +36,36 @@ function renderSection(section: ExplanationSection, index: number) {
       {section.content?.trim() ? <Text style={styles.answerText}>{stripHtml(section.content)}</Text> : null}
       {section.details?.trim() ? <Text style={styles.answerText}>{stripHtml(section.details)}</Text> : null}
       {section.note?.trim() ? <Text style={styles.answerNote}>{stripHtml(section.note)}</Text> : null}
+    </View>
+  );
+}
+
+function renderComparisonTable(table: ComparisonTable) {
+  const columns = table.columns ?? [];
+  const rows = table.rows ?? [];
+  if (columns.length < 2 || rows.length === 0) return null;
+  return (
+    <View style={styles.tableWrap}>
+      <View style={[styles.tableRow, styles.tableHeaderRow]}>
+        <Text style={[styles.tableCell, styles.tableHeaderCell, styles.tableFeatureCell]}>
+          {table.feature_header?.trim() || 'Feature'}
+        </Text>
+        {columns.map((col, i) => (
+          <Text key={`h-${i}`} style={[styles.tableCell, styles.tableHeaderCell]}>
+            {col}
+          </Text>
+        ))}
+      </View>
+      {rows.map((row, ri) => (
+        <View key={`r-${ri}`} style={styles.tableRow}>
+          <Text style={[styles.tableCell, styles.tableFeatureCell]}>{row.feature}</Text>
+          {columns.map((_, ci) => (
+            <Text key={`c-${ri}-${ci}`} style={styles.tableCell}>
+              {row.values?.[ci] ?? ''}
+            </Text>
+          ))}
+        </View>
+      ))}
     </View>
   );
 }
@@ -278,6 +308,9 @@ export function ChapterQuestionsPanel({
 
                   <View style={styles.answerWrap}>
                     <Text style={styles.sectionLabel}>Answer</Text>
+                    {question.model_answer_comparison?.columns?.length
+                      ? renderComparisonTable(question.model_answer_comparison)
+                      : null}
                     {(question.model_answer_sections ?? []).map(renderSection)}
                     {(question.explanation_sections ?? []).map(renderSection)}
                     {question.note?.trim() ? (
@@ -635,6 +668,35 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: colors.textMuted,
     fontStyle: 'italic',
+  },
+  tableWrap: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  tableRow: {
+    flexDirection: 'row',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  tableHeaderRow: {
+    backgroundColor: '#f8fafc',
+  },
+  tableCell: {
+    flex: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.text,
+  },
+  tableHeaderCell: {
+    fontWeight: '700',
+  },
+  tableFeatureCell: {
+    fontWeight: '600',
   },
   navRow: {
     flexDirection: 'row',

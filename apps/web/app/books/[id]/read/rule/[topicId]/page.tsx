@@ -11,6 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { BookReaderGate, useBookReader } from '@/components/books/book-reader-context';
 import { BookDetailsBlock } from '@/components/books/book-details-block';
 import { RichTextView } from '@/components/books/rich-text-view';
+import { RuleContentLinkEmbed } from '@/components/books/rule-content-link-embed';
 import { chapterHeading, ruleHeading, subRuleHeading } from '@/lib/book-display';
 import { bookTheme } from '@/lib/book-theme';
 
@@ -20,6 +21,7 @@ interface TopicDetail {
   rule_number: string;
   description?: string;
   note?: string;
+  content_link?: string;
   is_amended: boolean;
   chapter?: { id: string; name: string; chapter_number?: string } | null;
   details: Array<{ id: string; detail_text: string }>;
@@ -86,6 +88,11 @@ export default function BookRuleReadPage() {
               </p>
             )}
             <BookDetailsBlock html={topic.description} note={topic.note} />
+            <RuleContentLinkEmbed
+              contentLink={topic.content_link}
+              title={ruleHeading(topic)}
+              heightClassName="h-[min(80vh,720px)]"
+            />
             {topic.details.length > 0 && (
               <div className="mt-6 space-y-3">
                 {topic.details.map((d) => (

@@ -1,4 +1,11 @@
-import { serializeExplanationSections, type ExplanationSection, type GeneratedQuestionDraft } from '@ibas/shared-types';
+import {
+  emptyComparisonTable,
+  serializeComparisonTable,
+  serializeExplanationSections,
+  type ComparisonTable,
+  type ExplanationSection,
+  type GeneratedQuestionDraft,
+} from '@ibas/shared-types';
 import {
   emptyQuestionForm,
   type QuestionBookLinkForm,
@@ -18,6 +25,7 @@ export interface QuestionDetailForForm {
   correct_option_key?: string;
   correct_true_false?: 'true' | 'false';
   model_answer_sections?: ExplanationSection[];
+  model_answer_comparison?: ComparisonTable;
   explanation_sections?: ExplanationSection[];
   note?: string;
   book_links?: QuestionBookLinkForm[];
@@ -53,6 +61,8 @@ export function questionDetailToForm(q: QuestionDetailForForm): QuestionFormValu
     correct_option_key: (q.correct_option_key ?? 'a') as QuestionFormValues['correct_option_key'],
     correct_true_false: q.correct_true_false ?? 'true',
     model_answer_sections: serializeExplanationSections(q.model_answer_sections),
+    model_answer_comparison:
+      serializeComparisonTable(q.model_answer_comparison) ?? emptyComparisonTable(2),
     explanation_sections: serializeExplanationSections(q.explanation_sections),
     note: q.note ?? '',
     book_links: (q.book_links ?? []).map((link) => ({

@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert } from '@/components/ui/alert';
-import { serializeExplanationSections, type ExplanationSection } from '@ibas/shared-types';
+import { serializeExplanationSections, type ComparisonTable, type ExplanationSection } from '@ibas/shared-types';
 import {
   QuestionEditor,
   emptyQuestionForm,
@@ -53,6 +53,7 @@ interface QuestionDetail {
   book_links?: QuestionBookLinkForm[];
   explanation_sections?: ExplanationSection[];
   model_answer_sections?: ExplanationSection[];
+  model_answer_comparison?: ComparisonTable;
   note?: string;
   correct_true_false?: 'true' | 'false';
   options: {
@@ -271,6 +272,7 @@ export default function QuestionDetailPage() {
               has_options={question.has_options}
               options={question.options}
               model_answer_sections={question.model_answer_sections}
+              model_answer_comparison={question.model_answer_comparison}
               explanation_sections={question.explanation_sections}
               answer_note={question.note}
               showAnswer={showAnswer}

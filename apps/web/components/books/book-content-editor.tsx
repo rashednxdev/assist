@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { STATIC_REF_PAGE_OPTIONS } from '@/lib/static-ref-pages';
 
 interface BookDetail {
   id: string;
@@ -41,6 +42,7 @@ interface TopicRow {
   rule_number: string;
   description?: string;
   note?: string;
+  content_link?: string;
   sort_order: number;
   is_amended: boolean;
 }
@@ -117,7 +119,14 @@ export function BookContentEditor({
   const [editChapterId, setEditChapterId] = useState<string | null>(null);
   const [editChapterForm, setEditChapterForm] = useState(chapterForm);
 
-  const [topicForm, setTopicForm] = useState({ name: '', rule_number: '', sub_name: '', description: '', note: '' });
+  const [topicForm, setTopicForm] = useState({
+    name: '',
+    rule_number: '',
+    sub_name: '',
+    description: '',
+    note: '',
+    content_link: '',
+  });
   const [editTopicId, setEditTopicId] = useState<string | null>(null);
   const [editTopicForm, setEditTopicForm] = useState(topicForm);
 
@@ -323,6 +332,7 @@ export function BookContentEditor({
           sub_name: topicForm.sub_name.trim() || undefined,
           description: topicForm.description.trim() ? wrapHtml(topicForm.description) : undefined,
           note: topicForm.note.trim() || undefined,
+          content_link: topicForm.content_link.trim() || undefined,
         }),
       });
       const created: TopicRow = {
@@ -332,6 +342,7 @@ export function BookContentEditor({
         sub_name: topicForm.sub_name.trim() || undefined,
         description: topicForm.description.trim() ? wrapHtml(topicForm.description) : undefined,
         note: topicForm.note.trim() || undefined,
+        content_link: topicForm.content_link.trim() || undefined,
         sort_order: res.data.sort_order,
         is_amended: false,
       };
@@ -343,7 +354,7 @@ export function BookContentEditor({
       setChapters((prev) =>
         prev.map((c) => (c.id === selectedChapterId ? { ...c, topic_count: c.topic_count + 1 } : c)),
       );
-      setTopicForm({ name: '', rule_number: '', sub_name: '', description: '', note: '' });
+      setTopicForm({ name: '', rule_number: '', sub_name: '', description: '', note: '', content_link: '' });
       setMessage('Rule / topic added');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add topic');
@@ -367,6 +378,7 @@ export function BookContentEditor({
           sub_name: editTopicForm.sub_name.trim() || undefined,
           description: editTopicForm.description.trim() ? wrapHtml(editTopicForm.description) : undefined,
           note: editTopicForm.note.trim() || undefined,
+          content_link: editTopicForm.content_link.trim(),
         }),
       });
       setTopicsByChapter((prev) => ({
@@ -380,6 +392,7 @@ export function BookContentEditor({
                 sub_name: editTopicForm.sub_name.trim() || undefined,
                 description: editTopicForm.description.trim() ? wrapHtml(editTopicForm.description) : undefined,
                 note: editTopicForm.note.trim() || undefined,
+                content_link: editTopicForm.content_link.trim() || undefined,
                 sort_order: res.data.sort_order,
               }
             : t,
@@ -683,6 +696,7 @@ export function BookContentEditor({
                             sub_name: t.sub_name ?? '',
                             description: t.description?.replace(/<[^>]+>/g, ' ').trim() ?? '',
                             note: t.note ?? '',
+                            content_link: t.content_link ?? '',
                           });
                         }}>Edit</Button>
                         <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive" disabled={busy} onClick={() => removeTopic(t.id)}>Remove</Button>
@@ -697,6 +711,34 @@ export function BookContentEditor({
                     <Input disabled={busy} value={editTopicForm.name} placeholder="Title (optional)" onChange={(e) => setEditTopicForm({ ...editTopicForm, name: e.target.value })} />
                     <textarea className="ibas-textarea text-sm" disabled={busy} value={editTopicForm.description} placeholder="Details (optional)" onChange={(e) => setEditTopicForm({ ...editTopicForm, description: e.target.value })} />
                     <Input disabled={busy} value={editTopicForm.note} placeholder="Note / cross-ref" onChange={(e) => setEditTopicForm({ ...editTopicForm, note: e.target.value })} />
+                    <select
+                      className="ibas-select text-sm"
+                      disabled={busy}
+                      value={
+                        STATIC_REF_PAGE_OPTIONS.some((o) => o.href === editTopicForm.content_link)
+                          ? editTopicForm.content_link
+                          : ''
+                      }
+                      onChange={(e) =>
+                        setEditTopicForm({
+                          ...editTopicForm,
+                          content_link: e.target.value || editTopicForm.content_link,
+                        })
+                      }
+                    >
+                      <option value="">Page link preset…</option>
+                      {STATIC_REF_PAGE_OPTIONS.map((o) => (
+                        <option key={o.href} value={o.href}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                    <Input
+                      disabled={busy}
+                      value={editTopicForm.content_link}
+                      placeholder="Page link e.g. /static-ref/jsi-2016-p"
+                      onChange={(e) => setEditTopicForm({ ...editTopicForm, content_link: e.target.value })}
+                    />
                     <div className="flex gap-2">
                       <Button size="sm" disabled={busy} onClick={saveTopicEdit}>Save</Button>
                       <Button size="sm" variant="ghost" onClick={() => setEditTopicId(null)}>Cancel</Button>
@@ -708,6 +750,29 @@ export function BookContentEditor({
                   <Input disabled={busy} value={topicForm.rule_number} placeholder="Rule no. e.g. 45" onChange={(e) => setTopicForm({ ...topicForm, rule_number: e.target.value })} />
                   <Input disabled={busy} value={topicForm.name} placeholder="Title (optional)" onChange={(e) => setTopicForm({ ...topicForm, name: e.target.value })} />
                   <textarea className="ibas-textarea text-sm" disabled={busy} value={topicForm.description} placeholder="Details (optional)" onChange={(e) => setTopicForm({ ...topicForm, description: e.target.value })} />
+                  <select
+                    className="ibas-select text-sm"
+                    disabled={busy}
+                    value={
+                      STATIC_REF_PAGE_OPTIONS.some((o) => o.href === topicForm.content_link)
+                        ? topicForm.content_link
+                        : ''
+                    }
+                    onChange={(e) => setTopicForm({ ...topicForm, content_link: e.target.value })}
+                  >
+                    <option value="">Page link (optional)…</option>
+                    {STATIC_REF_PAGE_OPTIONS.map((o) => (
+                      <option key={o.href} value={o.href}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                  <Input
+                    disabled={busy}
+                    value={topicForm.content_link}
+                    placeholder="Or custom path /static-ref/…"
+                    onChange={(e) => setTopicForm({ ...topicForm, content_link: e.target.value })}
+                  />
                   <Button size="sm" disabled={busy || !topicForm.rule_number.trim()} onClick={addTopic}>Add rule</Button>
                 </div>
               </>

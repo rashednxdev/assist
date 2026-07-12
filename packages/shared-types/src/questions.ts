@@ -6,6 +6,7 @@ import {
   QUESTION_LINK_LEVELS,
 } from '@ibas/shared-constants';
 import { explanationSectionSchema, type ExplanationSection } from './explanation.js';
+import { comparisonTableSchema, type ComparisonTable } from './comparison-table.js';
 
 const mongoId = z.string().regex(/^[a-f\d]{24}$/i);
 
@@ -40,6 +41,8 @@ const questionFieldsSchema = z.object({
   language: z.enum(BOOK_LANGUAGES).default('both'),
   explanation_sections: z.array(explanationSectionSchema).optional(),
   model_answer_sections: z.array(explanationSectionSchema).optional(),
+  /** Comparison table model answer for DIFFERENCES question type. */
+  model_answer_comparison: comparisonTableSchema.optional(),
   model_answer: z.string().optional(),
   note: z.string().optional(),
   reference_regulation_id: mongoId.optional(),

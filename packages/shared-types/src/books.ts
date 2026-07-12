@@ -61,6 +61,19 @@ export const createBookTopicSchema = z.object({
   rule_number: z.string().min(1),
   description: z.string().optional(),
   note: z.string().optional(),
+  /** Site path (/static-ref/...) or http(s) URL to show like full-book embedded page. Empty clears. */
+  content_link: z
+    .string()
+    .max(500)
+    .optional()
+    .refine(
+      (v) =>
+        v === undefined ||
+        v.trim() === '' ||
+        v.trim().startsWith('/') ||
+        /^https?:\/\//i.test(v.trim()),
+      { message: 'Content link must be a site path starting with / or an http(s) URL' },
+    ),
   effective_date: z.coerce.date().optional(),
   sort_order: z.number().int().positive().optional(),
 });

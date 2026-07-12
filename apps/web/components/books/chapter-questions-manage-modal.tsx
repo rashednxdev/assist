@@ -1,12 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ExternalLink, Plus, Search, Upload, X } from 'lucide-react';
+import { ExternalLink, FileUp, Plus, Search, Upload, X } from 'lucide-react';
 import { QUESTION_LINK_LEVELS, type QuestionLinkLevel } from '@ibas/shared-constants';
 import { apiFetch } from '@/lib/api-client';
 import { chapterHeading } from '@/lib/book-display';
 import { buildNewQuestionHref } from '@/lib/question-book-context';
+import { parseMcqCsv, type ParsedMcqCsvRow } from '@/lib/mcq-csv';
 import type { ReaderChapter } from '@/components/books/book-reader-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -94,6 +95,13 @@ export function ChapterQuestionsManageModal({
   const [regulations, setRegulations] = useState<RegulationItem[]>([]);
   const [linkBusy, setLinkBusy] = useState(false);
 
+  const [csvRows, setCsvRows] = useState<ParsedMcqCsvRow[]>([]);
+  const [csvParseNotes, setCsvParseNotes] = useState<string[]>([]);
+  const [csvFileName, setCsvFileName] = useState('');
+  const [csvPublish, setCsvPublish] = useState(false);
+  const [csvImporting, setCsvImporting] = useState(false);
+  const csvInputRef = useRef<HTMLInputElement>(null);
+
   const loadRows = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -123,6 +131,11 @@ export function ChapterQuestionsManageModal({
     setFilter('all');
     setMessage('');
     setError('');
+    setCsvRows([]);
+    setCsvParseNotes([]);
+    setCsvFileName('');
+    setCsvPublish(false);
+    setCsvImporting(false);
   }, [open, loadRows]);
 
   useEffect(() => {
@@ -273,6 +286,81 @@ export function ChapterQuestionsManageModal({
     }
   }
 
+  function clearCsvPreview() {
+    setCsvRows([]);
+    setCsvParseNotes([]);
+    setCsvFileName('');
+    if (csvInputRef.current) csvInputRef.current.value = '';
+  }
+
+  async function onCsvFileSelected(file: File | null) {
+    setError('');
+    setMessage('');
+    if (!file) {
+      clearCsvPreview();
+      return;
+    }
+    try {
+      const text = await file.text();
+      const parsed = parseMcqCsv(text);
+      setCsvFileName(file.name);
+      setCsvParseNotes(parsed.errors);
+      setCsvRows(parsed.rows);
+      if (parsed.rows.length === 0 && parsed.errors.length) {
+        setError(parsed.errors[0]!);
+      }
+    } catch (err) {
+      clearCsvPreview();
+      setError(err instanceof Error ? err.message : 'Failed to read CSV file');
+    }
+  }
+
+  async function importCsvRows() {
+    if (csvRows.length === 0) return;
+    setCsvImporting(true);
+    setError('');
+    setMessage('');
+    try {
+      const res = await apiFetch<{
+        data: {
+          created_count: number;
+          failed_count: number;
+          failed: Array<{ row: number; error: string }>;
+        };
+      }>('/questions/batch-import', {
+        method: 'POST',
+        body: JSON.stringify({
+          book_chapter_id: chapter.id,
+          publish: csvPublish,
+          rows: csvRows,
+        }),
+      });
+      const { created_count, failed_count, failed } = res.data;
+      const parts = [
+        `Imported ${created_count} MCQ${created_count !== 1 ? 's' : ''} for this chapter`,
+      ];
+      if (csvPublish) parts.push('(published)');
+      if (failed_count > 0) {
+        parts.push(`${failed_count} failed`);
+        setError(
+          failed
+            .slice(0, 5)
+            .map((f) => `Row ${f.row}: ${f.error}`)
+            .join(' · ') + (failed.length > 5 ? '…' : ''),
+        );
+      }
+      setMessage(parts.join(' — '));
+      if (created_count > 0) {
+        clearCsvPreview();
+        await loadRows();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'CSV import failed');
+    } finally {
+      setCsvImporting(false);
+    }
+  }
+
   const newQuestionHref = buildNewQuestionHref({
     bookId,
     chapterId: chapter.id,
@@ -314,6 +402,110 @@ export function ChapterQuestionsManageModal({
         <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
           {message && <Alert variant="success">{message}</Alert>}
           {error && <Alert variant="error">{error}</Alert>}
+
+          <section className="space-y-3 rounded-lg border border-dashed border-border p-4">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold">Batch MCQ import (CSV)</h3>
+                <p className="mt-0.5 text-xs text-muted">
+                  Columns: question, option_a, option_b, option_c, option_d, correct_option,
+                  explanation. Extra columns (e.g. topic) are ignored. Linked to this chapter.
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={csvImporting}
+                onClick={() => csvInputRef.current?.click()}
+              >
+                <FileUp className="h-4 w-4" />
+                Choose CSV
+              </Button>
+              <input
+                ref={csvInputRef}
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={(e) => void onCsvFileSelected(e.target.files?.[0] ?? null)}
+              />
+            </div>
+
+            {csvFileName && (
+              <p className="text-xs text-muted">
+                File: <span className="font-medium text-foreground">{csvFileName}</span>
+                {csvRows.length > 0 ? ` · ${csvRows.length} question(s) ready` : ''}
+              </p>
+            )}
+
+            {csvParseNotes.length > 0 && (
+              <ul className="list-inside list-disc text-xs text-muted">
+                {csvParseNotes.slice(0, 8).map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            )}
+
+            {csvRows.length > 0 && (
+              <>
+                <div className="max-h-40 overflow-auto rounded-md border border-border">
+                  <table className="w-full text-left text-xs">
+                    <thead className="sticky top-0 bg-muted/60">
+                      <tr>
+                        <th className="px-2 py-1.5 font-medium">#</th>
+                        <th className="px-2 py-1.5 font-medium">Question</th>
+                        <th className="px-2 py-1.5 font-medium">Ans</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {csvRows.slice(0, 20).map((r, i) => (
+                        <tr key={`${i}-${r.question.slice(0, 24)}`} className="border-t border-border">
+                          <td className="px-2 py-1 align-top text-muted">{i + 1}</td>
+                          <td className="px-2 py-1 align-top">{truncate(r.question, 70)}</td>
+                          <td className="px-2 py-1 align-top uppercase">{r.correct_option}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {csvRows.length > 20 && (
+                    <p className="border-t border-border px-2 py-1 text-xs text-muted">
+                      …and {csvRows.length - 20} more
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-border"
+                      checked={csvPublish}
+                      disabled={csvImporting}
+                      onChange={(e) => setCsvPublish(e.target.checked)}
+                    />
+                    Publish after import
+                  </label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={csvImporting || linkBusy}
+                    onClick={() => void importCsvRows()}
+                  >
+                    {csvImporting ? 'Importing…' : `Import ${csvRows.length} MCQs`}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={csvImporting}
+                    onClick={clearCsvPreview}
+                  >
+                    Clear
+                  </Button>
+                </div>
+              </>
+            )}
+          </section>
 
           <section className="space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">

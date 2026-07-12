@@ -183,6 +183,35 @@ export interface GeneratedQuestionDraft {
   model_answer_sections: ExplanationSection[];
 }
 
+/** One MCQ row from CSV (first 7 columns). Extra columns like topic are ignored. */
+export const batchMcqImportRowSchema = z.object({
+  question: z.string().min(1, 'Question text is required'),
+  option_a: z.string().min(1, 'Option A is required'),
+  option_b: z.string().min(1, 'Option B is required'),
+  option_c: z.string().min(1, 'Option C is required'),
+  option_d: z.string().min(1, 'Option D is required'),
+  correct_option: z
+    .string()
+    .min(1)
+    .transform((v) => v.trim().toLowerCase())
+    .pipe(z.enum(['a', 'b', 'c', 'd'], { errorMap: () => ({ message: 'Correct option must be A, B, C, or D' }) })),
+  explanation: z.string().optional().default(''),
+});
+
+export const batchMcqImportSchema = z.object({
+  book_chapter_id: mongoId,
+  publish: z.boolean().optional().default(false),
+  difficulty: z.enum(QUESTION_DIFFICULTIES).optional().default('medium'),
+  marks: z.number().positive().optional().default(1),
+  negative_marks: z.number().min(0).optional().default(0),
+  time_seconds: z.number().int().positive().optional().default(60),
+  language: z.enum(BOOK_LANGUAGES).optional().default('bn'),
+  rows: z.array(batchMcqImportRowSchema).min(1).max(500),
+});
+
+export type BatchMcqImportRow = z.infer<typeof batchMcqImportRowSchema>;
+export type BatchMcqImportDto = z.infer<typeof batchMcqImportSchema>;
+
 export type CreateQuestionDto = z.infer<typeof createQuestionSchema>;
 export type UpdateQuestionDto = z.infer<typeof updateQuestionSchema>;
 export type QuestionBookLinkInput = z.infer<typeof questionBookLinkInputSchema>;

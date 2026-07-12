@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import type {
+  BatchMcqImportDto,
   CreateQuestionDto,
   CreateQuestionTypeDto,
   QuestionBookLinkInput,
@@ -946,4 +947,70 @@ export async function unpublishQuestion(id: string) {
   question.is_published = false;
   await question.save();
   return loadQuestionDetail(id);
+}
+
+export async function batchImportMcqQuestions(dto: BatchMcqImportDto, createdBy: string) {
+  const chapter = await BookChapter.findById(dto.book_chapter_id);
+  if (!chapter || !chapter.is_active) throw notFound('Chapter not found');
+
+  const qType = await QuestionType.findOne({ code: 'MCQ', is_active: true });
+  if (!qType) throw badRequest('MCQ question type is not configured. Create an MCQ type first.');
+
+  const created: Array<{ row: number; id: string }> = [];
+  const failed: Array<{ row: number; error: string }> = [];
+
+  for (let i = 0; i < dto.rows.length; i++) {
+    const row = dto.rows[i]!;
+    const rowNumber = i + 1;
+    try {
+      const explanation = row.explanation?.trim();
+      const createDto: CreateQuestionDto = {
+        question_type_id: String(qType._id),
+        body_en: row.question.trim(),
+        body_bn: row.question.trim(),
+        difficulty: dto.difficulty,
+        marks: dto.marks,
+        negative_marks: dto.negative_marks,
+        time_seconds: dto.time_seconds,
+        language: dto.language,
+        options: [
+          { option_key: 'a', option_text_en: row.option_a.trim(), option_text_bn: row.option_a.trim() },
+          { option_key: 'b', option_text_en: row.option_b.trim(), option_text_bn: row.option_b.trim() },
+          { option_key: 'c', option_text_en: row.option_c.trim(), option_text_bn: row.option_c.trim() },
+          { option_key: 'd', option_text_en: row.option_d.trim(), option_text_bn: row.option_d.trim() },
+        ],
+        correct_option_key: row.correct_option,
+        explanation_sections: explanation
+          ? [{ title: 'Explanation', details: explanation, subsections: [] }]
+          : [],
+        book_links: [
+          {
+            link_level: 'chapter',
+            book_chapter_id: String(chapter._id),
+          },
+        ],
+      };
+
+      const detail = await createQuestion(createDto, createdBy);
+      if (dto.publish) {
+        await publishQuestion(detail.id, createdBy);
+      }
+      created.push({ row: rowNumber, id: detail.id });
+    } catch (err) {
+      failed.push({
+        row: rowNumber,
+        error: err instanceof Error ? err.message : 'Failed to create question',
+      });
+    }
+  }
+
+  return {
+    book_chapter_id: String(chapter._id),
+    total: dto.rows.length,
+    created_count: created.length,
+    failed_count: failed.length,
+    published: dto.publish,
+    created,
+    failed,
+  };
 }

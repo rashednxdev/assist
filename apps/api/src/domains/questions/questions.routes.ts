@@ -12,6 +12,7 @@ import {
   getQuestionHandler,
   generateQuestionDraftHandler,
   createQuestionHandler,
+  batchImportMcqHandler,
   updateQuestionHandler,
   deleteQuestionHandler,
   publishQuestionHandler,
@@ -33,6 +34,7 @@ questionsRouter.get('/similar', asyncHandler(similarQuestionsHandler));
 questionsRouter.get('/:id', asyncHandler(getQuestionHandler));
 
 questionsRouter.post('/ai-generate', requireAdmin, asyncHandler(generateQuestionDraftHandler));
+questionsRouter.post('/batch-import', requireAdmin, asyncHandler(batchImportMcqHandler));
 questionsRouter.post('/', requireAdmin, asyncHandler(createQuestionHandler));
 questionsRouter.patch('/:id', requireAdmin, asyncHandler(updateQuestionHandler));
 questionsRouter.delete('/:id', requireAdmin, asyncHandler(deleteQuestionHandler));

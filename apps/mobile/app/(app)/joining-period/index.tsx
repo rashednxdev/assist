@@ -23,9 +23,11 @@ import { SectionCard } from '@/components/calc/SectionCard';
 import { ChipGroup } from '@/components/calc/ChipGroup';
 import { LocaleToggle } from '@/components/calc/LocaleToggle';
 import { Button } from '@/components/ui/Button';
+import { DateField } from '@/components/ui/DateField';
 import { TextField } from '@/components/ui/TextField';
 import { type CalcLocale, joiningCopy } from '@/lib/calc-i18n';
 import { toBanglaDigits } from '@/lib/bangla-format';
+import { formatDdMmYyyy } from '@/lib/date-format';
 import { calculateJoiningPeriodApi } from '@/lib/joining-api';
 import { colors, spacing } from '@/theme';
 
@@ -55,6 +57,11 @@ const MODES: JoiningTravelMode[] = ['rail', 'sea', 'river', 'bus', 'road', 'air'
 
 function d(locale: CalcLocale, n: number | string) {
   return locale === 'bn' ? toBanglaDigits(n) : String(n);
+}
+
+function displayDate(locale: CalcLocale, iso: string) {
+  const formatted = formatDdMmYyyy(iso);
+  return locale === 'bn' ? toBanglaDigits(formatted) : formatted;
 }
 
 export default function JoiningPeriodMobileScreen() {
@@ -140,11 +147,10 @@ export default function JoiningPeriodMobileScreen() {
 
         {residenceChange ? (
           <>
-            <TextField
+            <DateField
               label={t.handoverDate}
               value={handoverDate}
-              onChangeText={setHandoverDate}
-              placeholder="2026-07-01"
+              onChange={setHandoverDate}
             />
 
             <Text style={styles.fieldLabel}>{t.handoverTime}</Text>
@@ -296,7 +302,7 @@ export default function JoiningPeriodMobileScreen() {
             {result.start_date && result.end_date ? (
               <PeriodCard
                 title={t.period}
-                value={`${d(locale, result.start_date)} → ${d(locale, result.end_date)}`}
+                value={`${displayDate(locale, result.start_date)} → ${displayDate(locale, result.end_date)}`}
               />
             ) : null}
           </View>

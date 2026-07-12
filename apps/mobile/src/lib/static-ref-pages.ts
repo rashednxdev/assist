@@ -51,10 +51,8 @@ export function resolveContentAbsoluteUrl(link: string): string {
   if (!embed) return '';
   if (/^https?:\/\//i.test(embed)) return embed;
 
-  const webBase = (process.env.EXPO_PUBLIC_WEB_URL ?? '').trim().replace(/\/+$/, '');
-  if (!webBase) {
-    // Fallback: same host style as local Next.js during LAN development
-    return `http://192.168.137.90:3000${embed.startsWith('/') ? embed : `/${embed}`}`;
-  }
+  const webBase = (process.env.EXPO_PUBLIC_WEB_URL ?? 'https://ibas-web.onrender.com')
+    .trim()
+    .replace(/\/+$/, '');
   return `${webBase}${embed.startsWith('/') ? embed : `/${embed}`}`;
 }

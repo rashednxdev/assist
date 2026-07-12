@@ -23,6 +23,7 @@ import { SectionCard } from '@/components/calc/SectionCard';
 import { ChipGroup } from '@/components/calc/ChipGroup';
 import { LocaleToggle } from '@/components/calc/LocaleToggle';
 import { Button } from '@/components/ui/Button';
+import { DateField } from '@/components/ui/DateField';
 import { TextField } from '@/components/ui/TextField';
 import { type CalcLocale, pensionCopy } from '@/lib/calc-i18n';
 import { toBanglaDigits } from '@/lib/bangla-format';
@@ -160,8 +161,8 @@ export default function PensionMobileScreen() {
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <SectionCard title={t.service}>
-        <TextField label={t.joinDate} value={joinDate} onChangeText={setJoinDate} placeholder="2010-01-15" />
-        <TextField label={t.endDate} value={endDate} onChangeText={setEndDate} placeholder="2026-06-30" />
+        <DateField label={t.joinDate} value={joinDate} onChange={setJoinDate} />
+        <DateField label={t.endDate} value={endDate} onChange={setEndDate} />
         <TextField
           label={t.lastBasic}
           value={lastBasic}
@@ -239,24 +240,18 @@ export default function PensionMobileScreen() {
               {maternity || row.input_mode === 'dates' ? (
                 <View style={styles.dateRow}>
                   <View style={styles.dateField}>
-                    <Text style={styles.fieldLabel}>{maternity ? t.from : t.from}</Text>
-                    <TextInput
-                      style={styles.input}
+                    <DateField
+                      label={t.from}
                       value={row.from_date}
-                      onChangeText={(v) => updateRow(row.key, { from_date: v })}
-                      placeholder="YYYY-MM-DD"
-                      placeholderTextColor={colors.textMuted}
+                      onChange={(v) => updateRow(row.key, { from_date: v })}
                     />
                   </View>
                   {!maternity ? (
                     <View style={styles.dateField}>
-                      <Text style={styles.fieldLabel}>{t.to}</Text>
-                      <TextInput
-                        style={styles.input}
+                      <DateField
+                        label={t.to}
                         value={row.to_date}
-                        onChangeText={(v) => updateRow(row.key, { to_date: v })}
-                        placeholder="YYYY-MM-DD"
-                        placeholderTextColor={colors.textMuted}
+                        onChange={(v) => updateRow(row.key, { to_date: v })}
                       />
                     </View>
                   ) : null}

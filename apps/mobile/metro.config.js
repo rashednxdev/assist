@@ -33,6 +33,10 @@ config.server.enhanceMiddleware = (middleware) => {
 config.resolver.blockList = [
   ...(Array.isArray(config.resolver.blockList) ? config.resolver.blockList : []),
   /\.expo-test-bundle\/.*/,
+  /[/\\]android[/\\]app[/\\]build[/\\].*/,
+  /[/\\]android[/\\]build[/\\].*/,
+  /[/\\]android[/\\]\.cxx[/\\].*/,
+  /[/\\]\.cxx[/\\].*/,
 ];
 
 module.exports = config;

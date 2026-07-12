@@ -37,6 +37,7 @@ config.resolver.blockList = [
   /[/\\]android[/\\]build[/\\].*/,
   /[/\\]android[/\\]\.cxx[/\\].*/,
   /[/\\]\.cxx[/\\].*/,
+  /datetimepicker_tmp[^/\\]*[/\\].*/,
 ];
 
 module.exports = config;

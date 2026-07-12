@@ -15,7 +15,10 @@ import {
   type QuestionEvaluationRecord,
   type SelfRatingLevel,
 } from '@/lib/evaluation-api';
-import type { ComparisonTable, ExplanationSection, QuestionDetail, QuestionOption } from '@/types/questions';
+import type { ExplanationSection, QuestionDetail, QuestionOption } from '@/types/questions';
+import { ComparisonTableAnswer } from '@/components/questions/ComparisonTableAnswer';
+import { useDifferencesLandscape } from '@/hooks/useDifferencesLandscape';
+import { bilingualQuestionText } from '@/lib/question-display';
 import { colors, spacing } from '@/theme';
 
 function renderOptionText(option: QuestionOption) {
@@ -63,6 +66,17 @@ export default function QuestionDetailScreen() {
     () => normalizeSections(item?.explanation_sections),
     [item?.explanation_sections],
   );
+
+  const isDifferences =
+    item?.question_type_code === 'DIFFERENCES' ||
+    Boolean(item?.model_answer_comparison?.columns?.length);
+  const comparisonTable = item?.model_answer_comparison;
+  const hasComparison =
+    Boolean(comparisonTable?.columns && comparisonTable.columns.length >= 2) &&
+    Boolean(comparisonTable?.rows && comparisonTable.rows.length > 0);
+  const showDifferencesAnswer = Boolean(showAnswer && isDifferences && hasComparison);
+
+  useDifferencesLandscape(showDifferencesAnswer);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -129,13 +143,15 @@ export default function QuestionDetailScreen() {
   if (error) return <BookError message={error} />;
   if (!item) return <BookEmpty title="Question not found" />;
 
+  const stem = bilingualQuestionText(item.body_en, item.body_bn);
+
   return (
     <>
       <ScrollView style={styles.root} contentContainerStyle={styles.content}>
       <View style={styles.panel}>
         <Text style={styles.questionType}>{item.question_type_name ?? item.question_type_code}</Text>
-        <Text style={styles.questionText}>{item.body_en}</Text>
-        {item.body_bn?.trim() ? <Text style={styles.questionBn}>{item.body_bn}</Text> : null}
+        <Text style={styles.questionText}>{stem.primary}</Text>
+        {stem.secondary ? <Text style={styles.questionBn}>{stem.secondary}</Text> : null}
       </View>
 
       {item.options.length > 0 ? (
@@ -155,14 +171,21 @@ export default function QuestionDetailScreen() {
         </View>
       ) : null}
 
-      {showAnswer && item.model_answer_comparison?.columns?.length ? (
-        <View style={styles.panel}>
-          <Text style={styles.sectionTitle}>Model answer</Text>
-          {renderComparisonTable(item.model_answer_comparison)}
+      {showAnswer && hasComparison ? (
+        <View style={[styles.panel, styles.differencesPanel]}>
+          <ComparisonTableAnswer table={comparisonTable} />
         </View>
       ) : null}
 
-      {showAnswer && modelSections.length ? (
+      {showAnswer && isDifferences && !hasComparison ? (
+        <View style={styles.panel}>
+          <Text style={styles.sectionText}>
+            No comparison table is available for this question yet.
+          </Text>
+        </View>
+      ) : null}
+
+      {showAnswer && !hasComparison && modelSections.length ? (
         <View style={styles.panel}>
           {modelSections.map((sec, idx) => renderSection(sec, idx, 'model'))}
         </View>
@@ -183,7 +206,7 @@ export default function QuestionDetailScreen() {
       ) : null}
 
       <View style={styles.panel}>
-        <Text style={styles.sectionTitle}>Self evaluation</Text>
+        <Text style={[styles.sectionTitle, styles.selfEvalTitle]}>Self evaluation</Text>
         {evalError ? <Text style={styles.errorText}>{evalError}</Text> : null}
         {evalMessage ? <Text style={styles.successText}>{evalMessage}</Text> : null}
 
@@ -225,7 +248,7 @@ export default function QuestionDetailScreen() {
           </View>
         ) : (
           <View style={styles.evalWrap}>
-            <Text style={styles.evalHint}>Review the model answer, then submit your self-rating.</Text>
+            <Text style={styles.evalHint}>Your study position on the question and answer</Text>
             <View style={styles.ratingWrap}>
               {(
                 Object.keys(SELF_RATING_PROGRESS) as Array<
@@ -275,36 +298,6 @@ function normalizeSections(sections?: ExplanationSection[]) {
     (sec) =>
       Boolean(sec.title?.trim() || sec.content?.trim() || sec.details?.trim() || sec.note?.trim()) ||
       (sec.subsections?.length ?? 0) > 0,
-  );
-}
-
-function renderComparisonTable(table: ComparisonTable) {
-  const columns = table.columns ?? [];
-  const rows = table.rows ?? [];
-  if (columns.length < 2 || rows.length === 0) return null;
-  return (
-    <View style={styles.tableWrap}>
-      <View style={[styles.tableRow, styles.tableHeaderRow]}>
-        <Text style={[styles.tableCell, styles.tableHeaderCell, styles.tableFeatureCell]}>
-          {table.feature_header?.trim() || 'Feature'}
-        </Text>
-        {columns.map((col, i) => (
-          <Text key={`h-${i}`} style={[styles.tableCell, styles.tableHeaderCell]}>
-            {col}
-          </Text>
-        ))}
-      </View>
-      {rows.map((row, ri) => (
-        <View key={`r-${ri}`} style={styles.tableRow}>
-          <Text style={[styles.tableCell, styles.tableFeatureCell]}>{row.feature}</Text>
-          {columns.map((_, ci) => (
-            <Text key={`c-${ri}-${ci}`} style={styles.tableCell}>
-              {row.values?.[ci] ?? ''}
-            </Text>
-          ))}
-        </View>
-      ))}
-    </View>
   );
 }
 
@@ -373,6 +366,9 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.sm,
   },
+  differencesPanel: {
+    paddingVertical: spacing.md,
+  },
   questionType: {
     fontSize: 13,
     fontWeight: '700',
@@ -397,6 +393,9 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
+  },
+  selfEvalTitle: {
+    color: colors.gold,
   },
   optionRow: {
     flexDirection: 'row',
@@ -458,34 +457,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: colors.text,
-  },
-  tableWrap: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
-  tableRow: {
-    flexDirection: 'row',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  tableHeaderRow: {
-    backgroundColor: '#f8fafc',
-  },
-  tableCell: {
-    flex: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    fontSize: 12,
-    lineHeight: 17,
-    color: colors.text,
-  },
-  tableHeaderCell: {
-    fontWeight: '700',
-  },
-  tableFeatureCell: {
-    fontWeight: '600',
   },
   evalWrap: {
     gap: spacing.sm,

@@ -22,6 +22,7 @@ import {
 import { colors, spacing } from '@/theme';
 
 const MODULES: Array<{
+  id: string;
   code: 'BOOKS' | 'QUESTIONS' | 'EXAM' | 'PAPER' | 'PENSION';
   title: string;
   subtitle: string;
@@ -30,6 +31,7 @@ const MODULES: Array<{
   href: Href;
 }> = [
   {
+    id: 'books',
     code: 'BOOKS' as const,
     title: 'Books and Tools',
     subtitle: 'Books & regulatory tools',
@@ -38,6 +40,7 @@ const MODULES: Array<{
     href: '/(app)/books',
   },
   {
+    id: 'questions',
     code: 'QUESTIONS' as const,
     title: 'Question Bank',
     subtitle: 'Browse & practice questions',
@@ -46,6 +49,7 @@ const MODULES: Array<{
     href: '/(app)/questions',
   },
   {
+    id: 'exam',
     code: 'EXAM' as const,
     title: 'Exam Programs',
     subtitle: 'SAS, SRAS & exam structure',
@@ -54,6 +58,7 @@ const MODULES: Array<{
     href: '/(app)/exams',
   },
   {
+    id: 'paper',
     code: 'PAPER' as const,
     title: 'Practice Papers',
     subtitle: 'Session-wise model papers',
@@ -62,6 +67,7 @@ const MODULES: Array<{
     href: '/(app)/papers',
   },
   {
+    id: 'pension',
     code: 'PENSION' as const,
     title: 'Pension Calculator',
     subtitle: 'Leave math & lamp grant',
@@ -70,6 +76,7 @@ const MODULES: Array<{
     href: '/(app)/pension' as Href,
   },
   {
+    id: 'joining-period',
     code: 'PENSION' as const,
     title: 'Joining Period',
     subtitle: 'Prep + travel math',
@@ -147,7 +154,7 @@ export default function HomeScreen() {
         <View style={styles.grid}>
           {MODULES.map((m) => (
             <ModuleTile
-              key={m.code}
+              key={m.id}
               title={m.title}
               subtitle={m.subtitle}
               icon={m.icon}

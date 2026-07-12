@@ -79,7 +79,8 @@ const schema = new Schema<IQuestionAnswerDetail>(
     question_id: { type: Schema.Types.ObjectId, required: true, ref: 'Question', unique: true },
     model_answer: { type: String },
     model_answer_sections: { type: [sectionSchema], default: undefined },
-    model_answer_comparison: { type: comparisonTableMongooseSchema, default: undefined },
+    // Nested schema path (not `{ type: schema }`) so $set/$get round-trip reliably.
+    model_answer_comparison: comparisonTableMongooseSchema,
     explanation: { type: String },
     explanation_sections: { type: [sectionSchema], default: undefined },
     note: { type: String },

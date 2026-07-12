@@ -18,8 +18,11 @@ import { fetchChapterQuestions } from '@/lib/books-api';
 import { fetchQuestionEvaluationsBatch, type QuestionEvalBrief } from '@/lib/evaluation-api';
 import { fetchQuestionDetail } from '@/lib/questions-api';
 import { stripHtml } from '@/lib/book-display';
+import { bilingualQuestionText } from '@/lib/question-display';
 import type { ChapterQuestionBrief } from '@/types/books';
-import type { ComparisonTable, ExplanationSection, QuestionDetail } from '@/types/questions';
+import { ComparisonTableAnswer } from '@/components/questions/ComparisonTableAnswer';
+import { useDifferencesLandscape } from '@/hooks/useDifferencesLandscape';
+import type { ExplanationSection, QuestionDetail } from '@/types/questions';
 import { colors, spacing } from '@/theme';
 
 type PanelView = 'list' | 'detail' | 'mcq-exam';
@@ -36,36 +39,6 @@ function renderSection(section: ExplanationSection, index: number) {
       {section.content?.trim() ? <Text style={styles.answerText}>{stripHtml(section.content)}</Text> : null}
       {section.details?.trim() ? <Text style={styles.answerText}>{stripHtml(section.details)}</Text> : null}
       {section.note?.trim() ? <Text style={styles.answerNote}>{stripHtml(section.note)}</Text> : null}
-    </View>
-  );
-}
-
-function renderComparisonTable(table: ComparisonTable) {
-  const columns = table.columns ?? [];
-  const rows = table.rows ?? [];
-  if (columns.length < 2 || rows.length === 0) return null;
-  return (
-    <View style={styles.tableWrap}>
-      <View style={[styles.tableRow, styles.tableHeaderRow]}>
-        <Text style={[styles.tableCell, styles.tableHeaderCell, styles.tableFeatureCell]}>
-          {table.feature_header?.trim() || 'Feature'}
-        </Text>
-        {columns.map((col, i) => (
-          <Text key={`h-${i}`} style={[styles.tableCell, styles.tableHeaderCell]}>
-            {col}
-          </Text>
-        ))}
-      </View>
-      {rows.map((row, ri) => (
-        <View key={`r-${ri}`} style={styles.tableRow}>
-          <Text style={[styles.tableCell, styles.tableFeatureCell]}>{row.feature}</Text>
-          {columns.map((_, ci) => (
-            <Text key={`c-${ri}-${ci}`} style={styles.tableCell}>
-              {row.values?.[ci] ?? ''}
-            </Text>
-          ))}
-        </View>
-      ))}
     </View>
   );
 }
@@ -141,6 +114,24 @@ export function ChapterQuestionsPanel({
     () => (selectedId ? displayedQuestions.findIndex((q) => q.id === selectedId) : -1),
     [displayedQuestions, selectedId],
   );
+
+  const hasComparison =
+    Boolean(question?.model_answer_comparison?.columns && question.model_answer_comparison.columns.length >= 2) &&
+    Boolean(question?.model_answer_comparison?.rows && question.model_answer_comparison.rows.length > 0);
+
+  const questionStem = question
+    ? bilingualQuestionText(question.body_en, question.body_bn)
+    : null;
+
+  const showDifferencesAnswer = Boolean(
+    open &&
+      panelView === 'detail' &&
+      question &&
+      (question.question_type_code === 'DIFFERENCES' || hasComparison) &&
+      hasComparison,
+  );
+
+  useDifferencesLandscape(showDifferencesAnswer);
 
   useEffect(() => {
     if (!open) {
@@ -284,9 +275,13 @@ export function ChapterQuestionsPanel({
                     <BookBadge label={question.question_type_code} variant="muted" />
                     <BookBadge label={`${question.marks} marks`} variant="muted" />
                   </View>
-                  <Text style={styles.questionBody}>{question.body_en}</Text>
-                  {question.body_bn?.trim() ? (
-                    <Text style={styles.questionBn}>{question.body_bn}</Text>
+                  {questionStem ? (
+                    <>
+                      <Text style={styles.questionBody}>{questionStem.primary}</Text>
+                      {questionStem.secondary ? (
+                        <Text style={styles.questionBn}>{questionStem.secondary}</Text>
+                      ) : null}
+                    </>
                   ) : null}
 
                   {question.options.length > 0 ? (
@@ -307,11 +302,21 @@ export function ChapterQuestionsPanel({
                   ) : null}
 
                   <View style={styles.answerWrap}>
-                    <Text style={styles.sectionLabel}>Answer</Text>
-                    {question.model_answer_comparison?.columns?.length
-                      ? renderComparisonTable(question.model_answer_comparison)
-                      : null}
-                    {(question.model_answer_sections ?? []).map(renderSection)}
+                    {hasComparison ? (
+                      <ComparisonTableAnswer table={question.model_answer_comparison} />
+                    ) : question.question_type_code === 'DIFFERENCES' ? (
+                      <>
+                        <Text style={styles.sectionLabel}>Answer</Text>
+                        <Text style={styles.muted}>
+                          No comparison table is available for this question yet.
+                        </Text>
+                      </>
+                    ) : (
+                      <>
+                        <Text style={styles.sectionLabel}>Answer</Text>
+                        {(question.model_answer_sections ?? []).map(renderSection)}
+                      </>
+                    )}
                     {(question.explanation_sections ?? []).map(renderSection)}
                     {question.note?.trim() ? (
                       <Text style={styles.answerNote}>{question.note}</Text>
@@ -668,35 +673,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: colors.textMuted,
     fontStyle: 'italic',
-  },
-  tableWrap: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    overflow: 'hidden',
-    marginBottom: 8,
-  },
-  tableRow: {
-    flexDirection: 'row',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  tableHeaderRow: {
-    backgroundColor: '#f8fafc',
-  },
-  tableCell: {
-    flex: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    fontSize: 12,
-    lineHeight: 17,
-    color: colors.text,
-  },
-  tableHeaderCell: {
-    fontWeight: '700',
-  },
-  tableFeatureCell: {
-    fontWeight: '600',
   },
   navRow: {
     flexDirection: 'row',

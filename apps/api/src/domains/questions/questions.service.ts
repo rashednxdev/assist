@@ -123,6 +123,35 @@ async function loadModelAnswerSections(
   return [];
 }
 
+function comparisonFromUnknown(value: unknown): ComparisonTable | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as ComparisonTable;
+  return serializeComparisonTable({
+    feature_header: raw.feature_header,
+    columns: Array.isArray(raw.columns) ? raw.columns.map(String) : [],
+    rows: Array.isArray(raw.rows)
+      ? raw.rows.map((row) => ({
+          feature: String(row?.feature ?? ''),
+          values: Array.isArray(row?.values) ? row.values.map((v) => String(v ?? '')) : [],
+        }))
+      : [],
+  });
+}
+
+async function loadComparisonTable(
+  questionId: mongoose.Types.ObjectId,
+  detail: IQuestionAnswerDetail | null,
+): Promise<ComparisonTable | undefined> {
+  const fromDetail = comparisonFromUnknown(detail?.model_answer_comparison);
+  if (fromDetail) return fromDetail;
+
+  const raw = await mongoose.connection
+    .collection('question_answer_details')
+    .findOne({ question_id: questionId }, { projection: { model_answer_comparison: 1 } });
+
+  return comparisonFromUnknown(raw?.model_answer_comparison);
+}
+
 function linksFromDto(dto: CreateQuestionDto | UpdateQuestionDto): QuestionBookLinkInput[] | undefined {
   if (dto.book_links !== undefined) return dto.book_links;
   if (dto.link_level && dto.book_chapter_id) {
@@ -329,7 +358,7 @@ async function loadQuestionDetail(questionId: string) {
   const [options, answers, detail] = await Promise.all([
     QuestionOption.find({ question_id: questionId }).sort({ option_key: 1 }),
     QuestionAnswer.find({ question_id: questionId }),
-    QuestionAnswerDetail.findOne({ question_id: questionId }),
+    QuestionAnswerDetail.findOne({ question_id: questionId }).lean(),
   ]);
 
   const correctAnswer = answers.find((a) => a.is_correct);
@@ -342,10 +371,17 @@ async function loadQuestionDetail(questionId: string) {
   else if (question.book_topic_id) linkLevel = 'rule';
   else if (question.book_chapter_id) linkLevel = 'chapter';
 
+  const typeCode = qType?.code ?? question.question_type_code;
+  const comparison = await loadComparisonTable(
+    question._id,
+    detail as IQuestionAnswerDetail | null,
+  );
+  const differences = isDifferencesType(typeCode) || Boolean(comparison);
+
   return {
     id: String(question._id),
     question_type_id: String(question.question_type_id),
-    question_type_code: question.question_type_code,
+    question_type_code: question.question_type_code || typeCode,
     question_type_name: qType?.name,
     has_options: qType?.has_options ?? false,
     link_level: linkLevel,
@@ -375,22 +411,19 @@ async function loadQuestionDetail(questionId: string) {
     })),
     correct_option_key: correctOption?.option_key,
     correct_true_false:
-      isTrueFalseType(question.question_type_code) && correctOption
+      isTrueFalseType(typeCode) && correctOption
         ? correctOption.option_key === 'a'
           ? 'true'
           : 'false'
         : undefined,
     model_answer_sections:
-      qType && !qType.has_options && !isDifferencesType(question.question_type_code)
-        ? await loadModelAnswerSections(question._id, detail)
+      qType && !qType.has_options && !differences
+        ? await loadModelAnswerSections(question._id, detail as IQuestionAnswerDetail | null)
         : undefined,
-    model_answer_comparison:
-      qType && !qType.has_options && isDifferencesType(question.question_type_code)
-        ? serializeComparisonTable(detail?.model_answer_comparison as ComparisonTable | undefined)
-        : undefined,
+    model_answer_comparison: comparison,
     explanation_sections:
-      qType?.has_options && isMcqOrTf(question.question_type_code)
-        ? await loadExplanationSections(question._id, detail)
+      qType?.has_options && isMcqOrTf(typeCode)
+        ? await loadExplanationSections(question._id, detail as IQuestionAnswerDetail | null)
         : undefined,
     note: detail?.note,
     reference_regulation_id: idStr(detail?.reference_regulation_id),

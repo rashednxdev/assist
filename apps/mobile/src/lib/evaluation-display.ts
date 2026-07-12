@@ -47,7 +47,7 @@ export function formatEvaluationStatusLabel(
   hasOptions?: boolean,
 ): string {
   if (!evaluation || evaluation.progress_index <= 0) {
-    return 'Not evaluated';
+    return 'Learn and Evaluate';
   }
   if (hasOptions && evaluation.is_correct !== undefined) {
     return evaluation.is_correct ? 'Correct' : 'Incorrect';

@@ -168,7 +168,7 @@ export function ChapterQuestionEvaluator({
         </View>
       ) : (
         <View style={styles.block}>
-          <Text style={styles.hint}>Rate yourself after reviewing the answer:</Text>
+          <Text style={styles.hint}>Your study position on the question and answer</Text>
           <View style={styles.ratingWrap}>
             {(
               Object.keys(SELF_RATING_PROGRESS) as Array<keyof typeof SELF_RATING_PROGRESS & SelfRatingLevel>
@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.textMuted,
+    color: colors.gold,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },

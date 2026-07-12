@@ -86,11 +86,6 @@ export const navGroups: NavGroup[] = [
     title: 'Static Ref',
     items: [
       {
-        href: '/static-ref/jsi-2016',
-        label: 'JSI 2016',
-        icon: Bookmark,
-      },
-      {
         href: '/static-ref/jsi-2016-p',
         label: 'JSI 2016 P',
         icon: Bookmark,

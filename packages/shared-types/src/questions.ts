@@ -154,6 +154,12 @@ export const listQuestionsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
+export const marathonReviewQuerySchema = z.object({
+  q: z.string().optional(),
+});
+
+export type MarathonReviewQuery = z.infer<typeof marathonReviewQuerySchema>;
+
 export const createQuestionTypeSchema = z.object({
   name: z.string().min(1),
   code: z.string().min(1).max(32).regex(/^[A-Z0-9_]+$/),

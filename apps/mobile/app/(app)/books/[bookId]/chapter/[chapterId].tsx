@@ -60,7 +60,6 @@ export default function BookChapterScreen() {
 
         {chapter.topics.length > 0 && (
           <View style={styles.panel}>
-            <Text style={styles.sectionTitle}>Rules</Text>
             {chapter.topics.map((topic) => (
               <Pressable
                 key={topic.id}

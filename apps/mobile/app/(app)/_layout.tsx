@@ -30,6 +30,7 @@ export default function AppLayout() {
       <Stack.Screen name="home" />
       <Stack.Screen name="books" />
       <Stack.Screen name="questions" />
+      <Stack.Screen name="marathon" />
       <Stack.Screen name="exams" />
       <Stack.Screen name="papers" />
       <Stack.Screen name="pension" />

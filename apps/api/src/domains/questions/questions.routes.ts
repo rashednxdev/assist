@@ -8,6 +8,7 @@ import {
   updateQuestionTypeHandler,
   deleteQuestionTypeHandler,
   listQuestionsHandler,
+  listMarathonReviewHandler,
   similarQuestionsHandler,
   getQuestionHandler,
   generateQuestionDraftHandler,
@@ -30,6 +31,7 @@ questionsRouter.post('/types', requireAdmin, asyncHandler(createQuestionTypeHand
 questionsRouter.patch('/types/:id', requireAdmin, asyncHandler(updateQuestionTypeHandler));
 questionsRouter.delete('/types/:id', requireAdmin, asyncHandler(deleteQuestionTypeHandler));
 questionsRouter.get('/', asyncHandler(listQuestionsHandler));
+questionsRouter.get('/marathon-review', asyncHandler(listMarathonReviewHandler));
 questionsRouter.get('/similar', asyncHandler(similarQuestionsHandler));
 questionsRouter.get('/:id', asyncHandler(getQuestionHandler));
 

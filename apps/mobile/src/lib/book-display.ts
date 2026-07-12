@@ -1,16 +1,25 @@
+export function cleanBookLabel(value?: string | null) {
+  return (value ?? '')
+    .trim()
+    .replace(/^(chapter|rule|sub[-\s]?rule)\s*[:.\-]?\s*/i, '')
+    .trim();
+}
+
 export function chapterHeading(chapter: { chapter_number?: string; name: string }) {
-  const no = chapter.chapter_number?.trim();
-  return no ? `Chapter ${no}: ${chapter.name}` : chapter.name;
+  const no = cleanBookLabel(chapter.chapter_number);
+  const name = cleanBookLabel(chapter.name) || chapter.name.trim();
+  return no ? `${no}: ${name}` : name;
 }
 
 export function ruleHeading(rule: { rule_number: string; name?: string }) {
-  const title = rule.name?.trim();
-  return title ? `${rule.rule_number} — ${title}` : rule.rule_number;
+  const no = cleanBookLabel(rule.rule_number) || rule.rule_number.trim();
+  const title = cleanBookLabel(rule.name);
+  return title ? `${no} — ${title}` : no;
 }
 
 export function subRuleHeading(st: { rule_number?: string; name?: string }) {
-  const no = st.rule_number?.trim();
-  const title = st.name?.trim();
+  const no = cleanBookLabel(st.rule_number);
+  const title = cleanBookLabel(st.name);
   if (no && title) return `${no} — ${title}`;
   return no || title || 'Sub-rule';
 }

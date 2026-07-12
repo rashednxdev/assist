@@ -2,8 +2,9 @@ import { View, Text, StyleSheet } from 'react-native';
 import { BookBadge } from '@/components/books/BookBadge';
 import { BookRichText } from '@/components/books/BookRichText';
 import { ChapterQuestionsButton } from '@/components/books/ChapterQuestionsPanel';
+import { RuleContentLinkButton } from '@/components/books/RuleContentLinkButton';
 import { BookEmpty, BookLoading } from '@/components/books/BookStates';
-import { ruleHeading, subRuleHeading } from '@/lib/book-display';
+import { cleanBookLabel, ruleHeading, subRuleHeading } from '@/lib/book-display';
 import type { ReaderChapter, ReaderChapterFull } from '@/types/books';
 import { colors, spacing } from '@/theme';
 
@@ -36,10 +37,12 @@ export function BookContentsFull({
             style={[styles.chapterHeader, chapter.description?.trim() && styles.chapterHeaderBorder]}
           >
             <View style={styles.chapterTitleBlock}>
-              {chapter.chapter_number?.trim() ? (
-                <Text style={styles.chapterNumber}>{chapter.chapter_number.trim()}</Text>
+              {cleanBookLabel(chapter.chapter_number) ? (
+                <Text style={styles.chapterNumber}>{cleanBookLabel(chapter.chapter_number)}</Text>
               ) : null}
-              <Text style={styles.chapterTitle}>{chapter.name}</Text>
+              <Text style={styles.chapterTitle}>
+                {cleanBookLabel(chapter.name) || chapter.name.trim()}
+              </Text>
               {chapter.sub_name?.trim() ? (
                 <Text style={styles.chapterSubName}>{chapter.sub_name}</Text>
               ) : null}
@@ -61,6 +64,8 @@ export function BookContentsFull({
               {topic.description?.trim() ? <BookRichText html={topic.description} /> : null}
 
               {topic.note?.trim() ? <Text style={styles.noteText}>{topic.note.trim()}</Text> : null}
+
+              <RuleContentLinkButton contentLink={topic.content_link} title={ruleHeading(topic)} />
 
               {(topic.details ?? []).map((d) => (
                 <View key={d.id} style={styles.detailBlock}>

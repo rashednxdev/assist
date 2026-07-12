@@ -64,6 +64,7 @@ function toReaderTopicFull(topic: ReaderChapter['topics'][number], detail?: Topi
     ...topic,
     description: detail?.description,
     note: detail?.note,
+    content_link: detail?.content_link,
     details: detail?.details ?? [],
     sub_topics: detail?.sub_topics ?? [],
   };
@@ -92,6 +93,7 @@ function hasEnrichedTopics(chapters: ReaderChapterFull[]) {
       (topic) =>
         Boolean(topic.description?.trim()) ||
         Boolean(topic.note?.trim()) ||
+        Boolean(topic.content_link?.trim()) ||
         (topic.details?.length ?? 0) > 0 ||
         (topic.sub_topics?.length ?? 0) > 0,
     ),

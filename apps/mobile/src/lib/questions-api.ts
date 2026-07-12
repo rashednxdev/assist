@@ -1,4 +1,5 @@
 import { apiFetch } from './api';
+import type { MarathonReviewItem } from '@/types/marathon';
 import type { QuestionDetail, QuestionListItem, QuestionType } from '@/types/questions';
 
 export async function fetchQuestionTypes() {
@@ -21,6 +22,16 @@ export async function fetchQuestions(params?: {
   }
   const qs = search.toString();
   const res = await apiFetch<{ data: QuestionListItem[] }>(`/questions${qs ? `?${qs}` : ''}`);
+  return res.data;
+}
+
+export async function fetchMarathonReview(params?: { q?: string }) {
+  const search = new URLSearchParams();
+  if (params?.q?.trim()) search.set('q', params.q.trim());
+  const qs = search.toString();
+  const res = await apiFetch<{ data: MarathonReviewItem[] }>(
+    `/questions/marathon-review${qs ? `?${qs}` : ''}`,
+  );
   return res.data;
 }
 

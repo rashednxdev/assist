@@ -165,6 +165,23 @@ export default function HomeScreen() {
           ))}
         </View>
 
+        <Text style={styles.sectionTitle}>Marathon Review</Text>
+        <Pressable
+          style={({ pressed }) => [styles.marathonCard, pressed && styles.marathonCardPressed]}
+          onPress={() => router.push('/(app)/marathon' as Href)}
+        >
+          <View style={styles.marathonIcon}>
+            <Text style={styles.marathonIconText}>MR</Text>
+          </View>
+          <View style={styles.marathonText}>
+            <Text style={styles.marathonTitle}>Marathon Review</Text>
+            <Text style={styles.marathonSub}>
+              Bengali MCQs by book & chapter — toggle or hold to reveal answers
+            </Text>
+          </View>
+          <Text style={styles.marathonChevron}>›</Text>
+        </Pressable>
+
         <Text style={styles.note}>
           This app includes User account features and Learning modules only. More screens will be
           added in the next phase.
@@ -219,6 +236,53 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: colors.text,
+  },
+  marathonCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+  },
+  marathonCardPressed: {
+    opacity: 0.92,
+  },
+  marathonIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#0f5c8c',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  marathonIconText: {
+    color: colors.white,
+    fontWeight: '800',
+    fontSize: 13,
+    letterSpacing: 0.5,
+  },
+  marathonText: {
+    flex: 1,
+    gap: 2,
+  },
+  marathonTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  marathonSub: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.textMuted,
+  },
+  marathonChevron: {
+    fontSize: 28,
+    color: colors.textMuted,
+    fontWeight: '300',
+    marginTop: -2,
   },
   grid: {
     flexDirection: 'row',

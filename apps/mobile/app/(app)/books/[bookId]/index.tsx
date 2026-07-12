@@ -1,5 +1,13 @@
-import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
-import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  Animated,
+  ScrollView,
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  TextInput,
+} from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -18,10 +26,76 @@ import { useBookReader } from '@/components/books/BookReaderContext';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
 import { bookNavTitle, chapterHeading, ruleHeading, stripHtml } from '@/lib/book-display';
 import { bookChapterHref, bookRuleHref } from '@/lib/book-routes';
-import type { ReaderChapter } from '@/types/books';
+import type { ReaderChapter, ReaderChapterFull, ReaderTopicFull } from '@/types/books';
 import { colors, spacing } from '@/theme';
 
 const viewModeByBook = new Map<string, BookContentsViewMode>();
+
+function matchesQuery(text: string | undefined | null, q: string) {
+  if (!q) return true;
+  return stripHtml(text ?? '').toLowerCase().includes(q);
+}
+
+function topicMatchesShort(
+  topic: { rule_number: string; name?: string; sub_name?: string },
+  q: string,
+) {
+  return (
+    matchesQuery(ruleHeading(topic), q) ||
+    matchesQuery(topic.rule_number, q) ||
+    matchesQuery(topic.name, q) ||
+    matchesQuery(topic.sub_name, q)
+  );
+}
+
+function topicMatchesFull(topic: ReaderTopicFull, q: string) {
+  if (topicMatchesShort(topic, q)) return true;
+  if (matchesQuery(topic.description, q) || matchesQuery(topic.note, q)) return true;
+  if ((topic.details ?? []).some((d) => matchesQuery(d.detail_text, q))) return true;
+  return (topic.sub_topics ?? []).some(
+    (sub) =>
+      matchesQuery(sub.name, q) ||
+      matchesQuery(sub.rule_number, q) ||
+      matchesQuery(sub.description, q) ||
+      matchesQuery(sub.note, q),
+  );
+}
+
+function filterShortChapters(chapters: ReaderChapter[], q: string) {
+  if (!q) return chapters;
+  return chapters
+    .map((chapter) => ({
+      ...chapter,
+      topics: chapter.topics.filter((topic) => topicMatchesShort(topic, q)),
+    }))
+    .filter(
+      (chapter) =>
+        matchesQuery(chapterHeading(chapter), q) ||
+        matchesQuery(chapter.chapter_number, q) ||
+        matchesQuery(chapter.name, q) ||
+        matchesQuery(chapter.sub_name, q) ||
+        matchesQuery(chapter.description, q) ||
+        chapter.topics.length > 0,
+    );
+}
+
+function filterFullChapters(chapters: ReaderChapterFull[], q: string) {
+  if (!q) return chapters;
+  return chapters
+    .map((chapter) => ({
+      ...chapter,
+      topics: chapter.topics.filter((topic) => topicMatchesFull(topic, q)),
+    }))
+    .filter(
+      (chapter) =>
+        matchesQuery(chapterHeading(chapter), q) ||
+        matchesQuery(chapter.chapter_number, q) ||
+        matchesQuery(chapter.name, q) ||
+        matchesQuery(chapter.sub_name, q) ||
+        matchesQuery(chapter.description, q) ||
+        chapter.topics.length > 0,
+    );
+}
 
 export default function BookDetailScreen() {
   const router = useRouter();
@@ -33,6 +107,11 @@ export default function BookDetailScreen() {
     () => viewModeByBook.get(bookId) ?? 'short',
   );
   const [questionsChapter, setQuestionsChapter] = useState<ReaderChapter | null>(null);
+  const [searchDraft, setSearchDraft] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchSlide = useRef(new Animated.Value(0)).current;
+  const searchInputRef = useRef<TextInput>(null);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -45,11 +124,55 @@ export default function BookDetailScreen() {
     setDetailsExpanded(false);
     setViewMode(viewModeByBook.get(bookId) ?? 'short');
     setQuestionsChapter(null);
-  }, [bookId]);
+    setSearchDraft('');
+    setSearchQuery('');
+    setSearchOpen(false);
+    searchSlide.setValue(0);
+  }, [bookId, searchSlide]);
 
   function handleViewModeChange(mode: BookContentsViewMode) {
     setViewMode(mode);
     viewModeByBook.set(bookId, mode);
+  }
+
+  function openSearch() {
+    setSearchOpen(true);
+    Animated.timing(searchSlide, {
+      toValue: 1,
+      duration: 220,
+      useNativeDriver: false,
+    }).start(() => searchInputRef.current?.focus());
+  }
+
+  function closeSearch() {
+    searchInputRef.current?.blur();
+    Animated.timing(searchSlide, {
+      toValue: 0,
+      duration: 180,
+      useNativeDriver: false,
+    }).start(({ finished }) => {
+      if (!finished) return;
+      setSearchOpen(false);
+      setSearchDraft('');
+      setSearchQuery('');
+    });
+  }
+
+  function applySearch() {
+    const next = searchDraft.trim();
+    setSearchQuery(next);
+    if (next) {
+      setViewMode('full');
+      viewModeByBook.set(bookId, 'full');
+    }
+  }
+
+  function onSearchIconPress() {
+    if (!searchOpen) {
+      openSearch();
+      return;
+    }
+    applySearch();
   }
 
   const displayFullChapters = useMemo(() => {
@@ -64,103 +187,184 @@ export default function BookDetailScreen() {
     });
   }, [fullChapters, outline]);
 
+  const q = searchQuery.trim().toLowerCase();
+
+  const filteredShortChapters = useMemo(
+    () => (outline ? filterShortChapters(outline.chapters, q) : []),
+    [outline, q],
+  );
+
+  const filteredFullChapters = useMemo(
+    () => filterFullChapters(displayFullChapters, q),
+    [displayFullChapters, q],
+  );
+
   if (loading && !outline) return <BookLoading />;
   if (error && !outline) return <BookError message={error} />;
   if (!outline) return <BookEmpty title="Book not found" />;
 
-  const { book, chapters } = outline;
+  const { book } = outline;
   const descriptionPlain = stripHtml(book.description);
   const hasDescription = descriptionPlain.length > 0;
   const showFullLoading = viewMode === 'full' && (fullChapters === null || fullLoading);
+  const activeViewMode = q ? 'full' : viewMode;
+
+  const searchFlex = searchSlide.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+  const searchOpacity = searchSlide.interpolate({
+    inputRange: [0, 0.4, 1],
+    outputRange: [0, 0, 1],
+  });
 
   return (
     <>
-      <ScrollView style={styles.root} contentContainerStyle={styles.content}>
-        <Text style={styles.title}>{book.name}</Text>
+      <View style={styles.root}>
+        <View style={styles.toolbar}>
+          <View style={[styles.toolbarStart, searchOpen && styles.toolbarStartOpen]}>
+            <Animated.View
+              style={[
+                styles.searchSlide,
+                {
+                  flex: searchFlex,
+                  opacity: searchOpacity,
+                  marginRight: searchOpen ? spacing.sm : 0,
+                },
+              ]}
+              pointerEvents={searchOpen ? 'auto' : 'none'}
+            >
+              <View style={styles.searchField}>
+                <TextInput
+                  ref={searchInputRef}
+                  style={styles.searchInput}
+                  value={searchDraft}
+                  onChangeText={setSearchDraft}
+                  placeholder="Search…"
+                  placeholderTextColor={colors.textMuted}
+                  returnKeyType="search"
+                  onSubmitEditing={applySearch}
+                />
+                {searchOpen ? (
+                  <Pressable onPress={closeSearch} hitSlop={8} accessibilityLabel="Close search">
+                    <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+                  </Pressable>
+                ) : null}
+              </View>
+            </Animated.View>
 
-        <View style={styles.badges}>
-          {book.short_name ? <BookBadge label={book.short_name} /> : null}
-          {book.edition ? <BookBadge label={`Edition ${book.edition}`} variant="muted" /> : null}
-          {book.language ? <BookBadge label={book.language} variant="muted" /> : null}
-          {book.book_type_name ? <BookBadge label={book.book_type_name} variant="muted" /> : null}
+            <Pressable
+              style={styles.searchIconBtn}
+              onPress={onSearchIconPress}
+              accessibilityRole="button"
+              accessibilityLabel={searchOpen ? 'Search book' : 'Open search'}
+            >
+              <View style={styles.searchIconInner}>
+                <Ionicons name="search" size={20} color={colors.primary} />
+              </View>
+            </Pressable>
+          </View>
+
+          <BookViewModeToggle compact value={viewMode} onChange={handleViewModeChange} />
         </View>
 
-        {hasDescription ? (
-          <View style={styles.panel}>
-            {detailsExpanded ? (
-              <>
-                <HtmlContent html={book.description} />
-                <Pressable style={styles.detailsBtn} onPress={() => setDetailsExpanded(false)}>
-                  <Text style={styles.detailsBtnText}>Hide details</Text>
-                </Pressable>
-              </>
-            ) : (
-              <>
-                <Text style={styles.descriptionPreview} numberOfLines={2}>
-                  {descriptionPlain}
-                </Text>
-                <Pressable style={styles.detailsBtn} onPress={() => setDetailsExpanded(true)}>
-                  <Text style={styles.detailsBtnText}>Details</Text>
-                </Pressable>
-              </>
-            )}
+        <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+          <Text style={styles.title}>{book.name}</Text>
+
+          <View style={styles.badges}>
+            {book.short_name ? <BookBadge label={book.short_name} /> : null}
+            {book.edition ? <BookBadge label={`Edition ${book.edition}`} variant="muted" /> : null}
+            {book.language ? <BookBadge label={book.language} variant="muted" /> : null}
+            {book.book_type_name ? <BookBadge label={book.book_type_name} variant="muted" /> : null}
           </View>
-        ) : null}
 
-        <BookViewModeToggle value={viewMode} onChange={handleViewModeChange} />
+          {hasDescription ? (
+            <View style={styles.panel}>
+              {detailsExpanded ? (
+                <>
+                  <HtmlContent html={book.description} />
+                  <Pressable style={styles.detailsBtn} onPress={() => setDetailsExpanded(false)}>
+                    <Text style={styles.detailsBtnText}>Hide details</Text>
+                  </Pressable>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.descriptionPreview} numberOfLines={2}>
+                    {descriptionPlain}
+                  </Text>
+                  <Pressable style={styles.detailsBtn} onPress={() => setDetailsExpanded(true)}>
+                    <Text style={styles.detailsBtnText}>Details</Text>
+                  </Pressable>
+                </>
+              )}
+            </View>
+          ) : null}
 
-        {viewMode === 'full' ? (
-          <>
-            {fullError ? <Text style={styles.errorText}>{fullError}</Text> : null}
-            <BookContentsFull
-              chapters={displayFullChapters}
-              loading={showFullLoading}
-              onOpenQuestions={setQuestionsChapter}
-            />
-          </>
-        ) : (
-          <>
-            {chapters.length === 0 ? (
-              <BookEmpty title="No chapters yet" />
-            ) : (
-              chapters.map((chapter) => (
-                <View key={chapter.id} style={styles.chapterBlock}>
-                  <View style={styles.chapterHeader}>
-                    <Pressable
-                      style={({ pressed }) => [styles.chapterRow, pressed && styles.pressed]}
-                      onPress={() => router.push(bookChapterHref(bookId, chapter.id))}
-                    >
-                      <Ionicons name="chevron-forward" size={16} color={colors.primary} />
-                      <View style={styles.chapterText}>
-                        <Text style={styles.chapterTitle}>{chapterHeading(chapter)}</Text>
-                        {chapter.sub_name?.trim() ? (
-                          <Text style={styles.chapterSub}>{chapter.sub_name}</Text>
-                        ) : null}
-                      </View>
-                    </Pressable>
-                    <ChapterQuestionsButton onPress={() => setQuestionsChapter(chapter)} />
-                  </View>
+          {q ? (
+            <Text style={styles.searchMeta}>
+              Showing results for “{searchQuery}” · {filteredFullChapters.length} chapter
+              {filteredFullChapters.length === 1 ? '' : 's'}
+            </Text>
+          ) : null}
 
-                  {chapter.topics.length > 0 ? (
-                    <View style={styles.rulesList}>
-                      {chapter.topics.map((topic) => (
-                        <Pressable
-                          key={topic.id}
-                          style={({ pressed }) => [styles.ruleRow, pressed && styles.pressed]}
-                          onPress={() => router.push(bookRuleHref(bookId, topic.id))}
-                        >
-                          <Text style={styles.ruleText}>{ruleHeading(topic)}</Text>
-                          {topic.is_amended ? <BookBadge label="Amended" variant="warning" /> : null}
-                        </Pressable>
-                      ))}
+          {activeViewMode === 'full' ? (
+            <>
+              {fullError ? <Text style={styles.errorText}>{fullError}</Text> : null}
+              <BookContentsFull
+                chapters={filteredFullChapters}
+                loading={showFullLoading}
+                onOpenQuestions={setQuestionsChapter}
+              />
+            </>
+          ) : (
+            <>
+              {filteredShortChapters.length === 0 ? (
+                <BookEmpty
+                  title={q ? 'No matches found' : 'No chapters yet'}
+                  subtitle={q ? 'Try a different search term.' : undefined}
+                />
+              ) : (
+                filteredShortChapters.map((chapter) => (
+                  <View key={chapter.id} style={styles.chapterBlock}>
+                    <View style={styles.chapterHeader}>
+                      <Pressable
+                        style={({ pressed }) => [styles.chapterRow, pressed && styles.pressed]}
+                        onPress={() => router.push(bookChapterHref(bookId, chapter.id))}
+                      >
+                        <Ionicons name="chevron-forward" size={16} color={colors.primary} />
+                        <View style={styles.chapterText}>
+                          <Text style={styles.chapterTitle}>{chapterHeading(chapter)}</Text>
+                          {chapter.sub_name?.trim() ? (
+                            <Text style={styles.chapterSub}>{chapter.sub_name}</Text>
+                          ) : null}
+                        </View>
+                      </Pressable>
+                      <ChapterQuestionsButton onPress={() => setQuestionsChapter(chapter)} />
                     </View>
-                  ) : null}
-                </View>
-              ))
-            )}
-          </>
-        )}
-      </ScrollView>
+
+                    {chapter.topics.length > 0 ? (
+                      <View style={styles.rulesList}>
+                        {chapter.topics.map((topic) => (
+                          <Pressable
+                            key={topic.id}
+                            style={({ pressed }) => [styles.ruleRow, pressed && styles.pressed]}
+                            onPress={() => router.push(bookRuleHref(bookId, topic.id))}
+                          >
+                            <Text style={styles.ruleText}>{ruleHeading(topic)}</Text>
+                            {topic.is_amended ? (
+                              <BookBadge label="Amended" variant="warning" />
+                            ) : null}
+                          </Pressable>
+                        ))}
+                      </View>
+                    ) : null}
+                  </View>
+                ))
+              )}
+            </>
+          )}
+        </ScrollView>
+      </View>
 
       {questionsChapter ? (
         <ChapterQuestionsPanel
@@ -178,6 +382,73 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  toolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  toolbarStart: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 0,
+    gap: spacing.sm,
+  },
+  toolbarStartOpen: {
+    flex: 1,
+    minWidth: 0,
+    marginRight: spacing.sm,
+  },
+  searchSlide: {
+    overflow: 'hidden',
+    minWidth: 0,
+  },
+  searchField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: spacing.md,
+    minHeight: 40,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: colors.text,
+    paddingVertical: spacing.sm,
+    minWidth: 0,
+  },
+  searchIconBtn: {
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: 3,
+    flexShrink: 0,
+  },
+  searchIconInner: {
+    minWidth: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  scroll: {
+    flex: 1,
   },
   content: {
     padding: spacing.md,
@@ -215,6 +486,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: colors.primary,
+  },
+  searchMeta: {
+    fontSize: 12,
+    color: colors.textMuted,
   },
   errorText: {
     fontSize: 14,

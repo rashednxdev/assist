@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { BookBadge } from '@/components/books/BookBadge';
 import { HtmlContent } from '@/components/books/HtmlContent';
+import { RuleContentLinkButton } from '@/components/books/RuleContentLinkButton';
 import { useBookReader } from '@/components/books/BookReaderContext';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
 import { chapterHeading, ruleHeading, subRuleHeading } from '@/lib/book-display';
@@ -79,6 +80,8 @@ export default function BookRuleScreen() {
             ) : null}
           </View>
         ) : null}
+
+        <RuleContentLinkButton contentLink={topic.content_link} title={ruleHeading(topic)} />
 
         {topic.details.map((d) => (
           <View key={d.id} style={styles.detailBlock}>

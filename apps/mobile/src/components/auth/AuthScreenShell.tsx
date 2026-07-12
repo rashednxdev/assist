@@ -12,7 +12,7 @@ interface AuthScreenShellProps {
   variant?: 'default' | 'premium';
 }
 
-const PREMIUM_FEATURES = ['Exam prep', 'Question bank', 'Rule library', 'Practice papers'];
+const PREMIUM_FEATURES = ['Exam prep', 'Question bank', 'Books & Tools', 'Practice papers'];
 
 export function AuthScreenShell({
   title,
@@ -47,14 +47,9 @@ export function AuthScreenShell({
             <View style={[styles.logo, premium && styles.logoPremium]}>
               <Text style={[styles.logoText, premium && styles.logoTextPremium]}>PA</Text>
             </View>
-            {premium ? (
-              <View style={styles.premiumBadge}>
-                <Text style={styles.premiumBadgeText}>PREMIUM PREP</Text>
-              </View>
-            ) : null}
             <Text style={[styles.brandTitle, premium && styles.brandTitlePremium]}>ProAssist</Text>
             <Text style={[styles.brandSub, premium && styles.brandSubPremium]}>
-              Government exam preparation & rule library
+              SAS/SRAS exam preparation with ProAssist
             </Text>
             {premium ? (
               <View style={styles.featureRow}>

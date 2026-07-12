@@ -858,6 +858,125 @@ export async function listQuestions(filters: {
   return result;
 }
 
+/** Published MCQs linked to books/chapters, with explanations for marathon review. */
+export async function listMarathonReview(filters: { q?: string } = {}) {
+  const query: Record<string, unknown> = {
+    is_active: true,
+    is_published: true,
+    question_type_code: 'MCQ',
+  };
+  if (filters.q?.trim()) {
+    const q = filters.q.trim();
+    query.$or = [{ body_en: { $regex: q, $options: 'i' } }, { body_bn: { $regex: q, $options: 'i' } }];
+  }
+
+  const questions = await Question.find(query).limit(3000);
+  if (questions.length === 0) return [];
+
+  const questionIds = questions.map((q) => q._id);
+  const [links, details] = await Promise.all([
+    QuestionBookLink.find({ question_id: { $in: questionIds }, is_active: true }).sort({ sort_order: 1 }),
+    QuestionAnswerDetail.find({ question_id: { $in: questionIds } }).lean(),
+  ]);
+
+  const linkByQuestion = new Map<string, (typeof links)[number]>();
+  for (const link of links) {
+    const key = String(link.question_id);
+    if (!linkByQuestion.has(key)) linkByQuestion.set(key, link);
+  }
+
+  const detailByQuestion = new Map(
+    details.map((d) => [String(d.question_id), d as IQuestionAnswerDetail]),
+  );
+
+  const chapterIdByQuestion = new Map<string, string>();
+  for (const q of questions) {
+    const qid = String(q._id);
+    if (q.book_chapter_id) {
+      chapterIdByQuestion.set(qid, String(q.book_chapter_id));
+      continue;
+    }
+    const link = linkByQuestion.get(qid);
+    if (link?.book_chapter_id) {
+      chapterIdByQuestion.set(qid, String(link.book_chapter_id));
+    }
+  }
+
+  const chapterIds = [...new Set([...chapterIdByQuestion.values()])];
+  const chapters =
+    chapterIds.length > 0
+      ? await BookChapter.find({ _id: { $in: chapterIds }, is_active: true })
+      : [];
+  const chapterMap = new Map(chapters.map((c) => [String(c._id), c]));
+
+  const bookIds = [...new Set(chapters.map((c) => String(c.book_info_id)))];
+  const books =
+    bookIds.length > 0 ? await BookInfo.find({ _id: { $in: bookIds }, is_active: true }) : [];
+  const bookMap = new Map(books.map((b) => [String(b._id), b]));
+
+  type Row = {
+    id: string;
+    body_en: string;
+    body_bn?: string;
+    book_id: string;
+    book_name: string;
+    chapter_id: string;
+    chapter_number: string;
+    chapter_name: string;
+    chapter_sort_order: number;
+    book_sort_key: string;
+    explanation_sections: ExplanationSection[];
+  };
+
+  const rows: Row[] = [];
+  for (const q of questions) {
+    const qid = String(q._id);
+    const chapterId = chapterIdByQuestion.get(qid);
+    if (!chapterId) continue;
+    const chapter = chapterMap.get(chapterId);
+    if (!chapter) continue;
+    const book = bookMap.get(String(chapter.book_info_id));
+    if (!book) continue;
+
+    const detail = detailByQuestion.get(qid) ?? null;
+    let explanation_sections = serializeExplanationSections(detail?.explanation_sections);
+    if (
+      explanation_sections.length === 0 &&
+      typeof detail?.explanation === 'string' &&
+      detail.explanation.trim()
+    ) {
+      explanation_sections = parseLegacyExplanation(detail.explanation);
+    }
+
+    rows.push({
+      id: qid,
+      body_en: q.body_en,
+      body_bn: q.body_bn,
+      book_id: String(book._id),
+      book_name: book.short_name?.trim() || book.name,
+      chapter_id: chapterId,
+      chapter_number: chapter.chapter_number ?? '',
+      chapter_name: chapter.name,
+      chapter_sort_order: chapter.sort_order ?? 0,
+      book_sort_key: book.name,
+      explanation_sections,
+    });
+  }
+
+  rows.sort(
+    (a, b) =>
+      a.book_sort_key.localeCompare(b.book_sort_key) ||
+      a.chapter_sort_order - b.chapter_sort_order ||
+      a.chapter_number.localeCompare(b.chapter_number) ||
+      a.body_en.localeCompare(b.body_en),
+  );
+
+  return rows.map(({ book_sort_key: _b, chapter_sort_order: _c, ...item }, index) => ({
+    ...item,
+    number: index + 1,
+  }));
+}
+
 export async function getQuestionById(id: string) {
   return loadQuestionDetail(id);
 }

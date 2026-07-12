@@ -4,6 +4,7 @@ import {
   updateQuestionSchema,
   listQuestionsQuerySchema,
   similarQuestionsQuerySchema,
+  marathonReviewQuerySchema,
   createQuestionTypeSchema,
   questionBookLinkInputSchema,
   updateQuestionTypeSchema,
@@ -39,6 +40,12 @@ export async function deleteQuestionTypeHandler(req: AuthRequest, res: Response)
 export async function listQuestionsHandler(req: AuthRequest, res: Response): Promise<void> {
   const filters = listQuestionsQuerySchema.parse(req.query);
   const data = await questionsService.listQuestions(filters);
+  res.json({ data });
+}
+
+export async function listMarathonReviewHandler(req: AuthRequest, res: Response): Promise<void> {
+  const filters = marathonReviewQuerySchema.parse(req.query);
+  const data = await questionsService.listMarathonReview(filters);
   res.json({ data });
 }
 

@@ -42,6 +42,8 @@ export interface ReaderTopicFull {
   sort_order: number;
   description?: string;
   note?: string;
+  /** Optional linked static page path or URL (e.g. /static-ref/jsi-2016-p). */
+  content_link?: string;
   details: Array<{ id: string; detail_text: string }>;
   sub_topics: Array<{
     id: string;
@@ -80,6 +82,8 @@ export interface TopicDetail {
   rule_number: string;
   description?: string;
   note?: string;
+  /** Optional linked static page path or URL (e.g. /static-ref/jsi-2016-p). */
+  content_link?: string;
   is_amended: boolean;
   chapter?: { id: string; name: string; chapter_number?: string } | null;
   details: Array<{ id: string; detail_text: string }>;

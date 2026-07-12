@@ -885,9 +885,7 @@ export async function listMarathonReview(filters: { q?: string } = {}) {
     if (!linkByQuestion.has(key)) linkByQuestion.set(key, link);
   }
 
-  const detailByQuestion = new Map(
-    details.map((d) => [String(d.question_id), d as IQuestionAnswerDetail]),
-  );
+  const detailByQuestion = new Map(details.map((d) => [String(d.question_id), d]));
 
   const chapterIdByQuestion = new Map<string, string>();
   for (const q of questions) {

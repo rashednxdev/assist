@@ -61,7 +61,7 @@ function normalizeHeader(h: string) {
     .replace(/[^a-z0-9_]/g, '');
 }
 
-const HEADER_ALIASES: Record<string, string> = {
+const MCQ_HEADER_ALIASES: Record<string, string> = {
   question: 'question',
   questions: 'question',
   body: 'question',
@@ -106,7 +106,7 @@ export function parseMcqCsv(text: string): { rows: ParsedMcqCsvRow[]; errors: st
   const headerCells = table[0]!.map(normalizeHeader);
   const index: Partial<Record<keyof ParsedMcqCsvRow, number>> = {};
   headerCells.forEach((h, i) => {
-    const key = HEADER_ALIASES[h];
+    const key = MCQ_HEADER_ALIASES[h];
     if (key && index[key as keyof ParsedMcqCsvRow] === undefined) {
       index[key as keyof ParsedMcqCsvRow] = i;
     }
@@ -149,6 +149,101 @@ export function parseMcqCsv(text: string): { rows: ParsedMcqCsvRow[]; errors: st
 
   if (rows.length === 0 && errors.length === 0) {
     errors.push('No question rows found in CSV');
+  }
+
+  return { rows, errors };
+}
+
+const DESC_HEADER_ALIASES: Record<string, keyof ParsedDescriptiveCsvRow> = {
+  question: 'question',
+  questions: 'question',
+  body: 'question',
+  stem: 'question',
+  title: 'title',
+  model_answer_title: 'title',
+  answer_title: 'title',
+  description: 'description',
+  details: 'description',
+  model_answer: 'description',
+  model_answer_description: 'description',
+  answer_description: 'description',
+  note: 'note',
+  model_answer_note: 'note',
+  answer_note: 'note',
+  note_reference: 'note',
+  reference: 'note',
+  notes: 'note',
+};
+
+export type ParsedDescriptiveCsvRow = {
+  question: string;
+  title: string;
+  description: string;
+  note: string;
+};
+
+/**
+ * Descriptive CSV: question, title, description, note.
+ * Supports header aliases, or positional columns (1–4) when headers are absent.
+ * Empty title/description/note fields are kept as '' and ignored on import.
+ */
+export function parseDescriptiveCsv(text: string): {
+  rows: ParsedDescriptiveCsvRow[];
+  errors: string[];
+} {
+  const table = parseCsv(text);
+  const errors: string[] = [];
+  if (table.length === 0) {
+    return { rows: [], errors: ['CSV is empty'] };
+  }
+
+  const headerCells = table[0]!.map(normalizeHeader);
+  const index: Partial<Record<keyof ParsedDescriptiveCsvRow, number>> = {};
+  headerCells.forEach((h, i) => {
+    const key = DESC_HEADER_ALIASES[h];
+    if (key && index[key] === undefined) index[key] = i;
+  });
+
+  const hasQuestionHeader = index.question !== undefined;
+  let dataStart = 1;
+
+  if (!hasQuestionHeader) {
+    // Positional: col1 question, col2 title, col3 description, col4 note
+    index.question = 0;
+    index.title = 1;
+    index.description = 2;
+    index.note = 3;
+    dataStart = 0;
+  } else {
+    if (index.title === undefined) index.title = -1;
+    if (index.description === undefined) index.description = -1;
+    if (index.note === undefined) index.note = -1;
+  }
+
+  const rows: ParsedDescriptiveCsvRow[] = [];
+  for (let r = dataStart; r < table.length; r++) {
+    const cells = table[r]!;
+    const get = (key: keyof ParsedDescriptiveCsvRow) => {
+      const col = index[key];
+      if (col === undefined || col < 0) return '';
+      return (cells[col] ?? '').trim();
+    };
+    const question = get('question');
+    if (!question) {
+      errors.push(`Row ${r + 1}: empty question — skipped`);
+      continue;
+    }
+    rows.push({
+      question,
+      title: get('title'),
+      description: get('description'),
+      note: get('note'),
+    });
+  }
+
+  if (rows.length === 0) {
+    errors.push(errors.length ? errors[0]! : 'No question rows found in CSV');
+    return { rows: [], errors };
   }
 
   return { rows, errors };

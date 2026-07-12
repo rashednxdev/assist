@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ExternalLink, FileUp, Plus, Search, Upload, X } from 'lucide-react';
+import { ExternalLink, FileUp, Plus, Search, Trash2, Undo2, Upload, X } from 'lucide-react';
 import { QUESTION_LINK_LEVELS, type QuestionLinkLevel } from '@ibas/shared-constants';
 import { apiFetch } from '@/lib/api-client';
 import { chapterHeading } from '@/lib/book-display';
 import { buildNewQuestionHref } from '@/lib/question-book-context';
-import { parseMcqCsv, type ParsedMcqCsvRow } from '@/lib/mcq-csv';
+import { parseMcqCsv, parseDescriptiveCsv, type ParsedMcqCsvRow, type ParsedDescriptiveCsvRow } from '@/lib/mcq-csv';
 import type { ReaderChapter } from '@/components/books/book-reader-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -51,10 +51,10 @@ interface RegulationItem {
 }
 
 type FilterMode = 'all' | 'draft' | 'published';
+type CsvImportKind = 'mcq' | 'descriptive';
 
-function truncate(text: string, len = 90) {
-  const plain = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-  return plain.length > len ? `${plain.slice(0, len)}…` : plain;
+function plainText(html: string) {
+  return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function linkLevelLabel(level: QuestionLinkLevel) {
@@ -95,11 +95,18 @@ export function ChapterQuestionsManageModal({
   const [regulations, setRegulations] = useState<RegulationItem[]>([]);
   const [linkBusy, setLinkBusy] = useState(false);
 
-  const [csvRows, setCsvRows] = useState<ParsedMcqCsvRow[]>([]);
+  const [csvKind, setCsvKind] = useState<CsvImportKind>('mcq');
+  const [csvMcqRows, setCsvMcqRows] = useState<ParsedMcqCsvRow[]>([]);
+  const [csvDescRows, setCsvDescRows] = useState<ParsedDescriptiveCsvRow[]>([]);
+  const [csvExcluded, setCsvExcluded] = useState<Set<number>>(() => new Set());
   const [csvParseNotes, setCsvParseNotes] = useState<string[]>([]);
   const [csvFileName, setCsvFileName] = useState('');
   const [csvPublish, setCsvPublish] = useState(false);
   const [csvImporting, setCsvImporting] = useState(false);
+  const [csvDescTypeId, setCsvDescTypeId] = useState('');
+  const [questionTypes, setQuestionTypes] = useState<
+    Array<{ id: string; name: string; code: string; has_options: boolean }>
+  >([]);
   const csvInputRef = useRef<HTMLInputElement>(null);
 
   const loadRows = useCallback(async () => {
@@ -131,11 +138,30 @@ export function ChapterQuestionsManageModal({
     setFilter('all');
     setMessage('');
     setError('');
-    setCsvRows([]);
+    setCsvKind('mcq');
+    setCsvMcqRows([]);
+    setCsvDescRows([]);
+    setCsvExcluded(new Set());
     setCsvParseNotes([]);
     setCsvFileName('');
     setCsvPublish(false);
     setCsvImporting(false);
+    setCsvDescTypeId('');
+    apiFetch<{
+      data: Array<{ id: string; name: string; code: string; has_options: boolean }>;
+    }>('/questions/types')
+      .then((res) => {
+        setQuestionTypes(res.data);
+        const preferred =
+          res.data.find((t) => !t.has_options && /^descriptive$/i.test(t.code)) ||
+          res.data.find((t) => !t.has_options && /^descriptive$/i.test(t.name)) ||
+          res.data.find((t) => !t.has_options && /descriptive/i.test(t.name)) ||
+          res.data.find(
+            (t) => !t.has_options && !/^differences?$/i.test(t.code) && t.code !== 'DF',
+          );
+        if (preferred) setCsvDescTypeId(preferred.id);
+      })
+      .catch(() => setQuestionTypes([]));
   }, [open, loadRows]);
 
   useEffect(() => {
@@ -287,10 +313,38 @@ export function ChapterQuestionsManageModal({
   }
 
   function clearCsvPreview() {
-    setCsvRows([]);
+    setCsvMcqRows([]);
+    setCsvDescRows([]);
+    setCsvExcluded(new Set());
     setCsvParseNotes([]);
     setCsvFileName('');
     if (csvInputRef.current) csvInputRef.current.value = '';
+  }
+
+  function toggleCsvExclude(index: number) {
+    setCsvExcluded((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }
+
+  const csvRowCount = csvKind === 'mcq' ? csvMcqRows.length : csvDescRows.length;
+  const csvIncludedMcq = useMemo(
+    () => csvMcqRows.filter((_, i) => !csvExcluded.has(i)),
+    [csvMcqRows, csvExcluded],
+  );
+  const csvIncludedDesc = useMemo(
+    () => csvDescRows.filter((_, i) => !csvExcluded.has(i)),
+    [csvDescRows, csvExcluded],
+  );
+  const csvIncludedCount = csvKind === 'mcq' ? csvIncludedMcq.length : csvIncludedDesc.length;
+
+  function changeCsvKind(kind: CsvImportKind) {
+    if (kind === csvKind) return;
+    setCsvKind(kind);
+    clearCsvPreview();
   }
 
   async function onCsvFileSelected(file: File | null) {
@@ -302,12 +356,24 @@ export function ChapterQuestionsManageModal({
     }
     try {
       const text = await file.text();
-      const parsed = parseMcqCsv(text);
       setCsvFileName(file.name);
-      setCsvParseNotes(parsed.errors);
-      setCsvRows(parsed.rows);
-      if (parsed.rows.length === 0 && parsed.errors.length) {
-        setError(parsed.errors[0]!);
+      setCsvExcluded(new Set());
+      if (csvKind === 'mcq') {
+        const parsed = parseMcqCsv(text);
+        setCsvParseNotes(parsed.errors);
+        setCsvMcqRows(parsed.rows);
+        setCsvDescRows([]);
+        if (parsed.rows.length === 0 && parsed.errors.length) {
+          setError(parsed.errors[0]!);
+        }
+      } else {
+        const parsed = parseDescriptiveCsv(text);
+        setCsvParseNotes(parsed.errors);
+        setCsvDescRows(parsed.rows);
+        setCsvMcqRows([]);
+        if (parsed.rows.length === 0 && parsed.errors.length) {
+          setError(parsed.errors[0]!);
+        }
       }
     } catch (err) {
       clearCsvPreview();
@@ -315,31 +381,51 @@ export function ChapterQuestionsManageModal({
     }
   }
 
+  const descriptiveTypes = useMemo(
+    () =>
+      questionTypes.filter(
+        (t) => !t.has_options && !/^differences?$/i.test(t.code) && t.code !== 'DF',
+      ),
+    [questionTypes],
+  );
+
   async function importCsvRows() {
-    if (csvRows.length === 0) return;
+    if (csvIncludedCount === 0) return;
+    if (csvKind === 'descriptive' && !csvDescTypeId) {
+      setError('Select the existing Descriptive question type before importing.');
+      return;
+    }
     setCsvImporting(true);
     setError('');
     setMessage('');
     try {
+      const path =
+        csvKind === 'mcq' ? '/questions/batch-import' : '/questions/batch-import-descriptive';
+      const rows = csvKind === 'mcq' ? csvIncludedMcq : csvIncludedDesc;
       const res = await apiFetch<{
         data: {
           created_count: number;
           failed_count: number;
           failed: Array<{ row: number; error: string }>;
         };
-      }>('/questions/batch-import', {
+      }>(path, {
         method: 'POST',
         body: JSON.stringify({
           book_chapter_id: chapter.id,
           publish: csvPublish,
-          rows: csvRows,
+          rows,
+          ...(csvKind === 'descriptive' ? { question_type_id: csvDescTypeId } : {}),
         }),
       });
       const { created_count, failed_count, failed } = res.data;
+      const label = csvKind === 'mcq' ? 'MCQ' : 'descriptive question';
       const parts = [
-        `Imported ${created_count} MCQ${created_count !== 1 ? 's' : ''} for this chapter`,
+        `Imported ${created_count} ${label}${created_count !== 1 ? 's' : ''} for this chapter`,
       ];
       if (csvPublish) parts.push('(published)');
+      if (csvExcluded.size > 0) {
+        parts.push(`${csvExcluded.size} excluded before import`);
+      }
       if (failed_count > 0) {
         parts.push(`${failed_count} failed`);
         setError(
@@ -372,7 +458,7 @@ export function ChapterQuestionsManageModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center">
+    <div className="fixed inset-0 z-50 flex items-stretch justify-center p-0 sm:p-2 sm:items-center">
       <button
         type="button"
         className="absolute inset-0 bg-black/40"
@@ -382,7 +468,7 @@ export function ChapterQuestionsManageModal({
       <div
         role="dialog"
         aria-modal="true"
-        className="relative z-10 flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-background shadow-xl"
+        className="relative z-10 flex h-[100dvh] max-h-[100dvh] w-full max-w-[100vw] flex-col overflow-hidden rounded-none border border-border bg-background shadow-xl sm:h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-1rem)] sm:max-w-[calc(100vw-1rem)] sm:rounded-xl"
       >
         <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
           <div className="min-w-0">
@@ -405,12 +491,55 @@ export function ChapterQuestionsManageModal({
 
           <section className="space-y-3 rounded-lg border border-dashed border-border p-4">
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <h3 className="text-sm font-semibold">Batch MCQ import (CSV)</h3>
-                <p className="mt-0.5 text-xs text-muted">
-                  Columns: question, option_a, option_b, option_c, option_d, correct_option,
-                  explanation. Extra columns (e.g. topic) are ignored. Linked to this chapter.
+              <div className="min-w-0 flex-1 space-y-2">
+                <h3 className="text-sm font-semibold">Batch question import (CSV)</h3>
+                <div className="flex flex-wrap gap-1">
+                  {(
+                    [
+                      { id: 'mcq', label: 'MCQ' },
+                      { id: 'descriptive', label: 'Descriptive' },
+                    ] as const
+                  ).map((opt) => (
+                    <Button
+                      key={opt.id}
+                      type="button"
+                      size="sm"
+                      variant={csvKind === opt.id ? 'default' : 'outline'}
+                      className="h-8"
+                      disabled={csvImporting}
+                      onClick={() => changeCsvKind(opt.id)}
+                    >
+                      {opt.label}
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted">
+                  {csvKind === 'mcq'
+                    ? 'Columns: question, option_a, option_b, option_c, option_d, correct_option, explanation. Extra columns are ignored.'
+                    : 'Columns: question, title, description, note (or note_reference). Empty title/description/note fields are ignored. Uses your existing Descriptive type.'}
                 </p>
+                {csvKind === 'descriptive' ? (
+                  <div className="space-y-1">
+                    <Label htmlFor="csv-desc-type">Question type</Label>
+                    <select
+                      id="csv-desc-type"
+                      className="ibas-select"
+                      value={csvDescTypeId}
+                      disabled={csvImporting || descriptiveTypes.length === 0}
+                      onChange={(e) => setCsvDescTypeId(e.target.value)}
+                    >
+                      {descriptiveTypes.length === 0 ? (
+                        <option value="">No descriptive type found</option>
+                      ) : (
+                        descriptiveTypes.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name} ({t.code})
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  </div>
+                ) : null}
               </div>
               <Button
                 type="button"
@@ -434,7 +563,10 @@ export function ChapterQuestionsManageModal({
             {csvFileName && (
               <p className="text-xs text-muted">
                 File: <span className="font-medium text-foreground">{csvFileName}</span>
-                {csvRows.length > 0 ? ` · ${csvRows.length} question(s) ready` : ''}
+                {csvRowCount > 0
+                  ? ` · ${csvIncludedCount} of ${csvRowCount} question(s) ready`
+                  : ''}
+                {csvExcluded.size > 0 ? ` · ${csvExcluded.size} excluded` : ''}
               </p>
             )}
 
@@ -446,32 +578,124 @@ export function ChapterQuestionsManageModal({
               </ul>
             )}
 
-            {csvRows.length > 0 && (
+            {csvRowCount > 0 && (
               <>
-                <div className="max-h-40 overflow-auto rounded-md border border-border">
+                <div className="max-h-[min(50vh,28rem)] overflow-auto rounded-md border border-border">
                   <table className="w-full text-left text-xs">
                     <thead className="sticky top-0 bg-muted/60">
                       <tr>
                         <th className="px-2 py-1.5 font-medium">#</th>
                         <th className="px-2 py-1.5 font-medium">Question</th>
-                        <th className="px-2 py-1.5 font-medium">Ans</th>
+                        {csvKind === 'mcq' ? (
+                          <th className="px-2 py-1.5 font-medium">Ans</th>
+                        ) : (
+                          <>
+                            <th className="px-2 py-1.5 font-medium">Title</th>
+                            <th className="px-2 py-1.5 font-medium">Description</th>
+                            <th className="px-2 py-1.5 font-medium">Note</th>
+                          </>
+                        )}
+                        <th className="px-2 py-1.5 text-right font-medium">Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {csvRows.slice(0, 20).map((r, i) => (
-                        <tr key={`${i}-${r.question.slice(0, 24)}`} className="border-t border-border">
-                          <td className="px-2 py-1 align-top text-muted">{i + 1}</td>
-                          <td className="px-2 py-1 align-top">{truncate(r.question, 70)}</td>
-                          <td className="px-2 py-1 align-top uppercase">{r.correct_option}</td>
-                        </tr>
-                      ))}
+                      {csvKind === 'mcq'
+                        ? csvMcqRows.map((r, i) => {
+                            const excluded = csvExcluded.has(i);
+                            return (
+                              <tr
+                                key={`mcq-${i}-${r.question.slice(0, 24)}`}
+                                className={`border-t border-border ${excluded ? 'bg-muted/30 opacity-55' : ''}`}
+                              >
+                                <td className="px-2 py-1 align-top text-muted">{i + 1}</td>
+                                <td
+                                  className={`px-2 py-1.5 align-top whitespace-pre-wrap break-words ${excluded ? 'line-through text-muted' : ''}`}
+                                >
+                                  {plainText(r.question)}
+                                </td>
+                                <td className="px-2 py-1 align-top uppercase">{r.correct_option}</td>
+                                <td className="px-2 py-1 align-top text-right">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 px-2"
+                                    disabled={csvImporting}
+                                    onClick={() => toggleCsvExclude(i)}
+                                    title={excluded ? 'Include again' : 'Exclude from import'}
+                                  >
+                                    {excluded ? (
+                                      <>
+                                        <Undo2 className="h-3.5 w-3.5" />
+                                        Include
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                        Exclude
+                                      </>
+                                    )}
+                                  </Button>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        : csvDescRows.map((r, i) => {
+                            const excluded = csvExcluded.has(i);
+                            return (
+                              <tr
+                                key={`desc-${i}-${r.question.slice(0, 24)}`}
+                                className={`border-t border-border ${excluded ? 'bg-muted/30 opacity-55' : ''}`}
+                              >
+                                <td className="px-2 py-1 align-top text-muted">{i + 1}</td>
+                                <td
+                                  className={`px-2 py-1.5 align-top whitespace-pre-wrap break-words ${excluded ? 'line-through text-muted' : ''}`}
+                                >
+                                  {plainText(r.question)}
+                                </td>
+                                <td
+                                  className={`px-2 py-1.5 align-top whitespace-pre-wrap break-words ${excluded ? 'line-through text-muted' : ''}`}
+                                >
+                                  {r.title || '—'}
+                                </td>
+                                <td
+                                  className={`px-2 py-1.5 align-top whitespace-pre-wrap break-words ${excluded ? 'line-through text-muted' : ''}`}
+                                >
+                                  {r.description || '—'}
+                                </td>
+                                <td
+                                  className={`px-2 py-1.5 align-top whitespace-pre-wrap break-words ${excluded ? 'line-through text-muted' : ''}`}
+                                >
+                                  {r.note || '—'}
+                                </td>
+                                <td className="px-2 py-1 align-top text-right">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 px-2"
+                                    disabled={csvImporting}
+                                    onClick={() => toggleCsvExclude(i)}
+                                    title={excluded ? 'Include again' : 'Exclude from import'}
+                                  >
+                                    {excluded ? (
+                                      <>
+                                        <Undo2 className="h-3.5 w-3.5" />
+                                        Include
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                        Exclude
+                                      </>
+                                    )}
+                                  </Button>
+                                </td>
+                              </tr>
+                            );
+                          })}
                     </tbody>
                   </table>
-                  {csvRows.length > 20 && (
-                    <p className="border-t border-border px-2 py-1 text-xs text-muted">
-                      …and {csvRows.length - 20} more
-                    </p>
-                  )}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
@@ -488,11 +712,24 @@ export function ChapterQuestionsManageModal({
                   <Button
                     type="button"
                     size="sm"
-                    disabled={csvImporting || linkBusy}
+                    disabled={csvImporting || linkBusy || csvIncludedCount === 0}
                     onClick={() => void importCsvRows()}
                   >
-                    {csvImporting ? 'Importing…' : `Import ${csvRows.length} MCQs`}
+                    {csvImporting
+                      ? 'Importing…'
+                      : `Import ${csvIncludedCount} ${csvKind === 'mcq' ? 'MCQ' : 'descriptive'}${csvIncludedCount !== 1 ? 's' : ''}`}
                   </Button>
+                  {csvExcluded.size > 0 ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={csvImporting}
+                      onClick={() => setCsvExcluded(new Set())}
+                    >
+                      Restore all
+                    </Button>
+                  ) : null}
                   <Button
                     type="button"
                     size="sm"
@@ -573,7 +810,7 @@ export function ChapterQuestionsManageModal({
                         </Badge>
                         <Badge variant="outline">{linkLevelLabel(row.link_level)}</Badge>
                       </div>
-                      <p className="line-clamp-2">{truncate(row.body_en)}</p>
+                      <p className="whitespace-pre-wrap break-words">{plainText(row.body_en)}</p>
                       <p className="mt-0.5 text-xs text-muted">{row.link_label}</p>
                     </div>
                     <div className="flex shrink-0 flex-col gap-1 sm:flex-row">
@@ -631,7 +868,7 @@ export function ChapterQuestionsManageModal({
             {searching ? (
               <Skeleton className="h-10 w-full" />
             ) : searchResults.length > 0 ? (
-              <ul className="max-h-36 space-y-1 overflow-y-auto rounded-lg border border-border">
+              <ul className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-border">
                 {searchResults.map((q) => (
                   <li key={q.id}>
                     <button
@@ -651,7 +888,7 @@ export function ChapterQuestionsManageModal({
                           </Badge>
                         )}
                       </div>
-                      <span className="line-clamp-2">{truncate(q.body_en, 70)}</span>
+                      <span className="whitespace-pre-wrap break-words">{plainText(q.body_en)}</span>
                     </button>
                   </li>
                 ))}

@@ -221,6 +221,30 @@ export const batchMcqImportSchema = z.object({
 export type BatchMcqImportRow = z.infer<typeof batchMcqImportRowSchema>;
 export type BatchMcqImportDto = z.infer<typeof batchMcqImportSchema>;
 
+/** One descriptive row: question + optional model-answer title/description/note. */
+export const batchDescriptiveImportRowSchema = z.object({
+  question: z.string().min(1, 'Question text is required'),
+  title: z.string().optional().default(''),
+  description: z.string().optional().default(''),
+  note: z.string().optional().default(''),
+});
+
+export const batchDescriptiveImportSchema = z.object({
+  book_chapter_id: mongoId,
+  /** Existing question type id (prefer current Descriptive). Must be a non-option type. */
+  question_type_id: mongoId.optional(),
+  publish: z.boolean().optional().default(false),
+  difficulty: z.enum(QUESTION_DIFFICULTIES).optional().default('medium'),
+  marks: z.number().positive().optional().default(5),
+  negative_marks: z.number().min(0).optional().default(0),
+  time_seconds: z.number().int().positive().optional().default(300),
+  language: z.enum(BOOK_LANGUAGES).optional().default('bn'),
+  rows: z.array(batchDescriptiveImportRowSchema).min(1).max(500),
+});
+
+export type BatchDescriptiveImportRow = z.infer<typeof batchDescriptiveImportRowSchema>;
+export type BatchDescriptiveImportDto = z.infer<typeof batchDescriptiveImportSchema>;
+
 export type CreateQuestionDto = z.infer<typeof createQuestionSchema>;
 export type UpdateQuestionDto = z.infer<typeof updateQuestionSchema>;
 export type QuestionBookLinkInput = z.infer<typeof questionBookLinkInputSchema>;

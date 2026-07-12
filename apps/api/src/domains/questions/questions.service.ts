@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import type {
+  BatchDescriptiveImportDto,
   BatchMcqImportDto,
   CreateQuestionDto,
   CreateQuestionTypeDto,
@@ -1233,4 +1234,135 @@ export async function batchImportMcqQuestions(dto: BatchMcqImportDto, createdBy:
     created,
     failed,
   };
+}
+
+export async function batchImportDescriptiveQuestions(
+  dto: BatchDescriptiveImportDto,
+  createdBy: string,
+) {
+  const chapter = await BookChapter.findById(dto.book_chapter_id);
+  if (!chapter || !chapter.is_active) throw notFound('Chapter not found');
+
+  const qType = await resolveDescriptiveQuestionType(dto.question_type_id);
+  if (!qType) {
+    throw badRequest(
+      'No Descriptive question type found. Use an existing non-option type (e.g. Descriptive) or activate it in question types.',
+    );
+  }
+  if (qType.has_options) {
+    throw badRequest(`Question type "${qType.name}" has options and cannot be used for descriptive import.`);
+  }
+
+  const created: Array<{ row: number; id: string }> = [];
+  const failed: Array<{ row: number; error: string }> = [];
+
+  for (let i = 0; i < dto.rows.length; i++) {
+    const row = dto.rows[i]!;
+    const rowNumber = i + 1;
+    try {
+      const title = row.title?.trim() ?? '';
+      const description = row.description?.trim() ?? '';
+      const note = row.note?.trim() ?? '';
+      const model_answer_sections =
+        title || description || note
+          ? cleanExplanationSections([
+              {
+                title,
+                details: description || undefined,
+                note: note || undefined,
+                subsections: [],
+              },
+            ])
+          : [];
+
+      const createDto: CreateQuestionDto = {
+        question_type_id: String(qType._id),
+        body_en: row.question.trim(),
+        body_bn: row.question.trim(),
+        difficulty: dto.difficulty,
+        marks: dto.marks,
+        negative_marks: dto.negative_marks,
+        time_seconds: dto.time_seconds,
+        language: dto.language,
+        model_answer_sections,
+        explanation_sections: [],
+        book_links: [
+          {
+            link_level: 'chapter',
+            book_chapter_id: String(chapter._id),
+          },
+        ],
+      };
+
+      const detail = await createQuestion(createDto, createdBy);
+      if (dto.publish) {
+        await publishQuestion(detail.id, createdBy);
+      }
+      created.push({ row: rowNumber, id: detail.id });
+    } catch (err) {
+      failed.push({
+        row: rowNumber,
+        error: err instanceof Error ? err.message : 'Failed to create question',
+      });
+    }
+  }
+
+  return {
+    book_chapter_id: String(chapter._id),
+    total: dto.rows.length,
+    created_count: created.length,
+    failed_count: failed.length,
+    published: dto.publish,
+    created,
+    failed,
+  };
+}
+
+/**
+ * Prefer an existing Descriptive type — never create one.
+ * Order: explicit id → code/name Descriptive (active or inactive) → other text types.
+ */
+async function resolveDescriptiveQuestionType(questionTypeId?: string) {
+  if (questionTypeId) {
+    const byId = await QuestionType.findById(questionTypeId);
+    if (!byId) return null;
+    if (!byId.is_active) {
+      byId.is_active = true;
+      await byId.save();
+    }
+    return byId;
+  }
+
+  const descriptiveMatch = await QuestionType.findOne({
+    $or: [
+      { code: { $regex: /^descriptive$/i } },
+      { name: { $regex: /^descriptive$/i } },
+    ],
+  });
+  if (descriptiveMatch) {
+    if (!descriptiveMatch.is_active) {
+      descriptiveMatch.is_active = true;
+      await descriptiveMatch.save();
+    }
+    return descriptiveMatch;
+  }
+
+  const byNameContains = await QuestionType.findOne({
+    has_options: false,
+    name: { $regex: /descriptive/i },
+    code: { $not: { $regex: /^differences?$/i } },
+  });
+  if (byNameContains) {
+    if (!byNameContains.is_active) {
+      byNameContains.is_active = true;
+      await byNameContains.save();
+    }
+    return byNameContains;
+  }
+
+  return QuestionType.findOne({
+    is_active: true,
+    has_options: false,
+    code: { $nin: ['DIFFERENCES', 'DIFFERENCE', 'DF', 'MCQ', 'TF'] },
+  }).sort({ name: 1 });
 }

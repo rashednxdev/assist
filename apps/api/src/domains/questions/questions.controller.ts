@@ -10,6 +10,7 @@ import {
   updateQuestionTypeSchema,
   generateQuestionAiSchema,
   batchMcqImportSchema,
+  batchDescriptiveImportSchema,
 } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
 import * as questionsService from './questions.service.js';
@@ -75,6 +76,12 @@ export async function createQuestionHandler(req: AuthRequest, res: Response): Pr
 export async function batchImportMcqHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = batchMcqImportSchema.parse(req.body);
   const data = await questionsService.batchImportMcqQuestions(dto, req.user!.id);
+  res.status(201).json({ data });
+}
+
+export async function batchImportDescriptiveHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = batchDescriptiveImportSchema.parse(req.body);
+  const data = await questionsService.batchImportDescriptiveQuestions(dto, req.user!.id);
   res.status(201).json({ data });
 }
 

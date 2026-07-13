@@ -11,6 +11,7 @@ import {
   generateQuestionAiSchema,
   batchMcqImportSchema,
   batchDescriptiveImportSchema,
+  batchQuestionIdsSchema,
 } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
 import * as questionsService from './questions.service.js';
@@ -41,6 +42,15 @@ export async function deleteQuestionTypeHandler(req: AuthRequest, res: Response)
 export async function listQuestionsHandler(req: AuthRequest, res: Response): Promise<void> {
   const filters = listQuestionsQuerySchema.parse(req.query);
   const data = await questionsService.listQuestions(filters);
+  res.json({ data });
+}
+
+export async function listTrashedQuestionsHandler(req: AuthRequest, res: Response): Promise<void> {
+  const q = typeof req.query.q === 'string' ? req.query.q : undefined;
+  const limitRaw = typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined;
+  const limit =
+    limitRaw && Number.isFinite(limitRaw) ? Math.min(100, Math.max(1, Math.floor(limitRaw))) : 100;
+  const data = await questionsService.listTrashedQuestions({ q, limit });
   res.json({ data });
 }
 
@@ -93,6 +103,34 @@ export async function updateQuestionHandler(req: AuthRequest, res: Response): Pr
 
 export async function deleteQuestionHandler(req: AuthRequest, res: Response): Promise<void> {
   const data = await questionsService.deleteQuestion(String(req.params.id));
+  res.json({ data });
+}
+
+export async function restoreQuestionHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await questionsService.restoreQuestion(String(req.params.id));
+  res.json({ data });
+}
+
+export async function permanentlyDeleteQuestionHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await questionsService.permanentlyDeleteQuestion(String(req.params.id));
+  res.json({ data });
+}
+
+export async function batchTrashQuestionsHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = batchQuestionIdsSchema.parse(req.body);
+  const data = await questionsService.batchTrashQuestions(dto.ids);
+  res.json({ data });
+}
+
+export async function batchRestoreQuestionsHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = batchQuestionIdsSchema.parse(req.body);
+  const data = await questionsService.batchRestoreQuestions(dto.ids);
+  res.json({ data });
+}
+
+export async function batchPermanentlyDeleteQuestionsHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = batchQuestionIdsSchema.parse(req.body);
+  const data = await questionsService.batchPermanentlyDeleteQuestions(dto.ids);
   res.json({ data });
 }
 

@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { HelpCircle, Plus, Search, Upload, Download } from 'lucide-react';
+import { HelpCircle, Pencil, Plus, Search, Trash2, Upload, Download } from 'lucide-react';
 import { QUESTION_DIFFICULTIES } from '@ibas/shared-constants';
 import { apiFetch } from '@/lib/api-client';
-import { confirmDelete } from '@/lib/confirm-action';
+import { confirmDelete, confirmBatchTrash } from '@/lib/confirm-action';
 import { fetchMe } from '@/lib/auth';
 import { isPlatformAdmin } from '@/lib/capabilities';
 import { RowActions } from '@/components/shared/row-actions';
+import { QuestionEditModal } from '@/components/questions/question-edit-modal';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -70,6 +71,10 @@ export default function QuestionsPage() {
   const [listErr, setListErr] = useState('');
   const [editingTypeId, setEditingTypeId] = useState<string | null>(null);
   const [typeForm, setTypeForm] = useState({ name: '', code: '', has_options: true, note: '' });
+  const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
+  const [trashingId, setTrashingId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [batchBusy, setBatchBusy] = useState(false);
 
   const loadTypes = () =>
     apiFetch<{ data: QuestionType[] }>('/questions/types').then((r) => setTypes(r.data));
@@ -83,7 +88,10 @@ export default function QuestionsPage() {
     if (code) params.set('question_type_code', code);
     const qs = params.toString() ? `?${params.toString()}` : '';
     apiFetch<{ data: QuestionItem[] }>(`/questions${qs}`)
-      .then((r) => setItems(r.data))
+      .then((r) => {
+        setItems(r.data);
+        setSelectedIds([]);
+      })
       .finally(() => setLoading(false));
   }
 
@@ -187,6 +195,75 @@ export default function QuestionsPage() {
     }
   }
 
+  function openEditModal(item: QuestionItem, e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setEditingQuestionId(item.id);
+  }
+
+  async function moveToTrash(item: QuestionItem, e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    const label = item.body_en.slice(0, 60) + (item.body_en.length > 60 ? '…' : '');
+    if (!confirmDelete(label)) return;
+    setListErr('');
+    setListMsg('');
+    setTrashingId(item.id);
+    try {
+      await apiFetch(`/questions/${item.id}`, { method: 'DELETE' });
+      setItems((prev) => prev.filter((q) => q.id !== item.id));
+      setSelectedIds((prev) => prev.filter((id) => id !== item.id));
+      setListMsg('Question moved to trash (inactive & unpublished)');
+      load(q, difficulty, published, typeCode);
+    } catch (err) {
+      setListErr(err instanceof Error ? err.message : 'Failed to move to trash');
+    } finally {
+      setTrashingId(null);
+    }
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.length === items.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(items.map((item) => item.id));
+    }
+  }
+
+  async function batchMoveToTrash() {
+    if (selectedIds.length === 0) return;
+    if (!confirmBatchTrash(selectedIds.length)) return;
+    setListErr('');
+    setListMsg('');
+    setBatchBusy(true);
+    try {
+      const res = await apiFetch<{ data: { trashed: number; failed: number } }>(
+        '/questions/batch-trash',
+        {
+          method: 'POST',
+          body: JSON.stringify({ ids: selectedIds }),
+        },
+      );
+      const { trashed, failed } = res.data;
+      setListMsg(
+        failed > 0
+          ? `Moved ${trashed} to trash; ${failed} failed`
+          : `Moved ${trashed} question${trashed === 1 ? '' : 's'} to trash`,
+      );
+      if (failed > 0) setListErr(`${failed} question(s) could not be moved to trash`);
+      setSelectedIds([]);
+      load(q, difficulty, published, typeCode);
+    } catch (err) {
+      setListErr(err instanceof Error ? err.message : 'Batch trash failed');
+    } finally {
+      setBatchBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -194,12 +271,20 @@ export default function QuestionsPage() {
         description="MCQ, true/false, descriptive, and short-note questions linked to chapters, rules, or sub-rules."
         action={
           isAdmin ? (
-            <Button asChild size="sm">
-              <Link href="/questions/new">
-                <Plus className="h-4 w-4" />
-                New question
-              </Link>
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button asChild size="sm" variant="outline">
+                <Link href="/questions/trash">
+                  <Trash2 className="h-4 w-4" />
+                  Trash
+                </Link>
+              </Button>
+              <Button asChild size="sm">
+                <Link href="/questions/new">
+                  <Plus className="h-4 w-4" />
+                  New question
+                </Link>
+              </Button>
+            </div>
           ) : undefined
         }
       />
@@ -378,6 +463,30 @@ export default function QuestionsPage() {
         <CardContent className="p-4">
           {listMsg && <Alert variant="success" className="mb-4">{listMsg}</Alert>}
           {listErr && <Alert variant="error" className="mb-4">{listErr}</Alert>}
+          {isAdmin && items.length > 0 && !loading && (
+            <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2">
+              <label className="flex items-center gap-2 text-sm text-muted">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-input"
+                  checked={selectedIds.length === items.length && items.length > 0}
+                  onChange={toggleSelectAll}
+                />
+                Select all ({selectedIds.length}/{items.length})
+              </label>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                disabled={selectedIds.length === 0 || batchBusy}
+                onClick={() => void batchMoveToTrash()}
+              >
+                <Trash2 className="h-4 w-4" />
+                Trash selected ({selectedIds.length})
+              </Button>
+            </div>
+          )}
           {loading ? (
             <div className="space-y-3">
               <Skeleton className="h-20 w-full" />
@@ -397,11 +506,25 @@ export default function QuestionsPage() {
               {items.map((item) => {
                 const link = linkBadge(item);
                 const busy = publishingId === item.id;
+                const selected = selectedIds.includes(item.id);
                 return (
                   <div
                     key={item.id}
-                    className="group flex items-center gap-3 rounded-xl border border-border bg-slate-50/50 p-4 transition-colors hover:border-primary/40 hover:bg-primary-muted/30"
+                    className={`group flex items-center gap-3 rounded-xl border p-4 transition-colors ${
+                      selected
+                        ? 'border-primary/50 bg-primary-muted/20'
+                        : 'border-border bg-slate-50/50 hover:border-primary/40 hover:bg-primary-muted/30'
+                    }`}
                   >
+                    {isAdmin && (
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 shrink-0 rounded border-input"
+                        checked={selected}
+                        onChange={() => toggleSelect(item.id)}
+                        aria-label={`Select question ${item.body_en.slice(0, 40)}`}
+                      />
+                    )}
                     <Link
                       href={`/questions/${item.id}`}
                       className="flex min-w-0 flex-1 items-start gap-3"
@@ -432,26 +555,49 @@ export default function QuestionsPage() {
                       </div>
                     </Link>
                     {isAdmin && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="shrink-0"
-                        disabled={busy}
-                        onClick={(e) => togglePublish(item, e)}
-                      >
-                        {item.is_published ? (
-                          <>
-                            <Download className="h-4 w-4" />
-                            Unpublish
-                          </>
-                        ) : (
-                          <>
-                            <Upload className="h-4 w-4" />
-                            Publish
-                          </>
-                        )}
-                      </Button>
+                      <div className="flex shrink-0 flex-wrap gap-1">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="shrink-0"
+                          onClick={(e) => openEditModal(item, e)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                          Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="shrink-0"
+                          disabled={busy}
+                          onClick={(e) => togglePublish(item, e)}
+                        >
+                          {item.is_published ? (
+                            <>
+                              <Download className="h-4 w-4" />
+                              Unpublish
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="h-4 w-4" />
+                              Publish
+                            </>
+                          )}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="shrink-0 text-red-600 hover:bg-red-50 hover:text-red-700"
+                          disabled={trashingId === item.id || batchBusy}
+                          onClick={(e) => void moveToTrash(item, e)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Trash
+                        </Button>
+                      </div>
                     )}
                   </div>
                 );
@@ -460,6 +606,13 @@ export default function QuestionsPage() {
           )}
         </CardContent>
       </Card>
+
+      <QuestionEditModal
+        open={!!editingQuestionId}
+        questionId={editingQuestionId}
+        onClose={() => setEditingQuestionId(null)}
+        onSaved={() => load(q, difficulty, published, typeCode)}
+      />
     </div>
   );
 }

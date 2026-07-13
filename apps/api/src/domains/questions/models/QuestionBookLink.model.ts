@@ -10,6 +10,8 @@ export interface IQuestionBookLink extends Document {
   regulation_id?: Types.ObjectId;
   sort_order: number;
   is_active: boolean;
+  /** Set when the parent question is moved to trash so restore can re-enable only those links. */
+  deactivated_by_trash?: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -24,6 +26,7 @@ const schema = new Schema<IQuestionBookLink>(
     regulation_id: { type: Schema.Types.ObjectId, ref: 'Regulation' },
     sort_order: { type: Number, default: 0 },
     is_active: { type: Boolean, default: true },
+    deactivated_by_trash: { type: Boolean, default: false },
   },
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } },
 );

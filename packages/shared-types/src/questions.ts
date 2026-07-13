@@ -147,6 +147,11 @@ export const listQuestionsQuerySchema = z.object({
     .enum(['true', 'false'])
     .optional()
     .transform((v) => (v === undefined ? undefined : v === 'true')),
+  /** When true, list soft-deleted (trashed) questions only. */
+  trashed: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === 'true')),
   book_chapter_id: mongoId.optional(),
   book_topic_id: mongoId.optional(),
   book_sub_topic_id: mongoId.optional(),
@@ -244,6 +249,13 @@ export const batchDescriptiveImportSchema = z.object({
 
 export type BatchDescriptiveImportRow = z.infer<typeof batchDescriptiveImportRowSchema>;
 export type BatchDescriptiveImportDto = z.infer<typeof batchDescriptiveImportSchema>;
+
+/** Shared body for batch trash / restore / permanent delete. */
+export const batchQuestionIdsSchema = z.object({
+  ids: z.array(mongoId).min(1, 'Select at least one question').max(100),
+});
+
+export type BatchQuestionIdsDto = z.infer<typeof batchQuestionIdsSchema>;
 
 export type CreateQuestionDto = z.infer<typeof createQuestionSchema>;
 export type UpdateQuestionDto = z.infer<typeof updateQuestionSchema>;

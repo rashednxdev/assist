@@ -20,6 +20,7 @@ import {
   ScanText,
   Calculator,
   Bookmark,
+  Trash2,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -130,6 +131,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { href: '/books/admin', label: 'Book admin', icon: BookOpen, moduleCode: 'BOOKS', requireCreate: true },
       { href: '/questions/new', label: 'New question', icon: HelpCircle, moduleCode: 'QUESTIONS', requireCreate: true },
+      { href: '/questions/trash', label: 'Question trash', icon: Trash2, moduleCode: 'QUESTIONS', requireCreate: true },
       { href: '/exams/admin', label: 'Exam setup', icon: GraduationCap, moduleCode: 'EXAM', requireCreate: true },
       { href: '/papers/new', label: 'New paper', icon: FileText, moduleCode: 'PAPER', requireCreate: true },
       { href: '/admin/setup/pension-leaves', label: 'Pension leave types', icon: Calculator, moduleCode: 'SETUP', requireCreate: true },

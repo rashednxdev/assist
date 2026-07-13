@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Eye, Pencil, Trash2, Upload, Download } from 'lucide-react';
 import { apiFetch, ApiError } from '@/lib/api-client';
+import { confirmDelete } from '@/lib/confirm-action';
 import { fetchMe } from '@/lib/auth';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
@@ -148,7 +149,9 @@ export default function QuestionDetailPage() {
   }
 
   async function handleDelete() {
-    if (!confirm('Delete this question?')) return;
+    if (!confirmDelete(question.body_en.slice(0, 60) + (question.body_en.length > 60 ? '…' : ''))) {
+      return;
+    }
     setBusy(true);
     try {
       await apiFetch(`/questions/${id}`, { method: 'DELETE' });
@@ -209,7 +212,7 @@ export default function QuestionDetailPage() {
                 </Button>
                 <Button size="sm" variant="outline" onClick={handleDelete} disabled={busy}>
                   <Trash2 className="h-4 w-4" />
-                  Delete
+                  Move to trash
                 </Button>
               </>
             )}

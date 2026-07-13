@@ -8,6 +8,7 @@ import {
   updateQuestionTypeHandler,
   deleteQuestionTypeHandler,
   listQuestionsHandler,
+  listTrashedQuestionsHandler,
   listMarathonReviewHandler,
   similarQuestionsHandler,
   getQuestionHandler,
@@ -17,6 +18,11 @@ import {
   batchImportDescriptiveHandler,
   updateQuestionHandler,
   deleteQuestionHandler,
+  restoreQuestionHandler,
+  permanentlyDeleteQuestionHandler,
+  batchTrashQuestionsHandler,
+  batchRestoreQuestionsHandler,
+  batchPermanentlyDeleteQuestionsHandler,
   publishQuestionHandler,
   unpublishQuestionHandler,
   addQuestionBookLinkHandler,
@@ -32,6 +38,7 @@ questionsRouter.post('/types', requireAdmin, asyncHandler(createQuestionTypeHand
 questionsRouter.patch('/types/:id', requireAdmin, asyncHandler(updateQuestionTypeHandler));
 questionsRouter.delete('/types/:id', requireAdmin, asyncHandler(deleteQuestionTypeHandler));
 questionsRouter.get('/', asyncHandler(listQuestionsHandler));
+questionsRouter.get('/trashed', requireAdmin, asyncHandler(listTrashedQuestionsHandler));
 questionsRouter.get('/marathon-review', asyncHandler(listMarathonReviewHandler));
 questionsRouter.get('/similar', asyncHandler(similarQuestionsHandler));
 questionsRouter.get('/:id', asyncHandler(getQuestionHandler));
@@ -43,8 +50,17 @@ questionsRouter.post(
   requireAdmin,
   asyncHandler(batchImportDescriptiveHandler),
 );
+questionsRouter.post('/batch-trash', requireAdmin, asyncHandler(batchTrashQuestionsHandler));
+questionsRouter.post('/batch-restore', requireAdmin, asyncHandler(batchRestoreQuestionsHandler));
+questionsRouter.post(
+  '/batch-permanent-delete',
+  requireAdmin,
+  asyncHandler(batchPermanentlyDeleteQuestionsHandler),
+);
 questionsRouter.post('/', requireAdmin, asyncHandler(createQuestionHandler));
 questionsRouter.patch('/:id', requireAdmin, asyncHandler(updateQuestionHandler));
+questionsRouter.post('/:id/restore', requireAdmin, asyncHandler(restoreQuestionHandler));
+questionsRouter.delete('/:id/permanent', requireAdmin, asyncHandler(permanentlyDeleteQuestionHandler));
 questionsRouter.delete('/:id', requireAdmin, asyncHandler(deleteQuestionHandler));
 questionsRouter.post('/:id/publish', requireAdmin, asyncHandler(publishQuestionHandler));
 questionsRouter.post('/:id/unpublish', requireAdmin, asyncHandler(unpublishQuestionHandler));

@@ -31,6 +31,9 @@ import {
   QuestionAnswerDetail,
   type IQuestionAnswerDetail,
 } from './models/QuestionAnswerDetail.model.js';
+import { UserQuestionEvaluation } from '../evaluation/models/UserQuestionEvaluation.model.js';
+import { PaperQuestion } from '../papers/models/PaperQuestion.model.js';
+import { ChildQuestion } from '../papers/models/ChildQuestion.model.js';
 import { notFound, badRequest } from '../../shared/errors/AppError.js';
 import {
   escapeRegex,
@@ -814,13 +817,14 @@ export async function listQuestions(filters: {
   question_type_id?: string;
   question_type_code?: string;
   is_published?: boolean;
+  trashed?: boolean;
   book_chapter_id?: string;
   book_topic_id?: string;
   book_sub_topic_id?: string;
   regulation_id?: string;
   limit: number;
 }) {
-  const query: Record<string, unknown> = { is_active: true };
+  const query: Record<string, unknown> = { is_active: filters.trashed === true ? false : true };
   if (filters.difficulty) query.difficulty = filters.difficulty;
   if (filters.question_type_id) query.question_type_id = filters.question_type_id;
   if (filters.question_type_code) query.question_type_code = filters.question_type_code;
@@ -1117,13 +1121,135 @@ export async function updateQuestion(id: string, dto: UpdateQuestionDto) {
   return loadQuestionDetail(id);
 }
 
+/** Soft-delete: inactive + unpublished, hidden from Question Bank. Related docs kept. */
 export async function deleteQuestion(id: string) {
   const question = await Question.findById(id);
   if (!question) throw notFound('Question not found');
+  if (!question.is_active) {
+    return { deleted: true, already_trashed: true, id: String(question._id) };
+  }
+
   question.is_active = false;
   question.is_published = false;
   await question.save();
-  return { deleted: true };
+
+  // Hide chapter/book placements while trashed (restored with the question)
+  await QuestionBookLink.updateMany(
+    { question_id: question._id, is_active: true },
+    { $set: { is_active: false, deactivated_by_trash: true } },
+  );
+
+  return { deleted: true, trashed: true, id: String(question._id) };
+}
+
+export async function restoreQuestion(id: string) {
+  const question = await Question.findById(id);
+  if (!question) throw notFound('Question not found');
+  if (question.is_active) return loadQuestionDetail(id);
+
+  question.is_active = true;
+  // Stay unpublished until explicitly published again
+  await question.save();
+
+  const marked = await QuestionBookLink.updateMany(
+    { question_id: question._id, deactivated_by_trash: true },
+    { $set: { is_active: true, deactivated_by_trash: false } },
+  );
+
+  // Legacy trash (before deactivated_by_trash): re-enable inactive links for this question
+  if (marked.modifiedCount === 0) {
+    await QuestionBookLink.updateMany(
+      { question_id: question._id, is_active: false },
+      { $set: { is_active: true } },
+    );
+  }
+
+  return loadQuestionDetail(id);
+}
+
+/** Hard-delete: remove question and related documents from the database. */
+export async function permanentlyDeleteQuestion(id: string) {
+  const question = await Question.findById(id);
+  if (!question) throw notFound('Question not found');
+  if (question.is_active) {
+    throw badRequest('Move the question to trash before permanently deleting it');
+  }
+
+  const oid = question._id;
+
+  await Promise.all([
+    QuestionOption.deleteMany({ question_id: oid }),
+    QuestionAnswer.deleteMany({ question_id: oid }),
+    QuestionAnswerDetail.deleteMany({ question_id: oid }),
+    QuestionBookLink.deleteMany({ question_id: oid }),
+    UserQuestionEvaluation.deleteMany({ question_id: oid }),
+  ]);
+
+  // Keep paper structure; detach bank refs
+  await PaperQuestion.updateMany({ question_id: oid }, { $set: { is_active: false } });
+  await ChildQuestion.updateMany({ question_id: oid }, { $set: { is_active: false } });
+
+  await Question.deleteOne({ _id: oid });
+
+  return { permanently_deleted: true, id: String(oid) };
+}
+
+export async function batchTrashQuestions(ids: string[]) {
+  const results: Array<{ id: string; trashed?: boolean; already_trashed?: boolean; error?: string }> = [];
+  for (const id of ids) {
+    try {
+      const result = await deleteQuestion(id);
+      results.push({
+        id,
+        trashed: Boolean(result.trashed),
+        already_trashed: Boolean(result.already_trashed),
+      });
+    } catch (err) {
+      results.push({ id, error: err instanceof Error ? err.message : 'Trash failed' });
+    }
+  }
+  const trashed = results.filter((r) => r.trashed || r.already_trashed).length;
+  const failed = results.filter((r) => r.error).length;
+  return { trashed, failed, results };
+}
+
+export async function batchRestoreQuestions(ids: string[]) {
+  const results: Array<{ id: string; restored?: boolean; error?: string }> = [];
+  for (const id of ids) {
+    try {
+      await restoreQuestion(id);
+      results.push({ id, restored: true });
+    } catch (err) {
+      results.push({ id, error: err instanceof Error ? err.message : 'Restore failed' });
+    }
+  }
+  const restored = results.filter((r) => r.restored).length;
+  const failed = results.filter((r) => r.error).length;
+  return { restored, failed, results };
+}
+
+export async function batchPermanentlyDeleteQuestions(ids: string[]) {
+  const results: Array<{ id: string; permanently_deleted?: boolean; error?: string }> = [];
+  for (const id of ids) {
+    try {
+      await permanentlyDeleteQuestion(id);
+      results.push({ id, permanently_deleted: true });
+    } catch (err) {
+      results.push({ id, error: err instanceof Error ? err.message : 'Permanent delete failed' });
+    }
+  }
+  const deleted = results.filter((r) => r.permanently_deleted).length;
+  const failed = results.filter((r) => r.error).length;
+  return { deleted, failed, results };
+}
+
+/** List soft-deleted questions for the trash page. */
+export async function listTrashedQuestions(filters: { q?: string; limit?: number }) {
+  return listQuestions({
+    q: filters.q,
+    trashed: true,
+    limit: filters.limit ?? 100,
+  });
 }
 
 export async function publishQuestion(id: string, reviewerId: string) {

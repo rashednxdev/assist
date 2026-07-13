@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  Animated,
   ScrollView,
   View,
   Text,
@@ -110,7 +109,6 @@ export default function BookDetailScreen() {
   const [searchDraft, setSearchDraft] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
-  const searchSlide = useRef(new Animated.Value(0)).current;
   const searchInputRef = useRef<TextInput>(null);
 
   useLayoutEffect(() => {
@@ -127,8 +125,7 @@ export default function BookDetailScreen() {
     setSearchDraft('');
     setSearchQuery('');
     setSearchOpen(false);
-    searchSlide.setValue(0);
-  }, [bookId, searchSlide]);
+  }, [bookId]);
 
   function handleViewModeChange(mode: BookContentsViewMode) {
     setViewMode(mode);
@@ -137,25 +134,14 @@ export default function BookDetailScreen() {
 
   function openSearch() {
     setSearchOpen(true);
-    Animated.timing(searchSlide, {
-      toValue: 1,
-      duration: 220,
-      useNativeDriver: false,
-    }).start(() => searchInputRef.current?.focus());
+    requestAnimationFrame(() => searchInputRef.current?.focus());
   }
 
   function closeSearch() {
     searchInputRef.current?.blur();
-    Animated.timing(searchSlide, {
-      toValue: 0,
-      duration: 180,
-      useNativeDriver: false,
-    }).start(({ finished }) => {
-      if (!finished) return;
-      setSearchOpen(false);
-      setSearchDraft('');
-      setSearchQuery('');
-    });
+    setSearchOpen(false);
+    setSearchDraft('');
+    setSearchQuery('');
   }
 
   function applySearch() {
@@ -209,31 +195,24 @@ export default function BookDetailScreen() {
   const showFullLoading = viewMode === 'full' && (fullChapters === null || fullLoading);
   const activeViewMode = q ? 'full' : viewMode;
 
-  const searchFlex = searchSlide.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 1],
-  });
-  const searchOpacity = searchSlide.interpolate({
-    inputRange: [0, 0.4, 1],
-    outputRange: [0, 0, 1],
-  });
-
   return (
     <>
       <View style={styles.root}>
         <View style={styles.toolbar}>
-          <View style={[styles.toolbarStart, searchOpen && styles.toolbarStartOpen]}>
-            <Animated.View
-              style={[
-                styles.searchSlide,
-                {
-                  flex: searchFlex,
-                  opacity: searchOpacity,
-                  marginRight: searchOpen ? spacing.sm : 0,
-                },
-              ]}
-              pointerEvents={searchOpen ? 'auto' : 'none'}
-            >
+          <Pressable
+            style={styles.searchIconBtn}
+            onPress={onSearchIconPress}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={searchOpen ? 'Search book' : 'Open search'}
+          >
+            <View style={styles.searchIconInner}>
+              <Ionicons name="search" size={20} color={colors.primary} />
+            </View>
+          </Pressable>
+
+          {searchOpen ? (
+            <View style={styles.toolbarMain}>
               <View style={styles.searchField}>
                 <TextInput
                   ref={searchInputRef}
@@ -244,28 +223,18 @@ export default function BookDetailScreen() {
                   placeholderTextColor={colors.textMuted}
                   returnKeyType="search"
                   onSubmitEditing={applySearch}
+                  autoFocus
                 />
-                {searchOpen ? (
-                  <Pressable onPress={closeSearch} hitSlop={8} accessibilityLabel="Close search">
-                    <Ionicons name="close-circle" size={18} color={colors.textMuted} />
-                  </Pressable>
-                ) : null}
+                <Pressable onPress={closeSearch} hitSlop={10} accessibilityLabel="Close search">
+                  <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+                </Pressable>
               </View>
-            </Animated.View>
-
-            <Pressable
-              style={styles.searchIconBtn}
-              onPress={onSearchIconPress}
-              accessibilityRole="button"
-              accessibilityLabel={searchOpen ? 'Search book' : 'Open search'}
-            >
-              <View style={styles.searchIconInner}>
-                <Ionicons name="search" size={20} color={colors.primary} />
-              </View>
-            </Pressable>
-          </View>
-
-          <BookViewModeToggle compact value={viewMode} onChange={handleViewModeChange} />
+            </View>
+          ) : (
+            <View style={styles.toolbarMain}>
+              <BookViewModeToggle compact value={viewMode} onChange={handleViewModeChange} />
+            </View>
+          )}
         </View>
 
         <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
@@ -386,50 +355,16 @@ const styles = StyleSheet.create({
   toolbar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingLeft: spacing.sm,
+    paddingRight: spacing.md,
     paddingTop: spacing.sm,
     paddingBottom: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     backgroundColor: colors.background,
   },
-  toolbarStart: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexShrink: 0,
-    gap: spacing.sm,
-  },
-  toolbarStartOpen: {
-    flex: 1,
-    minWidth: 0,
-    marginRight: spacing.sm,
-  },
-  searchSlide: {
-    overflow: 'hidden',
-    minWidth: 0,
-  },
-  searchField: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingHorizontal: spacing.md,
-    minHeight: 40,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-    color: colors.text,
-    paddingVertical: spacing.sm,
-    minWidth: 0,
-  },
   searchIconBtn: {
-    alignSelf: 'stretch',
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 10,
@@ -441,11 +376,34 @@ const styles = StyleSheet.create({
   },
   searchIconInner: {
     minWidth: 34,
+    minHeight: 34,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 8,
+  },
+  toolbarMain: {
+    flex: 1,
+    minWidth: 0,
+  },
+  searchField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: 10,
+    paddingHorizontal: spacing.md,
+    minHeight: 40,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: colors.text,
+    paddingVertical: spacing.sm,
+    minWidth: 0,
   },
   scroll: {
     flex: 1,

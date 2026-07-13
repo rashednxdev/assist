@@ -4,6 +4,7 @@
     "slug": "ibas-learn",
     "version": "1.0.0",
     "orientation": "default",
+    "icon": "./assets/icon.png",
     "scheme": "ibaslearn",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
@@ -13,8 +14,9 @@
       "fallbackToCacheTimeout": 0
     },
     "splash": {
+      "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0f3d5c"
+      "backgroundColor": "#000000"
     },
     "ios": {
       "supportsTablet": true,
@@ -22,7 +24,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#0f3d5c"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#000000"
       },
       "package": "gov.bd.ibas.learn",
       "usesCleartextTraffic": true
@@ -40,6 +43,9 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "web": {
+      "favicon": "./assets/icon.png"
     }
   }
 }

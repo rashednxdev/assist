@@ -2,9 +2,9 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -46,11 +46,18 @@ export default function LoginPage() {
       <div className="flex flex-1 items-center justify-center bg-background p-4 sm:p-8">
         <Card className="w-full max-w-md border-0 shadow-lg sm:border">
           <CardHeader className="space-y-1 pb-2 text-center lg:text-left">
-            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-primary-muted text-primary lg:mx-0 lg:hidden">
-              <Lock className="h-6 w-6" />
+            <div className="mx-auto mb-3 lg:hidden">
+              <Image
+                src="/brand/proassist-logo.png"
+                alt="ProAssist"
+                width={48}
+                height={48}
+                className="h-12 w-12 rounded-xl"
+                priority
+              />
             </div>
             <CardTitle className="text-2xl">{t('login')}</CardTitle>
-            <CardDescription>Sign in to your iBAS++ Assistant account</CardDescription>
+            <CardDescription>Sign in to your ProAssist account</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-5">

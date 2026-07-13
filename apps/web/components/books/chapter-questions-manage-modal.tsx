@@ -99,6 +99,7 @@ export function ChapterQuestionsManageModal({
   const [csvMcqRows, setCsvMcqRows] = useState<ParsedMcqCsvRow[]>([]);
   const [csvDescRows, setCsvDescRows] = useState<ParsedDescriptiveCsvRow[]>([]);
   const [csvExcluded, setCsvExcluded] = useState<Set<number>>(() => new Set());
+  const [csvSelected, setCsvSelected] = useState<Set<number>>(() => new Set());
   const [csvParseNotes, setCsvParseNotes] = useState<string[]>([]);
   const [csvFileName, setCsvFileName] = useState('');
   const [csvPublish, setCsvPublish] = useState(false);
@@ -142,6 +143,7 @@ export function ChapterQuestionsManageModal({
     setCsvMcqRows([]);
     setCsvDescRows([]);
     setCsvExcluded(new Set());
+    setCsvSelected(new Set());
     setCsvParseNotes([]);
     setCsvFileName('');
     setCsvPublish(false);
@@ -316,6 +318,7 @@ export function ChapterQuestionsManageModal({
     setCsvMcqRows([]);
     setCsvDescRows([]);
     setCsvExcluded(new Set());
+    setCsvSelected(new Set());
     setCsvParseNotes([]);
     setCsvFileName('');
     if (csvInputRef.current) csvInputRef.current.value = '';
@@ -330,6 +333,48 @@ export function ChapterQuestionsManageModal({
     });
   }
 
+  function toggleCsvSelect(index: number) {
+    setCsvSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }
+
+  function toggleCsvSelectAll() {
+    if (csvSelected.size === csvRowCount) {
+      setCsvSelected(new Set());
+      return;
+    }
+    setCsvSelected(new Set(Array.from({ length: csvRowCount }, (_, i) => i)));
+  }
+
+  function batchExcludeSelected() {
+    if (csvSelected.size === 0) return;
+    setCsvExcluded((prev) => {
+      const next = new Set(prev);
+      for (const i of csvSelected) next.add(i);
+      return next;
+    });
+    setCsvSelected(new Set());
+  }
+
+  function batchIncludeSelected() {
+    if (csvSelected.size === 0) return;
+    setCsvExcluded((prev) => {
+      const next = new Set(prev);
+      for (const i of csvSelected) next.delete(i);
+      return next;
+    });
+    setCsvSelected(new Set());
+  }
+
+  function excludeAllCsvRows() {
+    setCsvExcluded(new Set(Array.from({ length: csvRowCount }, (_, i) => i)));
+    setCsvSelected(new Set());
+  }
+
   const csvRowCount = csvKind === 'mcq' ? csvMcqRows.length : csvDescRows.length;
   const csvIncludedMcq = useMemo(
     () => csvMcqRows.filter((_, i) => !csvExcluded.has(i)),
@@ -340,6 +385,7 @@ export function ChapterQuestionsManageModal({
     [csvDescRows, csvExcluded],
   );
   const csvIncludedCount = csvKind === 'mcq' ? csvIncludedMcq.length : csvIncludedDesc.length;
+  const csvAllSelected = csvRowCount > 0 && csvSelected.size === csvRowCount;
 
   function changeCsvKind(kind: CsvImportKind) {
     if (kind === csvKind) return;
@@ -358,6 +404,7 @@ export function ChapterQuestionsManageModal({
       const text = await file.text();
       setCsvFileName(file.name);
       setCsvExcluded(new Set());
+      setCsvSelected(new Set());
       if (csvKind === 'mcq') {
         const parsed = parseMcqCsv(text);
         setCsvParseNotes(parsed.errors);
@@ -580,10 +627,65 @@ export function ChapterQuestionsManageModal({
 
             {csvRowCount > 0 && (
               <>
+                <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2">
+                  <label className="flex items-center gap-2 text-xs text-muted">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-border"
+                      checked={csvAllSelected}
+                      disabled={csvImporting}
+                      onChange={toggleCsvSelectAll}
+                    />
+                    Select all ({csvSelected.size}/{csvRowCount})
+                  </label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-red-600 hover:bg-red-50 hover:text-red-700"
+                    disabled={csvImporting || csvSelected.size === 0}
+                    onClick={batchExcludeSelected}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Exclude selected ({csvSelected.size})
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8"
+                    disabled={csvImporting || csvSelected.size === 0}
+                    onClick={batchIncludeSelected}
+                  >
+                    <Undo2 className="h-3.5 w-3.5" />
+                    Include selected
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-8"
+                    disabled={csvImporting || csvExcluded.size === csvRowCount}
+                    onClick={excludeAllCsvRows}
+                  >
+                    Exclude all
+                  </Button>
+                </div>
+
                 <div className="max-h-[min(50vh,28rem)] overflow-auto rounded-md border border-border">
                   <table className="w-full text-left text-xs">
                     <thead className="sticky top-0 bg-muted/60">
                       <tr>
+                        <th className="w-8 px-2 py-1.5">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-border"
+                            checked={csvAllSelected}
+                            disabled={csvImporting}
+                            onChange={toggleCsvSelectAll}
+                            aria-label="Select all rows"
+                          />
+                        </th>
                         <th className="px-2 py-1.5 font-medium">#</th>
                         <th className="px-2 py-1.5 font-medium">Question</th>
                         {csvKind === 'mcq' ? (
@@ -602,11 +704,28 @@ export function ChapterQuestionsManageModal({
                       {csvKind === 'mcq'
                         ? csvMcqRows.map((r, i) => {
                             const excluded = csvExcluded.has(i);
+                            const selected = csvSelected.has(i);
                             return (
                               <tr
                                 key={`mcq-${i}-${r.question.slice(0, 24)}`}
-                                className={`border-t border-border ${excluded ? 'bg-muted/30 opacity-55' : ''}`}
+                                className={`border-t border-border ${
+                                  excluded
+                                    ? 'bg-muted/30 opacity-55'
+                                    : selected
+                                      ? 'bg-primary-muted/40'
+                                      : ''
+                                }`}
                               >
+                                <td className="px-2 py-1 align-top">
+                                  <input
+                                    type="checkbox"
+                                    className="h-4 w-4 rounded border-border"
+                                    checked={selected}
+                                    disabled={csvImporting}
+                                    onChange={() => toggleCsvSelect(i)}
+                                    aria-label={`Select row ${i + 1}`}
+                                  />
+                                </td>
                                 <td className="px-2 py-1 align-top text-muted">{i + 1}</td>
                                 <td
                                   className={`px-2 py-1.5 align-top whitespace-pre-wrap break-words ${excluded ? 'line-through text-muted' : ''}`}
@@ -642,11 +761,28 @@ export function ChapterQuestionsManageModal({
                           })
                         : csvDescRows.map((r, i) => {
                             const excluded = csvExcluded.has(i);
+                            const selected = csvSelected.has(i);
                             return (
                               <tr
                                 key={`desc-${i}-${r.question.slice(0, 24)}`}
-                                className={`border-t border-border ${excluded ? 'bg-muted/30 opacity-55' : ''}`}
+                                className={`border-t border-border ${
+                                  excluded
+                                    ? 'bg-muted/30 opacity-55'
+                                    : selected
+                                      ? 'bg-primary-muted/40'
+                                      : ''
+                                }`}
                               >
+                                <td className="px-2 py-1 align-top">
+                                  <input
+                                    type="checkbox"
+                                    className="h-4 w-4 rounded border-border"
+                                    checked={selected}
+                                    disabled={csvImporting}
+                                    onChange={() => toggleCsvSelect(i)}
+                                    aria-label={`Select row ${i + 1}`}
+                                  />
+                                </td>
                                 <td className="px-2 py-1 align-top text-muted">{i + 1}</td>
                                 <td
                                   className={`px-2 py-1.5 align-top whitespace-pre-wrap break-words ${excluded ? 'line-through text-muted' : ''}`}
@@ -725,7 +861,10 @@ export function ChapterQuestionsManageModal({
                       size="sm"
                       variant="outline"
                       disabled={csvImporting}
-                      onClick={() => setCsvExcluded(new Set())}
+                      onClick={() => {
+                        setCsvExcluded(new Set());
+                        setCsvSelected(new Set());
+                      }}
                     >
                       Restore all
                     </Button>

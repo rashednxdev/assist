@@ -111,7 +111,7 @@ export function UserDashboard({
     <div className="space-y-8">
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary via-primary-dark to-slate-900 p-6 text-white sm:p-8">
         <div className="relative z-10 max-w-2xl space-y-3">
-          <Badge className="bg-white/20 text-white ring-0">iBAS++ Assistant</Badge>
+          <Badge className="bg-white/20 text-white ring-0">ProAssist</Badge>
           <h1 className="text-2xl font-bold sm:text-3xl">
             Welcome, {userDisplayName(user)}
           </h1>

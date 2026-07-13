@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Menu, X, LogOut, Shield } from 'lucide-react';
+import { Menu, X, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { logoutRequest, fetchMe, getAccessToken, type MeUser } from '@/lib/auth';
@@ -59,9 +60,14 @@ function SidebarContent({
   return (
     <>
       <div className="flex items-center gap-3 border-b border-white/10 px-4 py-5">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sidebar-active/20 text-sidebar-active">
-          <Shield className="h-5 w-5" />
-        </div>
+        <Image
+          src="/brand/proassist-logo.png"
+          alt="ProAssist"
+          width={40}
+          height={40}
+          className="h-10 w-10 shrink-0 rounded-xl"
+          priority
+        />
         <div className="min-w-0">
           <div className="truncate text-base font-bold text-sidebar-foreground">{appName}</div>
           <div className="truncate text-xs text-sidebar-muted">{tagline}</div>

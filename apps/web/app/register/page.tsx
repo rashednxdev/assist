@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -64,8 +64,15 @@ export default function RegisterPage() {
       <div className="flex flex-1 items-center justify-center bg-background p-4 sm:p-8">
         <Card className="w-full max-w-lg border-0 shadow-lg sm:border">
           <CardHeader className="space-y-1 pb-2">
-            <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary-muted text-primary lg:hidden">
-              <UserPlus className="h-6 w-6" />
+            <div className="mb-2 lg:hidden">
+              <Image
+                src="/brand/proassist-logo.png"
+                alt="ProAssist"
+                width={48}
+                height={48}
+                className="h-12 w-12 rounded-xl"
+                priority
+              />
             </div>
             <CardTitle className="text-2xl">Create your account</CardTitle>
             <CardDescription>
@@ -151,7 +158,7 @@ export default function RegisterPage() {
                   onChange={(e) => setForm((f) => ({ ...f, accept_terms: e.target.checked }))}
                   className="mt-1"
                 />
-                <span>I agree to the terms of use and privacy policy for iBAS++ Assistant.</span>
+                <span>I agree to the terms of use and privacy policy for ProAssist.</span>
               </label>
               {error && <Alert variant="error">{error}</Alert>}
               <Button type="submit" className="h-11 w-full" disabled={loading}>

@@ -4,8 +4,8 @@ import { colors, spacing } from '@/theme';
 export type BookContentsViewMode = 'short' | 'full';
 
 const OPTIONS: { value: BookContentsViewMode; label: string }[] = [
-  { value: 'short', label: 'Short' },
-  { value: 'full', label: 'Full view' },
+  { value: 'short', label: 'Short View' },
+  { value: 'full', label: 'Full Mode' },
 ];
 
 export function BookViewModeToggle({
@@ -30,10 +30,16 @@ export function BookViewModeToggle({
             key={opt.value}
             style={[styles.option, compact && styles.optionCompact, selected && styles.optionSelected]}
             onPress={() => onChange(opt.value)}
+            hitSlop={4}
             accessibilityRole="radio"
             accessibilityState={{ selected }}
           >
-            <Text style={[styles.optionText, selected && styles.optionTextSelected]}>{opt.label}</Text>
+            <Text
+              style={[styles.optionText, selected && styles.optionTextSelected]}
+              numberOfLines={1}
+            >
+              {opt.label}
+            </Text>
           </Pressable>
         );
       })}
@@ -45,6 +51,7 @@ const styles = StyleSheet.create({
   group: {
     flexDirection: 'row',
     alignSelf: 'stretch',
+    width: '100%',
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 10,
@@ -53,19 +60,19 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   groupCompact: {
-    alignSelf: 'center',
-    flexShrink: 0,
+    // Keep intrinsic height; stretch only horizontally via width 100%
   },
   option: {
     flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: 8,
     paddingHorizontal: spacing.sm + 2,
     paddingVertical: spacing.sm,
+    minHeight: 36,
   },
   optionCompact: {
-    flex: 0,
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
     paddingVertical: 8,
   },
   optionSelected: {

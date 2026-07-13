@@ -1,14 +1,19 @@
-import { Shield } from 'lucide-react';
+import Image from 'next/image';
 
 export function AuthBrandPanel() {
   return (
     <div className="relative hidden flex-1 flex-col justify-between bg-sidebar p-10 text-sidebar-foreground lg:flex">
       <div className="flex items-center gap-3">
-        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sidebar-active/20 text-sidebar-active">
-          <Shield className="h-6 w-6" />
-        </div>
+        <Image
+          src="/brand/proassist-logo.png"
+          alt="ProAssist"
+          width={44}
+          height={44}
+          className="h-11 w-11 shrink-0 rounded-xl"
+          priority
+        />
         <div>
-          <p className="text-xl font-bold">iBAS++ Assistant</p>
+          <p className="text-xl font-bold">ProAssist</p>
           <p className="text-sm text-sidebar-muted">Rules · Exams · Compliance</p>
         </div>
       </div>
@@ -17,7 +22,7 @@ export function AuthBrandPanel() {
           Your guide to government pay, receipt rules &amp; promotion exams
         </h2>
         <p className="text-sidebar-muted">
-          Thousands of offices across Bangladesh rely on clear financial rules. iBAS++ helps government
+          Thousands of offices across Bangladesh rely on clear financial rules. ProAssist helps government
           service holders learn regulations, prepare for SAS/SRAS exams, and stay compliant — in one place.
         </p>
         <ul className="space-y-2 text-sm text-sidebar-muted">

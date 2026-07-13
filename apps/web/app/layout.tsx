@@ -11,8 +11,12 @@ const fontSans = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: 'iBAS++',
-  description: 'Integrated Budget and Accounting System',
+  title: 'ProAssist',
+  description: 'Rules, exams, and compliance assistant',
+  icons: {
+    icon: '/brand/proassist-logo.png',
+    apple: '/brand/proassist-logo.png',
+  },
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,10 +7,17 @@ import {
   Pressable,
   TextInput,
   RefreshControl,
+  type NativeSyntheticEvent,
+  type NativeScrollEvent,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
 import { cleanBookLabel } from '@/lib/book-display';
+import {
+  loadMarathonLastQuestion,
+  saveMarathonLastQuestion,
+  type MarathonLastQuestion,
+} from '@/lib/marathon-progress';
 import { fetchMarathonReview } from '@/lib/questions-api';
 import type { MarathonExplanationSection, MarathonReviewItem } from '@/types/marathon';
 import { colors, spacing } from '@/theme';
@@ -117,6 +124,15 @@ export default function MarathonReviewScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [mode, setMode] = useState<ShowMode>('questions');
   const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set());
+  const [bookMenuOpen, setBookMenuOpen] = useState(false);
+  const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
+  const [resumeTarget, setResumeTarget] = useState<MarathonLastQuestion | null>(null);
+  const [resumeReady, setResumeReady] = useState(false);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollYRef = useRef(0);
+  const bookOffsets = useRef<Record<string, number>>({});
+  const didResume = useRef(false);
 
   const load = useCallback(async (q?: string) => {
     setError('');
@@ -128,6 +144,13 @@ export default function MarathonReviewScreen() {
       setItems([]);
       setError(err instanceof Error ? err.message : 'Failed to load marathon review');
     }
+  }, []);
+
+  useEffect(() => {
+    void loadMarathonLastQuestion().then((pos) => {
+      setResumeTarget(pos);
+      setResumeReady(true);
+    });
   }, []);
 
   useEffect(() => {
@@ -145,6 +168,23 @@ export default function MarathonReviewScreen() {
   }, [load, searchQuery]);
 
   const groups = useMemo(() => groupByBookChapter(items), [items]);
+  const bookOptions = useMemo(
+    () =>
+      groups.map((g) => ({
+        id: g.book_id,
+        name: g.book_name,
+        count: g.chapters.reduce((n, c) => n + c.items.length, 0),
+      })),
+    [groups],
+  );
+  const visibleGroups = useMemo(
+    () => (selectedBookId ? groups.filter((g) => g.book_id === selectedBookId) : groups),
+    [groups, selectedBookId],
+  );
+  const visibleCount = useMemo(
+    () => visibleGroups.reduce((n, g) => n + g.chapters.reduce((m, c) => m + c.items.length, 0), 0),
+    [visibleGroups],
+  );
 
   function submitSearch() {
     setSearchQuery(searchDraft.trim());
@@ -156,11 +196,67 @@ export default function MarathonReviewScreen() {
     setSearchOpen(false);
   }
 
-  function toggleReveal(id: string) {
+  function toggleBookMenu() {
+    setBookMenuOpen((v) => {
+      const next = !v;
+      if (next) setSearchOpen(false);
+      return next;
+    });
+  }
+
+  function selectBook(bookId: string | null) {
+    setSelectedBookId(bookId);
+    setBookMenuOpen(false);
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+  }
+
+  function onScroll(e: NativeSyntheticEvent<NativeScrollEvent>) {
+    scrollYRef.current = e.nativeEvent.contentOffset.y;
+  }
+
+  function rememberQuestion(item: MarathonReviewItem) {
+    const pos: MarathonLastQuestion = {
+      id: item.id,
+      number: item.number,
+      scroll_y: scrollYRef.current,
+    };
+    setHighlightId(item.id);
+    void saveMarathonLastQuestion(pos);
+    setResumeTarget(pos);
+  }
+
+  useEffect(() => {
+    if (!resumeReady || loading || didResume.current || !resumeTarget || items.length === 0) {
+      return;
+    }
+    // Only resume on the full list (no book filter / search) so scroll offsets stay valid
+    if (selectedBookId || searchQuery.trim()) {
+      didResume.current = true;
+      return;
+    }
+
+    const match =
+      items.find((i) => i.id === resumeTarget.id) ??
+      items.find((i) => i.number === resumeTarget.number);
+
+    if (match) setHighlightId(match.id);
+
+    const y = Math.max(0, resumeTarget.scroll_y);
+    const t = setTimeout(() => {
+      scrollRef.current?.scrollTo({ y, animated: false });
+      scrollYRef.current = y;
+      didResume.current = true;
+    }, 150);
+
+    return () => clearTimeout(t);
+  }, [resumeReady, loading, resumeTarget, items, selectedBookId, searchQuery]);
+
+  function toggleReveal(item: MarathonReviewItem) {
+    rememberQuestion(item);
     setRevealedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(item.id)) next.delete(item.id);
+      else next.add(item.id);
       return next;
     });
   }
@@ -169,6 +265,10 @@ export default function MarathonReviewScreen() {
     setMode(next);
     if (next === 'with_answers') setRevealedIds(new Set());
   }
+
+  const selectedBookName = selectedBookId
+    ? bookOptions.find((b) => b.id === selectedBookId)?.name
+    : null;
 
   return (
     <View style={styles.root}>
@@ -194,16 +294,16 @@ export default function MarathonReviewScreen() {
 
         <Pressable
           style={[styles.searchIconBtn, searchOpen && styles.searchIconBtnActive]}
-          onPress={() => setSearchOpen((v) => !v)}
+          onPress={() => {
+            setSearchOpen((v) => !v);
+            setBookMenuOpen(false);
+          }}
           hitSlop={8}
+          accessibilityLabel="Search"
         >
           <Ionicons name="search" size={20} color={searchOpen ? colors.white : colors.primary} />
         </Pressable>
       </View>
-
-      {mode === 'questions' ? (
-        <Text style={styles.hint}>Tap or press & hold a question to show the answer</Text>
-      ) : null}
 
       {searchOpen ? (
         <View style={styles.searchBar}>
@@ -228,15 +328,94 @@ export default function MarathonReviewScreen() {
         </View>
       ) : null}
 
-      <Text style={styles.meta}>
-        {items.length} Questions
-        {searchQuery ? ` · “${searchQuery}”` : ''}
-        {mode === 'with_answers'
-          ? ' · answers shown'
-          : revealedIds.size > 0
-            ? ` · ${revealedIds.size} revealed`
-            : ''}
-      </Text>
+      <View style={styles.infoRow}>
+        <View style={styles.infoTextCol}>
+          {mode === 'questions' ? (
+            <Text style={styles.hint}>Tap or press & hold a question to show the answer</Text>
+          ) : null}
+          <Text style={styles.meta}>
+            {visibleCount} Questions
+            {searchQuery ? ` · “${searchQuery}”` : ''}
+            {selectedBookName ? ` · ${selectedBookName}` : ''}
+            {resumeTarget && !searchQuery
+              ? ` · resume #${resumeTarget.number}`
+              : ''}
+            {mode === 'with_answers'
+              ? ' · answers shown'
+              : revealedIds.size > 0
+                ? ` · ${revealedIds.size} revealed`
+                : ''}
+          </Text>
+        </View>
+
+        <Pressable
+          style={[styles.moreIconBtn, bookMenuOpen && styles.moreIconBtnActive]}
+          onPress={toggleBookMenu}
+          hitSlop={8}
+          accessibilityLabel="Books and tools with MCQ"
+        >
+          <Ionicons
+            name="ellipsis-vertical"
+            size={20}
+            color={bookMenuOpen ? colors.white : colors.primary}
+          />
+        </Pressable>
+      </View>
+
+      {bookMenuOpen ? (
+        <View style={styles.bookMenu}>
+          <Text style={styles.bookMenuTitle}>Books &amp; Tools with MCQ</Text>
+          <Text style={styles.bookMenuSub}>Quick access — jump to a book’s questions</Text>
+          <ScrollView nestedScrollEnabled style={{ maxHeight: 220 }} contentContainerStyle={styles.bookMenuList}>
+            <Pressable
+              style={[styles.bookMenuItem, !selectedBookId && styles.bookMenuItemActive]}
+              onPress={() => selectBook(null)}
+            >
+              <Text
+                style={[styles.bookMenuItemText, !selectedBookId && styles.bookMenuItemTextActive]}
+              >
+                All books
+              </Text>
+              <Text style={styles.bookMenuCount}>{items.length}</Text>
+            </Pressable>
+            {bookOptions.length === 0 ? (
+              <Text style={styles.bookMenuEmpty}>No books with MCQs loaded yet.</Text>
+            ) : (
+              bookOptions.map((book) => {
+                const active = selectedBookId === book.id;
+                return (
+                  <Pressable
+                    key={book.id}
+                    style={[styles.bookMenuItem, active && styles.bookMenuItemActive]}
+                    onPress={() => selectBook(book.id)}
+                  >
+                    <Text
+                      style={[styles.bookMenuItemText, active && styles.bookMenuItemTextActive]}
+                      numberOfLines={2}
+                    >
+                      {book.name}
+                    </Text>
+                    <Text style={styles.bookMenuCount}>{book.count}</Text>
+                  </Pressable>
+                );
+              })
+            )}
+          </ScrollView>
+        </View>
+      ) : null}
+
+      {selectedBookName ? (
+        <View style={styles.filterChipRow}>
+          <View style={styles.filterChip}>
+            <Text style={styles.filterChipText} numberOfLines={1}>
+              {selectedBookName}
+            </Text>
+            <Pressable onPress={() => selectBook(null)} hitSlop={8} accessibilityLabel="Clear book filter">
+              <Ionicons name="close-circle" size={16} color={colors.primary} />
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
 
       {loading ? (
         <BookLoading />
@@ -247,13 +426,24 @@ export default function MarathonReviewScreen() {
           title="No MCQ questions found"
           subtitle="Published MCQs linked to books and chapters will appear here."
         />
+      ) : visibleGroups.length === 0 ? (
+        <BookEmpty title="No questions in this book" subtitle="Pick another book from the ⋮ menu." />
       ) : (
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={styles.list}
+          scrollEventThrottle={16}
+          onScroll={onScroll}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         >
-          {groups.map((book) => (
-            <View key={book.book_id} style={styles.bookBlock}>
+          {visibleGroups.map((book) => (
+            <View
+              key={book.book_id}
+              style={styles.bookBlock}
+              onLayout={(e) => {
+                bookOffsets.current[book.book_id] = e.nativeEvent.layout.y;
+              }}
+            >
               <Text style={styles.bookTitle}>{book.book_name}</Text>
               {book.chapters.map((chapter) => (
                 <View key={chapter.chapter_id} style={styles.chapterBlock}>
@@ -264,6 +454,7 @@ export default function MarathonReviewScreen() {
                     const revealed = revealedIds.has(item.id);
                     const showAnswer = mode === 'with_answers' || revealed;
                     const questionsOnly = mode === 'questions';
+                    const isResume = highlightId === item.id;
 
                     return (
                       <Pressable
@@ -272,9 +463,22 @@ export default function MarathonReviewScreen() {
                           styles.questionRow,
                           pressed && questionsOnly && styles.questionRowPressed,
                           questionsOnly && revealed && styles.questionRowRevealed,
+                          isResume && styles.questionRowResume,
                         ]}
-                        onPress={questionsOnly ? () => toggleReveal(item.id) : undefined}
-                        onLongPress={questionsOnly ? () => toggleReveal(item.id) : undefined}
+                        onPress={() => {
+                          if (questionsOnly) {
+                            toggleReveal(item);
+                          } else {
+                            rememberQuestion(item);
+                          }
+                        }}
+                        onLongPress={
+                          questionsOnly
+                            ? () => {
+                                toggleReveal(item);
+                              }
+                            : () => rememberQuestion(item)
+                        }
                         delayLongPress={350}
                       >
                         <Text style={styles.number}>{item.number}.</Text>
@@ -345,11 +549,22 @@ const styles = StyleSheet.create({
     color: colors.white,
   },
   hint: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
     fontSize: 12,
     lineHeight: 17,
     color: colors.textMuted,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingLeft: spacing.md,
+    paddingRight: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  infoTextCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
   },
   searchIconBtn: {
     width: 44,
@@ -364,6 +579,100 @@ const styles = StyleSheet.create({
   searchIconBtnActive: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
+  },
+  moreIconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    flexShrink: 0,
+  },
+  moreIconBtnActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  bookMenu: {
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.sm,
+    maxHeight: 280,
+  },
+  bookMenuTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.text,
+    paddingHorizontal: 8,
+    paddingTop: 4,
+  },
+  bookMenuSub: {
+    fontSize: 12,
+    color: colors.textMuted,
+    paddingHorizontal: 8,
+    paddingBottom: 8,
+  },
+  bookMenuList: {
+    gap: 2,
+  },
+  bookMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+  },
+  bookMenuItemActive: {
+    backgroundColor: '#e8f3fa',
+  },
+  bookMenuItemText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  bookMenuItemTextActive: {
+    color: colors.primary,
+  },
+  bookMenuCount: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textMuted,
+  },
+  bookMenuEmpty: {
+    padding: 12,
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+  filterChipRow: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  filterChip: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    maxWidth: '100%',
+    backgroundColor: '#e8f3fa',
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  filterChipText: {
+    flexShrink: 1,
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
   },
   searchBar: {
     flexDirection: 'row',
@@ -404,8 +713,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   meta: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
     fontSize: 12,
     color: colors.textMuted,
   },
@@ -448,6 +755,14 @@ const styles = StyleSheet.create({
   },
   questionRowRevealed: {
     backgroundColor: '#f7fbfe',
+    marginHorizontal: -4,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+  },
+  questionRowResume: {
+    backgroundColor: '#eef7fc',
+    borderLeftWidth: 3,
+    borderLeftColor: colors.primary,
     marginHorizontal: -4,
     paddingHorizontal: 4,
     borderRadius: 8,

@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing } from '@/theme';
@@ -44,9 +44,11 @@ export function AuthScreenShell({
         ) : null}
         <SafeAreaView edges={['top']}>
           <View style={styles.brandBlock}>
-            <View style={[styles.logo, premium && styles.logoPremium]}>
-              <Text style={[styles.logoText, premium && styles.logoTextPremium]}>PA</Text>
-            </View>
+            <Image
+              source={require('../../../assets/icon.png')}
+              style={[styles.logoImage, premium && styles.logoImagePremium]}
+              accessibilityLabel="ProAssist"
+            />
             <Text style={[styles.brandTitle, premium && styles.brandTitlePremium]}>ProAssist</Text>
             <Text style={[styles.brandSub, premium && styles.brandSubPremium]}>
               SAS/SRAS exam preparation with ProAssist
@@ -130,43 +132,15 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
   },
-  logo: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 10,
+  logoImage: {
+    width: 56,
+    height: 56,
+    borderRadius: 14,
     marginBottom: spacing.sm,
   },
-  logoPremium: {
-    backgroundColor: 'rgba(212, 175, 55, 0.15)',
+  logoImagePremium: {
     borderWidth: 1,
     borderColor: 'rgba(212, 175, 55, 0.45)',
-  },
-  logoText: {
-    color: colors.white,
-    fontWeight: '800',
-    fontSize: 14,
-    letterSpacing: 1,
-  },
-  logoTextPremium: {
-    color: colors.goldLight,
-  },
-  premiumBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(212, 175, 55, 0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(212, 175, 55, 0.35)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    marginBottom: spacing.sm,
-  },
-  premiumBadgeText: {
-    color: colors.goldLight,
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1.4,
   },
   brandTitle: {
     color: colors.white,

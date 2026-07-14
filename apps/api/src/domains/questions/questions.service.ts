@@ -344,6 +344,8 @@ function serializeQuestionListItem(
     book_topic_id: idStr(q.book_topic_id),
     book_sub_topic_id: idStr(q.book_sub_topic_id),
     regulation_id: idStr(q.regulation_id),
+    book_id: undefined as string | undefined,
+    book_name: undefined as string | undefined,
     book_link_count: 0,
     option_count: optionCount,
     created_at: q.created_at,
@@ -822,8 +824,12 @@ export async function listQuestions(filters: {
   book_topic_id?: string;
   book_sub_topic_id?: string;
   regulation_id?: string;
+  book_info_id?: string;
   limit: number;
+  offset?: number;
 }) {
+  const offset = Math.max(0, filters.offset ?? 0);
+  const limit = filters.limit;
   const query: Record<string, unknown> = { is_active: filters.trashed === true ? false : true };
   if (filters.difficulty) query.difficulty = filters.difficulty;
   if (filters.question_type_id) query.question_type_id = filters.question_type_id;
@@ -834,33 +840,78 @@ export async function listQuestions(filters: {
   if (filters.book_sub_topic_id) query.book_sub_topic_id = filters.book_sub_topic_id;
   if (filters.regulation_id) query.regulation_id = filters.regulation_id;
 
+  if (filters.book_info_id) {
+    const chapters = await BookChapter.find({
+      book_info_id: filters.book_info_id,
+      is_active: true,
+    }).select('_id');
+    const chapterIds = chapters.map((c) => c._id);
+    if (chapterIds.length === 0) {
+      return { items: [], total: 0, limit, offset };
+    }
+    query.book_chapter_id = { $in: chapterIds };
+  }
+
   if (filters.q?.trim()) {
     const q = filters.q.trim();
     query.$or = [{ body_en: { $regex: q, $options: 'i' } }, { body_bn: { $regex: q, $options: 'i' } }];
   }
 
-  const items = await Question.find(query).sort({ updated_at: -1 }).limit(filters.limit);
+  const [total, items] = await Promise.all([
+    Question.countDocuments(query),
+    // Stable sort so skip/offset pages do not overlap or repeat
+    Question.find(query).sort({ updated_at: -1, _id: -1 }).skip(offset).limit(limit),
+  ]);
+
   const typeIds = [...new Set(items.map((q) => String(q.question_type_id)))];
-  const types = await QuestionType.find({ _id: { $in: typeIds } });
+  const types = typeIds.length > 0 ? await QuestionType.find({ _id: { $in: typeIds } }) : [];
   const typeMap = new Map(types.map((t) => [String(t._id), t.name]));
 
   const questionIds = items.map((q) => q._id);
-  const linkCounts = await QuestionBookLink.aggregate<{ _id: mongoose.Types.ObjectId; count: number }>([
-    { $match: { question_id: { $in: questionIds }, is_active: true } },
-    { $group: { _id: '$question_id', count: { $sum: 1 } } },
+  const [linkCounts, optionCounts] = await Promise.all([
+    questionIds.length
+      ? QuestionBookLink.aggregate<{ _id: mongoose.Types.ObjectId; count: number }>([
+          { $match: { question_id: { $in: questionIds }, is_active: true } },
+          { $group: { _id: '$question_id', count: { $sum: 1 } } },
+        ])
+      : Promise.resolve([]),
+    questionIds.length
+      ? QuestionOption.aggregate<{ _id: mongoose.Types.ObjectId; count: number }>([
+          { $match: { question_id: { $in: questionIds } } },
+          { $group: { _id: '$question_id', count: { $sum: 1 } } },
+        ])
+      : Promise.resolve([]),
   ]);
   const linkCountMap = new Map(linkCounts.map((c) => [String(c._id), c.count]));
+  const optionCountMap = new Map(optionCounts.map((c) => [String(c._id), c.count]));
 
-  const result = await Promise.all(
-    items.map(async (q) => {
-      const optionCount = await QuestionOption.countDocuments({ question_id: q._id });
-      const item = serializeQuestionListItem(q, typeMap.get(String(q.question_type_id)), optionCount);
-      const storedCount = linkCountMap.get(String(q._id)) ?? 0;
-      item.book_link_count = storedCount > 0 ? storedCount : q.book_chapter_id ? 1 : 0;
-      return item;
-    }),
-  );
-  return result;
+  const chapterIds = [
+    ...new Set(items.map((q) => idStr(q.book_chapter_id)).filter((id): id is string => Boolean(id))),
+  ];
+  const chapters =
+    chapterIds.length > 0 ? await BookChapter.find({ _id: { $in: chapterIds } }) : [];
+  const chapterBookId = new Map(chapters.map((c) => [String(c._id), String(c.book_info_id)]));
+  const bookIds = [...new Set([...chapterBookId.values()].filter(Boolean))];
+  const books = bookIds.length > 0 ? await BookInfo.find({ _id: { $in: bookIds } }) : [];
+  const bookNameById = new Map(books.map((b) => [String(b._id), b.name]));
+
+  const result = items.map((q) => {
+    const item = serializeQuestionListItem(
+      q,
+      typeMap.get(String(q.question_type_id)),
+      optionCountMap.get(String(q._id)) ?? 0,
+    );
+    const storedCount = linkCountMap.get(String(q._id)) ?? 0;
+    item.book_link_count = storedCount > 0 ? storedCount : q.book_chapter_id ? 1 : 0;
+    const chapterId = idStr(q.book_chapter_id);
+    const bookId = chapterId ? chapterBookId.get(chapterId) : undefined;
+    if (bookId) {
+      item.book_id = bookId;
+      item.book_name = bookNameById.get(bookId);
+    }
+    return item;
+  });
+  return { items: result, total, limit, offset };
 }
 
 /** Published MCQs linked to books/chapters, with explanations for marathon review. */
@@ -956,7 +1007,7 @@ export async function listMarathonReview(filters: { q?: string } = {}) {
       body_en: q.body_en,
       body_bn: q.body_bn,
       book_id: String(book._id),
-      book_name: book.short_name?.trim() || book.name,
+      book_name: book.name,
       chapter_id: chapterId,
       chapter_number: chapter.chapter_number ?? '',
       chapter_name: chapter.name,
@@ -1245,11 +1296,13 @@ export async function batchPermanentlyDeleteQuestions(ids: string[]) {
 
 /** List soft-deleted questions for the trash page. */
 export async function listTrashedQuestions(filters: { q?: string; limit?: number }) {
-  return listQuestions({
+  const { items } = await listQuestions({
     q: filters.q,
     trashed: true,
     limit: filters.limit ?? 100,
+    offset: 0,
   });
+  return items;
 }
 
 export async function publishQuestion(id: string, reviewerId: string) {

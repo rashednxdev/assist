@@ -41,8 +41,25 @@ export async function deleteQuestionTypeHandler(req: AuthRequest, res: Response)
 
 export async function listQuestionsHandler(req: AuthRequest, res: Response): Promise<void> {
   const filters = listQuestionsQuerySchema.parse(req.query);
-  const data = await questionsService.listQuestions(filters);
-  res.json({ data });
+  const user = req.user;
+  const isAdmin =
+    Boolean(user?.is_super_admin) ||
+    user?.user_type === 'system_admin' ||
+    user?.user_type === 'admin';
+
+  // Non-admins (e.g. mobile Question Bank) only ever receive published questions.
+  const listFilters = isAdmin ? filters : { ...filters, is_published: true as const };
+
+  const { items, total, limit, offset } = await questionsService.listQuestions(listFilters);
+  res.json({
+    data: items,
+    meta: {
+      total,
+      limit,
+      offset,
+      has_more: offset + items.length < total,
+    },
+  });
 }
 
 export async function listTrashedQuestionsHandler(req: AuthRequest, res: Response): Promise<void> {

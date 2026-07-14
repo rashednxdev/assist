@@ -20,6 +20,8 @@ export interface QuestionListItem {
   book_topic_id?: string;
   book_sub_topic_id?: string;
   regulation_id?: string;
+  book_id?: string;
+  book_name?: string;
   book_link_count?: number;
   option_count: number;
   created_at: string;

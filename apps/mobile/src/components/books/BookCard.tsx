@@ -8,18 +8,32 @@ import { colors, spacing } from '@/theme';
 interface BookCardProps {
   book: BookListItem;
   onPress: () => void;
+  /** Highlight as the most recently opened book. */
+  isLastRead?: boolean;
 }
 
-export function BookCard({ book, onPress }: BookCardProps) {
+export function BookCard({ book, onPress, isLastRead }: BookCardProps) {
   const preview = stripHtml(book.description).slice(0, 140);
 
   return (
-    <Pressable style={({ pressed }) => [styles.card, pressed && styles.pressed]} onPress={onPress}>
-      <View style={styles.iconWrap}>
-        <Ionicons name="book-outline" size={22} color={colors.primary} />
+    <Pressable
+      style={({ pressed }) => [styles.card, isLastRead && styles.cardLastRead, pressed && styles.pressed]}
+      onPress={onPress}
+    >
+      <View style={[styles.iconWrap, isLastRead && styles.iconWrapLastRead]}>
+        <Ionicons name="book-outline" size={22} color={isLastRead ? '#2f7d4a' : colors.primary} />
       </View>
       <View style={styles.body}>
-        <Text style={styles.title}>{book.name}</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title} numberOfLines={2}>
+            {book.name}
+          </Text>
+          {isLastRead ? (
+            <View style={styles.lastReadChip}>
+              <Text style={styles.lastReadChipText}>Last read</Text>
+            </View>
+          ) : null}
+        </View>
         <View style={styles.badges}>
           {book.short_name ? <BookBadge label={book.short_name} /> : null}
           {book.book_type_name ? <BookBadge label={book.book_type_name} variant="muted" /> : null}
@@ -27,7 +41,7 @@ export function BookCard({ book, onPress }: BookCardProps) {
         </View>
         {preview ? <Text style={styles.preview}>{preview}</Text> : null}
       </View>
-      <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+      <Ionicons name="chevron-forward" size={18} color={isLastRead ? '#2f7d4a' : colors.textMuted} />
     </Pressable>
   );
 }
@@ -43,6 +57,10 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: spacing.md,
   },
+  cardLastRead: {
+    backgroundColor: '#eaf7ee',
+    borderColor: '#a8d5b5',
+  },
   pressed: {
     opacity: 0.92,
   },
@@ -54,14 +72,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  iconWrapLastRead: {
+    backgroundColor: '#d4eedc',
+  },
   body: {
     flex: 1,
     gap: 4,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
   title: {
+    flex: 1,
     fontSize: 16,
     fontWeight: '700',
     color: colors.text,
+  },
+  lastReadChip: {
+    backgroundColor: '#c8e6d0',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  lastReadChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#2f7d4a',
   },
   badges: {
     flexDirection: 'row',

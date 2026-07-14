@@ -25,6 +25,7 @@ import { useBookReader } from '@/components/books/BookReaderContext';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
 import { bookNavTitle, chapterHeading, ruleHeading, stripHtml } from '@/lib/book-display';
 import { bookChapterHref, bookRuleHref } from '@/lib/book-routes';
+import { saveLastReadBookId } from '@/lib/last-read-book';
 import type { ReaderChapter, ReaderChapterFull, ReaderTopicFull } from '@/types/books';
 import { colors, spacing } from '@/theme';
 
@@ -125,6 +126,7 @@ export default function BookDetailScreen() {
     setSearchDraft('');
     setSearchQuery('');
     setSearchOpen(false);
+    if (bookId) void saveLastReadBookId(bookId);
   }, [bookId]);
 
   function handleViewModeChange(mode: BookContentsViewMode) {
@@ -199,18 +201,6 @@ export default function BookDetailScreen() {
     <>
       <View style={styles.root}>
         <View style={styles.toolbar}>
-          <Pressable
-            style={styles.searchIconBtn}
-            onPress={onSearchIconPress}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={searchOpen ? 'Search book' : 'Open search'}
-          >
-            <View style={styles.searchIconInner}>
-              <Ionicons name="search" size={20} color={colors.primary} />
-            </View>
-          </Pressable>
-
           {searchOpen ? (
             <View style={styles.toolbarMain}>
               <View style={styles.searchField}>
@@ -235,6 +225,18 @@ export default function BookDetailScreen() {
               <BookViewModeToggle compact value={viewMode} onChange={handleViewModeChange} />
             </View>
           )}
+
+          <Pressable
+            style={styles.searchIconBtn}
+            onPress={onSearchIconPress}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={searchOpen ? 'Search book' : 'Open search'}
+          >
+            <View style={styles.searchIconInner}>
+              <Ionicons name="search" size={20} color={colors.primary} />
+            </View>
+          </Pressable>
         </View>
 
         <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>

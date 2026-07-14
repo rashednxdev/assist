@@ -156,7 +156,12 @@ export const listQuestionsQuerySchema = z.object({
   book_topic_id: mongoId.optional(),
   book_sub_topic_id: mongoId.optional(),
   regulation_id: mongoId.optional(),
+  /** Filter questions linked to any chapter of this book. */
+  book_info_id: mongoId.optional(),
+  /** Page size (load first N, then request more with offset). */
   limit: z.coerce.number().int().min(1).max(100).default(50),
+  /** How many rows to skip (for infinite scroll / pagination). */
+  offset: z.coerce.number().int().min(0).default(0),
 });
 
 export const marathonReviewQuerySchema = z.object({

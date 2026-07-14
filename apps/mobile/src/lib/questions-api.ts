@@ -72,14 +72,39 @@ export async function fetchQuestions(params?: {
   return page.items;
 }
 
-export async function fetchMarathonReview(params?: { q?: string }) {
+export async function fetchMarathonReviewPage(params?: {
+  q?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ items: MarathonReviewItem[]; meta: QuestionsListMeta }> {
   const search = new URLSearchParams();
   if (params?.q?.trim()) search.set('q', params.q.trim());
+  if (params?.limit != null) search.set('limit', String(params.limit));
+  if (params?.offset != null) search.set('offset', String(params.offset));
   const qs = search.toString();
-  const res = await apiFetch<{ data: MarathonReviewItem[] }>(
+  const res = await apiFetch<{ data: MarathonReviewItem[]; meta?: QuestionsListMeta }>(
     `/questions/marathon-review${qs ? `?${qs}` : ''}`,
   );
-  return res.data;
+  const items = res.data ?? [];
+  const limit = params?.limit ?? 50;
+  const offset = params?.offset ?? 0;
+  const meta: QuestionsListMeta = {
+    total: res.meta?.total ?? offset + items.length + (items.length >= limit ? 1 : 0),
+    limit: res.meta?.limit ?? limit,
+    offset: res.meta?.offset ?? offset,
+    has_more:
+      res.meta?.has_more ??
+      (typeof res.meta?.total === 'number'
+        ? offset + items.length < res.meta.total
+        : items.length >= limit),
+  };
+  return { items, meta };
+}
+
+/** @deprecated Prefer fetchMarathonReviewPage for pagination. */
+export async function fetchMarathonReview(params?: { q?: string; limit?: number; offset?: number }) {
+  const page = await fetchMarathonReviewPage(params);
+  return page.items;
 }
 
 export async function fetchQuestionDetail(id: string) {

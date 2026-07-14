@@ -1,14 +1,25 @@
-import { Text, StyleSheet } from 'react-native';
+import { Text, StyleSheet, type StyleProp, type TextProps, type TextStyle } from 'react-native';
 import { insertBookListMarkerLineBreaks } from '@ibas/shared-constants';
 import { stripHtml } from '@/lib/book-display';
 import { colors } from '@/theme';
 
-/** Plain-text book content — reliable inside long ScrollViews. */
-export function BookRichText({ html }: { html?: string }) {
-  const stripped = stripHtml(html);
+/** Plain-text content with list-marker line breaks + justified text (books & questions). */
+export function BookRichText({
+  html,
+  style,
+  ...rest
+}: {
+  html?: string | null;
+  style?: StyleProp<TextStyle>;
+} & Omit<TextProps, 'children' | 'style'>) {
+  const stripped = stripHtml(html ?? undefined);
   if (!stripped) return null;
   const plain = insertBookListMarkerLineBreaks(stripped, '\n');
-  return <Text style={styles.plain}>{plain}</Text>;
+  return (
+    <Text style={[styles.plain, style]} {...rest}>
+      {plain}
+    </Text>
+  );
 }
 
 const styles = StyleSheet.create({

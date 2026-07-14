@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { BookLoading } from '@/components/books/BookStates';
-import { stripHtml } from '@/lib/book-display';
+import { BookRichText } from '@/components/books/BookRichText';
 import {
   fetchQuestionPracticeStem,
   upsertQuestionEvaluation,
@@ -20,7 +20,7 @@ function formatTime(seconds: number) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function renderOptionText(option: { option_text_en?: string; option_text_bn?: string }) {
+function optionLabel(option: { option_text_en?: string; option_text_bn?: string }) {
   return option.option_text_en?.trim() || option.option_text_bn?.trim() || '';
 }
 
@@ -143,7 +143,7 @@ export function ChapterMcqExam({
         {stems.map((stem, index) => (
           <View key={stem.id} style={styles.questionCard}>
             <Text style={styles.questionNum}>Q{index + 1}</Text>
-            <Text style={styles.questionBody}>{stripHtml(stem.body_en || stem.body_bn || '')}</Text>
+            <BookRichText html={stem.body_en || stem.body_bn || ''} style={styles.questionBody} />
             <View style={styles.optionsWrap}>
               {stem.options.map((opt) => {
                 const selected = selections[stem.id] === opt.id;
@@ -171,7 +171,7 @@ export function ChapterMcqExam({
                   >
                     <View style={styles.optionContent}>
                       <Text style={styles.optionKey}>{opt.option_key.toUpperCase()}.</Text>
-                      <Text style={styles.optionText}>{renderOptionText(opt)}</Text>
+                      <BookRichText html={optionLabel(opt)} style={styles.optionText} />
                     </View>
                     {showResult && isCorrectAnswer ? (
                       <Text style={styles.correctBadge}>Correct</Text>

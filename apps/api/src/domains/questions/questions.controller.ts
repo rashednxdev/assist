@@ -73,8 +73,16 @@ export async function listTrashedQuestionsHandler(req: AuthRequest, res: Respons
 
 export async function listMarathonReviewHandler(req: AuthRequest, res: Response): Promise<void> {
   const filters = marathonReviewQuerySchema.parse(req.query);
-  const data = await questionsService.listMarathonReview(filters);
-  res.json({ data });
+  const { items, total, limit, offset } = await questionsService.listMarathonReview(filters);
+  res.json({
+    data: items,
+    meta: {
+      total,
+      limit,
+      offset,
+      has_more: offset + items.length < total,
+    },
+  });
 }
 
 export async function similarQuestionsHandler(req: AuthRequest, res: Response): Promise<void> {

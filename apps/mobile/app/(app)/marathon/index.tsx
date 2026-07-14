@@ -7,20 +7,24 @@ import {
   Pressable,
   TextInput,
   RefreshControl,
+  ActivityIndicator,
   type NativeSyntheticEvent,
   type NativeScrollEvent,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
+import { BookRichText } from '@/components/books/BookRichText';
 import { cleanBookLabel } from '@/lib/book-display';
 import {
   loadMarathonLastQuestion,
   saveMarathonLastQuestion,
   type MarathonLastQuestion,
 } from '@/lib/marathon-progress';
-import { fetchMarathonReview } from '@/lib/questions-api';
+import { fetchMarathonReviewPage } from '@/lib/questions-api';
 import type { MarathonExplanationSection, MarathonReviewItem } from '@/types/marathon';
 import { colors, spacing } from '@/theme';
+
+const PAGE_SIZE = 100;
 
 type ShowMode = 'questions' | 'with_answers';
 
@@ -92,18 +96,22 @@ function AnswerBlocks({
             <View style={styles.answerContent}>
               {showTitle ? <Text style={styles.answerTitle}>{title}</Text> : null}
               {sec.details?.trim() ? (
-                <Text style={styles.answerText}>{sec.details.trim()}</Text>
+                <BookRichText html={sec.details} style={styles.answerText} />
               ) : null}
-              {sec.note?.trim() ? <Text style={styles.answerNote}>{sec.note.trim()}</Text> : null}
+              {sec.note?.trim() ? (
+                <BookRichText html={sec.note} style={styles.answerNote} />
+              ) : null}
               {(sec.subsections ?? []).map((sub, si) => (
                 <View key={`${itemId}-sub-${idx}-${si}`} style={styles.subBlock}>
                   {sub.subtitle?.trim() && !isGenericTitle(sub.subtitle) ? (
                     <Text style={styles.subTitle}>{sub.subtitle.trim()}</Text>
                   ) : null}
                   {sub.details?.trim() ? (
-                    <Text style={styles.answerText}>{sub.details.trim()}</Text>
+                    <BookRichText html={sub.details} style={styles.answerText} />
                   ) : null}
-                  {sub.note?.trim() ? <Text style={styles.answerNote}>{sub.note.trim()}</Text> : null}
+                  {sub.note?.trim() ? (
+                    <BookRichText html={sub.note} style={styles.answerNote} />
+                  ) : null}
                 </View>
               ))}
             </View>
@@ -117,11 +125,13 @@ function AnswerBlocks({
 export default function MarathonReviewScreen() {
   const [items, setItems] = useState<MarathonReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [total, setTotal] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchDraft, setSearchDraft] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [appliedQuery, setAppliedQuery] = useState('');
   const [mode, setMode] = useState<ShowMode>('questions');
   const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set());
   const [bookMenuOpen, setBookMenuOpen] = useState(false);
@@ -133,50 +143,131 @@ export default function MarathonReviewScreen() {
   const scrollYRef = useRef(0);
   const bookOffsets = useRef<Record<string, number>>({});
   const didResume = useRef(false);
+  const loadGen = useRef(0);
 
-  const load = useCallback(async (q?: string) => {
+  const loadAllSequential = useCallback(async () => {
+    const gen = ++loadGen.current;
     setError('');
+    setLoading(true);
+    setLoadingMore(false);
+    didResume.current = false;
+
     try {
-      const data = await fetchMarathonReview({ q });
-      setItems(data);
+      const first = await fetchMarathonReviewPage({ limit: PAGE_SIZE, offset: 0 });
+      if (gen !== loadGen.current) return;
+
+      let all = first.items;
+      setItems(all);
       setRevealedIds(new Set());
+      const knownTotal = first.meta.total > 0 ? first.meta.total : all.length;
+      setTotal(knownTotal);
+      setLoading(false);
+
+      let offset = all.length;
+      let more =
+        first.meta.has_more === true ||
+        first.meta.total > all.length ||
+        first.items.length >= PAGE_SIZE;
+
+      setLoadingMore(more);
+
+      while (more && gen === loadGen.current) {
+        const page = await fetchMarathonReviewPage({ limit: PAGE_SIZE, offset });
+        if (gen !== loadGen.current) return;
+
+        if (page.meta.offset != null && page.meta.offset !== offset && page.items.length > 0) {
+          const overlap = all.some((row) => row.id === page.items[0]?.id);
+          if (overlap && page.meta.offset === 0) {
+            setError(
+              'API did not apply pagination (offset ignored). Restart Expo against the local API.',
+            );
+            break;
+          }
+        }
+
+        const seen = new Set(all.map((i) => i.id));
+        const newRows = page.items.filter((row) => !seen.has(row.id));
+        if (newRows.length === 0) {
+          if (page.items.length > 0 && all.length < (page.meta.total || knownTotal)) {
+            setError(
+              'Could not load more questions — server returned duplicates. Use local API with latest code.',
+            );
+          }
+          break;
+        }
+
+        all = [...all, ...newRows];
+        offset = all.length;
+        setItems(all);
+        if (typeof page.meta.total === 'number' && page.meta.total > 0) {
+          setTotal(page.meta.total);
+        } else {
+          setTotal(all.length);
+        }
+
+        more =
+          page.meta.has_more === true ||
+          page.meta.total > all.length ||
+          page.items.length >= PAGE_SIZE;
+      }
     } catch (err) {
+      if (gen !== loadGen.current) return;
       setItems([]);
+      setTotal(0);
       setError(err instanceof Error ? err.message : 'Failed to load marathon review');
+    } finally {
+      if (gen === loadGen.current) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     void loadMarathonLastQuestion().then((pos) => {
       setResumeTarget(pos);
+      if (pos) setHighlightId(pos.id);
       setResumeReady(true);
     });
   }, []);
 
   useEffect(() => {
-    setLoading(true);
-    void load(searchQuery).finally(() => setLoading(false));
-  }, [load, searchQuery]);
+    void loadAllSequential();
+    return () => {
+      loadGen.current += 1;
+    };
+  }, [loadAllSequential]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await load(searchQuery);
+      await loadAllSequential();
     } finally {
       setRefreshing(false);
     }
-  }, [load, searchQuery]);
+  }, [loadAllSequential]);
 
-  const groups = useMemo(() => groupByBookChapter(items), [items]);
-  const bookOptions = useMemo(
-    () =>
-      groups.map((g) => ({
-        id: g.book_id,
-        name: g.book_name,
-        count: g.chapters.reduce((n, c) => n + c.items.length, 0),
-      })),
-    [groups],
-  );
+  /** Client-side search — no API reload when query changes. */
+  const filteredItems = useMemo(() => {
+    const q = appliedQuery.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((item) => {
+      const en = (item.body_en ?? '').toLowerCase();
+      const bn = (item.body_bn ?? '').toLowerCase();
+      return en.includes(q) || bn.includes(q);
+    });
+  }, [items, appliedQuery]);
+
+  const groups = useMemo(() => groupByBookChapter(filteredItems), [filteredItems]);
+  const bookOptions = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; count: number }>();
+    for (const item of items) {
+      const existing = map.get(item.book_id);
+      if (existing) existing.count += 1;
+      else map.set(item.book_id, { id: item.book_id, name: item.book_name, count: 1 });
+    }
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [items]);
   const visibleGroups = useMemo(
     () => (selectedBookId ? groups.filter((g) => g.book_id === selectedBookId) : groups),
     [groups, selectedBookId],
@@ -186,13 +277,15 @@ export default function MarathonReviewScreen() {
     [visibleGroups],
   );
 
+  const hasActiveFilter = Boolean(appliedQuery.trim() || selectedBookId);
+
   function submitSearch() {
-    setSearchQuery(searchDraft.trim());
+    setAppliedQuery(searchDraft.trim());
   }
 
   function clearSearch() {
     setSearchDraft('');
-    setSearchQuery('');
+    setAppliedQuery('');
     setSearchOpen(false);
   }
 
@@ -226,11 +319,12 @@ export default function MarathonReviewScreen() {
   }
 
   useEffect(() => {
-    if (!resumeReady || loading || didResume.current || !resumeTarget || items.length === 0) {
+    if (!resumeReady || didResume.current || !resumeTarget || items.length === 0) {
       return;
     }
+    if (loading || loadingMore) return;
     // Only resume on the full list (no book filter / search) so scroll offsets stay valid
-    if (selectedBookId || searchQuery.trim()) {
+    if (hasActiveFilter) {
       didResume.current = true;
       return;
     }
@@ -249,7 +343,7 @@ export default function MarathonReviewScreen() {
     }, 150);
 
     return () => clearTimeout(t);
-  }, [resumeReady, loading, resumeTarget, items, selectedBookId, searchQuery]);
+  }, [resumeReady, loading, loadingMore, resumeTarget, items, hasActiveFilter]);
 
   function toggleReveal(item: MarathonReviewItem) {
     rememberQuestion(item);
@@ -320,7 +414,7 @@ export default function MarathonReviewScreen() {
           <Pressable style={styles.searchAction} onPress={submitSearch}>
             <Text style={styles.searchActionText}>Search</Text>
           </Pressable>
-          {searchQuery ? (
+          {appliedQuery ? (
             <Pressable style={styles.clearAction} onPress={clearSearch}>
               <Text style={styles.clearActionText}>Clear</Text>
             </Pressable>
@@ -334,10 +428,14 @@ export default function MarathonReviewScreen() {
             <Text style={styles.hint}>Tap or press & hold a question to show the answer</Text>
           ) : null}
           <Text style={styles.meta}>
-            {visibleCount} Questions
-            {searchQuery ? ` · “${searchQuery}”` : ''}
+            {loadingMore
+              ? `Loading… ${items.length}${total ? ` / ${total}` : ''}`
+              : hasActiveFilter
+                ? `Showing ${visibleCount} of ${items.length} loaded`
+                : `${visibleCount} Questions`}
+            {appliedQuery ? ` · “${appliedQuery}”` : ''}
             {selectedBookName ? ` · ${selectedBookName}` : ''}
-            {resumeTarget && !searchQuery
+            {resumeTarget && !appliedQuery
               ? ` · resume #${resumeTarget.number}`
               : ''}
             {mode === 'with_answers'
@@ -365,7 +463,7 @@ export default function MarathonReviewScreen() {
       {bookMenuOpen ? (
         <View style={styles.bookMenu}>
           <Text style={styles.bookMenuTitle}>Books &amp; Tools with MCQ</Text>
-          <Text style={styles.bookMenuSub}>Quick access — jump to a book’s questions</Text>
+          <Text style={styles.bookMenuSub}>Filter this list locally — no reload</Text>
           <ScrollView nestedScrollEnabled style={{ maxHeight: 220 }} contentContainerStyle={styles.bookMenuList}>
             <Pressable
               style={[styles.bookMenuItem, !selectedBookId && styles.bookMenuItemActive]}
@@ -417,9 +515,15 @@ export default function MarathonReviewScreen() {
         </View>
       ) : null}
 
-      {loading ? (
+      {error && items.length > 0 ? (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorBannerText}>{error}</Text>
+        </View>
+      ) : null}
+
+      {loading && items.length === 0 ? (
         <BookLoading />
-      ) : error ? (
+      ) : error && items.length === 0 ? (
         <BookError message={error} />
       ) : items.length === 0 ? (
         <BookEmpty
@@ -427,7 +531,14 @@ export default function MarathonReviewScreen() {
           subtitle="Published MCQs linked to books and chapters will appear here."
         />
       ) : visibleGroups.length === 0 ? (
-        <BookEmpty title="No questions in this book" subtitle="Pick another book from the ⋮ menu." />
+        <BookEmpty
+          title={hasActiveFilter ? 'No matches in loaded questions' : 'No questions in this book'}
+          subtitle={
+            hasActiveFilter
+              ? 'Clear search or book filter to see all loaded MCQs.'
+              : 'Pick another book from the ⋮ menu.'
+          }
+        />
       ) : (
         <ScrollView
           ref={scrollRef}
@@ -483,7 +594,7 @@ export default function MarathonReviewScreen() {
                       >
                         <Text style={styles.number}>{item.number}.</Text>
                         <View style={styles.questionBody}>
-                          <Text style={styles.questionText}>{text}</Text>
+                          <BookRichText html={text} style={styles.questionText} />
                           {showAnswer ? (
                             sections.length > 0 ? (
                               <AnswerBlocks itemId={item.id} sections={sections} />
@@ -502,6 +613,19 @@ export default function MarathonReviewScreen() {
               ))}
             </View>
           ))}
+          {loadingMore ? (
+            <View style={styles.loadingMore}>
+              <ActivityIndicator color={colors.primary} />
+              <Text style={styles.loadingMoreText}>
+                Loading more… {items.length}
+                {total ? ` / ${total}` : ''}
+              </Text>
+            </View>
+          ) : items.length > 0 ? (
+            <Text style={styles.footerHint}>
+              All questions loaded · {total || items.length}
+            </Text>
+          ) : null}
         </ScrollView>
       )}
     </View>
@@ -715,6 +839,39 @@ const styles = StyleSheet.create({
   meta: {
     fontSize: 12,
     color: colors.textMuted,
+  },
+  errorBanner: {
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    backgroundColor: '#fde8e8',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#f5b5b5',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  errorBannerText: {
+    color: '#b42318',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  loadingMore: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: spacing.md,
+  },
+  loadingMoreText: {
+    fontSize: 13,
+    color: colors.textMuted,
+    fontWeight: '600',
+  },
+  footerHint: {
+    textAlign: 'center',
+    fontSize: 12,
+    color: colors.textMuted,
+    paddingVertical: spacing.sm,
   },
   list: {
     padding: spacing.md,

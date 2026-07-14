@@ -11,6 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { BookBadge } from '@/components/books/BookBadge';
 import { BookLoading } from '@/components/books/BookStates';
+import { BookRichText } from '@/components/books/BookRichText';
 import { ChapterMcqExam } from '@/components/books/ChapterMcqExam';
 import { ChapterQuestionEvaluator } from '@/components/books/ChapterQuestionEvaluator';
 import { RatingIndicator } from '@/components/evaluation/RatingIndicator';
@@ -36,9 +37,13 @@ function renderSection(section: ExplanationSection, index: number) {
   return (
     <View key={`sec-${index}`} style={styles.answerSection}>
       {section.title?.trim() ? <Text style={styles.answerSectionTitle}>{section.title}</Text> : null}
-      {section.content?.trim() ? <Text style={styles.answerText}>{stripHtml(section.content)}</Text> : null}
-      {section.details?.trim() ? <Text style={styles.answerText}>{stripHtml(section.details)}</Text> : null}
-      {section.note?.trim() ? <Text style={styles.answerNote}>{stripHtml(section.note)}</Text> : null}
+      {section.content?.trim() ? (
+        <BookRichText html={section.content} style={styles.answerText} />
+      ) : null}
+      {section.details?.trim() ? (
+        <BookRichText html={section.details} style={styles.answerText} />
+      ) : null}
+      {section.note?.trim() ? <BookRichText html={section.note} style={styles.answerNote} /> : null}
     </View>
   );
 }
@@ -277,9 +282,9 @@ export function ChapterQuestionsPanel({
                   </View>
                   {questionStem ? (
                     <>
-                      <Text style={styles.questionBody}>{questionStem.primary}</Text>
+                      <BookRichText html={questionStem.primary} style={styles.questionBody} />
                       {questionStem.secondary ? (
-                        <Text style={styles.questionBn}>{questionStem.secondary}</Text>
+                        <BookRichText html={questionStem.secondary} style={styles.questionBn} />
                       ) : null}
                     </>
                   ) : null}
@@ -293,9 +298,10 @@ export function ChapterQuestionsPanel({
                           style={[styles.optionRow, opt.is_correct && styles.optionCorrect]}
                         >
                           <Text style={styles.optionKey}>{opt.option_key.toUpperCase()}.</Text>
-                          <Text style={styles.optionText}>
-                            {opt.option_text_en?.trim() || opt.option_text_bn?.trim()}
-                          </Text>
+                          <BookRichText
+                            html={opt.option_text_en?.trim() || opt.option_text_bn?.trim()}
+                            style={styles.optionText}
+                          />
                         </View>
                       ))}
                     </View>
@@ -319,7 +325,7 @@ export function ChapterQuestionsPanel({
                     )}
                     {(question.explanation_sections ?? []).map(renderSection)}
                     {question.note?.trim() ? (
-                      <Text style={styles.answerNote}>{question.note}</Text>
+                      <BookRichText html={question.note} style={styles.answerNote} />
                     ) : null}
                   </View>
 

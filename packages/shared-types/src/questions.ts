@@ -166,6 +166,10 @@ export const listQuestionsQuerySchema = z.object({
 
 export const marathonReviewQuerySchema = z.object({
   q: z.string().optional(),
+  /** Page size (load first N, then request more with offset). */
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  /** How many rows to skip (for sequential / paginated loads). */
+  offset: z.coerce.number().int().min(0).default(0),
 });
 
 export type MarathonReviewQuery = z.infer<typeof marathonReviewQuerySchema>;

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
 import { SELF_RATING_PROGRESS } from '@ibas/shared-constants';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
@@ -13,20 +13,29 @@ import {
   fetchQuestionPracticeStem,
   upsertQuestionEvaluation,
   type QuestionEvaluationRecord,
+  type QuestionPracticeStem,
   type SelfRatingLevel,
 } from '@/lib/evaluation-api';
 import type { ExplanationSection, QuestionDetail, QuestionOption } from '@/types/questions';
 import { ComparisonTableAnswer } from '@/components/questions/ComparisonTableAnswer';
+import { BookRichText } from '@/components/books/BookRichText';
 import { useDifferencesLandscape } from '@/hooks/useDifferencesLandscape';
 import { bilingualQuestionText } from '@/lib/question-display';
+import {
+  loadQuestionBankLastQuestion,
+  saveQuestionBankLastQuestion,
+} from '@/lib/question-bank-progress';
+import { getQuestionBankNextId } from '@/lib/question-bank-order';
+import { questionDetailHref } from '@/lib/question-routes';
 import { colors, spacing } from '@/theme';
 
-function renderOptionText(option: QuestionOption) {
+function optionText(option: QuestionOption) {
   return option.option_text_en?.trim() || option.option_text_bn?.trim() || '';
 }
 
 export default function QuestionDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const navigation = useNavigation();
   const [item, setItem] = useState<QuestionDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -38,16 +47,29 @@ export default function QuestionDetailScreen() {
   const [evalError, setEvalError] = useState('');
   const [evalMessage, setEvalMessage] = useState('');
   const [showCelebrate, setShowCelebrate] = useState(false);
+  const [nextId, setNextId] = useState<string | undefined>();
+  const [nextStem, setNextStem] = useState<QuestionPracticeStem | null>(null);
 
   useEffect(() => {
     if (!id) return;
     setLoading(true);
+    setShowAnswer(false);
+    setNextStem(null);
+    setEvalError('');
+    setEvalMessage('');
+
+    const sessionNext = getQuestionBankNextId(id);
+    void loadQuestionBankLastQuestion().then((pos) => {
+      const fromStore = pos?.id === id ? pos.nextId : undefined;
+      setNextId(sessionNext || fromStore);
+    });
+
     Promise.all([fetchQuestionDetail(id), fetchQuestionPracticeStem(id), fetchQuestionEvaluation(id)])
       .then(([data, stem, evalRow]) => {
         setItem(data);
         setEvaluation(evalRow);
         setSelectedOptionId(evalRow.selected_option_id ?? '');
-        if (!data.has_options && !showAnswer && !stem.has_options) {
+        if (!data.has_options && !stem.has_options) {
           setShowAnswer(true);
         }
       })
@@ -57,6 +79,24 @@ export default function QuestionDetailScreen() {
       })
       .finally(() => setLoading(false));
   }, [id, navigation]);
+
+  useEffect(() => {
+    if (!showAnswer || !nextId) {
+      setNextStem(null);
+      return;
+    }
+    let cancelled = false;
+    void fetchQuestionPracticeStem(nextId)
+      .then((stem) => {
+        if (!cancelled) setNextStem(stem);
+      })
+      .catch(() => {
+        if (!cancelled) setNextStem(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showAnswer, nextId]);
 
   const modelSections = useMemo(
     () => normalizeSections(item?.model_answer_sections),
@@ -139,19 +179,33 @@ export default function QuestionDetailScreen() {
     }
   }
 
+  function openNextQuestion() {
+    if (!nextId) return;
+    const followingId = getQuestionBankNextId(nextId);
+    void saveQuestionBankLastQuestion({
+      id: nextId,
+      nextId: followingId,
+    });
+    router.replace(questionDetailHref(nextId));
+  }
+
   if (loading) return <BookLoading />;
   if (error) return <BookError message={error} />;
   if (!item) return <BookEmpty title="Question not found" />;
 
   const stem = bilingualQuestionText(item.body_en, item.body_bn);
+  const nextText = nextStem
+    ? bilingualQuestionText(nextStem.body_en, nextStem.body_bn)
+    : null;
+  const showNextQuestion = Boolean(showAnswer && nextId && nextStem && nextText?.primary);
 
   return (
     <>
       <ScrollView style={styles.root} contentContainerStyle={styles.content}>
       <View style={styles.panel}>
         <Text style={styles.questionType}>{item.question_type_name ?? item.question_type_code}</Text>
-        <Text style={styles.questionText}>{stem.primary}</Text>
-        {stem.secondary ? <Text style={styles.questionBn}>{stem.secondary}</Text> : null}
+        <BookRichText html={stem.primary} style={styles.questionText} />
+        {stem.secondary ? <BookRichText html={stem.secondary} style={styles.questionBn} /> : null}
       </View>
 
       {item.options.length > 0 ? (
@@ -162,9 +216,10 @@ export default function QuestionDetailScreen() {
             return (
               <View key={opt.id} style={[styles.optionRow, isCorrect && styles.optionCorrect]}>
                 <Text style={styles.optionKey}>{opt.option_key.toUpperCase()}.</Text>
-                <Text style={[styles.optionText, isCorrect && styles.optionTextCorrect]}>
-                  {renderOptionText(opt)}
-                </Text>
+                <BookRichText
+                  html={optionText(opt)}
+                  style={[styles.optionText, isCorrect && styles.optionTextCorrect]}
+                />
               </View>
             );
           })}
@@ -201,7 +256,7 @@ export default function QuestionDetailScreen() {
       {showAnswer && item.note?.trim() ? (
         <View style={styles.panel}>
           <Text style={styles.sectionTitle}>Note</Text>
-          <Text style={styles.sectionText}>{item.note}</Text>
+          <BookRichText html={item.note} style={styles.sectionText} />
         </View>
       ) : null}
 
@@ -223,7 +278,7 @@ export default function QuestionDetailScreen() {
                     onPress={() => setSelectedOptionId(opt.id)}
                   >
                     <Text style={styles.optionKey}>{opt.option_key.toUpperCase()}.</Text>
-                    <Text style={styles.optionText}>{renderOptionText(opt)}</Text>
+                    <BookRichText html={optionText(opt)} style={styles.optionText} />
                   </Pressable>
                 );
               })}
@@ -281,6 +336,22 @@ export default function QuestionDetailScreen() {
           </View>
         )}
       </View>
+
+      {showNextQuestion ? (
+        <Pressable
+          style={({ pressed }) => [styles.nextPanel, pressed && styles.nextPanelPressed]}
+          onPress={openNextQuestion}
+          accessibilityRole="button"
+          accessibilityLabel="Open next question"
+        >
+          <Text style={styles.nextLabel}>Next question</Text>
+          <BookRichText html={nextText!.primary} style={styles.nextText} />
+          {nextText!.secondary ? (
+            <BookRichText html={nextText!.secondary} style={styles.nextTextSecondary} />
+          ) : null}
+          <Text style={styles.nextHint}>Tap to open</Text>
+        </Pressable>
+      ) : null}
       </ScrollView>
       <EvaluationCelebrate visible={showCelebrate} onClose={() => setShowCelebrate(false)} />
     </>
@@ -305,14 +376,14 @@ function renderSection(sec: ExplanationSection, idx: number, keyPrefix: string) 
   return (
     <View key={`${keyPrefix}-${idx}`} style={styles.sectionBlock}>
       {sec.title?.trim() ? <Text style={styles.sectionHeading}>{sec.title}</Text> : null}
-      {sec.content?.trim() ? <Text style={styles.sectionText}>{sec.content}</Text> : null}
-      {sec.details?.trim() ? <Text style={styles.sectionText}>{sec.details}</Text> : null}
-      {sec.note?.trim() ? <Text style={styles.sectionNote}>{sec.note}</Text> : null}
+      {sec.content?.trim() ? <BookRichText html={sec.content} style={styles.sectionText} /> : null}
+      {sec.details?.trim() ? <BookRichText html={sec.details} style={styles.sectionText} /> : null}
+      {sec.note?.trim() ? <BookRichText html={sec.note} style={styles.sectionNote} /> : null}
       {sec.subsections?.map((sub, i) => (
         <View key={`${keyPrefix}-${idx}-sub-${i}`} style={styles.subsectionBlock}>
           {sub.subtitle?.trim() ? <Text style={styles.subsectionTitle}>{sub.subtitle}</Text> : null}
-          {sub.details?.trim() ? <Text style={styles.sectionText}>{sub.details}</Text> : null}
-          {sub.note?.trim() ? <Text style={styles.sectionNote}>{sub.note}</Text> : null}
+          {sub.details?.trim() ? <BookRichText html={sub.details} style={styles.sectionText} /> : null}
+          {sub.note?.trim() ? <BookRichText html={sub.note} style={styles.sectionNote} /> : null}
         </View>
       ))}
     </View>
@@ -545,6 +616,41 @@ const styles = StyleSheet.create({
   successText: {
     color: colors.success,
     fontSize: 13,
+    fontWeight: '600',
+  },
+  nextPanel: {
+    backgroundColor: '#f3f6f9',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#d7dee6',
+    borderStyle: 'dashed',
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  nextPanelPressed: {
+    opacity: 0.88,
+  },
+  nextLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  nextText: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: '#6b7280',
+    fontWeight: '500',
+  },
+  nextTextSecondary: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#9ca3af',
+  },
+  nextHint: {
+    fontSize: 12,
+    color: colors.primary,
     fontWeight: '600',
   },
 });

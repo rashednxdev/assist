@@ -1,3 +1,4 @@
+import { insertBookListMarkerLineBreaks } from '@ibas/shared-constants';
 import type { ComparisonTable, ExplanationSection } from '@ibas/shared-types';
 import { hasComparisonTableContent, hasExplanationContent } from '@ibas/shared-types';
 import { Badge } from '@/components/ui/badge';
@@ -23,9 +24,27 @@ interface QuestionAnswerViewProps {
   showAnswer: boolean;
 }
 
-function TextBlock({ text }: { text?: string }) {
-  if (!text?.trim()) return null;
-  return <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{text}</p>;
+function formatQuestionText(text?: string) {
+  if (!text?.trim()) return '';
+  return insertBookListMarkerLineBreaks(text.trim(), '\n');
+}
+
+function TextBlock({
+  text,
+  className = '',
+}: {
+  text?: string;
+  className?: string;
+}) {
+  const formatted = formatQuestionText(text);
+  if (!formatted) return null;
+  return (
+    <p
+      className={`whitespace-pre-wrap text-justify text-sm leading-relaxed text-foreground ${className}`}
+    >
+      {formatted}
+    </p>
+  );
 }
 
 function SubsectionBlock({ sub }: { sub: ExplanationSection['subsections'][number] }) {
@@ -121,8 +140,8 @@ export function QuestionAnswerView({
     <div className="space-y-6">
       <section className="space-y-2">
         <div className="text-xs font-semibold uppercase tracking-wide text-primary">Question</div>
-        <p className="text-base font-medium leading-relaxed text-foreground">{body_en}</p>
-        {body_bn?.trim() && <p className="text-sm leading-relaxed text-muted">{body_bn}</p>}
+        <TextBlock text={body_en} className="text-base font-medium" />
+        {body_bn?.trim() ? <TextBlock text={body_bn} className="text-muted" /> : null}
       </section>
 
       {has_options && options.length > 0 && (
@@ -138,9 +157,13 @@ export function QuestionAnswerView({
                     isCorrect ? 'border-primary bg-primary-muted/40' : 'border-border bg-background'
                   }`}
                 >
-                  <span className="mr-2 font-semibold uppercase">{opt.option_key}.</span>
-                  <span className="text-sm">{opt.option_text_en}</span>
-                  {opt.option_text_bn && <div className="mt-1 text-sm text-muted">{opt.option_text_bn}</div>}
+                  <div className="flex gap-2">
+                    <span className="shrink-0 font-semibold uppercase">{opt.option_key}.</span>
+                    <TextBlock text={opt.option_text_en} className="min-w-0 flex-1" />
+                  </div>
+                  {opt.option_text_bn ? (
+                    <TextBlock text={opt.option_text_bn} className="mt-1 text-muted" />
+                  ) : null}
                   {isCorrect && (
                     <Badge className="mt-2" variant="default">
                       Correct answer

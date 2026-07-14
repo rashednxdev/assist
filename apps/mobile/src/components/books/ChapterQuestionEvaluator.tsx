@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { SELF_RATING_PROGRESS } from '@ibas/shared-constants';
+import { BookRichText } from '@/components/books/BookRichText';
 import { RatingIndicator } from '@/components/evaluation/RatingIndicator';
 import { formatEvaluationStatusLabel } from '@/lib/evaluation-display';
 import {
@@ -19,7 +20,7 @@ const SELF_LABELS: Record<SelfRatingLevel, string> = {
   confidence: 'Confidence (100%)',
 };
 
-function renderOptionText(option: { option_text_en?: string; option_text_bn?: string }) {
+function optionLabel(option: { option_text_en?: string; option_text_bn?: string }) {
   return option.option_text_en?.trim() || option.option_text_bn?.trim() || '';
 }
 
@@ -139,7 +140,7 @@ export function ChapterQuestionEvaluator({
               >
                 <View style={styles.optionContent}>
                   <Text style={styles.optionKey}>{opt.option_key.toUpperCase()}.</Text>
-                  <Text style={styles.optionText}>{renderOptionText(opt)}</Text>
+                  <BookRichText html={optionLabel(opt)} style={styles.optionText} />
                 </View>
                 {showFeedback && isCorrectAnswer ? (
                   <Text style={styles.correctBadge}>Correct</Text>

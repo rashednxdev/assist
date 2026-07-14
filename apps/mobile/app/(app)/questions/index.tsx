@@ -23,6 +23,7 @@ import {
   saveQuestionBankLastQuestion,
   type QuestionBankLastQuestion,
 } from '@/lib/question-bank-progress';
+import { setQuestionBankSessionOrder } from '@/lib/question-bank-order';
 import { useAuth } from '@/lib/auth-context';
 import type { QuestionListItem, QuestionType } from '@/types/questions';
 import { colors, spacing } from '@/theme';
@@ -98,6 +99,7 @@ export default function QuestionsScreen() {
 
   itemsRef.current = items;
   visibleItemsRef.current = visibleItems;
+  setQuestionBankSessionOrder(items.map((row) => row.id));
 
   function scrollToQuestionId(id: string, animated = false) {
     const data = visibleItemsRef.current;
@@ -315,10 +317,13 @@ export default function QuestionsScreen() {
   }
 
   function openQuestion(item: QuestionListItem) {
-    const index = itemsRef.current.findIndex((row) => row.id === item.id);
+    const list = itemsRef.current;
+    const index = list.findIndex((row) => row.id === item.id);
+    const next = index >= 0 && index < list.length - 1 ? list[index + 1] : undefined;
     const pos: QuestionBankLastQuestion = {
       id: item.id,
       index: index >= 0 ? index : undefined,
+      nextId: next?.id,
     };
     setHighlightId(item.id);
     setResumeTarget(pos);

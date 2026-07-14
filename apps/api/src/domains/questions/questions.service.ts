@@ -915,7 +915,12 @@ export async function listQuestions(filters: {
 }
 
 /** Published MCQs linked to books/chapters, with explanations for marathon review. */
-export async function listMarathonReview(filters: { q?: string } = {}) {
+export async function listMarathonReview(
+  filters: { q?: string; limit?: number; offset?: number } = {},
+) {
+  const limit = Math.min(100, Math.max(1, filters.limit ?? 50));
+  const offset = Math.max(0, filters.offset ?? 0);
+
   const query: Record<string, unknown> = {
     is_active: true,
     is_published: true,
@@ -926,22 +931,23 @@ export async function listMarathonReview(filters: { q?: string } = {}) {
     query.$or = [{ body_en: { $regex: q, $options: 'i' } }, { body_bn: { $regex: q, $options: 'i' } }];
   }
 
-  const questions = await Question.find(query).limit(3000);
-  if (questions.length === 0) return [];
+  // Stable order so offset pages do not shuffle between requests.
+  const questions = await Question.find(query).sort({ _id: 1 });
+  if (questions.length === 0) {
+    return { items: [], total: 0, limit, offset };
+  }
 
   const questionIds = questions.map((q) => q._id);
-  const [links, details] = await Promise.all([
-    QuestionBookLink.find({ question_id: { $in: questionIds }, is_active: true }).sort({ sort_order: 1 }),
-    QuestionAnswerDetail.find({ question_id: { $in: questionIds } }).lean(),
-  ]);
+  const links = await QuestionBookLink.find({
+    question_id: { $in: questionIds },
+    is_active: true,
+  }).sort({ sort_order: 1 });
 
   const linkByQuestion = new Map<string, (typeof links)[number]>();
   for (const link of links) {
     const key = String(link.question_id);
     if (!linkByQuestion.has(key)) linkByQuestion.set(key, link);
   }
-
-  const detailByQuestion = new Map(details.map((d) => [String(d.question_id), d]));
 
   const chapterIdByQuestion = new Map<string, string>();
   for (const q of questions) {
@@ -968,7 +974,7 @@ export async function listMarathonReview(filters: { q?: string } = {}) {
     bookIds.length > 0 ? await BookInfo.find({ _id: { $in: bookIds }, is_active: true }) : [];
   const bookMap = new Map(books.map((b) => [String(b._id), b]));
 
-  type Row = {
+  type LightRow = {
     id: string;
     body_en: string;
     body_bn?: string;
@@ -979,10 +985,9 @@ export async function listMarathonReview(filters: { q?: string } = {}) {
     chapter_name: string;
     chapter_sort_order: number;
     book_sort_key: string;
-    explanation_sections: ExplanationSection[];
   };
 
-  const rows: Row[] = [];
+  const lightRows: LightRow[] = [];
   for (const q of questions) {
     const qid = String(q._id);
     const chapterId = chapterIdByQuestion.get(qid);
@@ -992,17 +997,7 @@ export async function listMarathonReview(filters: { q?: string } = {}) {
     const book = bookMap.get(String(chapter.book_info_id));
     if (!book) continue;
 
-    const detail = detailByQuestion.get(qid) ?? null;
-    let explanation_sections = serializeExplanationSections(detail?.explanation_sections);
-    if (
-      explanation_sections.length === 0 &&
-      typeof detail?.explanation === 'string' &&
-      detail.explanation.trim()
-    ) {
-      explanation_sections = parseLegacyExplanation(detail.explanation);
-    }
-
-    rows.push({
+    lightRows.push({
       id: qid,
       body_en: q.body_en,
       body_bn: q.body_bn,
@@ -1013,22 +1008,48 @@ export async function listMarathonReview(filters: { q?: string } = {}) {
       chapter_name: chapter.name,
       chapter_sort_order: chapter.sort_order ?? 0,
       book_sort_key: book.name,
-      explanation_sections,
     });
   }
 
-  rows.sort(
+  lightRows.sort(
     (a, b) =>
       a.book_sort_key.localeCompare(b.book_sort_key) ||
       a.chapter_sort_order - b.chapter_sort_order ||
       a.chapter_number.localeCompare(b.chapter_number) ||
-      a.body_en.localeCompare(b.body_en),
+      a.body_en.localeCompare(b.body_en) ||
+      a.id.localeCompare(b.id),
   );
 
-  return rows.map(({ book_sort_key: _b, chapter_sort_order: _c, ...item }, index) => ({
-    ...item,
-    number: index + 1,
-  }));
+  const total = lightRows.length;
+  const pageLight = lightRows.slice(offset, offset + limit);
+  if (pageLight.length === 0) {
+    return { items: [], total, limit, offset };
+  }
+
+  const pageIds = pageLight.map((r) => new mongoose.Types.ObjectId(r.id));
+  const details = await QuestionAnswerDetail.find({ question_id: { $in: pageIds } }).lean();
+  const detailByQuestion = new Map(details.map((d) => [String(d.question_id), d]));
+
+  const items = pageLight.map((row, index) => {
+    const detail = detailByQuestion.get(row.id) ?? null;
+    let explanation_sections = serializeExplanationSections(detail?.explanation_sections);
+    if (
+      explanation_sections.length === 0 &&
+      typeof detail?.explanation === 'string' &&
+      detail.explanation.trim()
+    ) {
+      explanation_sections = parseLegacyExplanation(detail.explanation);
+    }
+
+    const { book_sort_key: _b, chapter_sort_order: _c, ...item } = row;
+    return {
+      ...item,
+      explanation_sections,
+      number: offset + index + 1,
+    };
+  });
+
+  return { items, total, limit, offset };
 }
 
 export async function getQuestionById(id: string) {

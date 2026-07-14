@@ -6,6 +6,8 @@ export type QuestionBankLastQuestion = {
   id: string;
   /** Index in the full loaded bank list when opened (best-effort). */
   index?: number;
+  /** Immediate next question in the loaded bank order (for answer screen). */
+  nextId?: string;
 };
 
 export async function loadQuestionBankLastQuestion(): Promise<QuestionBankLastQuestion | null> {
@@ -17,6 +19,7 @@ export async function loadQuestionBankLastQuestion(): Promise<QuestionBankLastQu
     return {
       id: parsed.id,
       index: typeof parsed.index === 'number' && parsed.index >= 0 ? parsed.index : undefined,
+      nextId: typeof parsed.nextId === 'string' && parsed.nextId ? parsed.nextId : undefined,
     };
   } catch {
     return null;

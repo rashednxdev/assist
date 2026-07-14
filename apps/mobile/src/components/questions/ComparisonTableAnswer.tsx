@@ -1,4 +1,5 @@
 import { useWindowDimensions, ScrollView, View, Text, StyleSheet } from 'react-native';
+import { BookRichText } from '@/components/books/BookRichText';
 import type { ComparisonTable } from '@/types/questions';
 import { colors, spacing } from '@/theme';
 
@@ -51,11 +52,11 @@ export function ComparisonTableAnswer({
           {rows.map((row, ri) => (
             <View key={`r-${ri}`} style={[styles.row, ri % 2 === 1 && styles.altRow]}>
               <View style={[styles.cell, { width: FEATURE_COL_WIDTH }]}>
-                <Text style={styles.featureText}>{row.feature || '—'}</Text>
+                <BookRichText html={row.feature || '—'} style={styles.featureText} />
               </View>
               {columns.map((_, ci) => (
                 <View key={`c-${ri}-${ci}`} style={[styles.cell, { width: valueColWidth }]}>
-                  <Text style={styles.valueText}>{row.values?.[ci] ?? ''}</Text>
+                  <BookRichText html={row.values?.[ci] ?? ''} style={styles.valueText} />
                 </View>
               ))}
             </View>

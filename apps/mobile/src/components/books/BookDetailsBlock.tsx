@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet } from 'react-native';
-import { HtmlContent } from '@/components/books/HtmlContent';
+import { BookRichText } from '@/components/books/BookRichText';
 import { colors, spacing } from '@/theme';
 
 export function BookDetailsBlock({
@@ -21,11 +21,11 @@ export function BookDetailsBlock({
 
   return (
     <View style={styles.wrap}>
-      {hasDetails ? <HtmlContent html={html} /> : null}
+      {hasDetails ? <BookRichText html={html} /> : null}
       {hasNote ? (
         <View style={styles.noteBox}>
           <Text style={styles.noteLabel}>Note</Text>
-          <Text style={styles.noteText}>{note?.trim()}</Text>
+          <BookRichText html={note} />
         </View>
       ) : null}
     </View>
@@ -47,10 +47,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: colors.textMuted,
-  },
-  noteText: {
-    fontSize: 14,
-    lineHeight: 21,
-    color: colors.text,
   },
 });

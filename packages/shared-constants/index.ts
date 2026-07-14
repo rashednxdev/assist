@@ -155,24 +155,42 @@ export type JoiningWeeklyHoliday = (typeof JOINING_WEEKLY_HOLIDAYS)[number];
  * Note: avoid the `u` regex flag — Hermes has historically crashed on it.
  * Avoid a shared /g RegExp instance (mutable lastIndex) across calls.
  */
+type TextMarker = { start: number; end: number; match: string };
+
 function shortBracketRegex() {
   return /\(([^)\n\r]{1,2})\)/g;
+}
+
+/** Sequential letter/number markers ending with `.` or Bangla dari `।`, e.g. ক. খ. / a. b. / 1. 2. / ১। ২।
+ * Letters: exactly 1 character (avoids Mr. / Dr.). Digits: 1–2 characters. */
+function sequentialDotMarkerRegex() {
+  return /(?:([0-9\u09E6-\u09EF]{1,2})|([a-zA-Z\u0985-\u09B9\u09CE\u09DC-\u09DF]))[.।]/g;
 }
 
 function isWhitespaceChar(ch: string | undefined): boolean {
   return Boolean(ch && /\s/.test(ch));
 }
 
-/** True when `(…)` has whitespace immediately before and after. */
+/** True when marker has whitespace immediately before and after (brackets). */
 function hasSpaceBeforeAndAfter(text: string, start: number, end: number): boolean {
   const before = start > 0 ? text[start - 1] : undefined;
   const after = end < text.length ? text[end] : undefined;
   return isWhitespaceChar(before) && isWhitespaceChar(after);
 }
 
-function findSpacedShortBrackets(text: string): Array<{ start: number; end: number; match: string }> {
+/**
+ * Dot/dari list markers: whitespace (or start) before the letter/number,
+ * and whitespace (or end) after `.` / `।`.
+ */
+function hasDotMarkerBoundaries(text: string, start: number, end: number): boolean {
+  const beforeOk = start === 0 || isWhitespaceChar(text[start - 1]);
+  const afterOk = end >= text.length || isWhitespaceChar(text[end]);
+  return beforeOk && afterOk;
+}
+
+function findSpacedShortBrackets(text: string): TextMarker[] {
   const re = shortBracketRegex();
-  const found: Array<{ start: number; end: number; match: string }> = [];
+  const found: TextMarker[] = [];
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
     const start = m.index;
@@ -183,9 +201,23 @@ function findSpacedShortBrackets(text: string): Array<{ start: number; end: numb
   return found;
 }
 
-export function insertShortBracketLineBreaks(
+function findSpacedSequentialDots(text: string): TextMarker[] {
+  const re = sequentialDotMarkerRegex();
+  const found: TextMarker[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const start = m.index;
+    const end = start + m[0].length;
+    if (!hasDotMarkerBoundaries(text, start, end)) continue;
+    found.push({ start, end, match: m[0] });
+  }
+  return found;
+}
+
+function insertMarkersAsLineBreaks(
   text: string,
-  lineBreak: string = '\n',
+  lineBreak: string,
+  findMarkers: (plain: string) => TextMarker[],
 ): string {
   if (!text) return text;
 
@@ -194,7 +226,7 @@ export function insertShortBracketLineBreaks(
     const plainForCount = parts
       .filter((part) => !(part.startsWith('<') && part.endsWith('>')))
       .join('');
-    if (findSpacedShortBrackets(plainForCount).length < 2) {
+    if (findMarkers(plainForCount).length < 2) {
       return text;
     }
 
@@ -202,7 +234,7 @@ export function insertShortBracketLineBreaks(
       .map((part) => {
         if (part.startsWith('<') && part.endsWith('>')) return part;
 
-        const markers = findSpacedShortBrackets(part);
+        const markers = findMarkers(part);
         if (markers.length === 0) return part;
 
         let result = '';
@@ -225,4 +257,35 @@ export function insertShortBracketLineBreaks(
   } catch {
     return text;
   }
+}
+
+export function insertShortBracketLineBreaks(
+  text: string,
+  lineBreak: string = '\n',
+): string {
+  return insertMarkersAsLineBreaks(text, lineBreak, findSpacedShortBrackets);
+}
+
+/**
+ * Sequential letter/number list markers ending with `.` or `।`, e.g. ক. খ. / a. b. / 1. 2.
+ * Letters must be a single character; digits may be 1–2 characters (skips Mr. / সংজ্ঞা।).
+ *
+ * When a description has 2+ spaced markers, each is shown on its own line (Enter).
+ */
+export function insertSequentialDotLineBreaks(
+  text: string,
+  lineBreak: string = '\n',
+): string {
+  return insertMarkersAsLineBreaks(text, lineBreak, findSpacedSequentialDots);
+}
+
+/** Apply bracket then sequential-dot list line breaks (book body formatting). */
+export function insertBookListMarkerLineBreaks(
+  text: string,
+  lineBreak: string = '\n',
+): string {
+  return insertSequentialDotLineBreaks(
+    insertShortBracketLineBreaks(text, lineBreak),
+    lineBreak,
+  );
 }

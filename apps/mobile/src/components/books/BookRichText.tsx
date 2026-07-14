@@ -1,5 +1,5 @@
 import { Text, StyleSheet } from 'react-native';
-import { insertShortBracketLineBreaks } from '@ibas/shared-constants';
+import { insertBookListMarkerLineBreaks } from '@ibas/shared-constants';
 import { stripHtml } from '@/lib/book-display';
 import { colors } from '@/theme';
 
@@ -7,7 +7,7 @@ import { colors } from '@/theme';
 export function BookRichText({ html }: { html?: string }) {
   const stripped = stripHtml(html);
   if (!stripped) return null;
-  const plain = insertShortBracketLineBreaks(stripped, '\n');
+  const plain = insertBookListMarkerLineBreaks(stripped, '\n');
   return <Text style={styles.plain}>{plain}</Text>;
 }
 
@@ -16,5 +16,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 24,
     color: colors.text,
+    textAlign: 'justify',
   },
 });

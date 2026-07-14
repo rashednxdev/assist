@@ -63,7 +63,7 @@ export function BookContentsFull({
 
               {topic.description?.trim() ? <BookRichText html={topic.description} /> : null}
 
-              {topic.note?.trim() ? <Text style={styles.noteText}>{topic.note.trim()}</Text> : null}
+              {topic.note?.trim() ? <BookRichText html={topic.note} /> : null}
 
               <RuleContentLinkButton contentLink={topic.content_link} title={ruleHeading(topic)} />
 
@@ -77,7 +77,7 @@ export function BookContentsFull({
                 <View key={sub.id} style={styles.subRulePanel}>
                   <Text style={styles.subRuleTitle}>{subRuleHeading(sub)}</Text>
                   {sub.description?.trim() ? <BookRichText html={sub.description} /> : null}
-                  {sub.note?.trim() ? <Text style={styles.noteText}>{sub.note.trim()}</Text> : null}
+                  {sub.note?.trim() ? <BookRichText html={sub.note} /> : null}
                 </View>
               ))}
             </View>
@@ -127,10 +127,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
     color: colors.text,
+    textAlign: 'justify',
   },
   chapterSubName: {
     fontSize: 14,
     color: colors.textMuted,
+    textAlign: 'justify',
   },
   rulePanel: {
     backgroundColor: colors.background,
@@ -151,17 +153,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: colors.text,
+    textAlign: 'justify',
   },
   plainText: {
     fontSize: 15,
     lineHeight: 24,
     color: colors.textMuted,
-  },
-  noteText: {
-    fontSize: 14,
-    lineHeight: 21,
-    color: colors.textMuted,
-    fontStyle: 'italic',
+    textAlign: 'justify',
   },
   detailBlock: {
     borderTopWidth: 1,
@@ -178,5 +176,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: colors.text,
+    textAlign: 'justify',
   },
 });

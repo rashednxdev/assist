@@ -3,7 +3,7 @@ import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
 import { BookBadge } from '@/components/books/BookBadge';
-import { HtmlContent } from '@/components/books/HtmlContent';
+import { BookRichText } from '@/components/books/BookRichText';
 import {
   ChapterQuestionsButton,
   ChapterQuestionsPanel,
@@ -53,7 +53,7 @@ export default function BookChapterScreen() {
           </View>
           {chapter.description?.trim() ? (
             <View style={styles.htmlWrap}>
-              <HtmlContent html={chapter.description} />
+              <BookRichText html={chapter.description} />
             </View>
           ) : null}
         </View>
@@ -116,10 +116,12 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: colors.text,
+    textAlign: 'justify',
   },
   subtitle: {
     fontSize: 14,
     color: colors.textMuted,
+    textAlign: 'justify',
   },
   htmlWrap: {
     marginTop: spacing.sm,
@@ -145,6 +147,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.primary,
     fontWeight: '500',
+    textAlign: 'justify',
   },
   pressed: {
     opacity: 0.85,

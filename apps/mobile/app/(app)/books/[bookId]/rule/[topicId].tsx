@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { BookBadge } from '@/components/books/BookBadge';
-import { HtmlContent } from '@/components/books/HtmlContent';
+import { BookRichText } from '@/components/books/BookRichText';
 import { RuleContentLinkButton } from '@/components/books/RuleContentLinkButton';
 import { useBookReader } from '@/components/books/BookReaderContext';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
@@ -71,11 +71,11 @@ export default function BookRuleScreen() {
 
         {topic.description?.trim() || topic.note?.trim() ? (
           <View style={styles.htmlWrap}>
-            <HtmlContent html={topic.description} />
+            <BookRichText html={topic.description} />
             {topic.note?.trim() ? (
               <View style={styles.noteBox}>
                 <Text style={styles.noteLabel}>Note</Text>
-                <HtmlContent html={topic.note} />
+                <BookRichText html={topic.note} />
               </View>
             ) : null}
           </View>
@@ -85,7 +85,7 @@ export default function BookRuleScreen() {
 
         {topic.details.map((d) => (
           <View key={d.id} style={styles.detailBlock}>
-            <HtmlContent html={d.detail_text} />
+            <BookRichText html={d.detail_text} />
           </View>
         ))}
 
@@ -95,11 +95,11 @@ export default function BookRuleScreen() {
             {topic.sub_topics.map((st) => (
               <View key={st.id} style={styles.subRuleCard}>
                 <Text style={styles.subRuleTitle}>{subRuleHeading(st)}</Text>
-                {st.description?.trim() ? <HtmlContent html={st.description} /> : null}
+                {st.description?.trim() ? <BookRichText html={st.description} /> : null}
                 {st.note?.trim() ? (
                   <View style={styles.noteBox}>
                     <Text style={styles.noteLabel}>Note</Text>
-                    <HtmlContent html={st.note} />
+                    <BookRichText html={st.note} />
                   </View>
                 ) : null}
               </View>
@@ -194,6 +194,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: colors.text,
+    textAlign: 'justify',
   },
   htmlWrap: {
     gap: spacing.sm,
@@ -234,6 +235,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: colors.text,
+    textAlign: 'justify',
   },
   regRow: {
     paddingVertical: 8,

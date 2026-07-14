@@ -1,10 +1,10 @@
-import { insertShortBracketLineBreaks } from '@ibas/shared-constants';
+import { insertBookListMarkerLineBreaks } from '@ibas/shared-constants';
 
 /** Renders stored HTML content (from seed/admin). Sanitize in production hardening phase. */
 export function RichTextView({ html, className = '' }: { html?: string; className?: string }) {
   const trimmed = html?.trim();
   if (!trimmed) return null;
-  const withBreaks = insertShortBracketLineBreaks(trimmed, '<br/>');
+  const withBreaks = insertBookListMarkerLineBreaks(trimmed, '<br/>');
   const content = withBreaks.startsWith('<') ? withBreaks : `<p>${withBreaks}</p>`;
   return (
     <div

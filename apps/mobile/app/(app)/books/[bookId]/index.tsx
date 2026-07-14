@@ -12,7 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { BookBadge } from '@/components/books/BookBadge';
 import { BookContentsFull } from '@/components/books/BookContentsFull';
-import { HtmlContent } from '@/components/books/HtmlContent';
+import { BookRichText } from '@/components/books/BookRichText';
 import {
   BookViewModeToggle,
   type BookContentsViewMode,
@@ -253,7 +253,7 @@ export default function BookDetailScreen() {
             <View style={styles.panel}>
               {detailsExpanded ? (
                 <>
-                  <HtmlContent html={book.description} />
+                  <BookRichText html={book.description} />
                   <Pressable style={styles.detailsBtn} onPress={() => setDetailsExpanded(false)}>
                     <Text style={styles.detailsBtnText}>Hide details</Text>
                   </Pressable>
@@ -419,6 +419,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '800',
     color: colors.text,
+    textAlign: 'justify',
   },
   badges: {
     flexDirection: 'row',
@@ -437,6 +438,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     color: colors.text,
+    textAlign: 'justify',
   },
   detailsBtn: {
     alignSelf: 'flex-start',
@@ -485,10 +487,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: colors.text,
+    textAlign: 'justify',
   },
   chapterSub: {
     fontSize: 13,
     color: colors.textMuted,
+    textAlign: 'justify',
   },
   rulesList: {
     paddingLeft: spacing.lg,
@@ -511,6 +515,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.primary,
     fontWeight: '500',
+    textAlign: 'justify',
   },
   pressed: {
     opacity: 0.85,

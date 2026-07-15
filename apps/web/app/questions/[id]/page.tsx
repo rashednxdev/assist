@@ -149,6 +149,7 @@ export default function QuestionDetailPage() {
   }
 
   async function handleDelete() {
+    if (!question) return;
     if (!confirmDelete(question.body_en.slice(0, 60) + (question.body_en.length > 60 ? '…' : ''))) {
       return;
     }

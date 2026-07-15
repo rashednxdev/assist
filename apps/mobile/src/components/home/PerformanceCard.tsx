@@ -1,4 +1,6 @@
 import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing } from '@/theme';
 
 interface PerformanceCardProps {
@@ -33,21 +35,33 @@ export function PerformanceCard({
   return (
     <View style={styles.card}>
       <View style={styles.headerRow}>
-        <View>
+        <View style={styles.headerText}>
           <Text style={styles.heading}>Your activity</Text>
           <Text style={styles.sub}>
             {verified ? 'Account verified' : 'Complete verification to unlock full access'}
           </Text>
           <Text style={styles.profileHint}>Profile {profilePercent}% complete</Text>
         </View>
+
         <Pressable
-          style={({ pressed }) => [styles.ring, pressed && styles.ringPressed]}
+          style={({ pressed }) => [styles.savedPress, pressed && styles.savedPressed]}
           onPress={onSavedPress}
           accessibilityRole="button"
-          accessibilityLabel="Open saved books and questions"
+          accessibilityLabel={`Open saved items, ${savedCount} saved`}
         >
-          <Text style={styles.ringValue}>{savedCount}</Text>
-          <Text style={styles.ringLabel}>Saved</Text>
+          <LinearGradient
+            colors={[colors.primaryDark, colors.primary, colors.primaryLight]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.savedTile}
+          >
+            <View style={styles.savedIconWrap}>
+              <Ionicons name="bookmark" size={18} color={colors.white} />
+            </View>
+            <Text style={styles.savedCount}>{savedCount}</Text>
+            <Text style={styles.savedLabel}>Saved</Text>
+            <View style={styles.savedGlow} />
+          </LinearGradient>
         </Pressable>
       </View>
 
@@ -82,6 +96,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+    gap: spacing.md,
+  },
+  headerText: {
+    flex: 1,
+    paddingRight: spacing.xs,
   },
   heading: {
     fontSize: 18,
@@ -92,7 +111,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textMuted,
     marginTop: 4,
-    maxWidth: 220,
   },
   profileHint: {
     fontSize: 12,
@@ -100,29 +118,56 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontWeight: '600',
   },
-  ring: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    borderWidth: 4,
-    borderColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#e8f2fa',
+  savedPress: {
+    borderRadius: 18,
   },
-  ringPressed: {
-    opacity: 0.88,
+  savedPressed: {
+    opacity: 0.9,
     transform: [{ scale: 0.97 }],
   },
-  ringValue: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: colors.primary,
+  savedTile: {
+    width: 84,
+    minHeight: 96,
+    borderRadius: 18,
+    paddingTop: 12,
+    paddingBottom: 10,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
   },
-  ringLabel: {
-    fontSize: 10,
-    color: colors.textMuted,
-    fontWeight: '600',
+  savedIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  savedCount: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: colors.white,
+    lineHeight: 30,
+  },
+  savedLabel: {
+    marginTop: 1,
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.88)',
+    letterSpacing: 0.4,
+  },
+  savedGlow: {
+    position: 'absolute',
+    right: -18,
+    top: -18,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.12)',
   },
   planBadge: {
     alignSelf: 'flex-start',

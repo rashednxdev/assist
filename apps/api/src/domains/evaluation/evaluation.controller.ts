@@ -47,3 +47,8 @@ export async function getPaperEvaluationHandler(req: AuthRequest, res: Response)
   const userId = req.user!.id;
   res.json({ data: await evaluationService.getPaperEvaluation(userId, String(req.params.paperId)) });
 }
+
+export async function getProgressDashboardHandler(req: AuthRequest, res: Response): Promise<void> {
+  const userId = req.user!.id;
+  res.json({ data: await evaluationService.getProgressDashboard(userId) });
+}

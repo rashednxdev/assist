@@ -87,6 +87,36 @@ export async function fetchPaperEvaluation(paperId: string) {
   return res.data;
 }
 
+export interface ProgressDashboardData {
+  mcq: {
+    submitted: number;
+    correct: number;
+    incorrect: number;
+    accuracy_percent: number;
+  };
+  papers: {
+    attempted: number;
+    rated_questions: number;
+    total_questions: number;
+    average_progress_percent: number;
+    items: Array<{
+      id: string;
+      name: string;
+      session_year?: string;
+      total_marks: number;
+      pass_marks: number;
+      total_questions: number;
+      rated_questions: number;
+      progress_percent: number;
+    }>;
+  };
+}
+
+export async function fetchProgressDashboard() {
+  const res = await apiFetch<{ data: ProgressDashboardData }>('/evaluation/dashboard');
+  return res.data;
+}
+
 export function buildPaperQuestionProgressMap(overall: PaperScopeProgress): Map<string, number> {
   const map = new Map<string, number>();
 

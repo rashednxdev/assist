@@ -434,6 +434,126 @@ async function getPaperQuestionIds(paperId: string) {
   };
 }
 
+export async function getProgressDashboard(userId: string) {
+  const evaluations = await UserQuestionEvaluation.find({ user_id: userId });
+  const evaluatedQuestionIds = evaluations.map((row) => String(row.question_id));
+
+  const questions =
+    evaluatedQuestionIds.length > 0
+      ? await Question.find({
+          _id: { $in: evaluatedQuestionIds },
+          is_active: true,
+          is_published: true,
+        }).select('_id question_type_code')
+      : [];
+
+  const typeById = new Map(questions.map((q) => [String(q._id), q.question_type_code]));
+  const mcqRows = evaluations.filter((row) => {
+    const code = typeById.get(String(row.question_id));
+    return isObjectiveType(code) && !!row.selected_option_id;
+  });
+
+  const mcqCorrect = mcqRows.filter((row) => row.is_correct === true).length;
+  const mcqIncorrect = mcqRows.filter((row) => row.is_correct === false).length;
+  const mcqSubmitted = mcqRows.length;
+  const mcqAccuracy =
+    mcqSubmitted > 0 ? Math.round((mcqCorrect / mcqSubmitted) * 100) : 0;
+
+  const papers = await PaperDetail.find({ is_active: true, is_published: true })
+    .select('_id name session_year total_marks pass_marks')
+    .sort({ name: 1 });
+
+  const paperIds = papers.map((p) => p._id);
+  const paperQuestions =
+    paperIds.length > 0
+      ? await PaperQuestion.find({ paper_id: { $in: paperIds }, is_active: true }).select(
+          '_id paper_id question_id from_question_bank',
+        )
+      : [];
+  const paperQuestionIds = paperQuestions.map((pq) => pq._id);
+  const childQuestions =
+    paperQuestionIds.length > 0
+      ? await ChildQuestion.find({
+          paper_question_id: { $in: paperQuestionIds },
+          is_active: true,
+        }).select('paper_question_id question_id')
+      : [];
+
+  const childrenByPaperQuestion = new Map<string, string[]>();
+  for (const child of childQuestions) {
+    const key = String(child.paper_question_id);
+    const list = childrenByPaperQuestion.get(key) ?? [];
+    list.push(String(child.question_id));
+    childrenByPaperQuestion.set(key, list);
+  }
+
+  const questionIdsByPaper = new Map<string, string[]>();
+  for (const pq of paperQuestions) {
+    const paperId = String(pq.paper_id);
+    const ids =
+      pq.from_question_bank !== false && pq.question_id
+        ? [String(pq.question_id)]
+        : (childrenByPaperQuestion.get(String(pq._id)) ?? []);
+    const list = questionIdsByPaper.get(paperId) ?? [];
+    list.push(...ids);
+    questionIdsByPaper.set(paperId, list);
+  }
+
+  const allPaperQuestionIds = [...new Set([...questionIdsByPaper.values()].flat())];
+  const publishedPaperQuestionIds = new Set(await publishedQuestionIds(allPaperQuestionIds));
+  const { progressMap, ratedSet } = await loadProgressMap(userId, [
+    ...publishedPaperQuestionIds,
+  ]);
+
+  const paperItems = papers
+    .map((paper) => {
+      const paperId = String(paper._id);
+      const qIds = [...new Set(questionIdsByPaper.get(paperId) ?? [])].filter((id) =>
+        publishedPaperQuestionIds.has(id),
+      );
+      const stats = summarize(qIds, progressMap, ratedSet);
+      return {
+        id: paperId,
+        name: paper.name,
+        session_year: paper.session_year,
+        total_marks: paper.total_marks,
+        pass_marks: paper.pass_marks,
+        ...stats,
+      };
+    })
+    .filter((paper) => paper.rated_questions > 0)
+    .sort((a, b) => b.progress_percent - a.progress_percent);
+
+  const paperTotals = paperItems.reduce(
+    (acc, paper) => {
+      acc.total_questions += paper.total_questions;
+      acc.rated_questions += paper.rated_questions;
+      acc.progress_sum += paper.progress_percent;
+      return acc;
+    },
+    { total_questions: 0, rated_questions: 0, progress_sum: 0 },
+  );
+
+  return {
+    mcq: {
+      submitted: mcqSubmitted,
+      correct: mcqCorrect,
+      incorrect: mcqIncorrect,
+      accuracy_percent: mcqAccuracy,
+    },
+    papers: {
+      attempted: paperItems.length,
+      rated_questions: paperTotals.rated_questions,
+      total_questions: paperTotals.total_questions,
+      average_progress_percent:
+        paperItems.length > 0
+          ? Math.round(paperTotals.progress_sum / paperItems.length)
+          : 0,
+      items: paperItems,
+    },
+  };
+}
+
 export async function getPaperEvaluation(userId: string, paperId: string) {
   const { paper, grouped, ungroupedNodes, allQuestionIds } = await getPaperQuestionIds(paperId);
   const { progressMap, ratedSet } = await loadProgressMap(userId, allQuestionIds);

@@ -7,10 +7,12 @@ import {
   RefreshControl,
   Pressable,
   Alert,
+  Modal,
 } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { PerformanceCard } from '@/components/home/PerformanceCard';
 import { ModuleTile } from '@/components/home/ModuleTile';
 import { useAuth } from '@/lib/auth-context';
@@ -102,6 +104,7 @@ export default function HomeScreen() {
   });
   const [refreshing, setRefreshing] = useState(false);
   const [checkingModuleId, setCheckingModuleId] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const moduleAllowed = useCallback(
     (grants: Parameters<typeof hasLearningModule>[0], code: LearningModuleCode) => {
@@ -169,6 +172,14 @@ export default function HomeScreen() {
   const greeting = user?.full_name_en?.split(' ')[0] ?? 'Learner';
   const verified = !!(user?.is_verified && user?.email_verified && user?.phone_verified);
 
+  function confirmSignOut() {
+    setMenuOpen(false);
+    Alert.alert('Sign out?', 'You will need to sign in again to continue.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign out', style: 'destructive', onPress: () => void signOut() },
+    ]);
+  }
+
   return (
     <View style={styles.root}>
       <LinearGradient colors={[colors.primaryDark, colors.primary]} style={styles.hero}>
@@ -178,12 +189,52 @@ export default function HomeScreen() {
               <Text style={styles.greet}>{greeting}</Text>
               <Text style={styles.heroSub}>Preparation Dashboard</Text>
             </View>
-            <Pressable onPress={() => void signOut()} style={styles.signOutBtn}>
-              <Text style={styles.signOutText}>Sign out</Text>
+            <Pressable
+              onPress={() => setMenuOpen(true)}
+              style={styles.menuBtn}
+              accessibilityLabel="Open menu"
+              hitSlop={8}
+            >
+              <Ionicons name="ellipsis-vertical" size={20} color={colors.white} />
             </Pressable>
           </View>
         </SafeAreaView>
       </LinearGradient>
+
+      <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
+        <View style={styles.menuBackdrop}>
+          <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setMenuOpen(false)} />
+          <SafeAreaView edges={['top']} style={styles.menuSafe} pointerEvents="box-none">
+            <View style={styles.menuCard}>
+              <Pressable
+                style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
+                onPress={() => {
+                  setMenuOpen(false);
+                  router.push('/(app)/progress' as Href);
+                }}
+              >
+                <Ionicons name="stats-chart-outline" size={20} color={colors.primary} />
+                <View style={styles.menuItemText}>
+                  <Text style={styles.menuItemTitle}>Progress Dashboard</Text>
+                  <Text style={styles.menuItemSub}>Papers & MCQ results</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+              </Pressable>
+              <View style={styles.menuDivider} />
+              <Pressable
+                style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
+                onPress={confirmSignOut}
+              >
+                <Ionicons name="log-out-outline" size={20} color={colors.error} />
+                <View style={styles.menuItemText}>
+                  <Text style={[styles.menuItemTitle, styles.menuItemDanger]}>Sign out</Text>
+                  <Text style={styles.menuItemSub}>End this session</Text>
+                </View>
+              </Pressable>
+            </View>
+          </SafeAreaView>
+        </View>
+      </Modal>
 
       <ScrollView
         contentContainerStyle={styles.scroll}
@@ -269,16 +320,67 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 2,
   },
-  signOutBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
+  menuBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  signOutText: {
-    color: colors.white,
-    fontSize: 13,
-    fontWeight: '600',
+  menuBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.35)',
+  },
+  menuSafe: {
+    alignItems: 'flex-end',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+  },
+  menuCard: {
+    width: 260,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+    marginTop: 52,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 14,
+  },
+  menuItemPressed: {
+    backgroundColor: colors.background,
+  },
+  menuItemText: {
+    flex: 1,
+    gap: 2,
+  },
+  menuItemTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  menuItemDanger: {
+    color: colors.error,
+  },
+  menuItemSub: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginHorizontal: spacing.md,
   },
   scroll: {
     padding: spacing.lg,

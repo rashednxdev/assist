@@ -45,7 +45,6 @@ export function BookCard({ book, onPress, isLastRead, saved = false, onToggleSav
         {preview ? <Text style={styles.preview}>{preview}</Text> : null}
       </View>
       {onToggleSave ? <SaveButton saved={saved} onPress={onToggleSave} /> : null}
-      <Ionicons name="chevron-forward" size={18} color={isLastRead ? '#2f7d4a' : colors.textMuted} />
     </Pressable>
   );
 }

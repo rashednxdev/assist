@@ -14,6 +14,8 @@ const envSchema = z.object({
   OCR_MIN_TEXT_CHARS: z.coerce.number().min(0).default(40),
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_MODEL: z.string().default('claude-opus-4-8'),
+  /** Directory for public content cache JSON files (no user/auth data). */
+  CONTENT_CACHE_DIR: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);

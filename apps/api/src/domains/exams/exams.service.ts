@@ -217,7 +217,21 @@ export async function deleteAuthority(id: string) {
 
 // --- Exam names ---
 
-export async function listExamNames(authorityId?: string) {
+export async function listExamNames(authorityId?: string, options?: { bypassCache?: boolean }) {
+  if (!options?.bypassCache) {
+    const { cachedExamNames } = await import('../content-cache/content-cache.service.js');
+    const cached = cachedExamNames<{
+      id: string;
+      authority_id: string;
+      name: string;
+      short_name?: string;
+      [key: string]: unknown;
+    }>();
+    if (cached) {
+      return authorityId ? cached.filter((e) => String(e.authority_id) === authorityId) : cached;
+    }
+  }
+
   const query: Record<string, unknown> = { is_active: true };
   if (authorityId) query.authority_id = authorityId;
   const items = await ExamName.find(query).sort({ name: 1 });

@@ -1,19 +1,28 @@
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { colors, spacing } from '@/theme';
 
 interface PerformanceCardProps {
   profilePercent: number;
   verified: boolean;
   planName?: string | null;
+  savedCount: number;
   activity: {
     books: number;
     questions: number;
     exams: number;
     papers: number;
   };
+  onSavedPress: () => void;
 }
 
-export function PerformanceCard({ profilePercent, verified, planName, activity }: PerformanceCardProps) {
+export function PerformanceCard({
+  profilePercent,
+  verified,
+  planName,
+  savedCount,
+  activity,
+  onSavedPress,
+}: PerformanceCardProps) {
   const stats = [
     { label: 'Books', value: activity.books },
     { label: 'Questions', value: activity.questions },
@@ -29,11 +38,17 @@ export function PerformanceCard({ profilePercent, verified, planName, activity }
           <Text style={styles.sub}>
             {verified ? 'Account verified' : 'Complete verification to unlock full access'}
           </Text>
+          <Text style={styles.profileHint}>Profile {profilePercent}% complete</Text>
         </View>
-        <View style={styles.ring}>
-          <Text style={styles.ringValue}>{profilePercent}%</Text>
-          <Text style={styles.ringLabel}>Profile</Text>
-        </View>
+        <Pressable
+          style={({ pressed }) => [styles.ring, pressed && styles.ringPressed]}
+          onPress={onSavedPress}
+          accessibilityRole="button"
+          accessibilityLabel="Open saved books and questions"
+        >
+          <Text style={styles.ringValue}>{savedCount}</Text>
+          <Text style={styles.ringLabel}>Saved</Text>
+        </Pressable>
       </View>
 
       {planName ? (
@@ -79,6 +94,12 @@ const styles = StyleSheet.create({
     marginTop: 4,
     maxWidth: 220,
   },
+  profileHint: {
+    fontSize: 12,
+    color: colors.primary,
+    marginTop: 6,
+    fontWeight: '600',
+  },
   ring: {
     width: 72,
     height: 72,
@@ -89,14 +110,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#e8f2fa',
   },
+  ringPressed: {
+    opacity: 0.88,
+    transform: [{ scale: 0.97 }],
+  },
   ringValue: {
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: '800',
     color: colors.primary,
   },
   ringLabel: {
     fontSize: 10,
     color: colors.textMuted,
+    fontWeight: '600',
   },
   planBadge: {
     alignSelf: 'flex-start',

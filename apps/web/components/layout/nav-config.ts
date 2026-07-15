@@ -20,6 +20,7 @@ import {
   ScanText,
   Calculator,
   Bookmark,
+  Database,
   Trash2,
 } from 'lucide-react';
 
@@ -144,6 +145,7 @@ export const navGroups: NavGroup[] = [
       { href: '/admin/users', label: 'Users', icon: Users, moduleCode: 'USER', requireCreate: true },
       { href: '/admin/setup/modules', label: 'Modules', icon: Layers, moduleCode: 'SETUP', requireCreate: true },
       { href: '/admin/setup/geography', label: 'Geography', icon: MapPin, moduleCode: 'SETUP', requireCreate: true },
+      { href: '/admin/cache', label: 'Content cache', icon: Database, moduleCode: 'SETUP', requireCreate: true },
       { href: '/admin/audit', label: 'Audit log', icon: ScrollText, moduleCode: 'AUDIT', requireCreate: true },
     ],
   },

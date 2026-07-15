@@ -27,6 +27,7 @@ import { RegulationAmendment } from './models/RegulationAmendment.model.js';
 import { Question } from '../questions/models/Question.model.js';
 import { QuestionBookLink } from '../questions/models/QuestionBookLink.model.js';
 import { QuestionType } from '../questions/models/QuestionType.model.js';
+import { cachedBooksList } from '../content-cache/content-cache.service.js';
 import { notFound, badRequest } from '../../shared/errors/AppError.js';
 
 function idStr(v: mongoose.Types.ObjectId | string | undefined) {
@@ -221,7 +222,9 @@ export async function deleteRegulation(id: string) {
   return { deleted: true };
 }
 
-export async function listBooks(filters: { book_type_id?: string; q?: string }) {
+type BookListItem = Awaited<ReturnType<typeof listBooksFromDb>>[number];
+
+async function listBooksFromDb(filters: { book_type_id?: string; q?: string }) {
   const query: Record<string, unknown> = { is_active: true, is_superseded: false };
   if (filters.book_type_id) query.book_type_id = filters.book_type_id;
   if (filters.q) {
@@ -239,6 +242,37 @@ export async function listBooks(filters: { book_type_id?: string; q?: string }) 
   const typeMap = Object.fromEntries(types.map((t) => [String(t._id), t.name]));
 
   return books.map((b) => serializeBook(b, typeMap[String(b.book_type_id)]));
+}
+
+function filterCachedBooks(items: BookListItem[], filters: { book_type_id?: string; q?: string }) {
+  let list = items;
+  if (filters.book_type_id) {
+    list = list.filter((b) => String(b.book_type_id) === filters.book_type_id);
+  }
+  if (filters.q?.trim()) {
+    const q = filters.q.trim().toLowerCase();
+    list = list.filter((b) => {
+      const tags = Array.isArray(b.tags) ? b.tags.join(' ') : '';
+      return (
+        (b.name ?? '').toLowerCase().includes(q) ||
+        (b.name_bn ?? '').toLowerCase().includes(q) ||
+        (b.short_name ?? '').toLowerCase().includes(q) ||
+        tags.toLowerCase().includes(q)
+      );
+    });
+  }
+  return list;
+}
+
+export async function listBooks(
+  filters: { book_type_id?: string; q?: string },
+  options?: { bypassCache?: boolean },
+) {
+  if (!options?.bypassCache) {
+    const cached = cachedBooksList<BookListItem>();
+    if (cached) return filterCachedBooks(cached, filters);
+  }
+  return listBooksFromDb(filters);
 }
 
 export async function getBookById(id: string) {

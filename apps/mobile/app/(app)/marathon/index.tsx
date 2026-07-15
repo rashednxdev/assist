@@ -21,6 +21,9 @@ import {
   type MarathonLastQuestion,
 } from '@/lib/marathon-progress';
 import { fetchMarathonReviewPage } from '@/lib/questions-api';
+import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
+import { SaveButton } from '@/components/ui/SaveButton';
+import { stripHtml } from '@/lib/book-display';
 import type { MarathonExplanationSection, MarathonReviewItem } from '@/types/marathon';
 import { colors, spacing } from '@/theme';
 
@@ -123,6 +126,7 @@ function AnswerBlocks({
 }
 
 export default function MarathonReviewScreen() {
+  const { isSaved, toggle } = useSavedShortcuts();
   const [items, setItems] = useState<MarathonReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -568,45 +572,70 @@ export default function MarathonReviewScreen() {
                     const isResume = highlightId === item.id;
 
                     return (
-                      <Pressable
+                      <View
                         key={item.id}
-                        style={({ pressed }) => [
-                          styles.questionRow,
-                          pressed && questionsOnly && styles.questionRowPressed,
-                          questionsOnly && revealed && styles.questionRowRevealed,
-                          isResume && styles.questionRowResume,
+                        style={[
+                          styles.questionRowWrap,
+                          isResume && styles.questionRowResumeWrap,
                         ]}
-                        onPress={() => {
-                          if (questionsOnly) {
-                            toggleReveal(item);
-                          } else {
-                            rememberQuestion(item);
-                          }
-                        }}
-                        onLongPress={
-                          questionsOnly
-                            ? () => {
-                                toggleReveal(item);
-                              }
-                            : () => rememberQuestion(item)
-                        }
-                        delayLongPress={350}
                       >
-                        <Text style={styles.number}>{item.number}.</Text>
-                        <View style={styles.questionBody}>
-                          <BookRichText html={text} style={styles.questionText} />
-                          {showAnswer ? (
-                            sections.length > 0 ? (
-                              <AnswerBlocks itemId={item.id} sections={sections} />
-                            ) : (
-                              <View style={styles.answerRow}>
-                                <View style={styles.answerSquare} />
-                                <Text style={styles.answerMissing}>Not set</Text>
-                              </View>
-                            )
-                          ) : null}
-                        </View>
-                      </Pressable>
+                        <Pressable
+                          style={({ pressed }) => [
+                            styles.questionRow,
+                            pressed && questionsOnly && styles.questionRowPressed,
+                            questionsOnly && revealed && styles.questionRowRevealed,
+                            isResume && styles.questionRowResume,
+                          ]}
+                          onPress={() => {
+                            if (questionsOnly) {
+                              toggleReveal(item);
+                            } else {
+                              rememberQuestion(item);
+                            }
+                          }}
+                          onLongPress={
+                            questionsOnly
+                              ? () => {
+                                  toggleReveal(item);
+                                }
+                              : () => rememberQuestion(item)
+                          }
+                          delayLongPress={350}
+                        >
+                          <Text style={styles.number}>{item.number}.</Text>
+                          <View style={styles.questionBody}>
+                            <BookRichText html={text} style={styles.questionText} />
+                            {showAnswer ? (
+                              sections.length > 0 ? (
+                                <AnswerBlocks itemId={item.id} sections={sections} />
+                              ) : (
+                                <View style={styles.answerRow}>
+                                  <View style={styles.answerSquare} />
+                                  <Text style={styles.answerMissing}>Not set</Text>
+                                </View>
+                              )
+                            ) : null}
+                          </View>
+                        </Pressable>
+                        <SaveButton
+                          saved={isSaved(item.id, 'marathon')}
+                          onPress={() =>
+                            void toggle({
+                              id: item.id,
+                              kind: 'marathon',
+                              title: stripHtml(marathonQuestionText(item.body_en, item.body_bn)).slice(
+                                0,
+                                120,
+                              ),
+                              subtitle: `${item.book_name} · ${chapter.chapter_label}`,
+                              book_id: item.book_id,
+                              chapter_id: item.chapter_id,
+                              number: item.number,
+                            })
+                          }
+                          size={20}
+                        />
+                      </View>
                     );
                   })}
                 </View>
@@ -900,7 +929,18 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 4,
   },
+  questionRowWrap: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 4,
+  },
+  questionRowResumeWrap: {
+    backgroundColor: '#eaf7ee',
+    borderRadius: 10,
+    paddingRight: 4,
+  },
   questionRow: {
+    flex: 1,
     flexDirection: 'row',
     gap: 8,
     paddingVertical: 10,

@@ -25,6 +25,9 @@ import {
 } from '@/lib/question-bank-progress';
 import { setQuestionBankSessionOrder } from '@/lib/question-bank-order';
 import { useAuth } from '@/lib/auth-context';
+import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
+import { SaveButton } from '@/components/ui/SaveButton';
+import { stripHtml } from '@/lib/book-display';
 import type { QuestionListItem, QuestionType } from '@/types/questions';
 import { colors, spacing } from '@/theme';
 
@@ -35,6 +38,7 @@ export default function QuestionsScreen() {
   const { user } = useAuth();
   const isAdmin =
     user?.is_super_admin || user?.user_type === 'system_admin' || user?.user_type === 'admin';
+  const { isSaved, toggle } = useSavedShortcuts();
 
   const [items, setItems] = useState<QuestionListItem[]>([]);
   const [types, setTypes] = useState<QuestionType[]>([]);
@@ -585,6 +589,39 @@ export default function QuestionsScreen() {
                     {isAdmin ? <BookBadge label={`${item.marks} marks`} variant="muted" /> : null}
                   </View>
                 </View>
+                <SaveButton
+                  saved={
+                    item.question_type_code === 'MCQ'
+                      ? isSaved(item.id, 'marathon')
+                      : isSaved(item.id, 'question')
+                  }
+                  onPress={() => {
+                    const isMcq = item.question_type_code === 'MCQ';
+                    const title = stripHtml(
+                      isMcq
+                        ? item.body_bn?.trim() || item.body_en || ''
+                        : item.body_en || item.body_bn || '',
+                    ).slice(0, 120);
+                    void toggle(
+                      isMcq
+                        ? {
+                            id: item.id,
+                            kind: 'marathon',
+                            title,
+                            subtitle: item.book_name ?? 'Marathon Review',
+                            book_id: item.book_id,
+                            chapter_id: item.book_chapter_id,
+                          }
+                        : {
+                            id: item.id,
+                            kind: 'question',
+                            title,
+                            subtitle: item.book_name,
+                            book_id: item.book_id,
+                          },
+                    );
+                  }}
+                />
               </Pressable>
             );
           }}

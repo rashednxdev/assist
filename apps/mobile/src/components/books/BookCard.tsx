@@ -1,5 +1,6 @@
 import { Pressable, View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { SaveButton } from '@/components/ui/SaveButton';
 import { BookBadge } from './BookBadge';
 import { stripHtml } from '@/lib/book-display';
 import type { BookListItem } from '@/types/books';
@@ -10,9 +11,11 @@ interface BookCardProps {
   onPress: () => void;
   /** Highlight as the most recently opened book. */
   isLastRead?: boolean;
+  saved?: boolean;
+  onToggleSave?: () => void;
 }
 
-export function BookCard({ book, onPress, isLastRead }: BookCardProps) {
+export function BookCard({ book, onPress, isLastRead, saved = false, onToggleSave }: BookCardProps) {
   const preview = stripHtml(book.description).slice(0, 140);
 
   return (
@@ -41,6 +44,7 @@ export function BookCard({ book, onPress, isLastRead }: BookCardProps) {
         </View>
         {preview ? <Text style={styles.preview}>{preview}</Text> : null}
       </View>
+      {onToggleSave ? <SaveButton saved={saved} onPress={onToggleSave} /> : null}
       <Ionicons name="chevron-forward" size={18} color={isLastRead ? '#2f7d4a' : colors.textMuted} />
     </Pressable>
   );

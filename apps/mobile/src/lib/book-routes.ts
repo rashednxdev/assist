@@ -4,7 +4,8 @@ export function booksLibraryHref(): Href {
   return '/(app)/books' as Href;
 }
 
-export function bookDetailHref(bookId: string): Href {
+export function bookDetailHref(bookId: string, opts?: { fromSaved?: boolean }): Href {
+  if (opts?.fromSaved) return `/(app)/books/${bookId}?from=saved` as Href;
   return `/(app)/books/${bookId}` as Href;
 }
 

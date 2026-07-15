@@ -7,7 +7,7 @@ import {
   Pressable,
   TextInput,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { BookBadge } from '@/components/books/BookBadge';
@@ -100,7 +100,8 @@ function filterFullChapters(chapters: ReaderChapterFull[], q: string) {
 export default function BookDetailScreen() {
   const router = useRouter();
   const navigation = useNavigation();
-  const { bookId } = useLocalSearchParams<{ bookId: string }>();
+  const { bookId, from } = useLocalSearchParams<{ bookId: string; from?: string }>();
+  const fromSaved = from === 'saved';
   const { outline, fullChapters, loading, fullLoading, error, fullError } = useBookReader();
   const [detailsExpanded, setDetailsExpanded] = useState(false);
   const [viewMode, setViewMode] = useState<BookContentsViewMode>(
@@ -114,10 +115,22 @@ export default function BookDetailScreen() {
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerBackTitle: 'Library',
+      headerBackTitle: fromSaved ? 'Books' : 'Library',
       title: loading ? ' ' : outline?.book.name ? bookNavTitle(outline.book.name) : ' ',
+      headerLeft: fromSaved
+        ? () => (
+            <Pressable
+              onPress={() => router.replace('/(app)/saved/books' as Href)}
+              style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, gap: 2 }}
+              hitSlop={8}
+            >
+              <Ionicons name="chevron-back" size={28} color={colors.white} />
+              <Text style={{ color: colors.white, fontSize: 17 }}>Books</Text>
+            </Pressable>
+          )
+        : undefined,
     });
-  }, [navigation, loading, outline?.book.name]);
+  }, [navigation, loading, outline?.book.name, fromSaved, router]);
 
   useEffect(() => {
     setDetailsExpanded(false);

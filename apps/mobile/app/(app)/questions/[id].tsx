@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { SELF_RATING_PROGRESS } from '@ibas/shared-constants';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
 import { EvaluationCelebrate } from '@/components/evaluation/EvaluationCelebrate';
@@ -34,7 +35,8 @@ function optionText(option: QuestionOption) {
 }
 
 export default function QuestionDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, from } = useLocalSearchParams<{ id: string; from?: string }>();
+  const fromSaved = from === 'saved';
   const router = useRouter();
   const navigation = useNavigation();
   const [item, setItem] = useState<QuestionDetail | null>(null);
@@ -122,6 +124,19 @@ export default function QuestionDetailScreen() {
     navigation.setOptions({
       title: '',
       headerTitleAlign: 'center',
+      headerBackTitle: fromSaved ? 'Questions' : undefined,
+      headerLeft: fromSaved
+        ? () => (
+            <Pressable
+              onPress={() => router.replace('/(app)/saved/questions' as Href)}
+              style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, gap: 2 }}
+              hitSlop={8}
+            >
+              <Ionicons name="chevron-back" size={28} color={colors.white} />
+              <Text style={{ color: colors.white, fontSize: 17 }}>Questions</Text>
+            </Pressable>
+          )
+        : undefined,
       headerTitle: () => (
         <View style={headerStyles.evalTitleRow}>
           <RatingIndicator evaluation={evaluation} size={12} />
@@ -142,7 +157,7 @@ export default function QuestionDetailScreen() {
         </Pressable>
       ),
     });
-  }, [navigation, showAnswer, evaluation, item?.has_options]);
+  }, [navigation, evaluation, showAnswer, item?.has_options, fromSaved, router]);
 
   async function submitOption() {
     if (!id || !selectedOptionId) return;

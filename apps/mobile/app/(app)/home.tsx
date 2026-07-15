@@ -14,6 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { PerformanceCard } from '@/components/home/PerformanceCard';
 import { ModuleTile } from '@/components/home/ModuleTile';
 import { useAuth } from '@/lib/auth-context';
+import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
 import { hasLearningModule, type LearningModuleCode } from '@/lib/api';
 import {
   fetchAccountSummary,
@@ -91,6 +92,7 @@ const MODULES: Array<{
 export default function HomeScreen() {
   const router = useRouter();
   const { user, signOut, canAccess, refreshUser } = useAuth();
+  const { items: savedItems } = useSavedShortcuts();
   const [summary, setSummary] = useState<AccountSummary | null>(null);
   const [activity, setActivity] = useState<LearningActivity>({
     books: 0,
@@ -191,7 +193,9 @@ export default function HomeScreen() {
           profilePercent={summary?.profile_complete_percent ?? 0}
           verified={verified}
           planName={summary?.subscription?.plan?.name}
+          savedCount={savedItems.length}
           activity={activity}
+          onSavedPress={() => router.push('/(app)/saved' as Href)}
         />
 
         <Text style={styles.sectionTitle}>Learning modules</Text>

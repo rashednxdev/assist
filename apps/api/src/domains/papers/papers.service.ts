@@ -280,7 +280,22 @@ export async function deletePaperType(id: string) {
 
 // --- Papers ---
 
-export async function listPapers(filters: ListPapersQuery, options?: { publishedOnly?: boolean }) {
+export async function listPapers(
+  filters: ListPapersQuery,
+  options?: { publishedOnly?: boolean; bypassCache?: boolean },
+) {
+  const canUseCache =
+    !options?.bypassCache &&
+    Boolean(options?.publishedOnly || filters.is_published === 'true') &&
+    !filters.exam_subject_id &&
+    !filters.exam_session_id;
+
+  if (canUseCache) {
+    const { cachedPublishedPapers } = await import('../content-cache/content-cache.service.js');
+    const cached = cachedPublishedPapers();
+    if (cached) return cached;
+  }
+
   const query: Record<string, unknown> = { is_active: true };
   if (filters.exam_subject_id) query.exam_subject_id = filters.exam_subject_id;
   if (filters.exam_session_id) query.exam_session_id = filters.exam_session_id;

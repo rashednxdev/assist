@@ -16,6 +16,7 @@ import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates
 import { fetchBooks } from '@/lib/books-api';
 import { bookDetailHref } from '@/lib/book-routes';
 import { loadLastReadBookId, pinLastReadBook } from '@/lib/last-read-book';
+import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
 import type { BookListItem } from '@/types/books';
 import { colors, spacing } from '@/theme';
 
@@ -29,6 +30,7 @@ export default function BooksLibraryScreen() {
   const [bookMenuOpen, setBookMenuOpen] = useState(false);
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
   const [lastReadBookId, setLastReadBookId] = useState<string | null>(null);
+  const { isSaved, toggle } = useSavedShortcuts();
 
   const load = useCallback(async (search?: string) => {
     setError('');
@@ -211,6 +213,15 @@ export default function BooksLibraryScreen() {
               book={item}
               isLastRead={item.id === lastReadBookId}
               onPress={() => openBook(item.id)}
+              saved={isSaved(item.id, 'book')}
+              onToggleSave={() =>
+                void toggle({
+                  id: item.id,
+                  kind: 'book',
+                  title: item.name,
+                  subtitle: item.short_name || item.book_type_name,
+                })
+              }
             />
           )}
         />

@@ -428,16 +428,25 @@ export async function subscribeToPlan(userId: string, dto: SubscribePlanDto) {
 
 export async function getAccountSummary(userId: string) {
   const { getMemberWorkflowSummary } = await import('../workflow/workflow.service.js');
+  const { cachedLearningStats } = await import('../content-cache/content-cache.service.js');
+
+  const cachedStats = cachedLearningStats();
 
   const [user, addresses, subscription, workflow, books, questions, exams, papers] = await Promise.all([
     getMyProfile(userId),
     listMyAddresses(userId),
     getMySubscription(userId),
     getMemberWorkflowSummary(userId),
-    BookInfo.countDocuments({ is_active: true, is_superseded: false }),
-    Question.countDocuments({ is_active: true, is_published: true }),
-    ExamName.countDocuments({ is_active: true }),
-    PaperDetail.countDocuments({ is_active: true, is_published: true }),
+    cachedStats
+      ? Promise.resolve(cachedStats.books)
+      : BookInfo.countDocuments({ is_active: true, is_superseded: false }),
+    cachedStats
+      ? Promise.resolve(cachedStats.questions)
+      : Question.countDocuments({ is_active: true, is_published: true }),
+    cachedStats ? Promise.resolve(cachedStats.exams) : ExamName.countDocuments({ is_active: true }),
+    cachedStats
+      ? Promise.resolve(cachedStats.papers)
+      : PaperDetail.countDocuments({ is_active: true, is_published: true }),
   ]);
 
   const checks = [

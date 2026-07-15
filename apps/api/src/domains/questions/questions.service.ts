@@ -813,23 +813,79 @@ export async function findSimilarQuestions(params: {
     .map(({ score: _score, ...item }) => item);
 }
 
-export async function listQuestions(filters: {
-  q?: string;
-  difficulty?: string;
-  question_type_id?: string;
-  question_type_code?: string;
-  is_published?: boolean;
-  trashed?: boolean;
-  book_chapter_id?: string;
-  book_topic_id?: string;
-  book_sub_topic_id?: string;
-  regulation_id?: string;
-  book_info_id?: string;
-  limit: number;
-  offset?: number;
-}) {
+export async function listQuestions(
+  filters: {
+    q?: string;
+    difficulty?: string;
+    question_type_id?: string;
+    question_type_code?: string;
+    is_published?: boolean;
+    trashed?: boolean;
+    book_chapter_id?: string;
+    book_topic_id?: string;
+    book_sub_topic_id?: string;
+    regulation_id?: string;
+    book_info_id?: string;
+    limit: number;
+    offset?: number;
+  },
+  options?: { bypassCache?: boolean },
+) {
   const offset = Math.max(0, filters.offset ?? 0);
   const limit = filters.limit;
+
+  const canUsePublishedCache =
+    !options?.bypassCache && filters.is_published === true && filters.trashed !== true;
+
+  if (canUsePublishedCache) {
+    const { cachedPublishedQuestions } = await import('../content-cache/content-cache.service.js');
+    type QItem = {
+      id: string;
+      body_en?: string | null;
+      body_bn?: string | null;
+      difficulty?: string;
+      question_type_id?: string;
+      question_type_code?: string;
+      book_chapter_id?: string;
+      book_topic_id?: string;
+      book_sub_topic_id?: string;
+      regulation_id?: string;
+      book_id?: string;
+      updated_at?: string;
+    };
+    const cached = cachedPublishedQuestions<QItem>();
+    if (cached) {
+      let list = cached;
+      if (filters.difficulty) list = list.filter((q) => q.difficulty === filters.difficulty);
+      if (filters.question_type_id) {
+        list = list.filter((q) => q.question_type_id === filters.question_type_id);
+      }
+      if (filters.question_type_code) {
+        list = list.filter((q) => q.question_type_code === filters.question_type_code);
+      }
+      if (filters.book_chapter_id) {
+        list = list.filter((q) => q.book_chapter_id === filters.book_chapter_id);
+      }
+      if (filters.book_topic_id) list = list.filter((q) => q.book_topic_id === filters.book_topic_id);
+      if (filters.book_sub_topic_id) {
+        list = list.filter((q) => q.book_sub_topic_id === filters.book_sub_topic_id);
+      }
+      if (filters.regulation_id) list = list.filter((q) => q.regulation_id === filters.regulation_id);
+      if (filters.book_info_id) list = list.filter((q) => q.book_id === filters.book_info_id);
+      if (filters.q?.trim()) {
+        const q = filters.q.trim().toLowerCase();
+        list = list.filter(
+          (row) =>
+            (row.body_en ?? '').toLowerCase().includes(q) ||
+            (row.body_bn ?? '').toLowerCase().includes(q),
+        );
+      }
+      const total = list.length;
+      const items = list.slice(offset, offset + limit);
+      return { items, total, limit, offset };
+    }
+  }
+
   const query: Record<string, unknown> = { is_active: filters.trashed === true ? false : true };
   if (filters.difficulty) query.difficulty = filters.difficulty;
   if (filters.question_type_id) query.question_type_id = filters.question_type_id;

@@ -2,6 +2,7 @@ import type { AuthUser, ModuleAccessGrant } from '@ibas/shared-types';
 import { parseJsonResponse } from './parse-json-response';
 
 const TOKEN_KEY = 'ibas_access_token';
+const DEVICE_ID_KEY = 'ibas_device_id';
 
 export function getAccessToken(): string | null {
   if (typeof window === 'undefined') return null;
@@ -14,6 +15,23 @@ export function setAccessToken(token: string): void {
 
 export function clearAccessToken(): void {
   localStorage.removeItem(TOKEN_KEY);
+}
+
+function randomId(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+  return `web-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+/** Browser-scoped device id for one-device login policy. */
+export function getOrCreateDeviceId(): string {
+  if (typeof window === 'undefined') return 'ssr-placeholder-device';
+  const existing = localStorage.getItem(DEVICE_ID_KEY);
+  if (existing && existing.length >= 8) return existing;
+  const id = randomId();
+  localStorage.setItem(DEVICE_ID_KEY, id);
+  return id;
 }
 
 export interface LoginResponse {
@@ -52,11 +70,17 @@ export type MeUser = AuthUser & {
 };
 
 export async function loginRequest(email: string, password: string): Promise<LoginResponse> {
+  const device_id = getOrCreateDeviceId();
   const res = await fetch('/api/proxy/v1/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({
+      email,
+      password,
+      device_id,
+      device_label: 'web:browser',
+    }),
   });
 
   const json = await parseJsonResponse<LoginResponse & { error?: { message?: string } }>(res);
@@ -67,10 +91,15 @@ export async function loginRequest(email: string, password: string): Promise<Log
 }
 
 export async function registerRequest(body: Record<string, unknown>): Promise<RegisterResponse> {
+  const device_id = getOrCreateDeviceId();
   const res = await fetch('/api/proxy/v1/auth/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      ...body,
+      device_id,
+      device_label: 'web:browser',
+    }),
   });
   const json = await parseJsonResponse<RegisterResponse & { error?: { message?: string } }>(res);
   if (!res.ok) throw new Error(json.error?.message ?? 'Registration failed');

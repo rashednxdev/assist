@@ -14,12 +14,9 @@ export default function RegisterScreen() {
   const { refreshUser } = useAuth();
   const [form, setForm] = useState({
     full_name_en: '',
-    full_name_bn: '',
-    email: '',
     phone: '',
     password: '',
     confirm_password: '',
-    accept_terms: false,
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -30,8 +27,16 @@ export default function RegisterScreen() {
 
   async function handleRegister() {
     setError('');
-    if (!form.accept_terms) {
-      setError('Please accept the terms to continue.');
+    if (!form.full_name_en.trim() || form.full_name_en.trim().length < 2) {
+      setError('Enter your full name (English).');
+      return;
+    }
+    if (!/^01[3-9]\d{8}$/.test(form.phone.trim())) {
+      setError('Enter a valid mobile number (01XXXXXXXXX).');
+      return;
+    }
+    if (form.password.length < 8) {
+      setError('Password must be at least 8 characters.');
       return;
     }
     if (form.password !== form.confirm_password) {
@@ -41,7 +46,10 @@ export default function RegisterScreen() {
     setLoading(true);
     try {
       await register({
-        ...form,
+        full_name_en: form.full_name_en.trim(),
+        phone: form.phone.trim(),
+        password: form.password,
+        confirm_password: form.confirm_password,
         user_type: 'applicant',
         accept_terms: true,
       });
@@ -57,7 +65,6 @@ export default function RegisterScreen() {
   return (
     <AuthScreenShell
       title="Create account"
-      subtitle="Free registration for exam candidates. Start with Books, Questions, Exams & Papers."
       footer={
         <View style={styles.footer}>
           <Text style={styles.footerText}>Already registered?</Text>
@@ -75,21 +82,6 @@ export default function RegisterScreen() {
         onChangeText={(v) => setField('full_name_en', v)}
         autoCapitalize="words"
         placeholder="Your name"
-      />
-      <TextField
-        label="Full name (Bengali)"
-        value={form.full_name_bn}
-        onChangeText={(v) => setField('full_name_bn', v)}
-        hint="Optional"
-        placeholder="আপনার নাম"
-      />
-      <TextField
-        label="Email"
-        value={form.email}
-        onChangeText={(v) => setField('email', v)}
-        keyboardType="email-address"
-        autoComplete="email"
-        placeholder="you@example.com"
       />
       <TextField
         label="Mobile"
@@ -116,15 +108,6 @@ export default function RegisterScreen() {
         placeholder="Repeat password"
       />
 
-      <Pressable style={styles.termsRow} onPress={() => setField('accept_terms', !form.accept_terms)}>
-        <View style={[styles.checkbox, form.accept_terms && styles.checkboxOn]}>
-          {form.accept_terms ? <Text style={styles.checkMark}>✓</Text> : null}
-        </View>
-        <Text style={styles.termsText}>
-          I agree to the terms of use and privacy policy for ProAssist.
-        </Text>
-      </Pressable>
-
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <Button title="Create account" onPress={handleRegister} loading={loading} />
     </AuthScreenShell>
@@ -132,36 +115,6 @@ export default function RegisterScreen() {
 }
 
 const styles = StyleSheet.create({
-  termsRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-  },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
-  },
-  checkboxOn: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  checkMark: {
-    color: colors.white,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  termsText: {
-    flex: 1,
-    fontSize: 13,
-    color: colors.textMuted,
-    lineHeight: 18,
-  },
   error: {
     color: colors.error,
     fontSize: 14,

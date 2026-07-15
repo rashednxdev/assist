@@ -20,7 +20,7 @@ export default function LoginScreen() {
   async function handleLogin() {
     setError('');
     if (!email.trim() || !password) {
-      setError('Enter your email and password.');
+      setError('Enter your mobile number and password.');
       return;
     }
     setLoading(true);
@@ -52,13 +52,13 @@ export default function LoginScreen() {
       }
     >
       <TextField
-        label="Email"
+        label="Mobile"
         variant="premium"
         value={email}
         onChangeText={setEmail}
-        keyboardType="email-address"
-        autoComplete="email"
-        placeholder="you@example.com"
+        keyboardType="phone-pad"
+        autoComplete="tel"
+        placeholder="01700000000"
       />
       <TextField
         label="Password"

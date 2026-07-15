@@ -6,7 +6,10 @@ import { Credentials } from './models/Credentials.model.js';
 import { Role } from '../workflow/models/Role.model.js';
 import { notFound, badRequest } from '../../shared/errors/AppError.js';
 
-function serializeUser(user: InstanceType<typeof User>) {
+async function serializeUser(user: InstanceType<typeof User>) {
+  const credentials = await Credentials.findOne({ user_id: user._id }).select(
+    'allow_multi_device bound_device_id bound_device_at bound_device_label',
+  );
   return {
     id: String(user._id),
     employee_id: user.employee_id,
@@ -20,6 +23,10 @@ function serializeUser(user: InstanceType<typeof User>) {
     is_verified: user.is_verified,
     is_super_admin: user.is_super_admin,
     workflow_roles: user.workflow_roles,
+    allow_multi_device: Boolean(credentials?.allow_multi_device),
+    bound_device_id: credentials?.bound_device_id ?? null,
+    bound_device_at: credentials?.bound_device_at ?? null,
+    bound_device_label: credentials?.bound_device_label ?? null,
     created_at: user.created_at,
     updated_at: user.updated_at,
   };
@@ -40,7 +47,7 @@ export async function listUsers(filters: {
     User.countDocuments(query),
   ]);
 
-  return { items: items.map(serializeUser), total };
+  return { items: await Promise.all(items.map((u) => serializeUser(u))), total };
 }
 
 export async function getUserById(id: string) {
@@ -84,6 +91,8 @@ export async function createUser(dto: CreateUserDto, createdBy: string, creatorI
     failed_attempts: 0,
     password_changed_at: new Date(),
     two_fa_enabled: false,
+    allow_multi_device: false,
+    token_version: 0,
   });
 
   return serializeUser(user);
@@ -114,6 +123,25 @@ export async function updateUser(id: string, dto: UpdateUserDto) {
   if (dto.is_super_admin !== undefined) user.is_super_admin = dto.is_super_admin;
 
   await user.save();
+
+  if (dto.allow_multi_device !== undefined || dto.clear_bound_device || dto.force_logout) {
+    const credentials = await Credentials.findOne({ user_id: user._id });
+    if (credentials) {
+      if (dto.allow_multi_device !== undefined) {
+        credentials.allow_multi_device = dto.allow_multi_device;
+      }
+      if (dto.clear_bound_device) {
+        credentials.bound_device_id = undefined;
+        credentials.bound_device_at = undefined;
+        credentials.bound_device_label = undefined;
+        credentials.token_version = (credentials.token_version ?? 0) + 1;
+      } else if (dto.force_logout) {
+        credentials.token_version = (credentials.token_version ?? 0) + 1;
+      }
+      await credentials.save();
+    }
+  }
+
   return serializeUser(user);
 }
 

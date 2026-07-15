@@ -6,6 +6,7 @@ import {
   ScrollView,
   RefreshControl,
   Pressable,
+  Alert,
 } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,6 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { PerformanceCard } from '@/components/home/PerformanceCard';
 import { ModuleTile } from '@/components/home/ModuleTile';
 import { useAuth } from '@/lib/auth-context';
+import { hasLearningModule, type LearningModuleCode } from '@/lib/api';
 import {
   fetchAccountSummary,
   fetchLearningActivity,
@@ -88,7 +90,7 @@ const MODULES: Array<{
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { user, signOut, canAccess } = useAuth();
+  const { user, signOut, canAccess, refreshUser } = useAuth();
   const [summary, setSummary] = useState<AccountSummary | null>(null);
   const [activity, setActivity] = useState<LearningActivity>({
     books: 0,
@@ -97,24 +99,66 @@ export default function HomeScreen() {
     papers: 0,
   });
   const [refreshing, setRefreshing] = useState(false);
+  const [checkingModuleId, setCheckingModuleId] = useState<string | null>(null);
+
+  const moduleAllowed = useCallback(
+    (grants: Parameters<typeof hasLearningModule>[0], code: LearningModuleCode) => {
+      if (code === 'BOOKS') {
+        return hasLearningModule(grants, 'BOOKS') || hasLearningModule(grants, 'OCR');
+      }
+      return hasLearningModule(grants, code);
+    },
+    [],
+  );
+
+  const openModule = useCallback(
+    async (module: (typeof MODULES)[number]) => {
+      if (moduleAllowed(user?.module_access ?? [], module.code)) {
+        router.push(module.href);
+        return;
+      }
+
+      setCheckingModuleId(module.id);
+      try {
+        const me = await refreshUser();
+        if (moduleAllowed(me.module_access ?? [], module.code)) {
+          router.push(module.href);
+          return;
+        }
+        Alert.alert(
+          'Access required',
+          `${module.title} is not granted for your account yet. Ask an admin to enable module access.`,
+        );
+      } catch {
+        Alert.alert('Could not verify access', 'Check your connection and try again.');
+      } finally {
+        setCheckingModuleId(null);
+      }
+    },
+    [moduleAllowed, refreshUser, router, user?.module_access],
+  );
 
   const loadData = useCallback(async () => {
-    const [sum, act] = await Promise.all([
-      fetchAccountSummary().catch(() => null),
-      fetchLearningActivity(),
-    ]);
-    if (sum) setSummary(sum);
-    setActivity(act);
+    const sum = await fetchAccountSummary().catch(() => null);
+    if (sum) {
+      setSummary(sum);
+      if (sum.learning) {
+        setActivity(sum.learning);
+        return;
+      }
+    }
+    const act = await fetchLearningActivity().catch(() => null);
+    if (act) setActivity(act);
   }, []);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await loadData();
+      await Promise.all([loadData(), refreshUser().catch(() => null)]);
     } finally {
       setRefreshing(false);
     }
-  }, [loadData]);
+  }, [loadData, refreshUser]);
 
   useEffect(() => {
     void loadData();
@@ -152,17 +196,22 @@ export default function HomeScreen() {
 
         <Text style={styles.sectionTitle}>Learning modules</Text>
         <View style={styles.grid}>
-          {MODULES.map((m) => (
-            <ModuleTile
-              key={m.id}
-              title={m.title}
-              subtitle={m.subtitle}
-              icon={m.icon}
-              color={m.color}
-              enabled={m.code === 'BOOKS' ? canAccess('BOOKS') || canAccess('OCR') : canAccess(m.code)}
-              onPress={() => router.push(m.href)}
-            />
-          ))}
+          {MODULES.map((m) => {
+            const enabled =
+              m.code === 'BOOKS' ? canAccess('BOOKS') || canAccess('OCR') : canAccess(m.code);
+            return (
+              <ModuleTile
+                key={m.id}
+                title={m.title}
+                subtitle={m.subtitle}
+                icon={m.icon}
+                color={m.color}
+                enabled={enabled}
+                checking={checkingModuleId === m.id}
+                onPress={() => void openModule(m)}
+              />
+            );
+          })}
         </View>
 
         <Text style={styles.sectionTitle}>Marathon Review</Text>

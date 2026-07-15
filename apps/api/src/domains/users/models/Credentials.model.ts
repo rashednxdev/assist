@@ -8,6 +8,14 @@ export interface ICredentials extends Document {
   locked_until?: Date;
   last_login?: Date;
   last_ip?: string;
+  /** First device that successfully registered/logged in (one-device policy). */
+  bound_device_id?: string;
+  bound_device_at?: Date;
+  bound_device_label?: string;
+  /** When true, user may sign in from additional devices without admin reset. */
+  allow_multi_device: boolean;
+  /** Bumped when admin clears the bound device to invalidate existing JWTs. */
+  token_version: number;
   password_changed_at: Date;
   two_fa_enabled: boolean;
   email_otp_hash?: string;
@@ -30,6 +38,11 @@ const credentialsSchema = new Schema<ICredentials>(
     locked_until: { type: Date },
     last_login: { type: Date },
     last_ip: { type: String },
+    bound_device_id: { type: String },
+    bound_device_at: { type: Date },
+    bound_device_label: { type: String },
+    allow_multi_device: { type: Boolean, default: false },
+    token_version: { type: Number, default: 0 },
     password_changed_at: { type: Date, required: true },
     two_fa_enabled: { type: Boolean, default: false },
     email_otp_hash: { type: String },

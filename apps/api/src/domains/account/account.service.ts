@@ -14,6 +14,10 @@ import { Credentials } from '../users/models/Credentials.model.js';
 import { UserAddress } from '../users/models/UserAddress.model.js';
 import { SubscriptionPlan } from '../subscription/models/SubscriptionPlan.model.js';
 import { UserSubscription } from '../subscription/models/UserSubscription.model.js';
+import { BookInfo } from '../books/models/BookInfo.model.js';
+import { Question } from '../questions/models/Question.model.js';
+import { ExamName } from '../exams/models/ExamName.model.js';
+import { PaperDetail } from '../papers/models/PaperDetail.model.js';
 import { hashPassword, signTokens } from '../auth/auth.service.js';
 import { badRequest, notFound, unauthorized } from '../../shared/errors/AppError.js';
 import { logger } from '../../shared/logger.js';
@@ -151,21 +155,25 @@ async function activateIfFullyVerified(user: InstanceType<typeof User>) {
 }
 
 export async function registerUser(dto: RegisterDto) {
-  const email = dto.email.toLowerCase();
-  const exists = await User.findOne({ $or: [{ email }, { phone: dto.phone }] });
-  if (exists) throw badRequest('Email or phone number is already registered');
+  const phone = dto.phone.trim();
+  const email = (dto.email?.trim() || `${phone}@phone.proassist.app`).toLowerCase();
+  const exists = await User.findOne({ $or: [{ email }, { phone }] });
+  if (exists) throw badRequest('Mobile number is already registered');
+
+  const hasRealEmail = Boolean(dto.email?.trim());
 
   const user = await User.create({
     full_name_en: dto.full_name_en,
     full_name_bn: dto.full_name_bn,
     email,
-    phone: dto.phone,
+    phone,
     user_type: dto.user_type,
     workflow_roles: [],
-    status: 'pending_verify',
-    is_verified: false,
-    email_verified: false,
-    phone_verified: false,
+    // Phone-only signup: activate immediately (placeholder email is pre-verified).
+    status: 'active',
+    is_verified: true,
+    email_verified: true,
+    phone_verified: true,
     is_super_admin: false,
     created_by: new mongoose.Types.ObjectId(),
   });
@@ -179,10 +187,18 @@ export async function registerUser(dto: RegisterDto) {
     failed_attempts: 0,
     password_changed_at: new Date(),
     two_fa_enabled: false,
+    bound_device_id: dto.device_id,
+    bound_device_at: new Date(),
+    bound_device_label: dto.device_label?.slice(0, 120),
+    allow_multi_device: false,
+    token_version: 0,
   });
 
-  const demo = await issueDemoOtps(user, creds);
-  const tokens = signTokens(String(user._id));
+  await assignDefaultWorkflowRoles(user);
+  await assignDefaultLearningAccess(user);
+
+  const demo = hasRealEmail ? await issueDemoOtps(user, creds) : undefined;
+  const tokens = signTokens(String(user._id), dto.device_id, 0);
 
   return { tokens, user: serializeUser(user), demo };
 }
@@ -413,11 +429,15 @@ export async function subscribeToPlan(userId: string, dto: SubscribePlanDto) {
 export async function getAccountSummary(userId: string) {
   const { getMemberWorkflowSummary } = await import('../workflow/workflow.service.js');
 
-  const [user, addresses, subscription, workflow] = await Promise.all([
+  const [user, addresses, subscription, workflow, books, questions, exams, papers] = await Promise.all([
     getMyProfile(userId),
     listMyAddresses(userId),
     getMySubscription(userId),
     getMemberWorkflowSummary(userId),
+    BookInfo.countDocuments({ is_active: true, is_superseded: false }),
+    Question.countDocuments({ is_active: true, is_published: true }),
+    ExamName.countDocuments({ is_active: true }),
+    PaperDetail.countDocuments({ is_active: true, is_published: true }),
   ]);
 
   const checks = [
@@ -429,5 +449,12 @@ export async function getAccountSummary(userId: string) {
   ];
   const profile_complete_percent = Math.round((checks.filter(Boolean).length / checks.length) * 100);
 
-  return { user, address_count: addresses.length, subscription, profile_complete_percent, workflow };
+  return {
+    user,
+    address_count: addresses.length,
+    subscription,
+    profile_complete_percent,
+    workflow,
+    learning: { books, questions, exams, papers },
+  };
 }

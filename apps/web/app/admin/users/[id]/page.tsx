@@ -24,6 +24,10 @@ interface UserDetail {
   status: string;
   is_verified: boolean;
   is_super_admin: boolean;
+  allow_multi_device?: boolean;
+  bound_device_id?: string | null;
+  bound_device_at?: string | null;
+  bound_device_label?: string | null;
   workflow_roles: Array<{ role_code: string; is_active: boolean; role_id: string }>;
 }
 
@@ -149,11 +153,43 @@ export default function EditUserPage() {
           status: user.status,
           is_verified: user.is_verified,
           is_super_admin: user.is_super_admin,
+          allow_multi_device: user.allow_multi_device ?? false,
         }),
       });
       setMessage('Profile saved');
+      await loadUser();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed');
+    }
+  }
+
+  async function clearBoundDevice() {
+    if (!user) return;
+    setError('');
+    try {
+      await apiFetch(`/users/${userId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ clear_bound_device: true }),
+      });
+      setMessage('Bound device cleared — user can bind a new device on next login');
+      await loadUser();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to clear device');
+    }
+  }
+
+  async function forceLogout() {
+    if (!user) return;
+    setError('');
+    try {
+      await apiFetch(`/users/${userId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ force_logout: true }),
+      });
+      setMessage('User sessions invalidated — they will be signed out on the next request');
+      await loadUser();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to force logout');
     }
   }
 
@@ -354,6 +390,33 @@ export default function EditUserPage() {
                 />
                 Super admin
               </label>
+              <div className="space-y-3 rounded-lg border border-border p-4">
+                <p className="text-sm font-medium">Device access</p>
+                <p className="text-xs text-muted">
+                  By default each user may use only one device. Grant multi-device access or clear the
+                  bound device so they can switch phones.
+                </p>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={user.allow_multi_device ?? false}
+                    onChange={(e) => setUser({ ...user, allow_multi_device: e.target.checked })}
+                  />
+                  Allow login from multiple devices
+                </label>
+                <div className="text-xs text-muted">
+                  Bound device:{' '}
+                  {user.bound_device_id
+                    ? `${user.bound_device_label ?? 'unknown'} (${user.bound_device_id.slice(0, 8)}…)`
+                    : 'None'}
+                </div>
+                <Button type="button" variant="outline" onClick={clearBoundDevice} disabled={!user.bound_device_id}>
+                  Clear bound device
+                </Button>
+                <Button type="button" variant="destructive" onClick={forceLogout}>
+                  Force logout all sessions
+                </Button>
+              </div>
               <Button type="submit">Save profile</Button>
             </form>
           </CardContent>

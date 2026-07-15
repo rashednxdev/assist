@@ -6,8 +6,10 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  SafeAreaView,
+  StatusBar,
+  Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { BookBadge } from '@/components/books/BookBadge';
 import { BookLoading } from '@/components/books/BookStates';
@@ -92,6 +94,11 @@ export function ChapterQuestionsPanel({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [question, setQuestion] = useState<QuestionDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const insets = useSafeAreaInsets();
+  const topInset = Math.max(
+    0,
+    Math.max(insets.top, Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0) - 6,
+  );
 
   const typeOptions = useMemo(() => {
     const types = [...new Set(questions.map((q) => q.question_type_code))].sort();
@@ -230,8 +237,8 @@ export function ChapterQuestionsPanel({
         : 'Tagged questions';
 
   return (
-    <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <SafeAreaView style={styles.modalRoot}>
+    <Modal visible={open} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
+      <View style={[styles.modalRoot, { paddingTop: topInset, paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
         <View style={styles.modalHeader}>
           {panelView !== 'list' ? (
             <Pressable
@@ -445,7 +452,7 @@ export function ChapterQuestionsPanel({
             )}
           </ScrollView>
         )}
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 }
@@ -484,7 +491,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingTop: 2,
+    paddingBottom: spacing.xs,
+    minHeight: 30,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     backgroundColor: colors.surface,
@@ -493,6 +502,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     minWidth: 72,
+    minHeight: 30,
+    paddingVertical: spacing.xs,
   },
   headerBtnText: {
     fontSize: 15,
@@ -518,7 +529,10 @@ const styles = StyleSheet.create({
   },
   closeBtn: {
     minWidth: 72,
+    minHeight: 30,
     alignItems: 'flex-end',
+    justifyContent: 'center',
+    paddingVertical: spacing.xs,
   },
   closeBtnText: {
     fontSize: 15,

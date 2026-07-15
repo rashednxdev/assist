@@ -1,6 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 import type { AuthUser, ModuleAccessGrant, RegisterDto } from '@ibas/shared-types';
 import { apiFetch, setApiAccessToken } from './api';
+import { getDeviceLabel, getOrCreateDeviceId } from './device-id';
 
 const TOKEN_KEY = 'ibas_access_token';
 
@@ -17,6 +18,7 @@ export interface AccountSummary {
   profile_complete_percent: number;
   address_count: number;
   subscription: { plan: { name: string } | null; expires_at?: string } | null;
+  learning?: LearningActivity;
 }
 
 export interface LearningActivity {
@@ -43,17 +45,24 @@ export async function clearToken() {
 }
 
 export async function login(email: string, password: string) {
+  const device_id = await getOrCreateDeviceId();
   const res = await apiFetch<{
     data: { accessToken: string; expiresIn: number; user: MeUser };
   }>('/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({
+      email,
+      password,
+      device_id,
+      device_label: getDeviceLabel(),
+    }),
   });
   await persistToken(res.data.accessToken);
   return res.data;
 }
 
-export async function register(body: RegisterDto) {
+export async function register(body: Omit<RegisterDto, 'device_id' | 'device_label'>) {
+  const device_id = await getOrCreateDeviceId();
   const res = await apiFetch<{
     data: {
       tokens: { accessToken: string; expiresIn: number };
@@ -62,7 +71,12 @@ export async function register(body: RegisterDto) {
     };
   }>('/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ ...body, user_type: 'applicant' }),
+    body: JSON.stringify({
+      ...body,
+      user_type: 'applicant',
+      device_id,
+      device_label: getDeviceLabel(),
+    }),
   });
   await persistToken(res.data.tokens.accessToken);
   return res.data;
@@ -79,15 +93,23 @@ export async function fetchAccountSummary() {
 }
 
 export async function fetchLearningActivity(): Promise<LearningActivity> {
+  const summary = await fetchAccountSummary().catch(() => null);
+  if (summary?.learning) {
+    return summary.learning;
+  }
+
+  // Fallback: questions list is paginated — use meta.total when available.
   const [books, questions, exams, papers] = await Promise.all([
-    apiFetch<{ data: unknown[] }>('/books').catch(() => ({ data: [] })),
-    apiFetch<{ data: unknown[] }>('/questions?is_published=true').catch(() => ({ data: [] })),
-    apiFetch<{ data: unknown[] }>('/exams/names').catch(() => ({ data: [] })),
-    apiFetch<{ data: unknown[] }>('/papers').catch(() => ({ data: [] })),
+    apiFetch<{ data: unknown[] }>('/books').catch(() => ({ data: [] as unknown[] })),
+    apiFetch<{ data: unknown[]; meta?: { total?: number } }>('/questions?is_published=true&limit=1').catch(
+      () => ({ data: [] as unknown[], meta: { total: 0 } }),
+    ),
+    apiFetch<{ data: unknown[] }>('/exams/names').catch(() => ({ data: [] as unknown[] })),
+    apiFetch<{ data: unknown[] }>('/papers').catch(() => ({ data: [] as unknown[] })),
   ]);
   return {
     books: books.data.length,
-    questions: questions.data.length,
+    questions: questions.meta?.total ?? questions.data.length,
     exams: exams.data.length,
     papers: papers.data.length,
   };

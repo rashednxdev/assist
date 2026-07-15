@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FormField } from '@/components/shared/form-field';
 import { Alert } from '@/components/ui/alert';
 import { AuthBrandPanel } from '@/components/auth/auth-brand-panel';
@@ -16,13 +16,9 @@ export default function RegisterPage() {
   const router = useRouter();
   const [form, setForm] = useState({
     full_name_en: '',
-    full_name_bn: '',
-    email: '',
     phone: '',
     password: '',
     confirm_password: '',
-    user_type: 'applicant' as 'applicant' | 'officer',
-    accept_terms: false,
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -30,27 +26,22 @@ export default function RegisterPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
-    if (!form.accept_terms) {
-      setError('Please accept the terms to continue');
+    if (form.password !== form.confirm_password) {
+      setError('Passwords do not match');
       return;
     }
     setLoading(true);
     try {
       const res = await registerRequest({
-        ...form,
+        full_name_en: form.full_name_en.trim(),
+        phone: form.phone.trim(),
+        password: form.password,
+        confirm_password: form.confirm_password,
+        user_type: 'applicant',
         accept_terms: true,
       });
       setAccessToken(res.data.tokens.accessToken);
-      sessionStorage.setItem(
-        'ibas_register_demo',
-        JSON.stringify({
-          email: form.email,
-          phone: form.phone,
-          emailOtp: res.data.demo.emailOtp,
-          phoneOtp: res.data.demo.phoneOtp,
-        }),
-      );
-      router.push('/register/verify');
+      router.push('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
     } finally {
@@ -75,10 +66,6 @@ export default function RegisterPage() {
               />
             </div>
             <CardTitle className="text-2xl">Create your account</CardTitle>
-            <CardDescription>
-              Free self-registration for government service holders and exam candidates. Address can be added later in
-              Settings.
-            </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -88,47 +75,18 @@ export default function RegisterPage() {
                   value={form.full_name_en}
                   onChange={(e) => setForm((f) => ({ ...f, full_name_en: e.target.value }))}
                   required
+                  minLength={2}
                 />
               </FormField>
-              <FormField label="Full name (Bengali)" htmlFor="name-bn" hint="Optional">
+              <FormField label="Mobile" htmlFor="phone" required hint="01XXXXXXXXX">
                 <Input
-                  id="name-bn"
-                  value={form.full_name_bn}
-                  onChange={(e) => setForm((f) => ({ ...f, full_name_bn: e.target.value }))}
+                  id="phone"
+                  value={form.phone}
+                  onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+                  placeholder="01700000000"
+                  required
+                  pattern="01[3-9][0-9]{8}"
                 />
-              </FormField>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <FormField label="Email" htmlFor="email" required>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={form.email}
-                    onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                    required
-                  />
-                </FormField>
-                <FormField label="Mobile" htmlFor="phone" required hint="01XXXXXXXXX">
-                  <Input
-                    id="phone"
-                    value={form.phone}
-                    onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                    placeholder="01700000000"
-                    required
-                  />
-                </FormField>
-              </div>
-              <FormField label="I am registering as" htmlFor="user-type" required>
-                <select
-                  id="user-type"
-                  value={form.user_type}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, user_type: e.target.value as 'applicant' | 'officer' }))
-                  }
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  <option value="applicant">Exam candidate (SAS / SRAS preparation)</option>
-                  <option value="officer">Government officer (rules &amp; iBAS user)</option>
-                </select>
               </FormField>
               <div className="grid gap-4 sm:grid-cols-2">
                 <FormField label="Password" htmlFor="password" required>
@@ -148,21 +106,13 @@ export default function RegisterPage() {
                     value={form.confirm_password}
                     onChange={(e) => setForm((f) => ({ ...f, confirm_password: e.target.value }))}
                     required
+                    minLength={8}
                   />
                 </FormField>
               </div>
-              <label className="flex items-start gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={form.accept_terms}
-                  onChange={(e) => setForm((f) => ({ ...f, accept_terms: e.target.checked }))}
-                  className="mt-1"
-                />
-                <span>I agree to the terms of use and privacy policy for ProAssist.</span>
-              </label>
               {error && <Alert variant="error">{error}</Alert>}
               <Button type="submit" className="h-11 w-full" disabled={loading}>
-                {loading ? 'Creating account…' : 'Continue to verification'}
+                {loading ? 'Creating account…' : 'Create account'}
               </Button>
               <p className="text-center text-sm text-muted">
                 Already have an account?{' '}

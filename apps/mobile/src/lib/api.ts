@@ -4,16 +4,25 @@ const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1
 const API_TIMEOUT_MS = Number(process.env.EXPO_PUBLIC_API_TIMEOUT_MS ?? 90_000);
 
 export class ApiError extends Error {
-  constructor(message: string) {
+  status?: number;
+
+  constructor(message: string, status?: number) {
     super(message);
     this.name = 'ApiError';
+    this.status = status;
   }
 }
 
 let accessToken: string | null = null;
+let onUnauthorized: (() => void) | null = null;
 
 export function setApiAccessToken(token: string | null) {
   accessToken = token;
+}
+
+/** Called when an authenticated request receives 401 (e.g. admin force logout). */
+export function setOnUnauthorized(handler: (() => void) | null) {
+  onUnauthorized = handler;
 }
 
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -21,6 +30,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   if (!headers.has('Content-Type') && init.body) {
     headers.set('Content-Type', 'application/json');
   }
+  const hadToken = Boolean(accessToken);
   if (accessToken) {
     headers.set('Authorization', `Bearer ${accessToken}`);
   }
@@ -42,7 +52,10 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     const json = (await res.json().catch(() => ({}))) as T & { error?: { message?: string } };
 
     if (!res.ok) {
-      throw new ApiError(json.error?.message ?? `Request failed (${res.status})`);
+      if (res.status === 401 && hadToken) {
+        onUnauthorized?.();
+      }
+      throw new ApiError(json.error?.message ?? `Request failed (${res.status})`, res.status);
     }
 
     return json;

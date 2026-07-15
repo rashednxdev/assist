@@ -25,7 +25,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#000000"
+        "backgroundColor": "#0B2B52"
       },
       "package": "gov.bd.ibas.learn",
       "usesCleartextTraffic": true

@@ -46,12 +46,16 @@ export const registerSchema = z
   .object({
     full_name_en: z.string().min(2),
     full_name_bn: z.string().optional(),
-    email: z.string().email(),
+    /** Optional — when omitted, a phone-based placeholder email is stored. */
+    email: z.string().email().optional(),
     phone: z.string().regex(/^01[3-9]\d{8}$/, 'Enter a valid Bangladesh mobile number'),
     password: z.string().min(8),
     confirm_password: z.string().min(8),
     user_type: z.enum(['applicant', 'officer']).default('applicant'),
     accept_terms: z.literal(true, { errorMap: () => ({ message: 'You must accept the terms' }) }),
+    /** Binds the account to this device on first registration. */
+    device_id: z.string().min(8).max(128),
+    device_label: z.string().max(120).optional(),
   })
   .refine((d) => d.password === d.confirm_password, {
     message: 'Passwords do not match',

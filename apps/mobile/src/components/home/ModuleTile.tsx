@@ -1,4 +1,4 @@
-import { Pressable, View, Text, StyleSheet } from 'react-native';
+import { Pressable, View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing } from '@/theme';
 
@@ -8,26 +8,35 @@ interface ModuleTileProps {
   icon: keyof typeof Ionicons.glyphMap;
   color: string;
   enabled: boolean;
+  checking?: boolean;
   onPress: () => void;
 }
 
-export function ModuleTile({ title, subtitle, icon, color, enabled, onPress }: ModuleTileProps) {
+export function ModuleTile({
+  title,
+  subtitle,
+  icon,
+  color,
+  enabled,
+  checking = false,
+  onPress,
+}: ModuleTileProps) {
   return (
     <Pressable
-      style={({ pressed }) => [
-        styles.tile,
-        !enabled && styles.tileDisabled,
-        pressed && enabled && styles.pressed,
-      ]}
-      onPress={enabled ? onPress : undefined}
-      disabled={!enabled}
+      style={({ pressed }) => [styles.tile, !enabled && styles.tileDisabled, pressed && styles.pressed]}
+      onPress={onPress}
+      disabled={checking}
     >
       <View style={[styles.iconWrap, { backgroundColor: `${color}22` }]}>
-        <Ionicons name={icon} size={26} color={color} />
+        {checking ? (
+          <ActivityIndicator size="small" color={color} />
+        ) : (
+          <Ionicons name={icon} size={26} color={color} />
+        )}
       </View>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.subtitle}>{subtitle}</Text>
-      {!enabled ? <Text style={styles.lock}>No access</Text> : null}
+      {!enabled ? <Text style={styles.lock}>Tap to check access</Text> : null}
     </Pressable>
   );
 }
@@ -44,7 +53,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   tileDisabled: {
-    opacity: 0.55,
+    opacity: 0.7,
   },
   pressed: {
     opacity: 0.9,

@@ -61,15 +61,15 @@ export default function LoginPage() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-5">
-              <FormField label={t('email')} htmlFor="email" required>
+              <FormField label="Mobile" htmlFor="email" required hint="01XXXXXXXXX">
                 <Input
                   id="email"
-                  type="email"
+                  type="tel"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder={t('emailPlaceholder')}
+                  placeholder="01700000000"
                   required
-                  autoComplete="email"
+                  autoComplete="tel"
                 />
               </FormField>
               <FormField label={t('password')} htmlFor="password" required>

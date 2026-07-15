@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -6,8 +6,11 @@ import {
   StyleSheet,
   Pressable,
   type TextInputProps,
+  type NativeSyntheticEvent,
+  type TextInputFocusEventData,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useKeyboardScroll } from '@/lib/keyboard-scroll';
 import { colors, spacing } from '@/theme';
 
 interface TextFieldProps extends TextInputProps {
@@ -26,13 +29,24 @@ export function TextField({
   secureTextEntry,
   variant = 'default',
   style,
+  onFocus,
   ...rest
 }: TextFieldProps) {
   const [hidden, setHidden] = useState(!!secureTextEntry);
   const premium = variant === 'premium';
+  const wrapRef = useRef<View>(null);
+  const keyboardScroll = useKeyboardScroll();
+
+  function handleFocus(e: NativeSyntheticEvent<TextInputFocusEventData>) {
+    onFocus?.(e);
+    // Defer so the keyboard event + content padding can settle first.
+    requestAnimationFrame(() => {
+      keyboardScroll?.ensureVisible(wrapRef.current);
+    });
+  }
 
   return (
-    <View style={styles.wrap}>
+    <View ref={wrapRef} style={styles.wrap} collapsable={false}>
       <Text style={[styles.label, premium && styles.labelPremium]}>{label}</Text>
       <View
         style={[
@@ -46,6 +60,7 @@ export function TextField({
           placeholderTextColor={premium ? 'rgba(255,255,255,0.35)' : colors.textMuted}
           secureTextEntry={secureToggle ? hidden : secureTextEntry}
           autoCapitalize="none"
+          onFocus={handleFocus}
           {...rest}
         />
         {secureToggle && (

@@ -48,7 +48,15 @@ export async function updateUserHandler(req: AuthRequest, res: Response): Promis
   await logUserActivity({
     userId: user.id,
     action: 'USER_UPDATE',
-    description: 'Profile updated',
+    description: [
+      'Profile updated',
+      dto.allow_multi_device === true ? 'multi-device allowed' : '',
+      dto.allow_multi_device === false ? 'multi-device revoked' : '',
+      dto.clear_bound_device ? 'bound device cleared' : '',
+      dto.force_logout ? 'sessions force-logged-out' : '',
+    ]
+      .filter(Boolean)
+      .join('; '),
     ip: req.ip,
     userAgent: req.headers['user-agent'],
   });

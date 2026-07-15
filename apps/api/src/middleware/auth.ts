@@ -1,8 +1,10 @@
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
-import { unauthorized } from '../shared/errors/AppError.js';
+import { AppError, unauthorized } from '../shared/errors/AppError.js';
+import { assertDeviceAllowed } from '../domains/auth/auth.service.js';
 import { User } from '../domains/users/models/User.model.js';
+import { Credentials } from '../domains/users/models/Credentials.model.js';
 
 export interface AuthUser {
   id: string;
@@ -42,6 +44,16 @@ export const authenticate: RequestHandler = async (
       return;
     }
 
+    const credentials = await Credentials.findOne({ user_id: user._id });
+    if (!credentials) {
+      next(unauthorized());
+      return;
+    }
+
+    const deviceId = typeof payload.did === 'string' ? payload.did : undefined;
+    const tokenVersion = typeof payload.tv === 'number' ? payload.tv : 0;
+    assertDeviceAllowed(user, credentials, deviceId, tokenVersion);
+
     req.user = {
       id: String(user._id),
       email: user.email,
@@ -55,7 +67,11 @@ export const authenticate: RequestHandler = async (
     };
 
     next();
-  } catch {
+  } catch (err) {
+    if (err instanceof AppError) {
+      next(err);
+      return;
+    }
     next(unauthorized());
   }
 };

@@ -1,12 +1,13 @@
 import { ReactNode } from 'react';
-import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { KeyboardScrollProvider, useKeyboardScroll } from '@/lib/keyboard-scroll';
 import { colors, spacing } from '@/theme';
 
 interface AuthScreenShellProps {
   title: string;
-  subtitle: string;
+  subtitle?: string;
   children: ReactNode;
   footer?: ReactNode;
   variant?: 'default' | 'premium';
@@ -14,14 +15,20 @@ interface AuthScreenShellProps {
 
 const PREMIUM_FEATURES = ['Exam prep', 'Question bank', 'Books & Tools', 'Practice papers'];
 
-export function AuthScreenShell({
+function AuthScreenBody({
   title,
   subtitle,
   children,
   footer,
-  variant = 'default',
-}: AuthScreenShellProps) {
-  const premium = variant === 'premium';
+  premium,
+}: {
+  title: string;
+  subtitle?: string;
+  children: ReactNode;
+  footer?: ReactNode;
+  premium: boolean;
+}) {
+  const keyboardScroll = useKeyboardScroll();
 
   return (
     <View style={[styles.root, premium && styles.rootPremium]}>
@@ -44,11 +51,9 @@ export function AuthScreenShell({
         ) : null}
         <SafeAreaView edges={['top']}>
           <View style={styles.brandBlock}>
-            <Image
-              source={require('../../../assets/icon.png')}
-              style={[styles.logoImage, premium && styles.logoImagePremium]}
-              accessibilityLabel="ProAssist"
-            />
+            <View style={[styles.logo, premium && styles.logoPremium]}>
+              <Text style={[styles.logoText, premium && styles.logoTextPremium]}>PA</Text>
+            </View>
             <Text style={[styles.brandTitle, premium && styles.brandTitlePremium]}>ProAssist</Text>
             <Text style={[styles.brandSub, premium && styles.brandSubPremium]}>
               SAS/SRAS exam preparation with ProAssist
@@ -66,25 +71,48 @@ export function AuthScreenShell({
         </SafeAreaView>
       </LinearGradient>
 
-      <KeyboardAvoidingView
+      <ScrollView
+        ref={keyboardScroll?.scrollRef}
         style={styles.formArea}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: spacing.xl + (keyboardScroll?.keyboardInset ?? 0) },
+        ]}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={false}
+        onScroll={keyboardScroll?.onScroll}
+        scrollEventThrottle={16}
       >
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={[styles.card, premium && styles.cardPremium]}>
-            {premium ? <View style={styles.cardAccent} /> : null}
-            <Text style={[styles.title, premium && styles.titlePremium]}>{title}</Text>
+        <View style={[styles.card, premium && styles.cardPremium]}>
+          {premium ? <View style={styles.cardAccent} /> : null}
+          <Text style={[styles.title, premium && styles.titlePremium]}>{title}</Text>
+          {subtitle ? (
             <Text style={[styles.subtitle, premium && styles.subtitlePremium]}>{subtitle}</Text>
-            {children}
-          </View>
-          {footer}
-        </ScrollView>
-      </KeyboardAvoidingView>
+          ) : null}
+          <View style={styles.fields}>{children}</View>
+        </View>
+        {footer ? <View style={styles.footerWrap}>{footer}</View> : null}
+      </ScrollView>
     </View>
+  );
+}
+
+export function AuthScreenShell({
+  title,
+  subtitle,
+  children,
+  footer,
+  variant = 'default',
+}: AuthScreenShellProps) {
+  const premium = variant === 'premium';
+
+  return (
+    <KeyboardScrollProvider>
+      <AuthScreenBody title={title} subtitle={subtitle} footer={footer} premium={premium}>
+        {children}
+      </AuthScreenBody>
+    </KeyboardScrollProvider>
   );
 }
 
@@ -132,15 +160,27 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
   },
-  logoImage: {
-    width: 56,
-    height: 56,
-    borderRadius: 14,
+  logo: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
     marginBottom: spacing.sm,
   },
-  logoImagePremium: {
+  logoPremium: {
+    backgroundColor: 'rgba(212, 175, 55, 0.15)',
     borderWidth: 1,
     borderColor: 'rgba(212, 175, 55, 0.45)',
+  },
+  logoText: {
+    color: colors.white,
+    fontWeight: '800',
+    fontSize: 14,
+    letterSpacing: 1,
+  },
+  logoTextPremium: {
+    color: colors.goldLight,
   },
   brandTitle: {
     color: colors.white,
@@ -235,5 +275,11 @@ const styles = StyleSheet.create({
   },
   subtitlePremium: {
     color: 'rgba(255,255,255,0.62)',
+  },
+  fields: {
+    gap: spacing.md,
+  },
+  footerWrap: {
+    marginTop: spacing.md,
   },
 });

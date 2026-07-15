@@ -2,9 +2,9 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import type { LoginDto } from '@ibas/shared-types';
 import { env } from '../../config/env.js';
-import { badRequest, unauthorized } from '../../shared/errors/AppError.js';
+import { badRequest, forbidden, unauthorized } from '../../shared/errors/AppError.js';
 import { User } from '../users/models/User.model.js';
-import { Credentials } from '../users/models/Credentials.model.js';
+import { Credentials, type ICredentials } from '../users/models/Credentials.model.js';
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_DURATION_MS = 15 * 60 * 1000;
@@ -13,6 +13,12 @@ export interface TokenPair {
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
+}
+
+export interface AccessTokenClaims {
+  userId: string;
+  deviceId?: string;
+  tokenVersion: number;
 }
 
 function expiresInToSeconds(value: string, fallbackSeconds: number): number {
@@ -33,15 +39,71 @@ export function refreshExpiresMs(): number {
   return expiresInToSeconds(env.JWT_REFRESH_EXPIRES_IN, 7 * 86400) * 1000;
 }
 
+function isAdminUser(user: { user_type: string; is_super_admin: boolean }): boolean {
+  return user.is_super_admin || user.user_type === 'admin' || user.user_type === 'system_admin';
+}
+
+/** Whether this account is exempt from one-device binding (admins) or has been granted multi-device. */
+export function allowsAnyDevice(
+  user: { user_type: string; is_super_admin: boolean },
+  credentials: Pick<ICredentials, 'allow_multi_device'>,
+): boolean {
+  return isAdminUser(user) || Boolean(credentials.allow_multi_device);
+}
+
+export function assertDeviceAllowed(
+  user: { user_type: string; is_super_admin: boolean },
+  credentials: Pick<ICredentials, 'bound_device_id' | 'allow_multi_device' | 'token_version'>,
+  deviceId: string | undefined,
+  tokenVersion?: number,
+): void {
+  if (allowsAnyDevice(user, credentials)) {
+    if (tokenVersion !== undefined && credentials.token_version !== tokenVersion) {
+      throw unauthorized('Session expired. Please sign in again.');
+    }
+    return;
+  }
+
+  if (tokenVersion !== undefined && credentials.token_version !== tokenVersion) {
+    throw unauthorized('Session expired. Please sign in again.');
+  }
+
+  if (!credentials.bound_device_id) {
+    return;
+  }
+
+  if (!deviceId || deviceId !== credentials.bound_device_id) {
+    throw forbidden(
+      'This account is registered to another device. Ask an admin to allow another device or clear the bound device.',
+    );
+  }
+}
+
+export async function bindDeviceIfNeeded(
+  credentials: ICredentials,
+  deviceId: string,
+  deviceLabel?: string,
+): Promise<void> {
+  if (!credentials.bound_device_id) {
+    credentials.bound_device_id = deviceId;
+    credentials.bound_device_at = new Date();
+    if (deviceLabel) credentials.bound_device_label = deviceLabel.slice(0, 120);
+  }
+}
+
 export async function login(dto: LoginDto, ip?: string): Promise<{ tokens: TokenPair; userId: string }> {
-  const user = await User.findOne({ email: dto.email.toLowerCase() });
+  const raw = dto.email.trim();
+  const isPhone = /^01[3-9]\d{8}$/.test(raw);
+  const user = isPhone
+    ? await User.findOne({ phone: raw })
+    : await User.findOne({ email: raw.toLowerCase() });
   if (!user) {
-    throw unauthorized('Invalid email or password');
+    throw unauthorized('Invalid mobile/email or password');
   }
 
   const credentials = await Credentials.findOne({ user_id: user._id });
   if (!credentials) {
-    throw unauthorized('Invalid email or password');
+    throw unauthorized('Invalid mobile/email or password');
   }
 
   if (credentials.status === 'locked' && credentials.locked_until && credentials.locked_until > new Date()) {
@@ -56,42 +118,53 @@ export async function login(dto: LoginDto, ip?: string): Promise<{ tokens: Token
       credentials.locked_until = new Date(Date.now() + LOCK_DURATION_MS);
     }
     await credentials.save();
-    throw unauthorized('Invalid email or password');
+    throw unauthorized('Invalid mobile/email or password');
   }
 
   if (user.status !== 'active' && user.status !== 'pending_verify') {
     throw unauthorized('Account is not active');
   }
 
+  assertDeviceAllowed(user, credentials, dto.device_id);
+
   credentials.failed_attempts = 0;
   credentials.status = 'active';
   credentials.locked_until = undefined;
   credentials.last_login = new Date();
   credentials.last_ip = ip;
+  await bindDeviceIfNeeded(credentials, dto.device_id, dto.device_label);
   await credentials.save();
 
-  const tokens = signTokens(String(user._id));
+  const tokens = signTokens(String(user._id), dto.device_id, credentials.token_version);
   return { tokens, userId: String(user._id) };
 }
 
-export function signTokens(userId: string): TokenPair {
+export function signTokens(userId: string, deviceId?: string, tokenVersion = 0): TokenPair {
   const expiresIn = accessExpiresSeconds();
-  const accessToken = jwt.sign({ sub: userId, type: 'access' }, env.JWT_SECRET, {
-    expiresIn: env.JWT_ACCESS_EXPIRES_IN as jwt.SignOptions['expiresIn'],
-  });
-  const refreshToken = jwt.sign({ sub: userId, type: 'refresh' }, env.JWT_SECRET, {
-    expiresIn: env.JWT_REFRESH_EXPIRES_IN as jwt.SignOptions['expiresIn'],
-  });
+  const accessToken = jwt.sign(
+    { sub: userId, type: 'access', did: deviceId, tv: tokenVersion },
+    env.JWT_SECRET,
+    { expiresIn: env.JWT_ACCESS_EXPIRES_IN as jwt.SignOptions['expiresIn'] },
+  );
+  const refreshToken = jwt.sign(
+    { sub: userId, type: 'refresh', did: deviceId, tv: tokenVersion },
+    env.JWT_SECRET,
+    { expiresIn: env.JWT_REFRESH_EXPIRES_IN as jwt.SignOptions['expiresIn'] },
+  );
   return { accessToken, refreshToken, expiresIn };
 }
 
-export function verifyAccessToken(token: string): { userId: string } {
+export function verifyAccessToken(token: string): AccessTokenClaims {
   try {
     const payload = jwt.verify(token, env.JWT_SECRET) as jwt.JwtPayload;
     if (payload.type !== 'access' || !payload.sub) {
       throw badRequest('Invalid request');
     }
-    return { userId: String(payload.sub) };
+    return {
+      userId: String(payload.sub),
+      deviceId: typeof payload.did === 'string' ? payload.did : undefined,
+      tokenVersion: typeof payload.tv === 'number' ? payload.tv : 0,
+    };
   } catch {
     throw unauthorized('Session expired');
   }

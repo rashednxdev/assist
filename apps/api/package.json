@@ -15,7 +15,6 @@
     "test:db": "tsx scripts/test-connection.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.110.0",
     "@ibas/shared-constants": "workspace:*",
     "@ibas/shared-types": "workspace:*",
     "@napi-rs/canvas": "^0.1.70",

@@ -12,7 +12,6 @@ import {
   listMarathonReviewHandler,
   similarQuestionsHandler,
   getQuestionHandler,
-  generateQuestionDraftHandler,
   createQuestionHandler,
   batchImportMcqHandler,
   batchImportDescriptiveHandler,
@@ -43,7 +42,6 @@ questionsRouter.get('/marathon-review', asyncHandler(listMarathonReviewHandler))
 questionsRouter.get('/similar', asyncHandler(similarQuestionsHandler));
 questionsRouter.get('/:id', asyncHandler(getQuestionHandler));
 
-questionsRouter.post('/ai-generate', requireAdmin, asyncHandler(generateQuestionDraftHandler));
 questionsRouter.post('/batch-import', requireAdmin, asyncHandler(batchImportMcqHandler));
 questionsRouter.post(
   '/batch-import-descriptive',

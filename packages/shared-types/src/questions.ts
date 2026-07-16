@@ -185,27 +185,6 @@ export const updateQuestionTypeSchema = createQuestionTypeSchema.partial().exten
   is_active: z.boolean().optional(),
 });
 
-export const generateQuestionAiSchema = z.object({
-  question_type_id: mongoId,
-  book_chapter_id: mongoId,
-  book_topic_id: mongoId.optional(),
-  book_sub_topic_id: mongoId.optional(),
-  difficulty: z.enum(QUESTION_DIFFICULTIES).optional(),
-  instructions: z.string().max(500).optional(),
-});
-
-export type GenerateQuestionAiDto = z.infer<typeof generateQuestionAiSchema>;
-
-export interface GeneratedQuestionDraft {
-  body_en: string;
-  body_bn: string;
-  options: QuestionOptionInput[];
-  correct_option_key?: (typeof OPTION_KEYS)[number];
-  correct_true_false?: 'true' | 'false';
-  explanation_sections: ExplanationSection[];
-  model_answer_sections: ExplanationSection[];
-}
-
 /** One MCQ row from CSV (first 7 columns). Extra columns like topic are ignored. */
 export const batchMcqImportRowSchema = z.object({
   question: z.string().min(1, 'Question text is required'),

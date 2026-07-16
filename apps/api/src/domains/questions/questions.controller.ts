@@ -8,14 +8,12 @@ import {
   createQuestionTypeSchema,
   questionBookLinkInputSchema,
   updateQuestionTypeSchema,
-  generateQuestionAiSchema,
   batchMcqImportSchema,
   batchDescriptiveImportSchema,
   batchQuestionIdsSchema,
 } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
 import * as questionsService from './questions.service.js';
-import { generateQuestionDraft } from './questions-ai.service.js';
 
 export async function createQuestionTypeHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = createQuestionTypeSchema.parse(req.body);
@@ -93,12 +91,6 @@ export async function similarQuestionsHandler(req: AuthRequest, res: Response): 
 
 export async function getQuestionHandler(req: AuthRequest, res: Response): Promise<void> {
   const data = await questionsService.getQuestionById(String(req.params.id));
-  res.json({ data });
-}
-
-export async function generateQuestionDraftHandler(req: AuthRequest, res: Response): Promise<void> {
-  const dto = generateQuestionAiSchema.parse(req.body);
-  const data = await generateQuestionDraft(dto);
   res.json({ data });
 }
 

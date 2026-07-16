@@ -4,7 +4,6 @@ import {
   serializeExplanationSections,
   type ComparisonTable,
   type ExplanationSection,
-  type GeneratedQuestionDraft,
 } from '@ibas/shared-types';
 import {
   emptyQuestionForm,
@@ -69,32 +68,5 @@ export function questionDetailToForm(q: QuestionDetailForForm): QuestionFormValu
       ...link,
       book_id: link.book_id || '',
     })),
-  };
-}
-
-/** Merge an AI-generated draft into the current form, keeping the selected question type and book links. */
-export function applyAiDraftToForm(form: QuestionFormValues, draft: GeneratedQuestionDraft): QuestionFormValues {
-  const keys = ['a', 'b', 'c', 'd', 'e'] as const;
-  const options =
-    form.question_type_code === 'MCQ'
-      ? keys.slice(0, Math.max(4, draft.options.length)).map((key) => {
-          const found = draft.options.find((o) => o.option_key === key);
-          return {
-            option_key: key,
-            option_text_en: found?.option_text_en ?? '',
-            option_text_bn: found?.option_text_bn,
-          };
-        })
-      : form.options;
-
-  return {
-    ...form,
-    body_en: draft.body_en,
-    body_bn: draft.body_bn,
-    options,
-    correct_option_key: (draft.correct_option_key ?? form.correct_option_key) as QuestionFormValues['correct_option_key'],
-    correct_true_false: draft.correct_true_false ?? form.correct_true_false,
-    explanation_sections: draft.explanation_sections,
-    model_answer_sections: draft.model_answer_sections,
   };
 }

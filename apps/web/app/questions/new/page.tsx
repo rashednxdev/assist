@@ -6,8 +6,7 @@ import Link from 'next/link';
 import { ArrowLeft, Plus, Upload } from 'lucide-react';
 import { apiFetch, ApiError } from '@/lib/api-client';
 import { fetchMe } from '@/lib/auth';
-import { applyAiDraftToForm, questionDetailToForm } from '@/lib/question-detail-form';
-import { AiGenerateQuestionPanel } from '@/components/questions/ai-generate-question-panel';
+import { questionDetailToForm } from '@/lib/question-detail-form';
 import {
   buildPresetBookLink,
   bookLinkPayloadFromContext,
@@ -268,17 +267,6 @@ export default function NewQuestionPage() {
           {form.book_links.length !== 1 ? 's' : ''} but is still a draft. Publish it to show under Tag questions on
           the chapter reader.
         </Alert>
-      )}
-
-      {chapterContext.hasPreset && !savedQuestion && form.question_type_id && (
-        <AiGenerateQuestionPanel
-          questionTypeId={form.question_type_id}
-          bookChapterId={chapterContext.chapterId}
-          bookTopicId={chapterContext.topicId || undefined}
-          bookSubTopicId={chapterContext.subTopicId || undefined}
-          disabled={busy}
-          onGenerated={(draft) => setForm((f) => applyAiDraftToForm(f, draft))}
-        />
       )}
 
       <QuestionEditor

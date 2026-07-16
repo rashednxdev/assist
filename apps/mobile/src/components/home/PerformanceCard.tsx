@@ -1,47 +1,56 @@
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import type { ProgressDashboardData } from '@/lib/evaluation-api';
 import { colors, spacing } from '@/theme';
 
 interface PerformanceCardProps {
-  profilePercent: number;
-  verified: boolean;
-  planName?: string | null;
+  progress: ProgressDashboardData | null;
   savedCount: number;
-  activity: {
-    books: number;
-    questions: number;
-    exams: number;
-    papers: number;
-  };
   onSavedPress: () => void;
+  onProgressPress: () => void;
+}
+
+function MiniBar({ percent, color }: { percent: number; color: string }) {
+  const clamped = Math.min(100, Math.max(0, percent));
+  return (
+    <View style={styles.barTrack}>
+      <View style={[styles.barFill, { width: `${clamped}%`, backgroundColor: color }]} />
+    </View>
+  );
 }
 
 export function PerformanceCard({
-  profilePercent,
-  verified,
-  planName,
+  progress,
   savedCount,
-  activity,
   onSavedPress,
+  onProgressPress,
 }: PerformanceCardProps) {
-  const stats = [
-    { label: 'Books', value: activity.books },
-    { label: 'Questions', value: activity.questions },
-    { label: 'Exams', value: activity.exams },
-    { label: 'Papers', value: activity.papers },
-  ];
+  const { height } = useWindowDimensions();
+  const cardMaxHeight = Math.round(height * 0.5);
+
+  const mcq = progress?.mcq ?? { submitted: 0, correct: 0, incorrect: 0, accuracy_percent: 0 };
+  const papers = progress?.papers ?? {
+    attempted: 0,
+    rated_questions: 0,
+    total_questions: 0,
+    average_progress_percent: 0,
+  };
 
   return (
-    <View style={styles.card}>
-      <View style={styles.headerRow}>
-        <View style={styles.headerText}>
-          <Text style={styles.heading}>Your activity</Text>
-          <Text style={styles.sub}>
-            {verified ? 'Account verified' : 'Complete verification to unlock full access'}
-          </Text>
-          <Text style={styles.profileHint}>Profile {profilePercent}% complete</Text>
-        </View>
+    <View style={[styles.card, { maxHeight: cardMaxHeight }]}>
+      <View style={styles.topRow}>
+        <Pressable
+          style={({ pressed }) => [styles.titleBlock, pressed && styles.pressed]}
+          onPress={onProgressPress}
+          accessibilityRole="button"
+          accessibilityLabel="Open progress dashboard"
+        >
+          <View style={styles.titleText}>
+            <Text style={styles.heading}>Progress summary</Text>
+            <Text style={styles.sub}>Tap for full dashboard</Text>
+          </View>
+        </Pressable>
 
         <Pressable
           style={({ pressed }) => [styles.savedPress, pressed && styles.savedPressed]}
@@ -55,30 +64,42 @@ export function PerformanceCard({
             end={{ x: 1, y: 1 }}
             style={styles.savedTile}
           >
-            <View style={styles.savedIconWrap}>
-              <Ionicons name="bookmark" size={18} color={colors.white} />
-            </View>
+            <Ionicons name="bookmark" size={14} color={colors.white} />
             <Text style={styles.savedCount}>{savedCount}</Text>
             <Text style={styles.savedLabel}>Saved</Text>
-            <View style={styles.savedGlow} />
           </LinearGradient>
         </Pressable>
       </View>
 
-      {planName ? (
-        <View style={styles.planBadge}>
-          <Text style={styles.planText}>Plan: {planName}</Text>
+      <Pressable
+        style={({ pressed }) => [styles.metricsRow, pressed && styles.pressed]}
+        onPress={onProgressPress}
+      >
+        <View style={styles.metricCard}>
+          <Text style={styles.metricTitle}>Evaluate MCQ</Text>
+          <Text style={styles.metricValue}>{mcq.accuracy_percent}%</Text>
+          <Text style={styles.metricMeta}>
+            <Text style={{ color: colors.success, fontWeight: '700' }}>{mcq.correct}✓</Text>
+            {' · '}
+            <Text style={{ color: colors.error, fontWeight: '700' }}>{mcq.incorrect}✗</Text>
+            {' · '}
+            {mcq.submitted} done
+          </Text>
+          <MiniBar
+            percent={mcq.accuracy_percent}
+            color={mcq.accuracy_percent >= 70 ? colors.success : '#7c3aed'}
+          />
         </View>
-      ) : null}
 
-      <View style={styles.statsGrid}>
-        {stats.map((s) => (
-          <View key={s.label} style={styles.statCell}>
-            <Text style={styles.statValue}>{s.value}</Text>
-            <Text style={styles.statLabel}>{s.label}</Text>
-          </View>
-        ))}
-      </View>
+        <View style={styles.metricCard}>
+          <Text style={styles.metricTitle}>Practice papers</Text>
+          <Text style={styles.metricValue}>{papers.average_progress_percent}%</Text>
+          <Text style={styles.metricMeta}>
+            {papers.attempted} started · {papers.rated_questions}/{papers.total_questions || 0}
+          </Text>
+          <MiniBar percent={papers.average_progress_percent} color="#d97706" />
+        </View>
+      </Pressable>
     </View>
   );
 }
@@ -86,120 +107,102 @@ export function PerformanceCard({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
-    borderRadius: 20,
-    padding: spacing.lg,
-    gap: spacing.md,
+    borderRadius: 16,
+    padding: spacing.md,
+    gap: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
+    overflow: 'hidden',
   },
-  headerRow: {
+  topRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: spacing.md,
+    alignItems: 'center',
+    gap: spacing.sm,
   },
-  headerText: {
+  titleBlock: {
     flex: 1,
-    paddingRight: spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  titleText: {
+    flex: 1,
+    gap: 1,
   },
   heading: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '800',
     color: colors.text,
   },
   sub: {
-    fontSize: 13,
+    fontSize: 11,
     color: colors.textMuted,
-    marginTop: 4,
   },
-  profileHint: {
-    fontSize: 12,
-    color: colors.primary,
-    marginTop: 6,
-    fontWeight: '600',
+  pressed: {
+    opacity: 0.92,
   },
   savedPress: {
-    borderRadius: 18,
+    borderRadius: 12,
   },
   savedPressed: {
     opacity: 0.9,
     transform: [{ scale: 0.97 }],
   },
   savedTile: {
-    width: 84,
-    minHeight: 96,
-    borderRadius: 18,
-    paddingTop: 12,
-    paddingBottom: 10,
-    paddingHorizontal: 10,
+    width: 58,
+    height: 58,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 1,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-  },
-  savedIconWrap: {
-    width: 30,
-    height: 30,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 6,
   },
   savedCount: {
-    fontSize: 26,
+    fontSize: 16,
     fontWeight: '800',
     color: colors.white,
-    lineHeight: 30,
+    lineHeight: 18,
   },
   savedLabel: {
-    marginTop: 1,
-    fontSize: 11,
+    fontSize: 9,
     fontWeight: '700',
     color: 'rgba(255,255,255,0.88)',
-    letterSpacing: 0.4,
   },
-  savedGlow: {
-    position: 'absolute',
-    right: -18,
-    top: -18,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-  },
-  planBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#ecfdf3',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  planText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.success,
-  },
-  statsGrid: {
+  metricsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: spacing.sm,
   },
-  statCell: {
-    width: '47%',
+  metricCard: {
+    flex: 1,
     backgroundColor: colors.background,
-    borderRadius: 14,
-    padding: spacing.md,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    gap: 3,
   },
-  statValue: {
+  metricTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textMuted,
+  },
+  metricValue: {
     fontSize: 22,
     fontWeight: '800',
     color: colors.primaryDark,
   },
-  statLabel: {
-    fontSize: 12,
+  metricMeta: {
+    fontSize: 10,
     color: colors.textMuted,
-    marginTop: 2,
+    marginBottom: 2,
+  },
+  barTrack: {
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: '#e2e8f0',
+    overflow: 'hidden',
+  },
+  barFill: {
+    height: 5,
+    borderRadius: 999,
   },
 });

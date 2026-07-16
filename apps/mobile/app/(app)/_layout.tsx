@@ -29,6 +29,14 @@ export default function AppLayout() {
     >
       <Stack.Screen name="home" />
       <Stack.Screen
+        name="profile"
+        options={{
+          headerShown: true,
+          title: 'Profile',
+          headerBackTitle: 'Home',
+        }}
+      />
+      <Stack.Screen
         name="progress"
         options={{
           headerShown: true,

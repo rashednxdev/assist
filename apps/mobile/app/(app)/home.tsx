@@ -19,11 +19,9 @@ import { useAuth } from '@/lib/auth-context';
 import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
 import { hasLearningModule, type LearningModuleCode } from '@/lib/api';
 import {
-  fetchAccountSummary,
-  fetchLearningActivity,
-  type AccountSummary,
-  type LearningActivity,
-} from '@/lib/auth-api';
+  fetchProgressDashboard,
+  type ProgressDashboardData,
+} from '@/lib/evaluation-api';
 import { colors, spacing } from '@/theme';
 
 const MODULES: Array<{
@@ -95,13 +93,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const { user, signOut, canAccess, refreshUser } = useAuth();
   const { items: savedItems } = useSavedShortcuts();
-  const [summary, setSummary] = useState<AccountSummary | null>(null);
-  const [activity, setActivity] = useState<LearningActivity>({
-    books: 0,
-    questions: 0,
-    exams: 0,
-    papers: 0,
-  });
+  const [progress, setProgress] = useState<ProgressDashboardData | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [checkingModuleId, setCheckingModuleId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -144,16 +136,8 @@ export default function HomeScreen() {
   );
 
   const loadData = useCallback(async () => {
-    const sum = await fetchAccountSummary().catch(() => null);
-    if (sum) {
-      setSummary(sum);
-      if (sum.learning) {
-        setActivity(sum.learning);
-        return;
-      }
-    }
-    const act = await fetchLearningActivity().catch(() => null);
-    if (act) setActivity(act);
+    const dash = await fetchProgressDashboard().catch(() => null);
+    setProgress(dash);
   }, []);
 
   const onRefresh = useCallback(async () => {
@@ -169,9 +153,6 @@ export default function HomeScreen() {
     void loadData();
   }, [loadData]);
 
-  const greeting = user?.full_name_en?.split(' ')[0] ?? 'Learner';
-  const verified = !!(user?.is_verified && user?.email_verified && user?.phone_verified);
-
   function confirmSignOut() {
     setMenuOpen(false);
     Alert.alert('Sign out?', 'You will need to sign in again to continue.', [
@@ -186,7 +167,7 @@ export default function HomeScreen() {
         <SafeAreaView edges={['top']}>
           <View style={styles.heroInner}>
             <View>
-              <Text style={styles.greet}>{greeting}</Text>
+              <Text style={styles.greet}>ProAssist</Text>
               <Text style={styles.heroSub}>Preparation Dashboard</Text>
             </View>
             <Pressable
@@ -206,6 +187,21 @@ export default function HomeScreen() {
           <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setMenuOpen(false)} />
           <SafeAreaView edges={['top']} style={styles.menuSafe} pointerEvents="box-none">
             <View style={styles.menuCard}>
+              <Pressable
+                style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
+                onPress={() => {
+                  setMenuOpen(false);
+                  router.push('/(app)/profile' as Href);
+                }}
+              >
+                <Ionicons name="person-outline" size={20} color={colors.primary} />
+                <View style={styles.menuItemText}>
+                  <Text style={styles.menuItemTitle}>Profile</Text>
+                  <Text style={styles.menuItemSub}>Account & access details</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+              </Pressable>
+              <View style={styles.menuDivider} />
               <Pressable
                 style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
                 onPress={() => {
@@ -241,12 +237,10 @@ export default function HomeScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <PerformanceCard
-          profilePercent={summary?.profile_complete_percent ?? 0}
-          verified={verified}
-          planName={summary?.subscription?.plan?.name}
+          progress={progress}
           savedCount={savedItems.length}
-          activity={activity}
           onSavedPress={() => router.push('/(app)/saved' as Href)}
+          onProgressPress={() => router.push('/(app)/progress' as Href)}
         />
 
         <Text style={styles.sectionTitle}>Learning modules</Text>

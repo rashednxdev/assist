@@ -49,6 +49,7 @@ export default function QuestionDetailScreen() {
   const [evalError, setEvalError] = useState('');
   const [evalMessage, setEvalMessage] = useState('');
   const [showCelebrate, setShowCelebrate] = useState(false);
+  const [showPreviousEval, setShowPreviousEval] = useState(false);
   const [nextId, setNextId] = useState<string | undefined>();
   const [nextStem, setNextStem] = useState<QuestionPracticeStem | null>(null);
 
@@ -59,6 +60,8 @@ export default function QuestionDetailScreen() {
     setNextStem(null);
     setEvalError('');
     setEvalMessage('');
+    setShowPreviousEval(false);
+    setSelectedOptionId('');
 
     const sessionNext = getQuestionBankNextId(id);
     void loadQuestionBankLastQuestion().then((pos) => {
@@ -70,7 +73,8 @@ export default function QuestionDetailScreen() {
       .then(([data, stem, evalRow]) => {
         setItem(data);
         setEvaluation(evalRow);
-        setSelectedOptionId(evalRow.selected_option_id ?? '');
+        // Do not prefill previous answer — user starts fresh unless they reveal it.
+        setSelectedOptionId('');
         if (!data.has_options && !stem.has_options) {
           setShowAnswer(true);
         }
@@ -121,6 +125,7 @@ export default function QuestionDetailScreen() {
   useDifferencesLandscape(showDifferencesAnswer);
 
   useLayoutEffect(() => {
+    const headerEval = showPreviousEval ? evaluation : null;
     navigation.setOptions({
       title: '',
       headerTitleAlign: 'center',
@@ -139,9 +144,11 @@ export default function QuestionDetailScreen() {
         : undefined,
       headerTitle: () => (
         <View style={headerStyles.evalTitleRow}>
-          <RatingIndicator evaluation={evaluation} size={12} />
+          {headerEval ? <RatingIndicator evaluation={headerEval} size={12} /> : null}
           <Text style={headerStyles.evalTitle} numberOfLines={1}>
-            {formatEvaluationStatusLabel(evaluation, item?.has_options)}
+            {headerEval
+              ? formatEvaluationStatusLabel(headerEval, item?.has_options)
+              : item?.question_type_name ?? item?.question_type_code ?? 'Question'}
           </Text>
         </View>
       ),
@@ -157,7 +164,7 @@ export default function QuestionDetailScreen() {
         </Pressable>
       ),
     });
-  }, [navigation, evaluation, showAnswer, item?.has_options, fromSaved, router]);
+  }, [navigation, evaluation, showPreviousEval, showAnswer, item?.has_options, item?.question_type_name, item?.question_type_code, fromSaved, router]);
 
   async function submitOption() {
     if (!id || !selectedOptionId) return;
@@ -167,6 +174,7 @@ export default function QuestionDetailScreen() {
     try {
       const res = await upsertQuestionEvaluation(id, { selected_option_id: selectedOptionId });
       setEvaluation(res);
+      setShowPreviousEval(true);
       setEvalMessage('Answer submitted successfully.');
       setShowAnswer(true);
       if (res.progress_index === 100) setShowCelebrate(true);
@@ -185,6 +193,7 @@ export default function QuestionDetailScreen() {
     try {
       const res = await upsertQuestionEvaluation(id, { self_rating: level });
       setEvaluation(res);
+      setShowPreviousEval(true);
       setEvalMessage('Self-evaluation submitted successfully.');
       if (res.progress_index === 100) setShowCelebrate(true);
     } catch (err) {
@@ -223,23 +232,132 @@ export default function QuestionDetailScreen() {
         {stem.secondary ? <BookRichText html={stem.secondary} style={styles.questionBn} /> : null}
       </View>
 
-      {item.options.length > 0 ? (
+      {item.has_options ? (
         <View style={styles.panel}>
-          <Text style={styles.sectionTitle}>Options</Text>
-          {item.options.map((opt) => {
-            const isCorrect = showAnswer && opt.is_correct;
-            return (
-              <View key={opt.id} style={[styles.optionRow, isCorrect && styles.optionCorrect]}>
-                <Text style={styles.optionKey}>{opt.option_key.toUpperCase()}.</Text>
-                <BookRichText
-                  html={optionText(opt)}
-                  style={[styles.optionText, isCorrect && styles.optionTextCorrect]}
-                />
-              </View>
-            );
-          })}
+          <Text style={[styles.sectionTitle, styles.selfEvalTitle]}>Evaluate</Text>
+          {evalError ? <Text style={styles.errorText}>{evalError}</Text> : null}
+          {evalMessage ? <Text style={styles.successText}>{evalMessage}</Text> : null}
+
+          <View style={styles.optionSelectWrap}>
+            {item.options.map((opt) => {
+              const selected = selectedOptionId === opt.id;
+              const revealCorrect = showAnswer && opt.is_correct;
+              return (
+                <Pressable
+                  key={opt.id}
+                  style={[
+                    styles.selectOptionRow,
+                    selected && styles.selectOptionActive,
+                    revealCorrect && styles.optionCorrect,
+                  ]}
+                  onPress={() => setSelectedOptionId(opt.id)}
+                >
+                  <Text style={styles.optionKey}>{opt.option_key.toUpperCase()}.</Text>
+                  <BookRichText
+                    html={optionText(opt)}
+                    style={[styles.optionText, revealCorrect && styles.optionTextCorrect]}
+                  />
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <Pressable
+            style={[styles.submitBtn, (!selectedOptionId || savingEval) && styles.submitBtnDisabled]}
+            disabled={!selectedOptionId || savingEval}
+            onPress={() => void submitOption()}
+          >
+            <Text style={styles.submitBtnText}>
+              {savingEval ? 'Submitting...' : 'Submit answer'}
+            </Text>
+          </Pressable>
+
+          {hasSavedEval(evaluation, true) ? (
+            <Pressable
+              style={styles.prevEvalBtn}
+              onPress={() => {
+                setShowPreviousEval((v) => {
+                  const next = !v;
+                  if (next && evaluation?.selected_option_id) {
+                    setSelectedOptionId(evaluation.selected_option_id);
+                  }
+                  return next;
+                });
+              }}
+            >
+              <Text style={styles.prevEvalBtnText}>
+                {showPreviousEval ? 'Hide previous result' : 'Show previous result'}
+              </Text>
+            </Pressable>
+          ) : null}
+
+          {showPreviousEval && evaluation?.is_correct !== undefined ? (
+            <View style={styles.evalSavedRow}>
+              <RatingIndicator evaluation={evaluation} />
+              <Text style={[styles.evalResult, evaluation.is_correct ? styles.correct : styles.wrong]}>
+                {evaluation.is_correct ? 'Previous: Correct' : 'Previous: Incorrect'}
+              </Text>
+            </View>
+          ) : null}
         </View>
-      ) : null}
+      ) : (
+        <View style={styles.panel}>
+          <Text style={[styles.sectionTitle, styles.selfEvalTitle]}>Self evaluation</Text>
+          {evalError ? <Text style={styles.errorText}>{evalError}</Text> : null}
+          {evalMessage ? <Text style={styles.successText}>{evalMessage}</Text> : null}
+          <View style={styles.evalWrap}>
+            <Text style={styles.evalHint}>Your study position on the question and answer</Text>
+            <View style={styles.ratingWrap}>
+              {(
+                Object.keys(SELF_RATING_PROGRESS) as Array<
+                  keyof typeof SELF_RATING_PROGRESS & SelfRatingLevel
+                >
+              ).map((level) => (
+                <Pressable
+                  key={level}
+                  style={[
+                    styles.ratingBtn,
+                    showPreviousEval && evaluation?.self_rating === level && styles.ratingBtnActive,
+                  ]}
+                  disabled={savingEval}
+                  onPress={() => void submitSelfRating(level)}
+                >
+                  <Text
+                    style={[
+                      styles.ratingBtnText,
+                      showPreviousEval &&
+                        evaluation?.self_rating === level &&
+                        styles.ratingBtnTextActive,
+                    ]}
+                  >
+                    {SELF_LABELS[level]}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {hasSavedEval(evaluation, false) ? (
+              <Pressable
+                style={styles.prevEvalBtn}
+                onPress={() => setShowPreviousEval((v) => !v)}
+              >
+                <Text style={styles.prevEvalBtnText}>
+                  {showPreviousEval ? 'Hide previous result' : 'Show previous result'}
+                </Text>
+              </Pressable>
+            ) : null}
+
+            {showPreviousEval && evaluation?.self_rating ? (
+              <View style={styles.evalSavedRow}>
+                <RatingIndicator evaluation={evaluation} />
+                <Text style={styles.evalHint}>
+                  {formatEvaluationStatusLabel(evaluation, false)} saved
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+      )}
 
       {showAnswer && hasComparison ? (
         <View style={[styles.panel, styles.differencesPanel]}>
@@ -263,7 +381,6 @@ export default function QuestionDetailScreen() {
 
       {showAnswer && explanationSections.length ? (
         <View style={styles.panel}>
-          <Text style={styles.sectionTitle}>Explanation</Text>
           {explanationSections.map((sec, idx) => renderSection(sec, idx, 'exp'))}
         </View>
       ) : null}
@@ -274,83 +391,6 @@ export default function QuestionDetailScreen() {
           <BookRichText html={item.note} style={styles.sectionText} />
         </View>
       ) : null}
-
-      <View style={styles.panel}>
-        <Text style={[styles.sectionTitle, styles.selfEvalTitle]}>Self evaluation</Text>
-        {evalError ? <Text style={styles.errorText}>{evalError}</Text> : null}
-        {evalMessage ? <Text style={styles.successText}>{evalMessage}</Text> : null}
-
-        {item.has_options ? (
-          <View style={styles.evalWrap}>
-            <Text style={styles.evalHint}>Select your answer and submit.</Text>
-            <View style={styles.optionSelectWrap}>
-              {item.options.map((opt) => {
-                const selected = selectedOptionId === opt.id;
-                return (
-                  <Pressable
-                    key={`choose-${opt.id}`}
-                    style={[styles.selectOptionRow, selected && styles.selectOptionActive]}
-                    onPress={() => setSelectedOptionId(opt.id)}
-                  >
-                    <Text style={styles.optionKey}>{opt.option_key.toUpperCase()}.</Text>
-                    <BookRichText html={optionText(opt)} style={styles.optionText} />
-                  </Pressable>
-                );
-              })}
-            </View>
-            <Pressable
-              style={[styles.submitBtn, (!selectedOptionId || savingEval) && styles.submitBtnDisabled]}
-              disabled={!selectedOptionId || savingEval}
-              onPress={() => void submitOption()}
-            >
-              <Text style={styles.submitBtnText}>
-                {savingEval ? 'Submitting...' : evaluation?.selected_option_id ? 'Update answer' : 'Submit answer'}
-              </Text>
-            </Pressable>
-            {evaluation?.is_correct !== undefined ? (
-              <View style={styles.evalSavedRow}>
-                <RatingIndicator evaluation={evaluation} />
-                <Text style={[styles.evalResult, evaluation.is_correct ? styles.correct : styles.wrong]}>
-                  {evaluation.is_correct ? 'Last result: Correct' : 'Last result: Incorrect'}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-        ) : (
-          <View style={styles.evalWrap}>
-            <Text style={styles.evalHint}>Your study position on the question and answer</Text>
-            <View style={styles.ratingWrap}>
-              {(
-                Object.keys(SELF_RATING_PROGRESS) as Array<
-                  keyof typeof SELF_RATING_PROGRESS & SelfRatingLevel
-                >
-              ).map((level) => (
-                <Pressable
-                  key={level}
-                  style={[styles.ratingBtn, evaluation?.self_rating === level && styles.ratingBtnActive]}
-                  disabled={savingEval}
-                  onPress={() => void submitSelfRating(level)}
-                >
-                  <Text
-                    style={[
-                      styles.ratingBtnText,
-                      evaluation?.self_rating === level && styles.ratingBtnTextActive,
-                    ]}
-                  >
-                    {SELF_LABELS[level]}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-            {evaluation?.self_rating ? (
-              <View style={styles.evalSavedRow}>
-                <RatingIndicator evaluation={evaluation} />
-                <Text style={styles.evalHint}>{formatEvaluationStatusLabel(evaluation, item?.has_options)} saved</Text>
-              </View>
-            ) : null}
-          </View>
-        )}
-      </View>
 
       {showNextQuestion ? (
         <Pressable
@@ -378,6 +418,12 @@ const SELF_LABELS: Record<SelfRatingLevel, string> = {
   understand: 'Understand (75%)',
   confidence: 'Confidence (100%)',
 };
+
+function hasSavedEval(evaluation: QuestionEvaluationRecord | null, isMcq: boolean) {
+  if (!evaluation || evaluation.progress_index <= 0) return false;
+  if (isMcq) return evaluation.is_correct !== undefined || !!evaluation.selected_option_id;
+  return !!evaluation.self_rating;
+}
 
 function normalizeSections(sections?: ExplanationSection[]) {
   return (sections ?? []).filter(
@@ -587,6 +633,15 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 13,
     fontWeight: '700',
+  },
+  prevEvalBtn: {
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
+  },
+  prevEvalBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
   },
   evalResult: {
     fontSize: 13,

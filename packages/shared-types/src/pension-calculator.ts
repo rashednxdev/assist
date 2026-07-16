@@ -107,7 +107,11 @@ export function daysToMonths(totalDays: number): number {
   return totalDays / PENSION_DAYS_PER_MONTH;
 }
 
-export function formatPeriodLabel(p: PensionPeriodBreakdown): string {
+/** Unit suffixes: d/m/y in English; দি/মা/ব in Bangla. */
+export function formatPeriodLabel(p: PensionPeriodBreakdown, locale: 'en' | 'bn' = 'en'): string {
+  if (locale === 'bn') {
+    return `${p.years}ব ${p.months}মা ${p.days}দি`;
+  }
   return `${p.years}y ${p.months}m ${p.days}d`;
 }
 

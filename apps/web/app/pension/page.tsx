@@ -146,21 +146,26 @@ function PeriodCard({
   title,
   period,
   note,
+  locale,
 }: {
   title: string;
   period: { years: number; months: number; days: number; total_days?: number };
   note?: string;
+  locale: AppLocale;
 }) {
   return (
     <div className="rounded-lg border border-border bg-slate-50/80 p-4">
       <div className="text-xs font-semibold uppercase tracking-wide text-muted">{title}</div>
       <div className="mt-1 text-lg font-semibold">
-        {formatPeriodLabel({
-          years: period.years,
-          months: period.months,
-          days: period.days,
-          total_days: period.total_days ?? period.years * 360 + period.months * 30 + period.days,
-        })}
+        {formatPeriodLabel(
+          {
+            years: period.years,
+            months: period.months,
+            days: period.days,
+            total_days: period.total_days ?? period.years * 360 + period.months * 30 + period.days,
+          },
+          locale,
+        )}
       </div>
       {note ? <p className="mt-1 text-xs text-muted">{note}</p> : null}
     </div>
@@ -236,11 +241,11 @@ function MathRow({
   );
 }
 
-function formatDaysLabel(t: TranslateFn, days: number): string {
+function formatDaysLabel(t: TranslateFn, locale: AppLocale, days: number): string {
   const rounded = roundHalfUp(days);
   return t('formatDays', {
     days: rounded,
-    period: formatPeriodLabel(breakdownFromDays(rounded)),
+    period: formatPeriodLabel(breakdownFromDays(rounded), locale),
   });
 }
 
@@ -398,15 +403,15 @@ function buildAppliedRules(args: {
         t('stageEarning3', { days: result.half_average_leave_earned_days }),
         t('stageEarning4', {
           enjoyed: result.enjoyed_average_salary_days,
-          balance: formatPeriodLabel(result.average_salary_leave),
+          balance: formatPeriodLabel(result.average_salary_leave, locale),
         }),
         t('stageEarning5', {
           enjoyed: result.enjoyed_half_average_days,
-          balance: formatPeriodLabel(result.half_average_leave),
+          balance: formatPeriodLabel(result.half_average_leave, locale),
         }),
         t('stageEarning6'),
         t('stageEarning7', {
-          balance: formatPeriodLabel(result.total_average_salary_leave),
+          balance: formatPeriodLabel(result.total_average_salary_leave, locale),
           months: result.average_salary_leave_months.toFixed(2),
         }),
       ],
@@ -1073,9 +1078,9 @@ function PensionCalculatorInner() {
               <CardTitle>{t('servicePeriods')}</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <PeriodCard title={t('completeService')} period={result.service_period} />
-              <PeriodCard title={t('workingPeriod')} period={result.working_period} />
-              <PeriodCard title={t('leaveEarning')} period={result.leave_earning_period} />
+              <PeriodCard title={t('completeService')} period={result.service_period} locale={locale} />
+              <PeriodCard title={t('workingPeriod')} period={result.working_period} locale={locale} />
+              <PeriodCard title={t('leaveEarning')} period={result.leave_earning_period} locale={locale} />
               <PeriodCard
                 title={t('qualifyingServiceLabel')}
                 period={qualifyingService?.breakdown ?? { years: 0, months: 0, days: 0, total_days: 0 }}
@@ -1084,6 +1089,7 @@ function PensionCalculatorInner() {
                     ? t('qualifyingServiceExcludedNote', { days: qualifyingService.total_exclusion_days })
                     : undefined
                 }
+                locale={locale}
               />
             </CardContent>
           </Card>
@@ -1099,7 +1105,7 @@ function PensionCalculatorInner() {
                 </div>
                 <MathRow
                   label={t('averageEarning')}
-                  value={formatDaysLabel(t, result.average_salary_leave_earned_days)}
+                  value={formatDaysLabel(t, locale, result.average_salary_leave_earned_days)}
                 />
                 <MathRow
                   label={t('averageDeduction')}
@@ -1110,12 +1116,12 @@ function PensionCalculatorInner() {
                         : `${t('restLeave')} ${result.rest_leave.enjoyed_days} ${tc('days')}`
                       : undefined
                   }
-                  value={`− ${formatDaysLabel(t, result.enjoyed_average_salary_days)}`}
+                  value={`− ${formatDaysLabel(t, locale, result.enjoyed_average_salary_days)}`}
                 />
                 <MathRow
                   label={t('averageBalance')}
                   emphasize
-                  value={formatPeriodLabel(result.average_salary_leave)}
+                  value={formatPeriodLabel(result.average_salary_leave, locale)}
                 />
               </div>
 
@@ -1125,16 +1131,16 @@ function PensionCalculatorInner() {
                 </div>
                 <MathRow
                   label={t('halfEarning')}
-                  value={formatDaysLabel(t, result.half_average_leave_earned_days)}
+                  value={formatDaysLabel(t, locale, result.half_average_leave_earned_days)}
                 />
                 <MathRow
                   label={t('halfDeduction')}
-                  value={`− ${formatDaysLabel(t, result.enjoyed_half_average_days)}`}
+                  value={`− ${formatDaysLabel(t, locale, result.enjoyed_half_average_days)}`}
                 />
                 <MathRow
                   label={t('halfBalance')}
                   emphasize
-                  value={formatPeriodLabel(result.half_average_leave)}
+                  value={formatPeriodLabel(result.half_average_leave, locale)}
                 />
               </div>
 
@@ -1148,12 +1154,12 @@ function PensionCalculatorInner() {
                       <MathRow label={t('averageEarning')} value="—" />
                       <MathRow
                         label={t('averageDeduction')}
-                        value={formatDaysLabel(t, result.enjoyed_without_pay_days)}
+                        value={formatDaysLabel(t, locale, result.enjoyed_without_pay_days)}
                       />
                       <MathRow
                         label={t('averageBalance')}
                         emphasize
-                        value={formatPeriodLabel(result.without_pay_leave)}
+                        value={formatPeriodLabel(result.without_pay_leave, locale)}
                       />
                     </div>
                   ) : null}
@@ -1165,12 +1171,12 @@ function PensionCalculatorInner() {
                       <MathRow label={t('averageEarning')} value="—" />
                       <MathRow
                         label={t('averageDeduction')}
-                        value={formatDaysLabel(t, result.enjoyed_regular_working_days)}
+                        value={formatDaysLabel(t, locale, result.enjoyed_regular_working_days)}
                       />
                       <MathRow
                         label={t('averageBalance')}
                         emphasize
-                        value={formatPeriodLabel(result.regular_working_period)}
+                        value={formatPeriodLabel(result.regular_working_period, locale)}
                       />
                     </div>
                   ) : null}
@@ -1181,16 +1187,16 @@ function PensionCalculatorInner() {
                 <div className="mb-2 text-sm font-semibold">{t('totalLeaveBalance')}</div>
                 <MathRow
                   label={t('averageBalance')}
-                  value={formatPeriodLabel(result.average_salary_leave)}
+                  value={formatPeriodLabel(result.average_salary_leave, locale)}
                 />
                 <MathRow
                   label={t('halfToAverage')}
-                  value={formatDaysLabel(t, roundHalfUp(result.half_average_leave.total_days / 2))}
+                  value={formatDaysLabel(t, locale, roundHalfUp(result.half_average_leave.total_days / 2))}
                 />
                 <MathRow
                   label={t('totalLeaveBalance')}
                   emphasize
-                  value={`${formatPeriodLabel(result.total_average_salary_leave)} · ${result.average_salary_leave_months.toFixed(2)}`}
+                  value={`${formatPeriodLabel(result.total_average_salary_leave, locale)} · ${result.average_salary_leave_months.toFixed(2)}`}
                 />
               </div>
             </CardContent>

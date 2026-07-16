@@ -87,13 +87,13 @@ function typeName(locale: CalcLocale, t: PensionLeaveTypeRow) {
 
 function fmtDays(locale: CalcLocale, days: number) {
   const rounded = roundHalfUp(days);
-  const period = formatPeriodLabel(breakdownFromDays(rounded));
-  const label = `${rounded}d (${period})`;
+  const period = formatPeriodLabel(breakdownFromDays(rounded), locale);
+  const label = locale === 'bn' ? `${rounded}দি (${period})` : `${rounded}d (${period})`;
   return locale === 'bn' ? toBanglaDigits(label) : label;
 }
 
 function fmtPeriod(locale: CalcLocale, p: { years: number; months: number; days: number; total_days: number }) {
-  const label = formatPeriodLabel(p);
+  const label = formatPeriodLabel(p, locale);
   return locale === 'bn' ? toBanglaDigits(label) : label;
 }
 

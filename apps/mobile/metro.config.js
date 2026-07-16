@@ -44,6 +44,11 @@ config.resolver.blockList = [
   /datetimepicker_tmp[^/\\]*[/\\].*/,
   /[/\\]apps[/\\]web[/\\]\.next[/\\].*/,
   /[/\\]apps[/\\]api[/\\]dist[/\\].*/,
+  // @react-native/gradle-plugin ships its own prebuilt Gradle `build/tmp` dir;
+  // Metro's Windows FallbackWatcher crashes lstat-ing it (ENOENT/UNKNOWN races
+  // on the transient tmp/jar contents) — same class of bug as the .cxx/android
+  // build exclusions above, just a different package.
+  /[/\\]gradle-plugin[/\\]shared[/\\]build[/\\].*/,
 ];
 
 module.exports = config;

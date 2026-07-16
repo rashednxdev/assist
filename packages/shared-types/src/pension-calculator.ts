@@ -11,6 +11,8 @@ import {
   PENSION_REST_CYCLE_YEARS,
   PENSION_REST_DAYS_PER_CYCLE,
   PENSION_REST_LEAVE_CODE,
+  PENSION_SUSPENSION_LEAVE_CODE,
+  PENSION_UNAUTHORISED_LEAVE_CODE,
   type PensionLeaveDeductionRule,
   type PensionLeavePayCategory,
 } from '@ibas/shared-constants';
@@ -160,6 +162,41 @@ export function ensureRestLeaveType(leaveTypes: PensionLeaveTypeCalc[]): Pension
   ];
 }
 
+export function isSuspensionLeaveCode(code: string | undefined): boolean {
+  return code === PENSION_SUSPENSION_LEAVE_CODE;
+}
+
+export function isUnauthorisedLeaveCode(code: string | undefined): boolean {
+  return code === PENSION_UNAUTHORISED_LEAVE_CODE;
+}
+
+/**
+ * Ensures SUSPENSION and UNAUTHORISEDLEAVE exist as selectable leave types (both
+ * without_pay / deduction 'both'), synthesizing them client- and server-side alike
+ * — same fallback pattern as ensureRestLeaveType — so admins don't have to seed them.
+ */
+export function ensureSuspensionAndUnauthorizedLeaveTypes(
+  leaveTypes: PensionLeaveTypeCalc[],
+): PensionLeaveTypeCalc[] {
+  let result = leaveTypes;
+  const ensureType = (code: string, id: string, nameEn: string) => {
+    if (result.some((t) => t.code === code)) return;
+    result = [
+      ...result,
+      {
+        id,
+        code,
+        name_en: nameEn,
+        pay_category: 'without_pay' as PensionLeavePayCategory,
+        deduction_rule: 'both' as PensionLeaveDeductionRule,
+      },
+    ];
+  };
+  ensureType(PENSION_SUSPENSION_LEAVE_CODE, '__auto_suspension__', 'Suspension (unregularized)');
+  ensureType(PENSION_UNAUTHORISED_LEAVE_CODE, '__auto_unauthorised__', 'Unauthorized absence');
+  return result;
+}
+
 function restEntitledDays(serviceDays: number, type: PensionLeaveTypeCalc): { cycles: number; days: number } {
   const { entitlement_days_per_cycle: daysPerCycle, entitlement_cycle_years: cycleYears } =
     autoEntitlementDefaults(type);
@@ -236,7 +273,7 @@ export function previewRestLeaveDeduction(
   if (!joinDate || !endDate) {
     return { days: 0, auto_applied: false, cycles: 0 };
   }
-  const normalizedTypes = ensureRestLeaveType(leaveTypes);
+  const normalizedTypes = ensureSuspensionAndUnauthorizedLeaveTypes(ensureRestLeaveType(leaveTypes));
   const restType = normalizedTypes.find((t) => t.code === PENSION_REST_LEAVE_CODE);
   if (!restType) {
     return { days: 0, auto_applied: false, cycles: 0 };
@@ -255,7 +292,7 @@ export function calculatePension(
   input: PensionCalculateInput,
   leaveTypes: PensionLeaveTypeCalc[],
 ): PensionCalculateResult {
-  const normalizedTypes = ensureRestLeaveType(leaveTypes);
+  const normalizedTypes = ensureSuspensionAndUnauthorizedLeaveTypes(ensureRestLeaveType(leaveTypes));
   const typeMap = new Map(normalizedTypes.map((t) => [t.id, t]));
   const restType = normalizedTypes.find((t) => t.code === PENSION_REST_LEAVE_CODE);
   const serviceDays = daysBetweenInclusive(input.join_date, input.end_date);

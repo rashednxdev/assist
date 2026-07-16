@@ -3,23 +3,33 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
-import { Settings, Plus, Trash2, ChevronDown } from 'lucide-react';
+import { Settings, Plus, Trash2, ChevronDown, X, BookOpen, ListChecks } from 'lucide-react';
 import {
   breakdownFromDays,
+  calculateBoyServiceDays,
+  calculatePensionGratuity,
+  calculateQualifyingPensionService,
   daysBetweenInclusive,
   formatPeriodLabel,
   isMaternityLeaveCode,
+  isSuspensionLeaveCode,
+  isUnauthorisedLeaveCode,
   maternityDaysFromStartDate,
   previewRestLeaveDeduction,
   roundHalfUp,
   type PensionCalculateResult,
   type PensionEnjoyedLeaveInput,
+  type PensionGratuityResult,
   type PensionLeaveTypeCalc,
+  type QualifyingPensionServiceResult,
 } from '@ibas/shared-types';
 import {
+  PENSION_LAMP_GRANT_MONTHS,
   PENSION_MATERNITY_DAYS_BEFORE_RULE,
   PENSION_MATERNITY_DAYS_FROM_RULE,
   PENSION_MATERNITY_RULE_CHANGE_DATE,
+  PENSION_SUSPENSION_LEAVE_CODE,
+  PENSION_UNAUTHORISED_LEAVE_CODE,
   type PensionLeavePayCategory,
 } from '@ibas/shared-constants';
 import { apiFetch } from '@/lib/api-client';
@@ -59,9 +69,39 @@ interface EnjoyedRow {
   days: string;
   from_date: string;
   to_date: string;
+  /** SUSPENSION rows only: regularized as duty by order -> not excluded, contributes 0. */
+  regularized?: boolean;
 }
 
 type TranslateFn = (key: string, values?: Record<string, string | number | Date>) => string;
+
+/** Synthetic ids for SUSPENSION/UNAUTHORISEDLEAVE when not seeded as real DB leave types — must match the ids ensureSuspensionAndUnauthorizedLeaveTypes (shared-types) generates server-side. */
+const AUTO_SUSPENSION_ID = '__auto_suspension__';
+const AUTO_UNAUTHORISED_ID = '__auto_unauthorised__';
+
+/** Ensures SUSPENSION and UNAUTHORISEDLEAVE are always selectable in the Enjoyed Leave list, even if not admin-configured in the DB. */
+function withSpecialLeaveTypes(leaveTypes: LeaveTypeRow[]): LeaveTypeRow[] {
+  const extra: LeaveTypeRow[] = [];
+  if (!leaveTypes.some((t) => t.code === PENSION_SUSPENSION_LEAVE_CODE)) {
+    extra.push({
+      id: AUTO_SUSPENSION_ID,
+      code: PENSION_SUSPENSION_LEAVE_CODE,
+      name_en: 'Suspension (unregularized)',
+      pay_category: 'without_pay',
+      deduction_rule: 'both',
+    });
+  }
+  if (!leaveTypes.some((t) => t.code === PENSION_UNAUTHORISED_LEAVE_CODE)) {
+    extra.push({
+      id: AUTO_UNAUTHORISED_ID,
+      code: PENSION_UNAUTHORISED_LEAVE_CODE,
+      name_en: 'Unauthorized absence',
+      pay_category: 'without_pay',
+      deduction_rule: 'both',
+    });
+  }
+  return extra.length > 0 ? [...leaveTypes, ...extra] : leaveTypes;
+}
 
 function leaveTypeCode(leaveTypes: LeaveTypeRow[], leaveTypeId: string): string | undefined {
   return leaveTypes.find((t) => t.id === leaveTypeId)?.code;
@@ -69,6 +109,7 @@ function leaveTypeCode(leaveTypes: LeaveTypeRow[], leaveTypeId: string): string 
 
 function resolveEnjoyedDays(row: EnjoyedRow, leaveTypes: LeaveTypeRow[]): number {
   const code = leaveTypeCode(leaveTypes, row.leave_type_id);
+  if (isSuspensionLeaveCode(code) && row.regularized) return 0;
   if (isMaternityLeaveCode(code) || row.input_mode === 'maternity_start') {
     return maternityDaysFromStartDate(row.from_date);
   }
@@ -90,6 +131,7 @@ function emptyEnjoyedRow(leaveTypeId = '', leaveTypes: LeaveTypeRow[] = []): Enj
     days: '',
     from_date: '',
     to_date: '',
+    regularized: false,
   };
 }
 
@@ -103,9 +145,11 @@ const SUMMARY_CATEGORIES: PensionLeavePayCategory[] = [
 function PeriodCard({
   title,
   period,
+  note,
 }: {
   title: string;
   period: { years: number; months: number; days: number; total_days?: number };
+  note?: string;
 }) {
   return (
     <div className="rounded-lg border border-border bg-slate-50/80 p-4">
@@ -117,6 +161,50 @@ function PeriodCard({
           days: period.days,
           total_days: period.total_days ?? period.years * 360 + period.months * 30 + period.days,
         })}
+      </div>
+      {note ? <p className="mt-1 text-xs text-muted">{note}</p> : null}
+    </div>
+  );
+}
+
+function StatTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-primary/30 bg-primary/5 p-5">
+      <div className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</div>
+      <div className="mt-2 text-3xl font-semibold text-primary" style={{ fontVariantNumeric: 'normal' }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function InfoModal({
+  title,
+  open,
+  onClose,
+  children,
+}: {
+  title: string;
+  open: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-stretch justify-center p-0 sm:items-center sm:p-4">
+      <button type="button" className="absolute inset-0 bg-black/40" aria-label="Close" onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="relative z-10 flex h-[100dvh] max-h-[100dvh] w-full max-w-[100vw] flex-col overflow-hidden rounded-none border border-border bg-background shadow-xl sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:max-w-2xl sm:rounded-xl"
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+          <h2 className="text-lg font-semibold">{title}</h2>
+          <Button type="button" size="sm" variant="ghost" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4 text-sm leading-relaxed">{children}</div>
       </div>
     </div>
   );
@@ -154,6 +242,10 @@ function formatDaysLabel(t: TranslateFn, days: number): string {
     days: rounded,
     period: formatPeriodLabel(breakdownFromDays(rounded)),
   });
+}
+
+function formatMoney(amount: number): string {
+  return `৳ ${amount.toLocaleString('en-BD', { minimumFractionDigits: 2 })}`;
 }
 
 interface AppliedRuleStage {
@@ -389,12 +481,19 @@ function PensionCalculatorInner() {
   const [joinDate, setJoinDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [lastBasic, setLastBasic] = useState('');
+  const [age, setAge] = useState('');
+  const [dob, setDob] = useState('');
+  const [contractualDays, setContractualDays] = useState('');
   const [enjoyed, setEnjoyed] = useState<EnjoyedRow[]>([]);
   const [result, setResult] = useState<PensionCalculateResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [calculating, setCalculating] = useState(false);
   const [error, setError] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [showInstructions, setShowInstructions] = useState(false);
+  const [showRulesApplied, setShowRulesApplied] = useState(false);
+
+  const effectiveLeaveTypes = withSpecialLeaveTypes(leaveTypes);
 
   useEffect(() => {
     apiFetch<{ data: LeaveTypeRow[] }>('/pension/leave-types')
@@ -411,11 +510,11 @@ function PensionCalculatorInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- load once on mount
   }, []);
 
-  const restType = leaveTypes.find((lt) => lt.code === 'REST');
+  const restType = effectiveLeaveTypes.find((lt) => lt.code === 'REST');
   const enjoyedForPreview: PensionEnjoyedLeaveInput[] = enjoyed
-    .map((r) => ({ leave_type_id: r.leave_type_id, days: resolveEnjoyedDays(r, leaveTypes) }))
+    .map((r) => ({ leave_type_id: r.leave_type_id, days: resolveEnjoyedDays(r, effectiveLeaveTypes) }))
     .filter((r) => r.leave_type_id && r.days > 0);
-  const calcLeaveTypes: PensionLeaveTypeCalc[] = leaveTypes.map((lt) => ({
+  const calcLeaveTypes: PensionLeaveTypeCalc[] = effectiveLeaveTypes.map((lt) => ({
     id: lt.id,
     code: lt.code,
     name_en: lt.name_en,
@@ -436,15 +535,41 @@ function PensionCalculatorInner() {
   };
 
   if (!result) {
-    const averageOther = sumEnjoyedByCategory(enjoyed, leaveTypes, 'average_salary', restType?.id);
+    const averageOther = sumEnjoyedByCategory(enjoyed, effectiveLeaveTypes, 'average_salary', restType?.id);
     summaryByCategory.average_salary = averageOther + restDays;
-    summaryByCategory.half_average_salary = sumEnjoyedByCategory(enjoyed, leaveTypes, 'half_average_salary');
-    summaryByCategory.without_pay = sumEnjoyedByCategory(enjoyed, leaveTypes, 'without_pay');
-    summaryByCategory.regular_working_period = sumEnjoyedByCategory(enjoyed, leaveTypes, 'regular_working_period');
+    summaryByCategory.half_average_salary = sumEnjoyedByCategory(enjoyed, effectiveLeaveTypes, 'half_average_salary');
+    summaryByCategory.without_pay = sumEnjoyedByCategory(enjoyed, effectiveLeaveTypes, 'without_pay');
+    summaryByCategory.regular_working_period = sumEnjoyedByCategory(
+      enjoyed,
+      effectiveLeaveTypes,
+      'regular_working_period',
+    );
   }
 
+  const boyServiceDays = calculateBoyServiceDays(dob, joinDate, endDate);
+  const suspensionDaysTotal = enjoyed
+    .filter((r) => isSuspensionLeaveCode(leaveTypeCode(effectiveLeaveTypes, r.leave_type_id)))
+    .reduce((sum, r) => sum + resolveEnjoyedDays(r, effectiveLeaveTypes), 0);
+  const qualifyingService: QualifyingPensionServiceResult | null =
+    joinDate && endDate
+      ? calculateQualifyingPensionService(joinDate, endDate, {
+          leave_without_pay_days: summaryByCategory.without_pay,
+          suspension_days: suspensionDaysTotal,
+          boy_service_days: boyServiceDays,
+          contractual_part_time_days: Number(contractualDays) || 0,
+        })
+      : null;
+  const gratuityResult: PensionGratuityResult | null =
+    qualifyingService && Number(lastBasic) > 0
+      ? calculatePensionGratuity({
+          qualifying_years: qualifyingService.qualifying_service_years,
+          last_basic_salary: Number(lastBasic),
+          age_years: age ? Number(age) : undefined,
+        })
+      : null;
+
   function addEnjoyedRow() {
-    setEnjoyed((rows) => [...rows, emptyEnjoyedRow(leaveTypes[0]?.id ?? '', leaveTypes)]);
+    setEnjoyed((rows) => [...rows, emptyEnjoyedRow(effectiveLeaveTypes[0]?.id ?? '', effectiveLeaveTypes)]);
   }
 
   function updateEnjoyedRow(idx: number, patch: Partial<EnjoyedRow>) {
@@ -452,7 +577,7 @@ function PensionCalculatorInner() {
       rows.map((r, i) => {
         if (i !== idx) return r;
         const next = { ...r, ...patch };
-        const code = leaveTypeCode(leaveTypes, next.leave_type_id);
+        const code = leaveTypeCode(effectiveLeaveTypes, next.leave_type_id);
 
         if (isMaternityLeaveCode(code)) {
           next.input_mode = 'maternity_start';
@@ -504,7 +629,7 @@ function PensionCalculatorInner() {
     endDate,
     lastBasic,
     enjoyed,
-    leaveTypes,
+    leaveTypes: effectiveLeaveTypes,
     result,
     restDays,
     restAutoApplied,
@@ -520,6 +645,14 @@ function PensionCalculatorInner() {
         description={t('description')}
         action={
           <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" variant="outline" onClick={() => setShowInstructions(true)}>
+              <BookOpen className="h-4 w-4" />
+              {t('instructions')}
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => setShowRulesApplied(true)}>
+              <ListChecks className="h-4 w-4" />
+              {t('rulesApplied')}
+            </Button>
             <LocaleSwitcher />
             <Button asChild size="sm" variant="outline">
               <Link href="/joining-period">{t('joiningLink')}</Link>
@@ -536,11 +669,8 @@ function PensionCalculatorInner() {
         }
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">{t('instructions')}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4 text-sm leading-relaxed text-muted">
+      <InfoModal title={t('instructions')} open={showInstructions} onClose={() => setShowInstructions(false)}>
+        <div className="space-y-4 text-muted">
           <p>
             {t.rich('instructionsIntro', {
               strong: (chunks) => <strong className="text-foreground">{chunks}</strong>,
@@ -565,18 +695,15 @@ function PensionCalculatorInner() {
               </ul>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </InfoModal>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">{t('rulesApplied')}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4 text-sm leading-relaxed">
-          {appliedRuleStages.length === 0 ? (
-            <p className="text-muted">{t('rulesEmpty')}</p>
-          ) : (
-            appliedRuleStages.map((stage) => (
+      <InfoModal title={t('rulesApplied')} open={showRulesApplied} onClose={() => setShowRulesApplied(false)}>
+        {appliedRuleStages.length === 0 ? (
+          <p className="text-muted">{t('rulesEmpty')}</p>
+        ) : (
+          <div className="space-y-4">
+            {appliedRuleStages.map((stage) => (
               <div key={stage.title}>
                 <p className="font-semibold text-foreground">{stage.title}</p>
                 <ul className="mt-2 list-disc space-y-1 pl-5 text-muted">
@@ -585,10 +712,10 @@ function PensionCalculatorInner() {
                   ))}
                 </ul>
               </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
+            ))}
+          </div>
+        )}
+      </InfoModal>
 
       {error ? <Alert variant="error">{error}</Alert> : null}
 
@@ -615,6 +742,11 @@ function PensionCalculatorInner() {
               onChange={(e) => setLastBasic(e.target.value)}
             />
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="pension_age">{t('gratuityAgeLabel')}</Label>
+            <Input id="pension_age" type="number" min={0} value={age} onChange={(e) => setAge(e.target.value)} />
+            <p className="text-xs text-muted">{t('gratuityAgeHint')}</p>
+          </div>
         </CardContent>
       </Card>
 
@@ -624,7 +756,13 @@ function PensionCalculatorInner() {
             <CardTitle>{t('enjoyedLeave')}</CardTitle>
             <p className="mt-1 text-sm text-muted">{t('enjoyedLeaveHint')}</p>
           </div>
-          <Button type="button" size="sm" variant="outline" disabled={!leaveTypes.length} onClick={addEnjoyedRow}>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={!effectiveLeaveTypes.length}
+            onClick={addEnjoyedRow}
+          >
             <Plus className="h-4 w-4" />
             {t('addRow')}
           </Button>
@@ -632,15 +770,16 @@ function PensionCalculatorInner() {
         <CardContent className="space-y-3">
           {loading ? (
             <p className="text-sm text-muted">{t('loadingTypes')}</p>
-          ) : leaveTypes.length === 0 ? (
+          ) : effectiveLeaveTypes.length === 0 ? (
             <p className="text-sm text-muted">{t('noTypes')}</p>
           ) : enjoyed.length === 0 ? (
             <p className="text-sm text-muted">{t('noRows')}</p>
           ) : (
             enjoyed.map((row, idx) => {
-              const selectedType = leaveTypes.find((lt) => lt.id === row.leave_type_id);
+              const selectedType = effectiveLeaveTypes.find((lt) => lt.id === row.leave_type_id);
               const isMaternity = isMaternityLeaveCode(selectedType?.code);
-              const resolvedDays = resolveEnjoyedDays(row, leaveTypes);
+              const isSuspension = isSuspensionLeaveCode(selectedType?.code);
+              const resolvedDays = resolveEnjoyedDays(row, effectiveLeaveTypes);
               return (
                 <div key={row.key} className="space-y-3 rounded-lg border p-3">
                   <div className="flex flex-wrap items-end gap-2">
@@ -652,7 +791,7 @@ function PensionCalculatorInner() {
                         onChange={(e) => updateEnjoyedRow(idx, { leave_type_id: e.target.value })}
                       >
                         {SUMMARY_CATEGORIES.map((category) => {
-                          const types = leaveTypes.filter((lt) => lt.pay_category === category);
+                          const types = effectiveLeaveTypes.filter((lt) => lt.pay_category === category);
                           if (types.length === 0) return null;
                           return (
                             <optgroup key={category} label={payCategoryLabel(t, category)}>
@@ -772,6 +911,20 @@ function PensionCalculatorInner() {
                       </div>
                     </div>
                   )}
+
+                  {isSuspension ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        id={`regularized_${row.key}`}
+                        type="checkbox"
+                        checked={row.regularized ?? false}
+                        onChange={(e) => updateEnjoyedRow(idx, { regularized: e.target.checked })}
+                      />
+                      <Label htmlFor={`regularized_${row.key}`} className="font-normal">
+                        {t('suspensionRegularizedLabel')}
+                      </Label>
+                    </div>
+                  ) : null}
                 </div>
               );
             })
@@ -781,7 +934,35 @@ function PensionCalculatorInner() {
             <span className="font-semibold">{enjoyed.length}</span>
             <span className="mx-2 text-muted">·</span>
             <span className="text-muted">{t('daysEntered')}: </span>
-            <span className="font-semibold">{sumEnjoyedDays(enjoyed, leaveTypes)}</span>
+            <span className="font-semibold">{sumEnjoyedDays(enjoyed, effectiveLeaveTypes)}</span>
+          </div>
+
+          <div className="space-y-3 rounded-lg border p-3">
+            <div>
+              <p className="font-semibold text-foreground">{t('exclusionsTitle')}</p>
+              <p className="mt-1 text-xs text-muted">{t('exclusionsHint')}</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label htmlFor="dob">{t('dobLabel')}</Label>
+                <Input id="dob" type="date" value={dob} onChange={(e) => setDob(e.target.value)} />
+                {dob && joinDate ? (
+                  <p className="text-xs text-muted">{t('boyServiceAuto', { days: boyServiceDays })}</p>
+                ) : (
+                  <p className="text-xs text-muted">{t('dobHint')}</p>
+                )}
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="contractual_days">{t('contractualLabel')}</Label>
+                <Input
+                  id="contractual_days"
+                  type="number"
+                  min={0}
+                  value={contractualDays}
+                  onChange={(e) => setContractualDays(e.target.value)}
+                />
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -792,7 +973,7 @@ function PensionCalculatorInner() {
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
           {SUMMARY_CATEGORIES.map((category) => {
-            const typesInCategory = leaveTypes.filter((lt) => lt.pay_category === category);
+            const typesInCategory = effectiveLeaveTypes.filter((lt) => lt.pay_category === category);
             if (typesInCategory.length === 0 && category !== 'average_salary') return null;
 
             const total = summaryByCategory[category];
@@ -831,7 +1012,7 @@ function PensionCalculatorInner() {
                       if (type.id === restType?.id && restAutoApplied) return null;
                       const days = enjoyed
                         .filter((r) => r.leave_type_id === type.id)
-                        .reduce((s, r) => s + resolveEnjoyedDays(r, leaveTypes), 0);
+                        .reduce((s, r) => s + resolveEnjoyedDays(r, effectiveLeaveTypes), 0);
                       if (days <= 0) return null;
                       return (
                         <div key={type.id} className="flex justify-between">
@@ -850,7 +1031,7 @@ function PensionCalculatorInner() {
           <div className="flex justify-between rounded-lg bg-slate-50 px-3 py-2 font-medium">
             <span>{t('daysEnteredInList')}</span>
             <span>
-              {sumEnjoyedDays(enjoyed, leaveTypes)} {tc('days')}
+              {sumEnjoyedDays(enjoyed, effectiveLeaveTypes)} {tc('days')}
             </span>
           </div>
         </CardContent>
@@ -862,7 +1043,7 @@ function PensionCalculatorInner() {
           <ChevronDown className="h-5 w-5 shrink-0 text-muted transition-transform group-open:rotate-180" />
         </summary>
         <div className="grid gap-3 border-t border-border px-6 pb-6 pt-4 sm:grid-cols-2">
-          {leaveTypes.map((lt) => (
+          {effectiveLeaveTypes.map((lt) => (
             <div key={lt.id} className="rounded-lg border p-3 text-sm">
               <div className="font-medium">{leaveTypeDisplayName(locale, lt)}</div>
               <div className="mt-1 flex flex-wrap gap-1">
@@ -891,10 +1072,19 @@ function PensionCalculatorInner() {
             <CardHeader>
               <CardTitle>{t('servicePeriods')}</CardTitle>
             </CardHeader>
-            <CardContent className="grid gap-3 sm:grid-cols-3">
+            <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <PeriodCard title={t('completeService')} period={result.service_period} />
               <PeriodCard title={t('workingPeriod')} period={result.working_period} />
               <PeriodCard title={t('leaveEarning')} period={result.leave_earning_period} />
+              <PeriodCard
+                title={t('qualifyingServiceLabel')}
+                period={qualifyingService?.breakdown ?? { years: 0, months: 0, days: 0, total_days: 0 }}
+                note={
+                  qualifyingService
+                    ? t('qualifyingServiceExcludedNote', { days: qualifyingService.total_exclusion_days })
+                    : undefined
+                }
+              />
             </CardContent>
           </Card>
 
@@ -1021,6 +1211,43 @@ function PensionCalculatorInner() {
                       months: result.lamp_grant_months_used.toFixed(2),
                     })}
               </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('gratuityTitle')}</CardTitle>
+              <p className="mt-1 text-sm text-muted">{t('gratuityDescription')}</p>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {!gratuityResult?.eligible ? (
+                <Alert variant="error">
+                  {t('gratuityNotEligible', { years: qualifyingService?.qualifying_service_years ?? 0 })}
+                </Alert>
+              ) : (
+                <>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <StatTile label={t('gratuityLumpSum')} value={formatMoney(gratuityResult.gratuity_amount)} />
+                    <StatTile label={t('gratuityMonthlyNet')} value={formatMoney(gratuityResult.monthly_net_pension)} />
+                  </div>
+                  <div className="grid gap-x-6 sm:grid-cols-2">
+                    <MathRow label={t('gratuityQualifyingYears')} value={String(gratuityResult.qualifying_years)} />
+                    <MathRow label={t('gratuityRate')} value={`${gratuityResult.pension_rate_percent}%`} />
+                    <MathRow label={t('gratuityHalfPension')} value={formatMoney(gratuityResult.half_pension_amount)} />
+                    <MathRow label={t('gratuityMultiplier')} value={String(gratuityResult.gratuity_multiplier)} />
+                    <MathRow label={t('gratuityMedical')} value={formatMoney(gratuityResult.medical_allowance)} />
+                    <MathRow
+                      label={t('gratuityFestival', { count: gratuityResult.festival_allowances_per_year })}
+                      value={formatMoney(gratuityResult.festival_allowance_per_occasion)}
+                    />
+                    <MathRow label={t('gratuityBaishakhi')} value={formatMoney(gratuityResult.baishakhi_allowance)} />
+                    <MathRow
+                      label={t('gratuityLeaveEncashmentCap', { months: PENSION_LAMP_GRANT_MONTHS })}
+                      value={formatMoney(gratuityResult.leave_encashment_cap)}
+                    />
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </div>

@@ -2,6 +2,7 @@ import {
   calculatePension,
   createPensionLeaveTypeSchema,
   ensureRestLeaveType,
+  ensureSuspensionAndUnauthorizedLeaveTypes,
   pensionCalculateSchema,
   updatePensionLeaveTypeSchema,
   type PensionCalculateInput,
@@ -82,22 +83,26 @@ export async function calculatePensionAccount(dto: ReturnType<typeof pensionCalc
   const types = await listLeaveTypes(true);
   if (types.length === 0) throw badRequest('No leave types configured. Ask an admin to set up pension leave types.');
 
-  const unknown = dto.enjoyed_leaves.find((row) => !types.some((t) => t.id === row.leave_type_id));
-  if (unknown) throw badRequest('One or more leave types are invalid or inactive');
-
-  const calcTypes: PensionLeaveTypeCalc[] = ensureRestLeaveType(
-    types.map((t) => ({
-      id: t.id,
-      code: t.code,
-      name_en: t.name_en,
-      pay_category: t.pay_category,
-      deduction_rule: t.deduction_rule,
-      is_auto_entitlement: t.is_auto_entitlement,
-      entitlement_days_per_cycle: t.entitlement_days_per_cycle,
-      entitlement_cycle_years: t.entitlement_cycle_years,
-      allowance_basic_months: t.allowance_basic_months,
-    })),
+  const calcTypes: PensionLeaveTypeCalc[] = ensureSuspensionAndUnauthorizedLeaveTypes(
+    ensureRestLeaveType(
+      types.map((t) => ({
+        id: t.id,
+        code: t.code,
+        name_en: t.name_en,
+        pay_category: t.pay_category,
+        deduction_rule: t.deduction_rule,
+        is_auto_entitlement: t.is_auto_entitlement,
+        entitlement_days_per_cycle: t.entitlement_days_per_cycle,
+        entitlement_cycle_years: t.entitlement_cycle_years,
+        allowance_basic_months: t.allowance_basic_months,
+      })),
+    ),
   );
+
+  // Validate against calcTypes (not the raw DB list) so synthesized fallback
+  // types (REST, SUSPENSION, UNAUTHORISEDLEAVE) are accepted even when unseeded.
+  const unknown = dto.enjoyed_leaves.find((row) => !calcTypes.some((t) => t.id === row.leave_type_id));
+  if (unknown) throw badRequest('One or more leave types are invalid or inactive');
 
   const input: PensionCalculateInput = {
     join_date: dto.join_date,

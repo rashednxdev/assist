@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { PENSION_LEAVE_DEDUCTION_RULES, PENSION_LEAVE_PAY_CATEGORIES } from '@ibas/shared-constants';
 
 const mongoId = z.string().regex(/^[a-f\d]{24}$/i);
+/** Client/server both synthesize these fallback ids when a leave type isn't seeded in the DB (see ensureRestLeaveType / ensureSuspensionAndUnauthorizedLeaveTypes). */
+const autoLeaveTypeId = z.enum(['__auto_rest__', '__auto_suspension__', '__auto_unauthorised__']);
 
 export const pensionLeaveTypeSchema = z.object({
   id: z.string(),
@@ -26,7 +28,7 @@ export const createPensionLeaveTypeSchema = pensionLeaveTypeSchema.omit({ id: tr
 export const updatePensionLeaveTypeSchema = createPensionLeaveTypeSchema.partial();
 
 export const pensionEnjoyedLeaveSchema = z.object({
-  leave_type_id: mongoId,
+  leave_type_id: z.union([mongoId, autoLeaveTypeId]),
   days: z.number().positive(),
 });
 

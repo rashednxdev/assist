@@ -114,6 +114,55 @@ export const PENSION_MATERNITY_RULE_CHANGE_DATE = '2021-05-18';
 export const PENSION_MATERNITY_DAYS_BEFORE_RULE = 120;
 export const PENSION_MATERNITY_DAYS_FROM_RULE = 180;
 
+/** Suspension — excluded from pensionable service unless regularized as duty (per-row override, not auto-entitlement). */
+export const PENSION_SUSPENSION_LEAVE_CODE = 'SUSPENSION';
+/** Unauthorized absence — always excluded from pensionable service. */
+export const PENSION_UNAUTHORISED_LEAVE_CODE = 'UNAUTHORISEDLEAVE';
+
+/** Pension & Gratuity (retirement benefit) — mandatory 50% surrender + monthly pension. */
+export const PENSION_GRATUITY_MIN_QUALIFYING_YEARS = 5;
+
+/** Pension rate (% of last basic salary) by completed qualifying years. Irregular by design — encode verbatim, do not "smooth". Sorted descending by min_years. */
+export const PENSION_GRATUITY_RATE_TABLE: { min_years: number; rate_percent: number }[] = [
+  { min_years: 25, rate_percent: 90 },
+  { min_years: 24, rate_percent: 87 },
+  { min_years: 23, rate_percent: 83 },
+  { min_years: 22, rate_percent: 79 },
+  { min_years: 21, rate_percent: 75 },
+  { min_years: 20, rate_percent: 71 },
+  { min_years: 19, rate_percent: 67 },
+  { min_years: 18, rate_percent: 63 },
+  { min_years: 17, rate_percent: 59 },
+  { min_years: 16, rate_percent: 55 },
+  { min_years: 15, rate_percent: 54 },
+  { min_years: 14, rate_percent: 51 },
+  { min_years: 13, rate_percent: 48 },
+  { min_years: 12, rate_percent: 45 },
+  { min_years: 11, rate_percent: 42 },
+  { min_years: 10, rate_percent: 36 },
+  { min_years: 9, rate_percent: 33 },
+  { min_years: 8, rate_percent: 30 },
+  { min_years: 7, rate_percent: 27 },
+  { min_years: 6, rate_percent: 24 },
+  { min_years: 5, rate_percent: 21 },
+];
+
+/** Gratuity multiplier (BDT paid per BDT 1 of surrendered pension) by qualifying-year band. Sorted descending by min_years. */
+export const PENSION_GRATUITY_MULTIPLIER_TABLE: { min_years: number; multiplier: number }[] = [
+  { min_years: 25, multiplier: 230 },
+  { min_years: 20, multiplier: 240 },
+  { min_years: 15, multiplier: 245 },
+  { min_years: 10, multiplier: 260 },
+  { min_years: 5, multiplier: 265 },
+];
+
+export const PENSION_MEDICAL_ALLOWANCE_AGE_THRESHOLD = 65;
+export const PENSION_MEDICAL_ALLOWANCE_UNDER_65 = 1500;
+export const PENSION_MEDICAL_ALLOWANCE_65_PLUS = 2500;
+export const PENSION_MIN_MONTHLY_NET_PENSION = 3000;
+export const PENSION_BAISHAKHI_ALLOWANCE_RATE = 0.2;
+export const PENSION_FESTIVAL_ALLOWANCES_PER_YEAR = 2;
+
 /** Joining period (যোগদানকাল) — transfer / posting rules. */
 export const JOINING_SAME_STATION_DAYS = 1;
 export const JOINING_PREPARATION_DAYS = 6;

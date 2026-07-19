@@ -7,7 +7,6 @@ import {
   Pressable,
   TextInput,
   RefreshControl,
-  ActivityIndicator,
   type NativeSyntheticEvent,
   type NativeScrollEvent,
 } from 'react-native';
@@ -20,14 +19,13 @@ import {
   saveMarathonLastQuestion,
   type MarathonLastQuestion,
 } from '@/lib/marathon-progress';
-import { fetchMarathonReviewPage } from '@/lib/questions-api';
+import { getCachedMarathonItems } from '@/lib/questions-db';
+import { subscribeQuestionsSync, syncQuestions } from '@/lib/questions-sync';
 import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
 import { SaveButton } from '@/components/ui/SaveButton';
 import { stripHtml } from '@/lib/book-display';
 import type { MarathonExplanationSection, MarathonReviewItem } from '@/types/marathon';
 import { colors, spacing } from '@/theme';
-
-const PAGE_SIZE = 100;
 
 type ShowMode = 'questions' | 'with_answers';
 
@@ -129,8 +127,7 @@ export default function MarathonReviewScreen() {
   const { isSaved, toggle } = useSavedShortcuts();
   const [items, setItems] = useState<MarathonReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [total, setTotal] = useState(0);
+  const [syncing, setSyncing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -147,84 +144,11 @@ export default function MarathonReviewScreen() {
   const scrollYRef = useRef(0);
   const bookOffsets = useRef<Record<string, number>>({});
   const didResume = useRef(false);
-  const loadGen = useRef(0);
+  const itemsRef = useRef<MarathonReviewItem[]>([]);
+  itemsRef.current = items;
 
-  const loadAllSequential = useCallback(async () => {
-    const gen = ++loadGen.current;
-    setError('');
-    setLoading(true);
-    setLoadingMore(false);
-    didResume.current = false;
-
-    try {
-      const first = await fetchMarathonReviewPage({ limit: PAGE_SIZE, offset: 0 });
-      if (gen !== loadGen.current) return;
-
-      let all = first.items;
-      setItems(all);
-      setRevealedIds(new Set());
-      const knownTotal = first.meta.total > 0 ? first.meta.total : all.length;
-      setTotal(knownTotal);
-      setLoading(false);
-
-      let offset = all.length;
-      let more =
-        first.meta.has_more === true ||
-        first.meta.total > all.length ||
-        first.items.length >= PAGE_SIZE;
-
-      setLoadingMore(more);
-
-      while (more && gen === loadGen.current) {
-        const page = await fetchMarathonReviewPage({ limit: PAGE_SIZE, offset });
-        if (gen !== loadGen.current) return;
-
-        if (page.meta.offset != null && page.meta.offset !== offset && page.items.length > 0) {
-          const overlap = all.some((row) => row.id === page.items[0]?.id);
-          if (overlap && page.meta.offset === 0) {
-            setError(
-              'API did not apply pagination (offset ignored). Restart Expo against the local API.',
-            );
-            break;
-          }
-        }
-
-        const seen = new Set(all.map((i) => i.id));
-        const newRows = page.items.filter((row) => !seen.has(row.id));
-        if (newRows.length === 0) {
-          if (page.items.length > 0 && all.length < (page.meta.total || knownTotal)) {
-            setError(
-              'Could not load more questions — server returned duplicates. Use local API with latest code.',
-            );
-          }
-          break;
-        }
-
-        all = [...all, ...newRows];
-        offset = all.length;
-        setItems(all);
-        if (typeof page.meta.total === 'number' && page.meta.total > 0) {
-          setTotal(page.meta.total);
-        } else {
-          setTotal(all.length);
-        }
-
-        more =
-          page.meta.has_more === true ||
-          page.meta.total > all.length ||
-          page.items.length >= PAGE_SIZE;
-      }
-    } catch (err) {
-      if (gen !== loadGen.current) return;
-      setItems([]);
-      setTotal(0);
-      setError(err instanceof Error ? err.message : 'Failed to load marathon review');
-    } finally {
-      if (gen === loadGen.current) {
-        setLoading(false);
-        setLoadingMore(false);
-      }
-    }
+  const refreshFromCache = useCallback(() => {
+    setItems(getCachedMarathonItems());
   }, []);
 
   useEffect(() => {
@@ -235,21 +159,46 @@ export default function MarathonReviewScreen() {
     });
   }, []);
 
+  // Local read is instant; the network sync just refreshes what's already on screen.
   useEffect(() => {
-    void loadAllSequential();
-    return () => {
-      loadGen.current += 1;
-    };
-  }, [loadAllSequential]);
+    setError('');
+    try {
+      refreshFromCache();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load marathon review');
+    } finally {
+      setLoading(false);
+    }
+    return subscribeQuestionsSync(refreshFromCache);
+  }, [refreshFromCache]);
+
+  const runSync = useCallback(async () => {
+    setSyncing(true);
+    try {
+      await syncQuestions();
+    } catch (err) {
+      if (itemsRef.current.length === 0) {
+        setError(err instanceof Error ? err.message : 'Failed to sync marathon review');
+      }
+    } finally {
+      setSyncing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void runSync();
+  }, [runSync]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    setRevealedIds(new Set());
+    didResume.current = false;
     try {
-      await loadAllSequential();
+      await runSync();
     } finally {
       setRefreshing(false);
     }
-  }, [loadAllSequential]);
+  }, [runSync]);
 
   /** Client-side search — no API reload when query changes. */
   const filteredItems = useMemo(() => {
@@ -326,7 +275,7 @@ export default function MarathonReviewScreen() {
     if (!resumeReady || didResume.current || !resumeTarget || items.length === 0) {
       return;
     }
-    if (loading || loadingMore) return;
+    if (loading) return;
     // Only resume on the full list (no book filter / search) so scroll offsets stay valid
     if (hasActiveFilter) {
       didResume.current = true;
@@ -347,7 +296,7 @@ export default function MarathonReviewScreen() {
     }, 150);
 
     return () => clearTimeout(t);
-  }, [resumeReady, loading, loadingMore, resumeTarget, items, hasActiveFilter]);
+  }, [resumeReady, loading, resumeTarget, items, hasActiveFilter]);
 
   function toggleReveal(item: MarathonReviewItem) {
     rememberQuestion(item);
@@ -432,11 +381,10 @@ export default function MarathonReviewScreen() {
             <Text style={styles.hint}>Tap or press & hold a question to show the answer</Text>
           ) : null}
           <Text style={styles.meta}>
-            {loadingMore
-              ? `Loading… ${items.length}${total ? ` / ${total}` : ''}`
-              : hasActiveFilter
-                ? `Showing ${visibleCount} of ${items.length} loaded`
-                : `${visibleCount} Questions`}
+            {hasActiveFilter
+              ? `Showing ${visibleCount} of ${items.length} loaded`
+              : `${visibleCount} Questions`}
+            {syncing ? ' · syncing…' : ''}
             {appliedQuery ? ` · “${appliedQuery}”` : ''}
             {selectedBookName ? ` · ${selectedBookName}` : ''}
             {resumeTarget && !appliedQuery
@@ -642,17 +590,9 @@ export default function MarathonReviewScreen() {
               ))}
             </View>
           ))}
-          {loadingMore ? (
-            <View style={styles.loadingMore}>
-              <ActivityIndicator color={colors.primary} />
-              <Text style={styles.loadingMoreText}>
-                Loading more… {items.length}
-                {total ? ` / ${total}` : ''}
-              </Text>
-            </View>
-          ) : items.length > 0 ? (
+          {items.length > 0 ? (
             <Text style={styles.footerHint}>
-              All questions loaded · {total || items.length}
+              {items.length} questions loaded
             </Text>
           ) : null}
         </ScrollView>
@@ -882,18 +822,6 @@ const styles = StyleSheet.create({
   errorBannerText: {
     color: '#b42318',
     fontSize: 12,
-    fontWeight: '600',
-  },
-  loadingMore: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    paddingVertical: spacing.md,
-  },
-  loadingMoreText: {
-    fontSize: 13,
-    color: colors.textMuted,
     fontWeight: '600',
   },
   footerHint: {

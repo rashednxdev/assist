@@ -16,7 +16,6 @@ import {
 import type {
   BookListItem,
   BookReaderOutline,
-  ChapterQuestionBrief,
   ReaderChapter,
   ReaderChapterFull,
   ReaderTopicFull,
@@ -144,13 +143,6 @@ export async function fetchTopicDetail(topicId: string) {
   });
   setInflightTopic(topicId, promise);
   return promise;
-}
-
-export async function fetchChapterQuestions(chapterId: string) {
-  const res = await apiFetch<{ data: ChapterQuestionBrief[] }>(
-    `/books/chapters/${chapterId}/questions`,
-  );
-  return res.data;
 }
 
 export async function searchRegulations(params?: { q?: string; limit?: number }) {

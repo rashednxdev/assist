@@ -5,6 +5,7 @@ import {
   listQuestionsQuerySchema,
   similarQuestionsQuerySchema,
   marathonReviewQuerySchema,
+  questionsSyncQuerySchema,
   createQuestionTypeSchema,
   questionBookLinkInputSchema,
   updateQuestionTypeSchema,
@@ -81,6 +82,12 @@ export async function listMarathonReviewHandler(req: AuthRequest, res: Response)
       has_more: offset + items.length < total,
     },
   });
+}
+
+export async function questionsSyncHandler(req: AuthRequest, res: Response): Promise<void> {
+  const filters = questionsSyncQuerySchema.parse(req.query);
+  const result = await questionsService.listQuestionsSync(filters);
+  res.json({ data: result });
 }
 
 export async function similarQuestionsHandler(req: AuthRequest, res: Response): Promise<void> {

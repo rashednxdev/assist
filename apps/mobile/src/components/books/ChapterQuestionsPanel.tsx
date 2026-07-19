@@ -17,9 +17,16 @@ import { BookRichText } from '@/components/books/BookRichText';
 import { ChapterMcqExam } from '@/components/books/ChapterMcqExam';
 import { ChapterQuestionEvaluator } from '@/components/books/ChapterQuestionEvaluator';
 import { RatingIndicator } from '@/components/evaluation/RatingIndicator';
-import { fetchChapterQuestions } from '@/lib/books-api';
-import { fetchQuestionEvaluationsBatch, type QuestionEvalBrief } from '@/lib/evaluation-api';
+import {
+  fetchQuestionEvaluation,
+  fetchQuestionEvaluationsBatch,
+  upsertQuestionEvaluation,
+  type QuestionEvalBrief,
+  type QuestionEvaluationRecord,
+} from '@/lib/evaluation-api';
 import { fetchQuestionDetail } from '@/lib/questions-api';
+import { getCachedChapterQuestions, getCachedMcqDetail } from '@/lib/questions-db';
+import { subscribeQuestionsSync } from '@/lib/questions-sync';
 import { stripHtml } from '@/lib/book-display';
 import { bilingualQuestionText } from '@/lib/question-display';
 import type { ChapterQuestionBrief } from '@/types/books';
@@ -33,6 +40,15 @@ type PanelView = 'list' | 'detail' | 'mcq-exam';
 function truncate(text: string, len = 100) {
   const plain = stripHtml(text);
   return plain.length > len ? `${plain.slice(0, len)}…` : plain;
+}
+
+function optionLabel(option: { option_text_en?: string; option_text_bn?: string }) {
+  return option.option_text_en?.trim() || option.option_text_bn?.trim() || '';
+}
+
+function hasSavedEval(evaluation: QuestionEvaluationRecord | null) {
+  if (!evaluation || evaluation.progress_index <= 0) return false;
+  return evaluation.is_correct !== undefined || Boolean(evaluation.selected_option_id);
 }
 
 function renderSection(section: ExplanationSection, index: number) {
@@ -94,6 +110,13 @@ export function ChapterQuestionsPanel({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [question, setQuestion] = useState<QuestionDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [showAnswer, setShowAnswer] = useState(false);
+  const [evaluation, setEvaluation] = useState<QuestionEvaluationRecord | null>(null);
+  const [selectedOptionId, setSelectedOptionId] = useState('');
+  const [savingEval, setSavingEval] = useState(false);
+  const [evalError, setEvalError] = useState('');
+  const [evalMessage, setEvalMessage] = useState('');
+  const [showPreviousEval, setShowPreviousEval] = useState(false);
   const insets = useSafeAreaInsets();
   const topInset = Math.max(
     0,
@@ -152,16 +175,35 @@ export function ChapterQuestionsPanel({
       setTypeFilter('ALL');
       return;
     }
+
+    // Tagged questions come from the same local cache as Question Bank/Marathon — instant, no
+    // network call. Only the evaluation progress badges still need the API.
+    const loadFromCache = () => {
+      setListError('');
+      try {
+        setQuestions(getCachedChapterQuestions(chapterId));
+      } catch (err) {
+        setListError(err instanceof Error ? err.message : 'Failed to load questions');
+        setQuestions([]);
+      } finally {
+        setLoadingList(false);
+      }
+    };
+
     setLoadingList(true);
-    setListError('');
-    fetchChapterQuestions(chapterId)
-      .then(async (rows) => {
-        setQuestions(rows);
-        if (rows.length === 0) {
-          setEvalMap(new Map());
-          return;
-        }
-        const evals = await fetchQuestionEvaluationsBatch(rows.map((q) => q.id));
+    loadFromCache();
+    return subscribeQuestionsSync(loadFromCache);
+  }, [open, chapterId]);
+
+  useEffect(() => {
+    if (questions.length === 0) {
+      setEvalMap(new Map());
+      return;
+    }
+    let cancelled = false;
+    fetchQuestionEvaluationsBatch(questions.map((q) => q.id))
+      .then((evals) => {
+        if (cancelled) return;
         const map = new Map<string, QuestionEvalBrief>();
         for (const row of evals) {
           if (row.progress_index > 0 || row.self_rating || row.is_correct !== undefined) {
@@ -170,12 +212,13 @@ export function ChapterQuestionsPanel({
         }
         setEvalMap(map);
       })
-      .catch((err) => {
-        setListError(err instanceof Error ? err.message : 'Failed to load questions');
-        setQuestions([]);
-      })
-      .finally(() => setLoadingList(false));
-  }, [open, chapterId]);
+      .catch(() => {
+        // Non-fatal — progress badges just stay blank when offline.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [questions]);
 
   useEffect(() => {
     if (!selectedId || panelView !== 'detail') {
@@ -183,11 +226,49 @@ export function ChapterQuestionsPanel({
       return;
     }
     setLoadingDetail(true);
-    fetchQuestionDetail(selectedId)
-      .then(setQuestion)
-      .catch(() => setQuestion(null))
+    setShowAnswer(false);
+    setSelectedOptionId('');
+    setShowPreviousEval(false);
+    setEvalError('');
+    setEvalMessage('');
+    setEvaluation(null);
+
+    const cached = getCachedMcqDetail(selectedId);
+    if (cached) setQuestion(cached);
+
+    Promise.all([
+      cached ? Promise.resolve(cached) : fetchQuestionDetail(selectedId),
+      fetchQuestionEvaluation(selectedId),
+    ])
+      .then(([data, evalRow]) => {
+        setQuestion(data);
+        setEvaluation(evalRow);
+        if (!data.has_options) setShowAnswer(true);
+      })
+      .catch(() => {
+        if (!cached) setQuestion(null);
+      })
       .finally(() => setLoadingDetail(false));
   }, [selectedId, panelView]);
+
+  async function submitOption() {
+    if (!selectedId || !selectedOptionId) return;
+    setSavingEval(true);
+    setEvalError('');
+    setEvalMessage('');
+    try {
+      const res = await upsertQuestionEvaluation(selectedId, { selected_option_id: selectedOptionId });
+      setEvaluation(res);
+      setShowPreviousEval(true);
+      setEvalMessage('Answer submitted successfully.');
+      setShowAnswer(true);
+      handleEvalUpdated(res);
+    } catch (err) {
+      setEvalError(err instanceof Error ? err.message : 'Failed to submit answer');
+    } finally {
+      setSavingEval(false);
+    }
+  }
 
   function openDetail(id: string) {
     setSelectedId(id);
@@ -296,45 +377,116 @@ export function ChapterQuestionsPanel({
                     </>
                   ) : null}
 
-                  {question.options.length > 0 ? (
-                    <View style={styles.optionsWrap}>
-                      <Text style={styles.sectionLabel}>Options</Text>
-                      {question.options.map((opt) => (
-                        <View
-                          key={opt.id}
-                          style={[styles.optionRow, opt.is_correct && styles.optionCorrect]}
+                  {question.has_options ? (
+                    <View style={styles.evalWrap}>
+                      <View style={styles.evalHeaderRow}>
+                        <Text style={styles.sectionLabel}>Evaluate</Text>
+                        <Pressable onPress={() => setShowAnswer((v) => !v)} hitSlop={8}>
+                          <Text style={styles.showAnswerText}>
+                            {showAnswer ? 'Hide answer' : 'Show answer'}
+                          </Text>
+                        </Pressable>
+                      </View>
+                      {evalError ? <Text style={styles.error}>{evalError}</Text> : null}
+                      {evalMessage ? <Text style={styles.success}>{evalMessage}</Text> : null}
+
+                      <View style={styles.optionsWrap}>
+                        {question.options.map((opt) => {
+                          const selected = selectedOptionId === opt.id;
+                          const revealCorrect = showAnswer && opt.is_correct;
+                          return (
+                            <Pressable
+                              key={opt.id}
+                              style={[
+                                styles.optionRow,
+                                selected && styles.optionRowActive,
+                                revealCorrect && styles.optionCorrect,
+                              ]}
+                              onPress={() => setSelectedOptionId(opt.id)}
+                            >
+                              <Text style={styles.optionKey}>{opt.option_key.toUpperCase()}.</Text>
+                              <BookRichText
+                                html={optionLabel(opt)}
+                                style={[styles.optionText, revealCorrect && styles.optionTextCorrect]}
+                              />
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+
+                      <Pressable
+                        style={[
+                          styles.submitBtn,
+                          (!selectedOptionId || savingEval) && styles.submitBtnDisabled,
+                        ]}
+                        disabled={!selectedOptionId || savingEval}
+                        onPress={() => void submitOption()}
+                      >
+                        <Text style={styles.submitBtnText}>
+                          {savingEval ? 'Submitting...' : 'Submit answer'}
+                        </Text>
+                      </Pressable>
+
+                      {hasSavedEval(evaluation) ? (
+                        <Pressable
+                          style={styles.prevEvalBtn}
+                          onPress={() => {
+                            setShowPreviousEval((v) => {
+                              const next = !v;
+                              if (next && evaluation?.selected_option_id) {
+                                setSelectedOptionId(evaluation.selected_option_id);
+                              }
+                              return next;
+                            });
+                          }}
                         >
-                          <Text style={styles.optionKey}>{opt.option_key.toUpperCase()}.</Text>
-                          <BookRichText
-                            html={opt.option_text_en?.trim() || opt.option_text_bn?.trim()}
-                            style={styles.optionText}
-                          />
+                          <Text style={styles.prevEvalBtnText}>
+                            {showPreviousEval ? 'Hide previous result' : 'Show previous result'}
+                          </Text>
+                        </Pressable>
+                      ) : null}
+
+                      {showPreviousEval && evaluation?.is_correct !== undefined ? (
+                        <View style={styles.evalSavedRow}>
+                          <RatingIndicator evaluation={evaluation} />
+                          <Text
+                            style={[
+                              styles.evalResult,
+                              evaluation.is_correct ? styles.correct : styles.wrong,
+                            ]}
+                          >
+                            {evaluation.is_correct ? 'Previous: Correct' : 'Previous: Incorrect'}
+                          </Text>
                         </View>
-                      ))}
+                      ) : null}
+                    </View>
+                  ) : (
+                    <ChapterQuestionEvaluator questionId={question.id} onUpdated={handleEvalUpdated} />
+                  )}
+
+                  {showAnswer ? (
+                    <View style={styles.answerWrap}>
+                      {hasComparison ? (
+                        <ComparisonTableAnswer table={question.model_answer_comparison} />
+                      ) : question.question_type_code === 'DIFFERENCES' ? (
+                        <>
+                          <Text style={styles.sectionLabel}>Answer</Text>
+                          <Text style={styles.muted}>
+                            No comparison table is available for this question yet.
+                          </Text>
+                        </>
+                      ) : (question.model_answer_sections ?? []).length > 0 ? (
+                        <>
+                          <Text style={styles.sectionLabel}>Answer</Text>
+                          {(question.model_answer_sections ?? []).map(renderSection)}
+                        </>
+                      ) : null}
+                      {(question.explanation_sections ?? []).map(renderSection)}
+                      {question.note?.trim() ? (
+                        <BookRichText html={question.note} style={styles.answerNote} />
+                      ) : null}
                     </View>
                   ) : null}
-
-                  <View style={styles.answerWrap}>
-                    {hasComparison ? (
-                      <ComparisonTableAnswer table={question.model_answer_comparison} />
-                    ) : question.question_type_code === 'DIFFERENCES' ? (
-                      <>
-                        <Text style={styles.sectionLabel}>Answer</Text>
-                        <Text style={styles.muted}>
-                          No comparison table is available for this question yet.
-                        </Text>
-                      </>
-                    ) : (
-                      <>
-                        <Text style={styles.sectionLabel}>Answer</Text>
-                        {(question.model_answer_sections ?? []).map(renderSection)}
-                      </>
-                    )}
-                    {(question.explanation_sections ?? []).map(renderSection)}
-                    {question.note?.trim() ? (
-                      <BookRichText html={question.note} style={styles.answerNote} />
-                    ) : null}
-                  </View>
 
                   <View style={styles.navRow}>
                     <Pressable
@@ -647,6 +799,22 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+  evalWrap: {
+    gap: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: spacing.md,
+  },
+  evalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  showAnswerText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.primary,
+  },
   optionRow: {
     flexDirection: 'row',
     gap: 8,
@@ -655,6 +823,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  optionRowActive: {
+    borderColor: colors.primary,
+    backgroundColor: '#eef6ff',
   },
   optionCorrect: {
     borderColor: colors.success,
@@ -669,6 +841,53 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.text,
     lineHeight: 20,
+  },
+  optionTextCorrect: {
+    color: colors.success,
+    fontWeight: '700',
+  },
+  submitBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: 10,
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  submitBtnDisabled: {
+    opacity: 0.6,
+  },
+  submitBtnText: {
+    color: colors.white,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  prevEvalBtn: {
+    alignSelf: 'flex-start',
+    paddingVertical: 4,
+  },
+  prevEvalBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  evalSavedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  evalResult: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  correct: {
+    color: colors.success,
+  },
+  wrong: {
+    color: colors.error,
+  },
+  success: {
+    fontSize: 13,
+    color: colors.success,
+    fontWeight: '600',
   },
   answerWrap: {
     gap: spacing.sm,

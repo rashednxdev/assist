@@ -174,6 +174,55 @@ export const marathonReviewQuerySchema = z.object({
 
 export type MarathonReviewQuery = z.infer<typeof marathonReviewQuerySchema>;
 
+/** Mobile delta-sync: pull questions changed since `since` (omit for a full first sync). */
+export const questionsSyncQuerySchema = z.object({
+  since: z.coerce.date().optional(),
+  /** Opaque `updated_at|id` seek cursor for continuing a run past a same-`updated_at` tie. */
+  cursor: z.string().optional(),
+  /** Page size within one sync run. */
+  limit: z.coerce.number().int().min(1).max(500).default(200),
+});
+
+export type QuestionsSyncQuery = z.infer<typeof questionsSyncQuerySchema>;
+
+export interface QuestionSyncOption {
+  /** Real QuestionOption `_id` — needed so an offline-viewed MCQ can still submit `selected_option_id`. */
+  id: string;
+  option_key: string;
+  option_text_en: string;
+  option_text_bn?: string;
+  is_correct: boolean;
+}
+
+export interface QuestionSyncRow {
+  id: string;
+  question_type_code: string;
+  body_en: string;
+  body_bn?: string;
+  difficulty: string;
+  marks: number;
+  time_seconds: number;
+  is_published: boolean;
+  is_active: boolean;
+  book_chapter_id?: string;
+  book_topic_id?: string;
+  book_sub_topic_id?: string;
+  regulation_id?: string;
+  book_id?: string;
+  book_name?: string;
+  chapter_number?: string;
+  chapter_name?: string;
+  updated_at: string;
+  /** Present only for question_type_code === 'MCQ'. */
+  options?: QuestionSyncOption[];
+  explanation_sections?: ExplanationSection[];
+}
+
+export interface QuestionSyncDeletion {
+  question_id: string;
+  deleted_at: string;
+}
+
 export const createQuestionTypeSchema = z.object({
   name: z.string().min(1),
   code: z.string().min(1).max(32).regex(/^[A-Z0-9_]+$/),

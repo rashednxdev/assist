@@ -7,7 +7,7 @@ import {
   TextInput,
   Pressable,
   ScrollView,
-  ActivityIndicator,
+  RefreshControl,
   type NativeSyntheticEvent,
   type NativeScrollEvent,
 } from 'react-native';
@@ -16,7 +16,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { QUESTION_DIFFICULTIES } from '@ibas/shared-constants';
 import { BookBadge } from '@/components/books/BookBadge';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
-import { fetchQuestionsPage, fetchQuestionTypes } from '@/lib/questions-api';
+import { fetchQuestionTypes } from '@/lib/questions-api';
+import { getCachedQuestionListItems } from '@/lib/questions-db';
+import { subscribeQuestionsSync, syncQuestions } from '@/lib/questions-sync';
 import { questionDetailHref } from '@/lib/question-routes';
 import {
   loadQuestionBankLastQuestion,
@@ -31,8 +33,6 @@ import { stripHtml } from '@/lib/book-display';
 import type { QuestionListItem, QuestionType } from '@/types/questions';
 import { colors, spacing } from '@/theme';
 
-const PAGE_SIZE = 100;
-
 export default function QuestionsScreen() {
   const router = useRouter();
   const { user } = useAuth();
@@ -43,8 +43,8 @@ export default function QuestionsScreen() {
   const [items, setItems] = useState<QuestionListItem[]>([]);
   const [types, setTypes] = useState<QuestionType[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [total, setTotal] = useState(0);
+  const [syncing, setSyncing] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [appliedQuery, setAppliedQuery] = useState('');
@@ -164,105 +164,61 @@ export default function QuestionsScreen() {
     }, [hasActiveFilter]),
   );
 
-  // Load full bank once; filters only slice this list locally.
+  const refreshFromCache = useCallback(() => {
+    setItems(getCachedQuestionListItems());
+  }, []);
+
+  // Local read is instant; the network sync just refreshes what's already on screen.
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadAllSequential() {
-      setError('');
-      setLoading(true);
-      setLoadingMore(false);
-      didResume.current = false;
-
-      try {
-        const [first, typeRows] = await Promise.all([
-          fetchQuestionsPage({ limit: PAGE_SIZE, offset: 0, is_published: 'true' }),
-          fetchQuestionTypes(),
-        ]);
-        if (cancelled) return;
-
-        let all = first.items;
-        setItems(all);
-        setTypes(typeRows);
-        const knownTotal = first.meta.total > 0 ? first.meta.total : all.length;
-        setTotal(knownTotal);
-        setLoading(false);
-
-        let offset = all.length;
-        let more =
-          first.meta.has_more === true ||
-          first.meta.total > all.length ||
-          first.items.length >= PAGE_SIZE;
-
-        setLoadingMore(more);
-
-        while (more && !cancelled) {
-          const page = await fetchQuestionsPage({
-            limit: PAGE_SIZE,
-            offset,
-            is_published: 'true',
-          });
-          if (cancelled) return;
-
-          if (page.meta.offset != null && page.meta.offset !== offset && page.items.length > 0) {
-            const overlap = all.some((row) => row.id === page.items[0]?.id);
-            if (overlap && page.meta.offset === 0) {
-              setError(
-                'API did not apply pagination (offset ignored). Restart Expo against the local API.',
-              );
-              break;
-            }
-          }
-
-          const seen = new Set(all.map((i) => i.id));
-          const newRows = page.items.filter((row) => !seen.has(row.id));
-          if (newRows.length === 0) {
-            if (page.items.length > 0 && all.length < (page.meta.total || knownTotal)) {
-              setError(
-                'Could not load more questions — server returned duplicates. Use local API with latest code.',
-              );
-            }
-            break;
-          }
-
-          all = [...all, ...newRows];
-          offset = all.length;
-          setItems(all);
-          if (typeof page.meta.total === 'number' && page.meta.total > 0) {
-            setTotal(page.meta.total);
-          } else {
-            setTotal(all.length);
-          }
-
-          more =
-            page.meta.has_more === true ||
-            page.meta.total > all.length ||
-            page.items.length >= PAGE_SIZE;
-        }
-      } catch (err) {
-        if (cancelled) return;
-        setItems([]);
-        setTotal(0);
-        setError(err instanceof Error ? err.message : 'Failed to load questions');
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-          setLoadingMore(false);
-        }
-      }
+    setError('');
+    try {
+      refreshFromCache();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load questions');
+    } finally {
+      setLoading(false);
     }
 
-    void loadAllSequential();
-    return () => {
-      cancelled = true;
-    };
+    fetchQuestionTypes()
+      .then(setTypes)
+      .catch(() => {
+        // Non-fatal — type chips just fall back to the raw type code.
+      });
+
+    return subscribeQuestionsSync(refreshFromCache);
+  }, [refreshFromCache]);
+
+  const runSync = useCallback(async () => {
+    setSyncing(true);
+    try {
+      await syncQuestions();
+    } catch (err) {
+      if (itemsRef.current.length === 0) {
+        setError(err instanceof Error ? err.message : 'Failed to sync questions');
+      }
+    } finally {
+      setSyncing(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void runSync();
+  }, [runSync]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await runSync();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [runSync]);
 
   // After the full bank has loaded, jump to the last-read question by index.
   useEffect(() => {
     if (!resumeReady || didResume.current || !resumeTarget) return;
     if (hasActiveFilter) return;
-    if (loading || loadingMore) return;
+    if (loading) return;
 
     const index = items.findIndex((i) => i.id === resumeTarget.id);
     if (index < 0) {
@@ -284,7 +240,7 @@ export default function QuestionsScreen() {
     }, 120);
 
     return () => clearTimeout(t);
-  }, [resumeReady, resumeTarget, items, loading, loadingMore, hasActiveFilter]);
+  }, [resumeReady, resumeTarget, items, loading, hasActiveFilter]);
 
   function onScroll(e: NativeSyntheticEvent<NativeScrollEvent>) {
     scrollYRef.current = e.nativeEvent.contentOffset.y;
@@ -390,7 +346,7 @@ export default function QuestionsScreen() {
             </Pressable>
             {bookOptions.length === 0 ? (
               <Text style={styles.bookMenuEmpty}>
-                {loadingMore || loading ? 'Loading books from questions…' : 'No book-linked questions yet.'}
+                {loading ? 'Loading books from questions…' : 'No book-linked questions yet.'}
               </Text>
             ) : (
               bookOptions.map((book) => {
@@ -431,11 +387,9 @@ export default function QuestionsScreen() {
 
       <View style={styles.metaRow}>
         <Text style={styles.metaText}>
-          {loadingMore
-            ? `Loading… ${items.length}${total > items.length ? ` of ${total}` : ''} questions`
-            : hasActiveFilter
-              ? `Showing ${visibleItems.length} of ${items.length} loaded`
-              : `Showing ${items.length}${total > 0 && total !== items.length ? ` of ${total}` : ''} questions`}
+          {hasActiveFilter
+            ? `Showing ${visibleItems.length} of ${items.length} loaded`
+            : `Showing ${items.length} questions${syncing ? ' · syncing…' : ''}`}
         </Text>
         {hasActiveFilter ? (
           <Pressable onPress={clearAllFilters} hitSlop={8}>
@@ -503,6 +457,7 @@ export default function QuestionsScreen() {
           ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
           onScroll={onScroll}
           scrollEventThrottle={16}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           onScrollToIndexFailed={(info) => {
             const approx = Math.max(0, info.averageItemLength || 120);
             listRef.current?.scrollToOffset({
@@ -529,16 +484,8 @@ export default function QuestionsScreen() {
           }
           ListFooterComponent={
             <View style={styles.footerWrap}>
-              {loadingMore ? (
-                <View style={styles.footerLoading}>
-                  <ActivityIndicator color={colors.primary} />
-                  <Text style={styles.footerLoadingText}>
-                    Loading more… {items.length}
-                    {total > items.length ? ` / ${total}` : ''}
-                  </Text>
-                </View>
-              ) : items.length > 0 && !hasActiveFilter ? (
-                <Text style={styles.footerHint}>All questions loaded · {total || items.length}</Text>
+              {items.length > 0 && !hasActiveFilter ? (
+                <Text style={styles.footerHint}>{items.length} questions loaded</Text>
               ) : hasActiveFilter && visibleItems.length > 0 ? (
                 <Text style={styles.footerHint}>
                   Filtered · {visibleItems.length} of {items.length}

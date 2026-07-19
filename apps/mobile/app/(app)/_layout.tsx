@@ -1,10 +1,19 @@
+import { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { Redirect, Stack } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
+import { syncQuestions } from '@/lib/questions-sync';
 import { colors } from '@/theme';
 
 export default function AppLayout() {
   const { user, loading } = useAuth();
+
+  // Warm the local question cache as soon as a session is active, so Question Bank / Marathon
+  // are already up to date by the time the user opens them.
+  useEffect(() => {
+    if (!user) return;
+    void syncQuestions();
+  }, [user?.id]);
 
   if (loading) {
     return (

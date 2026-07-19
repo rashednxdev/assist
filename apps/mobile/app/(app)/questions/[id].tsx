@@ -8,6 +8,7 @@ import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates
 import { EvaluationCelebrate } from '@/components/evaluation/EvaluationCelebrate';
 import { RatingIndicator } from '@/components/evaluation/RatingIndicator';
 import { fetchQuestionDetail } from '@/lib/questions-api';
+import { getCachedMcqDetail } from '@/lib/questions-db';
 import { formatEvaluationStatusLabel } from '@/lib/evaluation-display';
 import {
   fetchQuestionEvaluation,
@@ -69,7 +70,19 @@ export default function QuestionDetailScreen() {
       setNextId(sessionNext || fromStore);
     });
 
-    Promise.all([fetchQuestionDetail(id), fetchQuestionPracticeStem(id), fetchQuestionEvaluation(id)])
+    // MCQ body/options/explanation render instantly from the local cache with no network call;
+    // practice-stem/evaluation (and everything for non-MCQ types) still require the API.
+    const cached = getCachedMcqDetail(id);
+    if (cached) {
+      setItem(cached);
+      setLoading(false);
+    }
+
+    Promise.all([
+      cached ? Promise.resolve(cached) : fetchQuestionDetail(id),
+      fetchQuestionPracticeStem(id),
+      fetchQuestionEvaluation(id),
+    ])
       .then(([data, stem, evalRow]) => {
         setItem(data);
         setEvaluation(evalRow);
@@ -80,6 +93,7 @@ export default function QuestionDetailScreen() {
         }
       })
       .catch((err) => {
+        if (cached) return; // offline: keep showing the cached answer, just without eval state
         setItem(null);
         setError(err instanceof Error ? err.message : 'Failed to load question');
       })

@@ -9,6 +9,7 @@ import {
   type QuestionPracticeStem,
 } from '@/lib/evaluation-api';
 import { fetchQuestionDetail } from '@/lib/questions-api';
+import { getCachedMcqDetail, getCachedPracticeStem } from '@/lib/questions-db';
 import type { ChapterQuestionBrief } from '@/types/books';
 import { colors, spacing } from '@/theme';
 
@@ -49,7 +50,12 @@ export function ChapterMcqExam({
   useEffect(() => {
     setLoading(true);
     setLoadError('');
-    Promise.all(questions.map((q) => fetchQuestionPracticeStem(q.id)))
+    Promise.all(
+      questions.map((q) => {
+        const cached = getCachedPracticeStem(q.id);
+        return cached ? Promise.resolve(cached) : fetchQuestionPracticeStem(q.id);
+      }),
+    )
       .then(setStems)
       .catch((err) => setLoadError(err instanceof Error ? err.message : 'Failed to load questions'))
       .finally(() => setLoading(false));
@@ -66,7 +72,12 @@ export function ChapterMcqExam({
         const row = await upsertQuestionEvaluation(stem.id, { selected_option_id: selected });
         rows.push(row);
       }
-      const details = await Promise.all(stems.map((s) => fetchQuestionDetail(s.id)));
+      const details = await Promise.all(
+        stems.map((s) => {
+          const cached = getCachedMcqDetail(s.id);
+          return cached ? Promise.resolve(cached) : fetchQuestionDetail(s.id);
+        }),
+      );
       const correctMap: Record<string, string> = {};
       for (const detail of details) {
         const correct = detail.options.find((o) => o.is_correct);

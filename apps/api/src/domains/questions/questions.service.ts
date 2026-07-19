@@ -5,6 +5,8 @@ import type {
   CreateQuestionDto,
   CreateQuestionTypeDto,
   QuestionBookLinkInput,
+  QuestionSyncDeletion,
+  QuestionSyncRow,
   UpdateQuestionDto,
   UpdateQuestionTypeDto,
 } from '@ibas/shared-types';
@@ -32,6 +34,7 @@ import {
   type IQuestionAnswerDetail,
 } from './models/QuestionAnswerDetail.model.js';
 import { UserQuestionEvaluation } from '../evaluation/models/UserQuestionEvaluation.model.js';
+import { QuestionDeletion } from './models/QuestionDeletion.model.js';
 import { PaperQuestion } from '../papers/models/PaperQuestion.model.js';
 import { ChildQuestion } from '../papers/models/ChildQuestion.model.js';
 import { notFound, badRequest } from '../../shared/errors/AppError.js';
@@ -1246,6 +1249,17 @@ export async function updateQuestion(id: string, dto: UpdateQuestionDto) {
     });
   }
 
+  // Options/answers/explanation/note live on separate, unstamped collections (see
+  // QuestionOption/QuestionAnswer/QuestionAnswerDetail models) — Mongoose only bumps
+  // `updated_at` when a field on the Question document itself changed, so an edit that
+  // touches only those side tables (e.g. explanation-only, or note-only) would otherwise
+  // leave `updated_at` stale. Force it whenever any of that content changed, since
+  // `Question.updated_at` is the sole "changed since X" signal the mobile sync endpoint
+  // (questionsService.listQuestionsSync) relies on.
+  if (hasAnswerUpdate || dto.note !== undefined || dto.reference_regulation_id !== undefined) {
+    await Question.updateOne({ _id: question._id }, { $set: { updated_at: new Date() } });
+  }
+
   return loadQuestionDetail(id);
 }
 
@@ -1304,6 +1318,8 @@ export async function permanentlyDeleteQuestion(id: string) {
   }
 
   const oid = question._id;
+
+  await QuestionDeletion.create({ question_id: oid, deleted_at: new Date() });
 
   await Promise.all([
     QuestionOption.deleteMany({ question_id: oid }),
@@ -1621,4 +1637,174 @@ async function resolveDescriptiveQuestionType(questionTypeId?: string) {
     has_options: false,
     code: { $nin: ['DIFFERENCES', 'DIFFERENCE', 'DF', 'MCQ', 'TF'] },
   }).sort({ name: 1 });
+}
+
+/**
+ * Mobile delta-sync. `since` (server clock from a prior call's `synced_at`) excludes anything
+ * already pulled; `cursor` continues a run past a same-`updated_at` tie without skipping/repeating
+ * rows (seek pagination on `(updated_at, _id)`, since offset/skip would drift as data changes
+ * between pages). Soft-deleted/unpublished questions are returned in `data` as-is (the flags tell
+ * the client to hide them); `deletions` covers hard deletes only, via the QuestionDeletion tombstone
+ * (see permanentlyDeleteQuestion) since those otherwise vanish from the query with no trace.
+ */
+export async function listQuestionsSync(filters: {
+  since?: Date;
+  cursor?: string;
+  limit?: number;
+}): Promise<{
+  data: QuestionSyncRow[];
+  deletions: QuestionSyncDeletion[];
+  has_more: boolean;
+  next_cursor?: string;
+  synced_at: string;
+}> {
+  const limit = Math.min(500, Math.max(1, filters.limit ?? 200));
+
+  const seekFilter: Record<string, unknown> = {};
+  if (filters.cursor) {
+    const [cursorTs, cursorId] = filters.cursor.split('|');
+    const cursorDate = cursorTs ? new Date(cursorTs) : undefined;
+    if (cursorDate && !Number.isNaN(cursorDate.getTime()) && cursorId) {
+      seekFilter.$or = [
+        { updated_at: { $gt: cursorDate } },
+        { updated_at: cursorDate, _id: { $gt: new mongoose.Types.ObjectId(cursorId) } },
+      ];
+    }
+  } else if (filters.since) {
+    seekFilter.updated_at = { $gt: filters.since };
+  }
+
+  const rows = await Question.find(seekFilter)
+    .sort({ updated_at: 1, _id: 1 })
+    .limit(limit + 1);
+
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+
+  const mcqIds = page.filter((q) => q.question_type_code === 'MCQ').map((q) => q._id);
+  const [options, answers, details] = await Promise.all([
+    QuestionOption.find({ question_id: { $in: mcqIds } }).sort({ option_key: 1 }),
+    QuestionAnswer.find({ question_id: { $in: mcqIds } }),
+    QuestionAnswerDetail.find({ question_id: { $in: mcqIds } }).lean(),
+  ]);
+
+  const optionsByQuestion = new Map<string, typeof options>();
+  for (const o of options) {
+    const key = String(o.question_id);
+    const list = optionsByQuestion.get(key);
+    if (list) list.push(o);
+    else optionsByQuestion.set(key, [o]);
+  }
+  const correctOptionIdByQuestion = new Map<string, string>();
+  for (const a of answers) {
+    if (a.is_correct) correctOptionIdByQuestion.set(String(a.question_id), String(a.option_id));
+  }
+  const detailByQuestion = new Map(details.map((d) => [String(d.question_id), d]));
+
+  // book_chapter_id lives directly on Question for most rows; older links-only questions
+  // (no legacy field set) fall back to their primary QuestionBookLink, same as listMarathonReview.
+  const missingChapterIds = page.filter((q) => !q.book_chapter_id).map((q) => q._id);
+  const fallbackLinks = missingChapterIds.length
+    ? await QuestionBookLink.find({
+        question_id: { $in: missingChapterIds },
+        is_active: true,
+      }).sort({ sort_order: 1 })
+    : [];
+  const fallbackChapterByQuestion = new Map<string, string>();
+  for (const link of fallbackLinks) {
+    const key = String(link.question_id);
+    if (!fallbackChapterByQuestion.has(key) && link.book_chapter_id) {
+      fallbackChapterByQuestion.set(key, String(link.book_chapter_id));
+    }
+  }
+
+  const chapterIdByQuestion = new Map<string, string>();
+  for (const q of page) {
+    const qid = String(q._id);
+    const direct = idStr(q.book_chapter_id);
+    const chapterId = direct ?? fallbackChapterByQuestion.get(qid);
+    if (chapterId) chapterIdByQuestion.set(qid, chapterId);
+  }
+
+  const chapterIds = [...new Set([...chapterIdByQuestion.values()])];
+  const chapters = chapterIds.length ? await BookChapter.find({ _id: { $in: chapterIds } }) : [];
+  const chapterMap = new Map(chapters.map((c) => [String(c._id), c]));
+  const bookIds = [...new Set(chapters.map((c) => String(c.book_info_id)))];
+  const books = bookIds.length ? await BookInfo.find({ _id: { $in: bookIds } }) : [];
+  const bookMap = new Map(books.map((b) => [String(b._id), b]));
+
+  const data: QuestionSyncRow[] = page.map((q) => {
+    const qidForBook = String(q._id);
+    const chapterId = chapterIdByQuestion.get(qidForBook);
+    const chapter = chapterId ? chapterMap.get(chapterId) : undefined;
+    const book = chapter ? bookMap.get(String(chapter.book_info_id)) : undefined;
+
+    const row: QuestionSyncRow = {
+      id: String(q._id),
+      question_type_code: q.question_type_code,
+      body_en: q.body_en,
+      body_bn: q.body_bn,
+      difficulty: q.difficulty,
+      marks: q.marks,
+      time_seconds: q.time_seconds,
+      is_published: q.is_published,
+      is_active: q.is_active,
+      book_chapter_id: idStr(q.book_chapter_id),
+      book_topic_id: idStr(q.book_topic_id),
+      book_sub_topic_id: idStr(q.book_sub_topic_id),
+      regulation_id: idStr(q.regulation_id),
+      book_id: book ? String(book._id) : undefined,
+      book_name: book?.name,
+      chapter_number: chapter?.chapter_number ?? undefined,
+      chapter_name: chapter?.name,
+      updated_at: q.updated_at.toISOString(),
+    };
+
+    if (q.question_type_code !== 'MCQ') return row;
+
+    const qid = String(q._id);
+    const correctOptionId = correctOptionIdByQuestion.get(qid);
+    row.options = (optionsByQuestion.get(qid) ?? []).map((o) => ({
+      id: String(o._id),
+      option_key: o.option_key,
+      option_text_en: o.option_text_en,
+      option_text_bn: o.option_text_bn,
+      is_correct: correctOptionId === String(o._id),
+    }));
+
+    const detail = detailByQuestion.get(qid) ?? null;
+    let explanationSections = serializeExplanationSections(detail?.explanation_sections);
+    if (
+      explanationSections.length === 0 &&
+      typeof detail?.explanation === 'string' &&
+      detail.explanation.trim()
+    ) {
+      explanationSections = parseLegacyExplanation(detail.explanation);
+    }
+    row.explanation_sections = explanationSections;
+
+    return row;
+  });
+
+  // Deletions: rare compared to updates, so a single limit-capped page per sync call is enough in
+  // practice today; not seek-paginated like `data` above.
+  const deletionFilter: Record<string, unknown> = filters.since
+    ? { deleted_at: { $gt: filters.since } }
+    : {};
+  const deletionRows = await QuestionDeletion.find(deletionFilter)
+    .sort({ deleted_at: 1 })
+    .limit(limit);
+  const deletions: QuestionSyncDeletion[] = deletionRows.map((d) => ({
+    question_id: String(d.question_id),
+    deleted_at: d.deleted_at.toISOString(),
+  }));
+
+  const last = data[data.length - 1];
+  return {
+    data,
+    deletions,
+    has_more: hasMore,
+    next_cursor: hasMore && last ? `${last.updated_at}|${last.id}` : undefined,
+    synced_at: new Date().toISOString(),
+  };
 }

@@ -11,6 +11,7 @@ import {
   listQuestionsHandler,
   listTrashedQuestionsHandler,
   listMarathonReviewHandler,
+  questionsSyncHandler,
   similarQuestionsHandler,
   getQuestionHandler,
   createQuestionHandler,
@@ -40,6 +41,7 @@ questionsRouter.delete('/types/:id', requireAdmin, asyncHandler(deleteQuestionTy
 questionsRouter.get('/', requireModuleAccess('QUESTIONS'), asyncHandler(listQuestionsHandler));
 questionsRouter.get('/trashed', requireAdmin, asyncHandler(listTrashedQuestionsHandler));
 questionsRouter.get('/marathon-review', requireModuleAccess('QUESTIONS'), asyncHandler(listMarathonReviewHandler));
+questionsRouter.get('/sync', requireModuleAccess('QUESTIONS'), asyncHandler(questionsSyncHandler));
 questionsRouter.get('/similar', requireModuleAccess('QUESTIONS'), asyncHandler(similarQuestionsHandler));
 questionsRouter.get('/:id', requireModuleAccess('QUESTIONS'), asyncHandler(getQuestionHandler));
 

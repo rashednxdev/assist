@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
 import { requireAdmin } from '../../middleware/requireAdmin.js';
+import { requireModuleAccess } from '../../middleware/requireModuleAccess.js';
 import { asyncHandler } from '../../shared/asyncHandler.js';
 import {
   listQuestionTypesHandler,
@@ -32,15 +33,15 @@ export const questionsRouter = Router();
 
 questionsRouter.use(authenticate);
 
-questionsRouter.get('/types', asyncHandler(listQuestionTypesHandler));
+questionsRouter.get('/types', requireModuleAccess('QUESTIONS'), asyncHandler(listQuestionTypesHandler));
 questionsRouter.post('/types', requireAdmin, asyncHandler(createQuestionTypeHandler));
 questionsRouter.patch('/types/:id', requireAdmin, asyncHandler(updateQuestionTypeHandler));
 questionsRouter.delete('/types/:id', requireAdmin, asyncHandler(deleteQuestionTypeHandler));
-questionsRouter.get('/', asyncHandler(listQuestionsHandler));
+questionsRouter.get('/', requireModuleAccess('QUESTIONS'), asyncHandler(listQuestionsHandler));
 questionsRouter.get('/trashed', requireAdmin, asyncHandler(listTrashedQuestionsHandler));
-questionsRouter.get('/marathon-review', asyncHandler(listMarathonReviewHandler));
-questionsRouter.get('/similar', asyncHandler(similarQuestionsHandler));
-questionsRouter.get('/:id', asyncHandler(getQuestionHandler));
+questionsRouter.get('/marathon-review', requireModuleAccess('QUESTIONS'), asyncHandler(listMarathonReviewHandler));
+questionsRouter.get('/similar', requireModuleAccess('QUESTIONS'), asyncHandler(similarQuestionsHandler));
+questionsRouter.get('/:id', requireModuleAccess('QUESTIONS'), asyncHandler(getQuestionHandler));
 
 questionsRouter.post('/batch-import', requireAdmin, asyncHandler(batchImportMcqHandler));
 questionsRouter.post(

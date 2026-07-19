@@ -101,54 +101,12 @@ async function assignDefaultWorkflowRoles(user: InstanceType<typeof User>) {
   logger.info({ userId: user._id }, 'Assigned default SDO workflow role to officer');
 }
 
-/** Exam candidates browse rules, exams, questions, and preview guided processes. */
-const APPLICANT_LEARNING_MODULE_CODES = ['BOOKS', 'QUESTIONS', 'EXAM', 'PAPER', 'PENSION', 'WORKFLOW'] as const;
-
-async function assignDefaultLearningAccess(user: InstanceType<typeof User>) {
-  if (user.user_type !== 'applicant') return;
-
-  const { Module } = await import('../setup/models/Module.model.js');
-  const { UserModuleAccess } = await import('../users/models/UserModuleAccess.model.js');
-
-  for (const code of APPLICANT_LEARNING_MODULE_CODES) {
-    const mod = await Module.findOne({ code, is_active: true });
-    if (!mod) continue;
-
-    const existing = await UserModuleAccess.findOne({ user_id: user._id, module_id: mod._id, is_active: true });
-    if (existing?.can_read) continue;
-
-    await UserModuleAccess.findOneAndUpdate(
-      { user_id: user._id, module_id: mod._id },
-      {
-        user_id: user._id,
-        module_id: mod._id,
-        module_code: mod.code,
-        permissions: ['read'],
-        can_read: true,
-        can_create: false,
-        can_update: false,
-        can_delete: false,
-        can_grade: false,
-        can_publish: false,
-        task_restrictions: [],
-        granted_by: user._id,
-        granted_at: new Date(),
-        is_active: true,
-      },
-      { upsert: true },
-    );
-  }
-
-  logger.info({ userId: user._id }, 'Assigned default learning module read access to applicant');
-}
-
 async function activateIfFullyVerified(user: InstanceType<typeof User>) {
   if (user.email_verified && user.phone_verified) {
     user.is_verified = true;
     user.status = 'active';
     await user.save();
     await assignDefaultWorkflowRoles(user);
-    await assignDefaultLearningAccess(user);
     return true;
   }
   return false;
@@ -195,7 +153,6 @@ export async function registerUser(dto: RegisterDto) {
   });
 
   await assignDefaultWorkflowRoles(user);
-  await assignDefaultLearningAccess(user);
 
   const demo = hasRealEmail ? await issueDemoOtps(user, creds) : undefined;
   const tokens = signTokens(String(user._id), dto.device_id, 0);

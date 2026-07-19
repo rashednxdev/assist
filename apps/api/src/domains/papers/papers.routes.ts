@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
 import { requireAdmin } from '../../middleware/requireAdmin.js';
+import { requireModuleAccess } from '../../middleware/requireModuleAccess.js';
 import { asyncHandler } from '../../shared/asyncHandler.js';
 import {
   listPaperTypesHandler,
@@ -30,15 +31,15 @@ export const papersRouter = Router();
 
 papersRouter.use(authenticate);
 
-papersRouter.get('/types', asyncHandler(listPaperTypesHandler));
+papersRouter.get('/types', requireModuleAccess('PAPER'), asyncHandler(listPaperTypesHandler));
 papersRouter.post('/types', requireAdmin, asyncHandler(createPaperTypeHandler));
 papersRouter.patch('/types/:id', requireAdmin, asyncHandler(updatePaperTypeHandler));
 papersRouter.delete('/types/:id', requireAdmin, asyncHandler(deletePaperTypeHandler));
 
-papersRouter.get('/', asyncHandler(listPapersHandler));
+papersRouter.get('/', requireModuleAccess('PAPER'), asyncHandler(listPapersHandler));
 papersRouter.post('/', requireAdmin, asyncHandler(createPaperHandler));
-papersRouter.get('/:id/compose', asyncHandler(getPaperComposeHandler));
-papersRouter.get('/:id', asyncHandler(getPaperHandler));
+papersRouter.get('/:id/compose', requireModuleAccess('PAPER'), asyncHandler(getPaperComposeHandler));
+papersRouter.get('/:id', requireModuleAccess('PAPER'), asyncHandler(getPaperHandler));
 papersRouter.patch('/:id', requireAdmin, asyncHandler(updatePaperHandler));
 papersRouter.delete('/:id', requireAdmin, asyncHandler(deletePaperHandler));
 papersRouter.post('/:id/publish', requireAdmin, asyncHandler(publishPaperHandler));

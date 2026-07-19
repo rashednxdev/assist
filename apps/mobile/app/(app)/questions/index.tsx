@@ -29,9 +29,54 @@ import { setQuestionBankSessionOrder } from '@/lib/question-bank-order';
 import { useAuth } from '@/lib/auth-context';
 import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
 import { SaveButton } from '@/components/ui/SaveButton';
-import { stripHtml } from '@/lib/book-display';
+import { LineLoader } from '@/components/ui/LineLoader';
+import { cleanBookLabel, stripHtml } from '@/lib/book-display';
 import type { QuestionListItem, QuestionType } from '@/types/questions';
 import { colors, spacing } from '@/theme';
+
+const UNLINKED_BOOK_KEY = '__unlinked__';
+
+type BankRow =
+  | { kind: 'book'; key: string; book_name: string }
+  | { kind: 'chapter'; key: string; label: string }
+  | { kind: 'question'; key: string; item: QuestionListItem };
+
+/**
+ * Flattens the already book/chapter-sorted list into book/chapter header rows interleaved with
+ * question rows — same grouped presentation as Marathon Review, but kept as one FlatList data
+ * array so search/scrollToIndex/resume-to-last-read keep working unchanged.
+ */
+function buildBankRows(items: QuestionListItem[]): BankRow[] {
+  const rows: BankRow[] = [];
+  let lastBookKey: string | null = null;
+  let lastChapterKey: string | null = null;
+
+  for (const item of items) {
+    const bookKey = item.book_id ?? UNLINKED_BOOK_KEY;
+    if (bookKey !== lastBookKey) {
+      rows.push({
+        kind: 'book',
+        key: `book-${bookKey}`,
+        book_name: item.book_id ? item.book_name || 'Untitled book' : 'Not linked to a book',
+      });
+      lastBookKey = bookKey;
+      lastChapterKey = null;
+    }
+
+    const chapterKey = item.book_chapter_id ?? `${bookKey}:__general__`;
+    if (chapterKey !== lastChapterKey) {
+      const no = cleanBookLabel(item.chapter_number);
+      const name = cleanBookLabel(item.chapter_name) || item.chapter_name || '';
+      const label = item.book_chapter_id ? (no ? `${no}: ${name}` : name || 'Chapter') : 'General';
+      rows.push({ kind: 'chapter', key: `chapter-${chapterKey}`, label });
+      lastChapterKey = chapterKey;
+    }
+
+    rows.push({ kind: 'question', key: item.id, item });
+  }
+
+  return rows;
+}
 
 export default function QuestionsScreen() {
   const router = useRouter();
@@ -54,13 +99,14 @@ export default function QuestionsScreen() {
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
   const [resumeTarget, setResumeTarget] = useState<QuestionBankLastQuestion | null>(null);
   const [resumeReady, setResumeReady] = useState(false);
+  const [resuming, setResuming] = useState(true);
   const [highlightId, setHighlightId] = useState<string | null>(null);
 
-  const listRef = useRef<FlatList<QuestionListItem>>(null);
+  const listRef = useRef<FlatList<BankRow>>(null);
   const scrollYRef = useRef(0);
   const didResume = useRef(false);
   const itemsRef = useRef<QuestionListItem[]>([]);
-  const visibleItemsRef = useRef<QuestionListItem[]>([]);
+  const bankRowsRef = useRef<BankRow[]>([]);
   const skipNextFocusScroll = useRef(true);
 
   const typeNameMap = useMemo(() => new Map(types.map((t) => [t.code, t.name])), [types]);
@@ -101,13 +147,16 @@ export default function QuestionsScreen() {
     });
   }, [items, selectedBookId, typeCode, difficulty, appliedQuery]);
 
+  /** Grouped-by-book/chapter rows for the FlatList — visibleItems is already sorted that way. */
+  const bankRows = useMemo(() => buildBankRows(visibleItems), [visibleItems]);
+
   itemsRef.current = items;
-  visibleItemsRef.current = visibleItems;
+  bankRowsRef.current = bankRows;
   setQuestionBankSessionOrder(items.map((row) => row.id));
 
   function scrollToQuestionId(id: string, animated = false) {
-    const data = visibleItemsRef.current;
-    const index = data.findIndex((row) => row.id === id);
+    const data = bankRowsRef.current;
+    const index = data.findIndex((row) => row.kind === 'question' && row.item.id === id);
     if (index < 0) return false;
 
     const run = () => {
@@ -134,6 +183,7 @@ export default function QuestionsScreen() {
     void loadQuestionBankLastQuestion().then((pos) => {
       setResumeTarget(pos);
       if (pos) setHighlightId(pos.id);
+      else setResuming(false);
       setResumeReady(true);
     });
   }, []);
@@ -217,12 +267,16 @@ export default function QuestionsScreen() {
   // After the full bank has loaded, jump to the last-read question by index.
   useEffect(() => {
     if (!resumeReady || didResume.current || !resumeTarget) return;
-    if (hasActiveFilter) return;
+    if (hasActiveFilter) {
+      setResuming(false);
+      return;
+    }
     if (loading) return;
 
     const index = items.findIndex((i) => i.id === resumeTarget.id);
     if (index < 0) {
       didResume.current = true;
+      setResuming(false);
       return;
     }
 
@@ -230,9 +284,10 @@ export default function QuestionsScreen() {
     const t = setTimeout(() => {
       const ok = scrollToQuestionId(resumeTarget.id, false);
       didResume.current = true;
+      setResuming(false);
       if (!ok && typeof resumeTarget.index === 'number') {
         listRef.current?.scrollToIndex({
-          index: Math.min(resumeTarget.index, Math.max(0, items.length - 1)),
+          index: Math.min(resumeTarget.index, Math.max(0, bankRowsRef.current.length - 1)),
           animated: false,
           viewPosition: 0.08,
         });
@@ -293,6 +348,7 @@ export default function QuestionsScreen() {
 
   return (
     <View style={styles.root}>
+      {resuming ? <LineLoader /> : null}
       <View style={styles.toolbar}>
         <View style={styles.searchRow}>
           <Ionicons name="search" size={18} color={colors.textMuted} />
@@ -451,10 +507,9 @@ export default function QuestionsScreen() {
       ) : (
         <FlatList
           ref={listRef}
-          data={visibleItems}
-          keyExtractor={(item) => item.id}
+          data={bankRows}
+          keyExtractor={(row) => row.key}
           contentContainerStyle={styles.list}
-          ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
           onScroll={onScroll}
           scrollEventThrottle={16}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
@@ -493,7 +548,15 @@ export default function QuestionsScreen() {
               ) : null}
             </View>
           }
-          renderItem={({ item }) => {
+          renderItem={({ item: row }) => {
+            if (row.kind === 'book') {
+              return <Text style={styles.bookHeader}>{row.book_name}</Text>;
+            }
+            if (row.kind === 'chapter') {
+              return <Text style={styles.chapterHeader}>{row.label}</Text>;
+            }
+
+            const item = row.item;
             const isLast = highlightId === item.id;
             return (
               <Pressable
@@ -531,7 +594,6 @@ export default function QuestionsScreen() {
                       }
                       variant="muted"
                     />
-                    {item.book_name ? <BookBadge label={item.book_name} variant="muted" /> : null}
                     {isAdmin ? <BookBadge label={item.difficulty} variant="muted" /> : null}
                     {isAdmin ? <BookBadge label={`${item.marks} marks`} variant="muted" /> : null}
                   </View>
@@ -796,6 +858,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textMuted,
   },
+  bookHeader: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.primary,
+    marginTop: spacing.md,
+    marginBottom: spacing.xs,
+  },
+  chapterHeader: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textMuted,
+    marginBottom: spacing.sm,
+  },
   card: {
     flexDirection: 'row',
     gap: spacing.md,
@@ -804,6 +879,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.md,
+    marginBottom: spacing.sm,
   },
   cardLastRead: {
     backgroundColor: '#eaf7ee',

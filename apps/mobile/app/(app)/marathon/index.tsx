@@ -23,6 +23,7 @@ import { getCachedMarathonItems } from '@/lib/questions-db';
 import { subscribeQuestionsSync, syncQuestions } from '@/lib/questions-sync';
 import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
 import { SaveButton } from '@/components/ui/SaveButton';
+import { BlockingLoader } from '@/components/ui/BlockingLoader';
 import { stripHtml } from '@/lib/book-display';
 import type { MarathonExplanationSection, MarathonReviewItem } from '@/types/marathon';
 import { colors, spacing } from '@/theme';
@@ -139,6 +140,7 @@ export default function MarathonReviewScreen() {
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
   const [resumeTarget, setResumeTarget] = useState<MarathonLastQuestion | null>(null);
   const [resumeReady, setResumeReady] = useState(false);
+  const [resuming, setResuming] = useState(true);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const scrollYRef = useRef(0);
@@ -155,6 +157,7 @@ export default function MarathonReviewScreen() {
     void loadMarathonLastQuestion().then((pos) => {
       setResumeTarget(pos);
       if (pos) setHighlightId(pos.id);
+      else setResuming(false);
       setResumeReady(true);
     });
   }, []);
@@ -279,6 +282,7 @@ export default function MarathonReviewScreen() {
     // Only resume on the full list (no book filter / search) so scroll offsets stay valid
     if (hasActiveFilter) {
       didResume.current = true;
+      setResuming(false);
       return;
     }
 
@@ -293,10 +297,16 @@ export default function MarathonReviewScreen() {
       scrollRef.current?.scrollTo({ y, animated: false });
       scrollYRef.current = y;
       didResume.current = true;
+      setResuming(false);
     }, 150);
 
     return () => clearTimeout(t);
   }, [resumeReady, loading, resumeTarget, items, hasActiveFilter]);
+
+  // Safety net: an empty bank (or one where resume never resolves) shouldn't loop the loader forever.
+  useEffect(() => {
+    if (!loading && resumeReady && items.length === 0) setResuming(false);
+  }, [loading, resumeReady, items]);
 
   function toggleReveal(item: MarathonReviewItem) {
     rememberQuestion(item);
@@ -597,6 +607,7 @@ export default function MarathonReviewScreen() {
           ) : null}
         </ScrollView>
       )}
+      {resuming ? <BlockingLoader label="Loading Marathon Review…" /> : null}
     </View>
   );
 }

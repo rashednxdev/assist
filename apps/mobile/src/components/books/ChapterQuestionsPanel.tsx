@@ -93,11 +93,13 @@ export function ChapterQuestionsButton({
 export function ChapterQuestionsPanel({
   chapterId,
   chapterTitle,
+  bookName,
   open,
   onClose,
 }: {
   chapterId: string;
   chapterTitle?: string;
+  bookName?: string;
   open: boolean;
   onClose: () => void;
 }) {
@@ -315,7 +317,7 @@ export function ChapterQuestionsPanel({
       ? 'MCQ exam'
       : panelView === 'detail'
         ? `Question ${selectedIndex + 1}/${displayedQuestions.length}`
-        : 'Tagged questions';
+        : '';
 
   return (
     <Modal visible={open} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
@@ -333,13 +335,24 @@ export function ChapterQuestionsPanel({
             <View style={styles.headerSpacer} />
           )}
           <View style={styles.headerTitleWrap}>
-            <Text style={styles.modalTitle} numberOfLines={1}>
-              {headerTitle}
-            </Text>
-            {panelView === 'list' && chapterTitle ? (
-              <Text style={styles.modalSubtitle} numberOfLines={1}>
-                {chapterTitle}
+            {headerTitle ? (
+              <Text style={styles.modalTitle} numberOfLines={1}>
+                {headerTitle}
               </Text>
+            ) : null}
+            {(panelView === 'list' || panelView === 'detail') && (bookName || chapterTitle) ? (
+              <>
+                {bookName ? (
+                  <Text style={styles.modalBookSubtitle} numberOfLines={1}>
+                    {bookName}
+                  </Text>
+                ) : null}
+                {chapterTitle ? (
+                  <Text style={styles.modalSubtitle} numberOfLines={1}>
+                    {chapterTitle}
+                  </Text>
+                ) : null}
+              </>
             ) : null}
           </View>
           <Pressable style={styles.closeBtn} onPress={onClose}>
@@ -673,6 +686,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: colors.text,
+  },
+  modalBookSubtitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textMuted,
+    marginTop: 2,
   },
   modalSubtitle: {
     fontSize: 12,

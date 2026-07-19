@@ -274,7 +274,7 @@ export default function HomeScreen() {
           <View style={styles.marathonText}>
             <Text style={styles.marathonTitle}>Marathon Review</Text>
             <Text style={styles.marathonSub}>
-              Bengali MCQs by book & chapter — toggle or hold to reveal answers
+              Short Questions & Answer on Books & Tools- toggle or hold to reveal answer
             </Text>
           </View>
           <Text style={styles.marathonChevron}>›</Text>

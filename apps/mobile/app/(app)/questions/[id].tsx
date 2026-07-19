@@ -156,16 +156,33 @@ export default function QuestionDetailScreen() {
             </Pressable>
           )
         : undefined,
-      headerTitle: () => (
-        <View style={headerStyles.evalTitleRow}>
-          {headerEval ? <RatingIndicator evaluation={headerEval} size={12} /> : null}
-          <Text style={headerStyles.evalTitle} numberOfLines={1}>
-            {headerEval
-              ? formatEvaluationStatusLabel(headerEval, item?.has_options)
-              : item?.question_type_name ?? item?.question_type_code ?? 'Question'}
-          </Text>
-        </View>
-      ),
+      headerTitle: () =>
+        headerEval ? (
+          <View style={headerStyles.evalTitleRow}>
+            <RatingIndicator evaluation={headerEval} size={12} />
+            <Text style={headerStyles.evalTitle} numberOfLines={1}>
+              {formatEvaluationStatusLabel(headerEval, item?.has_options)}
+            </Text>
+          </View>
+        ) : (
+          <View style={headerStyles.bookChapterWrap}>
+            {item?.book_name ? (
+              <Text style={headerStyles.headerBookText} numberOfLines={1}>
+                {item.book_name}
+              </Text>
+            ) : null}
+            {item?.chapter_name ? (
+              <Text style={headerStyles.headerChapterText} numberOfLines={1}>
+                {item.chapter_number ? `${item.chapter_number}: ${item.chapter_name}` : item.chapter_name}
+              </Text>
+            ) : null}
+            {!item?.book_name && !item?.chapter_name ? (
+              <Text style={headerStyles.evalTitle} numberOfLines={1}>
+                Question
+              </Text>
+            ) : null}
+          </View>
+        ),
       headerRight: () => (
         <Pressable
           style={headerStyles.answerBtn}
@@ -178,7 +195,18 @@ export default function QuestionDetailScreen() {
         </Pressable>
       ),
     });
-  }, [navigation, evaluation, showPreviousEval, showAnswer, item?.has_options, item?.question_type_name, item?.question_type_code, fromSaved, router]);
+  }, [
+    navigation,
+    evaluation,
+    showPreviousEval,
+    showAnswer,
+    item?.has_options,
+    item?.book_name,
+    item?.chapter_number,
+    item?.chapter_name,
+    fromSaved,
+    router,
+  ]);
 
   async function submitOption() {
     if (!id || !selectedOptionId) return;
@@ -241,7 +269,6 @@ export default function QuestionDetailScreen() {
     <>
       <ScrollView style={styles.root} contentContainerStyle={styles.content}>
       <View style={styles.panel}>
-        <Text style={styles.questionType}>{item.question_type_name ?? item.question_type_code}</Text>
         <BookRichText html={stem.primary} style={styles.questionText} />
         {stem.secondary ? <BookRichText html={stem.secondary} style={styles.questionBn} /> : null}
       </View>
@@ -314,7 +341,42 @@ export default function QuestionDetailScreen() {
             </View>
           ) : null}
         </View>
-      ) : (
+      ) : null}
+
+      {showAnswer && hasComparison ? (
+        <View style={[styles.panel, styles.differencesPanel]}>
+          <ComparisonTableAnswer table={comparisonTable} />
+        </View>
+      ) : null}
+
+      {showAnswer && isDifferences && !hasComparison ? (
+        <View style={styles.panel}>
+          <Text style={styles.sectionText}>
+            No comparison table is available for this question yet.
+          </Text>
+        </View>
+      ) : null}
+
+      {showAnswer && !hasComparison && modelSections.length ? (
+        <View style={styles.panel}>
+          {modelSections.map((sec, idx) => renderSection(sec, idx, 'model'))}
+        </View>
+      ) : null}
+
+      {showAnswer && explanationSections.length ? (
+        <View style={styles.panel}>
+          {explanationSections.map((sec, idx) => renderSection(sec, idx, 'exp'))}
+        </View>
+      ) : null}
+
+      {showAnswer && item.note?.trim() ? (
+        <View style={styles.panel}>
+          <Text style={styles.sectionTitle}>Note</Text>
+          <BookRichText html={item.note} style={styles.sectionText} />
+        </View>
+      ) : null}
+
+      {!item.has_options ? (
         <View style={styles.panel}>
           <Text style={[styles.sectionTitle, styles.selfEvalTitle]}>Self evaluation</Text>
           {evalError ? <Text style={styles.errorText}>{evalError}</Text> : null}
@@ -370,39 +432,6 @@ export default function QuestionDetailScreen() {
               </View>
             ) : null}
           </View>
-        </View>
-      )}
-
-      {showAnswer && hasComparison ? (
-        <View style={[styles.panel, styles.differencesPanel]}>
-          <ComparisonTableAnswer table={comparisonTable} />
-        </View>
-      ) : null}
-
-      {showAnswer && isDifferences && !hasComparison ? (
-        <View style={styles.panel}>
-          <Text style={styles.sectionText}>
-            No comparison table is available for this question yet.
-          </Text>
-        </View>
-      ) : null}
-
-      {showAnswer && !hasComparison && modelSections.length ? (
-        <View style={styles.panel}>
-          {modelSections.map((sec, idx) => renderSection(sec, idx, 'model'))}
-        </View>
-      ) : null}
-
-      {showAnswer && explanationSections.length ? (
-        <View style={styles.panel}>
-          {explanationSections.map((sec, idx) => renderSection(sec, idx, 'exp'))}
-        </View>
-      ) : null}
-
-      {showAnswer && item.note?.trim() ? (
-        <View style={styles.panel}>
-          <Text style={styles.sectionTitle}>Note</Text>
-          <BookRichText html={item.note} style={styles.sectionText} />
         </View>
       ) : null}
 
@@ -479,6 +508,22 @@ const headerStyles = StyleSheet.create({
     flexShrink: 1,
     textAlign: 'center',
   },
+  bookChapterWrap: {
+    maxWidth: 220,
+    alignItems: 'center',
+  },
+  headerBookText: {
+    color: colors.white,
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  headerChapterText: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 1,
+  },
   answerBtn: {
     marginRight: spacing.sm,
     borderWidth: 1,
@@ -514,13 +559,6 @@ const styles = StyleSheet.create({
   },
   differencesPanel: {
     paddingVertical: spacing.md,
-  },
-  questionType: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
   },
   questionText: {
     fontSize: 16,

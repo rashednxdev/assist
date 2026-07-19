@@ -205,17 +205,28 @@ function toQuestionListItem(row: QuestionRow): QuestionListItem {
     regulation_id: row.regulation_id ?? undefined,
     book_id: row.book_id ?? undefined,
     book_name: row.book_name ?? undefined,
+    chapter_number: row.chapter_number ?? undefined,
+    chapter_name: row.chapter_name ?? undefined,
     option_count: 0,
     created_at: row.updated_at,
     updated_at: row.updated_at,
   };
 }
 
-/** Published, active questions of every type — what the mobile Question Bank shows. */
+/**
+ * Published, active questions of every type — what the mobile Question Bank shows. Ordered by
+ * book/chapter/text (not recency) so the screen can group them the same way Marathon Review does;
+ * questions with no book link sort last.
+ */
 export function getCachedQuestionListItems(): QuestionListItem[] {
   const rows = getDb().getAllSync<QuestionRow>(
     `SELECT * FROM questions WHERE is_published = 1 AND is_active = 1
-     ORDER BY updated_at DESC, id DESC`,
+     ORDER BY
+       CASE WHEN book_name IS NULL THEN 1 ELSE 0 END,
+       book_name COLLATE NOCASE ASC,
+       chapter_number COLLATE NOCASE ASC,
+       body_en COLLATE NOCASE ASC,
+       id ASC`,
   );
   return rows.map(toQuestionListItem);
 }
@@ -273,6 +284,10 @@ export interface CachedQuestionBase {
   difficulty: string;
   marks: number;
   time_seconds: number;
+  book_id?: string;
+  book_name?: string;
+  chapter_number?: string;
+  chapter_name?: string;
 }
 
 /** Base fields for any cached, still-active question — regardless of published state, matching
@@ -291,6 +306,10 @@ export function getCachedQuestionBase(id: string): CachedQuestionBase | null {
     difficulty: row.difficulty,
     marks: row.marks,
     time_seconds: row.time_seconds,
+    book_id: row.book_id ?? undefined,
+    book_name: row.book_name ?? undefined,
+    chapter_number: row.chapter_number ?? undefined,
+    chapter_name: row.chapter_name ?? undefined,
   };
 }
 
@@ -360,6 +379,10 @@ export function getCachedMcqDetail(id: string): QuestionDetail | null {
     marks: base.marks,
     time_seconds: base.time_seconds,
     is_published: true,
+    book_id: base.book_id,
+    book_name: base.book_name,
+    chapter_number: base.chapter_number,
+    chapter_name: base.chapter_name,
     options: answer.options,
     explanation_sections: answer.explanation_sections,
   };

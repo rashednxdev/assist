@@ -6,11 +6,11 @@ import {
   ScrollView,
   RefreshControl,
   Pressable,
-  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlockingLoader } from '@/components/ui/BlockingLoader';
 import {
   fetchProgressDashboard,
   type ProgressDashboardData,
@@ -83,9 +83,7 @@ export default function ProgressDashboardScreen() {
   return (
     <View style={styles.root}>
       {loading && !data ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
+        <BlockingLoader label="Loading dashboard…" />
       ) : error && !data ? (
         <View style={styles.center}>
           <Text style={styles.errorText}>{error}</Text>

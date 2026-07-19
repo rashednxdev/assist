@@ -18,7 +18,8 @@ export default function BookChapterScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const { bookId, chapterId } = useLocalSearchParams<{ bookId: string; chapterId: string }>();
-  const { loading, error, getChapter } = useBookReader();
+  const { loading, error, getChapter, outline } = useBookReader();
+  const bookName = outline?.book.name || outline?.book.short_name;
   const chapter = getChapter(chapterId);
   const [questionsOpen, setQuestionsOpen] = useState(false);
 
@@ -77,6 +78,7 @@ export default function BookChapterScreen() {
       <ChapterQuestionsPanel
         chapterId={chapterId}
         chapterTitle={chapterHeading(chapter)}
+        bookName={bookName}
         open={questionsOpen}
         onClose={() => setQuestionsOpen(false)}
       />

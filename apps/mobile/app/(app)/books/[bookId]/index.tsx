@@ -103,6 +103,7 @@ export default function BookDetailScreen() {
   const { bookId, from } = useLocalSearchParams<{ bookId: string; from?: string }>();
   const fromSaved = from === 'saved';
   const { outline, fullChapters, loading, fullLoading, error, fullError } = useBookReader();
+  const bookName = outline?.book.name || outline?.book.short_name;
   const [detailsExpanded, setDetailsExpanded] = useState(false);
   const [viewMode, setViewMode] = useState<BookContentsViewMode>(
     () => viewModeByBook.get(bookId) ?? 'short',
@@ -354,6 +355,7 @@ export default function BookDetailScreen() {
         <ChapterQuestionsPanel
           chapterId={questionsChapter.id}
           chapterTitle={chapterHeading(questionsChapter)}
+          bookName={bookName}
           open={!!questionsChapter}
           onClose={() => setQuestionsChapter(null)}
         />

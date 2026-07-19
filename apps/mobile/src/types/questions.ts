@@ -22,6 +22,8 @@ export interface QuestionListItem {
   regulation_id?: string;
   book_id?: string;
   book_name?: string;
+  chapter_number?: string;
+  chapter_name?: string;
   book_link_count?: number;
   option_count: number;
   created_at: string;
@@ -58,7 +60,10 @@ export interface QuestionBookLink {
   id?: string;
   link_level: 'chapter' | 'rule' | 'sub_rule';
   book_id?: string;
+  book_name?: string;
   book_chapter_id?: string;
+  chapter_number?: string;
+  chapter_name?: string;
   book_topic_id?: string;
   book_sub_topic_id?: string;
   regulation_id?: string;
@@ -78,6 +83,10 @@ export interface QuestionDetail {
   negative_marks?: number;
   time_seconds: number;
   is_published: boolean;
+  book_id?: string;
+  book_name?: string;
+  chapter_number?: string;
+  chapter_name?: string;
   options: QuestionOption[];
   correct_option_key?: string;
   correct_true_false?: 'true' | 'false';

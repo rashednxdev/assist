@@ -566,7 +566,6 @@ export default function PaperComposerPage() {
 
   const { paper, groups, ungrouped_questions } = data;
   const allocated = paper.allocated_marks ?? 0;
-  const marksOk = allocated === paper.total_marks;
 
   const allQuestions = getAllQuestions(data);
   const editingQuestion = editQuestionId
@@ -595,7 +594,7 @@ export default function PaperComposerPage() {
               </Link>
             </Button>
             {isAdmin && !paper.is_published && (
-              <Button size="sm" onClick={publish} disabled={!marksOk || allQuestions.length === 0}>
+              <Button size="sm" onClick={publish} disabled={allQuestions.length === 0}>
                 <Upload className="h-4 w-4" />
                 Publish
               </Button>
@@ -620,12 +619,9 @@ export default function PaperComposerPage() {
           <span>{paper.total_marks} total marks</span>
           <span>Pass: {paper.pass_marks}</span>
           <span>{paper.duration_minutes} minutes</span>
-          <span className={marksOk ? 'text-green-700' : 'text-amber-700'}>
+          <span className="text-muted">
             Allocated: {allocated} / {paper.total_marks}
           </span>
-          {!marksOk && !paper.is_published && (
-            <span className="text-muted">Adjust question marks before publishing</span>
-          )}
         </CardContent>
       </Card>
 

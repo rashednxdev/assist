@@ -201,12 +201,6 @@ async function validatePaperForPublish(paper: InstanceType<typeof PaperDetail>) 
     }
   }
 
-  const allocated = await computePaperMarks(paper._id);
-  if (allocated !== paper.total_marks) {
-    throw badRequest(
-      `Allocated marks (${allocated}) must equal paper total marks (${paper.total_marks}) before publishing`,
-    );
-  }
 }
 
 function isCompositePaperQuestion(pq: InstanceType<typeof PaperQuestion>) {

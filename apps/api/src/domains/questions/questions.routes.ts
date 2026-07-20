@@ -17,6 +17,7 @@ import {
   createQuestionHandler,
   batchImportMcqHandler,
   batchImportDescriptiveHandler,
+  batchImportDifferencesHandler,
   updateQuestionHandler,
   deleteQuestionHandler,
   restoreQuestionHandler,
@@ -50,6 +51,11 @@ questionsRouter.post(
   '/batch-import-descriptive',
   requireAdmin,
   asyncHandler(batchImportDescriptiveHandler),
+);
+questionsRouter.post(
+  '/batch-import-differences',
+  requireAdmin,
+  asyncHandler(batchImportDifferencesHandler),
 );
 questionsRouter.post('/batch-trash', requireAdmin, asyncHandler(batchTrashQuestionsHandler));
 questionsRouter.post('/batch-restore', requireAdmin, asyncHandler(batchRestoreQuestionsHandler));

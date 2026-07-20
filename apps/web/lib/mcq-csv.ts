@@ -248,3 +248,224 @@ export function parseDescriptiveCsv(text: string): {
 
   return { rows, errors };
 }
+
+type DifferencesCsvKey =
+  | 'question_no'
+  | 'question'
+  | 'feature_header'
+  | 'column_1'
+  | 'column_2'
+  | 'column_3'
+  | 'column_4'
+  | 'column_5'
+  | 'column_6'
+  | 'feature'
+  | 'value_1'
+  | 'value_2'
+  | 'value_3'
+  | 'value_4'
+  | 'value_5'
+  | 'value_6';
+
+const DIFFERENCES_HEADER_ALIASES: Record<string, DifferencesCsvKey> = {
+  question_no: 'question_no',
+  question_number: 'question_no',
+  q_no: 'question_no',
+  no: 'question_no',
+  group: 'question_no',
+  question: 'question',
+  questions: 'question',
+  body: 'question',
+  stem: 'question',
+  feature_header: 'feature_header',
+  header: 'feature_header',
+  column_1: 'column_1',
+  col1: 'column_1',
+  column1: 'column_1',
+  column_2: 'column_2',
+  col2: 'column_2',
+  column2: 'column_2',
+  column_3: 'column_3',
+  col3: 'column_3',
+  column3: 'column_3',
+  column_4: 'column_4',
+  col4: 'column_4',
+  column4: 'column_4',
+  column_5: 'column_5',
+  col5: 'column_5',
+  column5: 'column_5',
+  column_6: 'column_6',
+  col6: 'column_6',
+  column6: 'column_6',
+  feature: 'feature',
+  item: 'feature',
+  row_feature: 'feature',
+  value_1: 'value_1',
+  val1: 'value_1',
+  value1: 'value_1',
+  value_2: 'value_2',
+  val2: 'value_2',
+  value2: 'value_2',
+  value_3: 'value_3',
+  val3: 'value_3',
+  value3: 'value_3',
+  value_4: 'value_4',
+  val4: 'value_4',
+  value4: 'value_4',
+  value_5: 'value_5',
+  val5: 'value_5',
+  value5: 'value_5',
+  value_6: 'value_6',
+  val6: 'value_6',
+  value6: 'value_6',
+};
+
+const DIFFERENCES_COLUMN_KEYS: DifferencesCsvKey[] = [
+  'column_1',
+  'column_2',
+  'column_3',
+  'column_4',
+  'column_5',
+  'column_6',
+];
+const DIFFERENCES_VALUE_KEYS: DifferencesCsvKey[] = [
+  'value_1',
+  'value_2',
+  'value_3',
+  'value_4',
+  'value_5',
+  'value_6',
+];
+
+export type ParsedDifferencesCsvRow = {
+  question: string;
+  model_answer_comparison: {
+    feature_header?: string;
+    columns: string[];
+    rows: Array<{ feature: string; values: string[] }>;
+  };
+};
+
+/**
+ * DIFFERENCES CSV: one row per comparison-table feature row, grouped by `question_no`.
+ * `question`, `feature_header`, and `column_1..column_6` only need to be filled on a group's
+ * first row — later rows in the same group leave those blank. Columns are read contiguously
+ * from column_1 and stop at the first blank (no gaps), matching the admin comparison editor.
+ */
+export function parseDifferencesCsv(text: string): {
+  rows: ParsedDifferencesCsvRow[];
+  errors: string[];
+} {
+  const table = parseCsv(text);
+  const errors: string[] = [];
+  if (table.length < 2) {
+    return { rows: [], errors: ['CSV must include a header row and at least one data row'] };
+  }
+
+  const headerCells = table[0]!.map(normalizeHeader);
+  const index: Partial<Record<DifferencesCsvKey, number>> = {};
+  headerCells.forEach((h, i) => {
+    const key = DIFFERENCES_HEADER_ALIASES[h];
+    if (key && index[key] === undefined) index[key] = i;
+  });
+
+  if (index.question_no === undefined) errors.push('Missing required column: question_no');
+  if (index.question === undefined) errors.push('Missing required column: question');
+  if (index.feature === undefined) errors.push('Missing required column: feature');
+  if (index.column_1 === undefined || index.column_2 === undefined) {
+    errors.push('Missing required columns: column_1 and column_2');
+  }
+  if (index.value_1 === undefined || index.value_2 === undefined) {
+    errors.push('Missing required columns: value_1 and value_2');
+  }
+  if (errors.length) return { rows: [], errors };
+
+  const get = (cells: string[], key: DifferencesCsvKey) => {
+    const col = index[key];
+    if (col === undefined) return '';
+    return (cells[col] ?? '').trim();
+  };
+
+  type Group = {
+    question: string;
+    feature_header: string;
+    columns: string[];
+    rows: Array<{ feature: string; values: string[] }>;
+  };
+  const groups = new Map<string, Group>();
+  const order: string[] = [];
+
+  for (let r = 1; r < table.length; r++) {
+    const cells = table[r]!;
+    const groupKey = get(cells, 'question_no');
+    if (!groupKey) {
+      errors.push(`Row ${r + 1}: empty question_no — skipped`);
+      continue;
+    }
+
+    let group = groups.get(groupKey);
+    if (!group) {
+      group = { question: '', feature_header: '', columns: [], rows: [] };
+      groups.set(groupKey, group);
+      order.push(groupKey);
+    }
+
+    const question = get(cells, 'question');
+    if (question && !group.question) group.question = question;
+
+    const featureHeader = get(cells, 'feature_header');
+    if (featureHeader && !group.feature_header) group.feature_header = featureHeader;
+
+    if (group.columns.length === 0) {
+      const columns: string[] = [];
+      for (const key of DIFFERENCES_COLUMN_KEYS) {
+        const value = get(cells, key);
+        if (!value) break;
+        columns.push(value);
+      }
+      if (columns.length > 0) group.columns = columns;
+    }
+
+    const feature = get(cells, 'feature');
+    const values = DIFFERENCES_VALUE_KEYS.slice(0, Math.max(group.columns.length, 2)).map((key) =>
+      get(cells, key),
+    );
+    if (feature || values.some(Boolean)) {
+      group.rows.push({ feature, values });
+    }
+  }
+
+  const rows: ParsedDifferencesCsvRow[] = [];
+  for (const key of order) {
+    const group = groups.get(key)!;
+    if (!group.question) {
+      errors.push(`Question group "${key}": missing question text — skipped`);
+      continue;
+    }
+    if (group.columns.length < 2) {
+      errors.push(`Question group "${key}": needs at least 2 columns (column_1, column_2) — skipped`);
+      continue;
+    }
+    if (group.rows.length === 0) {
+      errors.push(`Question group "${key}": no feature rows — skipped`);
+      continue;
+    }
+    rows.push({
+      question: group.question,
+      model_answer_comparison: {
+        feature_header: group.feature_header || undefined,
+        columns: group.columns,
+        rows: group.rows.map((row) => ({
+          feature: row.feature,
+          values: group.columns.map((_, i) => row.values[i] ?? ''),
+        })),
+      },
+    });
+  }
+
+  if (rows.length === 0 && errors.length === 0) {
+    errors.push('No question groups found in CSV');
+  }
+
+  return { rows, errors };
+}

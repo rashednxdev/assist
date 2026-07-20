@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import type {
   BatchDescriptiveImportDto,
+  BatchDifferencesImportDto,
   BatchMcqImportDto,
   CreateQuestionDto,
   CreateQuestionTypeDto,
@@ -1644,6 +1645,119 @@ async function resolveDescriptiveQuestionType(questionTypeId?: string) {
     has_options: false,
     code: { $nin: ['DIFFERENCES', 'DIFFERENCE', 'DF', 'MCQ', 'TF'] },
   }).sort({ name: 1 });
+}
+
+export async function batchImportDifferencesQuestions(
+  dto: BatchDifferencesImportDto,
+  createdBy: string,
+) {
+  const chapter = await BookChapter.findById(dto.book_chapter_id);
+  if (!chapter || !chapter.is_active) throw notFound('Chapter not found');
+
+  const qType = await resolveDifferencesQuestionType(dto.question_type_id);
+  if (!qType) {
+    throw badRequest(
+      'No DIFFERENCES question type found. Create a question type with code "DIFFERENCES" first.',
+    );
+  }
+  if (qType.has_options) {
+    throw badRequest(`Question type "${qType.name}" has options and cannot be used for differences import.`);
+  }
+
+  const created: Array<{ row: number; id: string }> = [];
+  const failed: Array<{ row: number; error: string }> = [];
+
+  for (let i = 0; i < dto.rows.length; i++) {
+    const row = dto.rows[i]!;
+    const rowNumber = i + 1;
+    try {
+      const comparison = cleanComparisonTable(row.model_answer_comparison);
+      if (!comparison) {
+        throw badRequest('Comparison table needs at least 2 columns and 1 row with content');
+      }
+
+      const createDto: CreateQuestionDto = {
+        question_type_id: String(qType._id),
+        body_en: row.question.trim(),
+        body_bn: row.question.trim(),
+        difficulty: dto.difficulty,
+        marks: dto.marks,
+        negative_marks: dto.negative_marks,
+        time_seconds: dto.time_seconds,
+        language: dto.language,
+        model_answer_comparison: comparison,
+        model_answer_sections: [],
+        explanation_sections: [],
+        book_links: [
+          {
+            link_level: 'chapter',
+            book_chapter_id: String(chapter._id),
+          },
+        ],
+      };
+
+      const detail = await createQuestion(createDto, createdBy);
+      if (dto.publish) {
+        await publishQuestion(detail.id, createdBy);
+      }
+      created.push({ row: rowNumber, id: detail.id });
+    } catch (err) {
+      failed.push({
+        row: rowNumber,
+        error: err instanceof Error ? err.message : 'Failed to create question',
+      });
+    }
+  }
+
+  return {
+    book_chapter_id: String(chapter._id),
+    total: dto.rows.length,
+    created_count: created.length,
+    failed_count: failed.length,
+    published: dto.publish,
+    created,
+    failed,
+  };
+}
+
+/**
+ * Prefer an existing DIFFERENCES type — never create one.
+ * Order: explicit id → code DIFFERENCES (exact, so `isDifferencesType` matches downstream) →
+ * name DIFFERENCES as a last resort. Code is checked as its own query first — a combined
+ * code-or-name query has no priority ordering and can match an unrelated legacy code (e.g. a
+ * dormant "DF" type whose name also happens to be "Differences").
+ */
+async function resolveDifferencesQuestionType(questionTypeId?: string) {
+  if (questionTypeId) {
+    const byId = await QuestionType.findById(questionTypeId);
+    if (!byId) return null;
+    if (!byId.is_active) {
+      byId.is_active = true;
+      await byId.save();
+    }
+    return byId;
+  }
+
+  const byCode = await QuestionType.findOne({ code: { $regex: /^differences?$/i } }).sort({
+    is_active: -1,
+  });
+  if (byCode) {
+    if (!byCode.is_active) {
+      byCode.is_active = true;
+      await byCode.save();
+    }
+    return byCode;
+  }
+
+  const byName = await QuestionType.findOne({ name: { $regex: /^differences?$/i } }).sort({
+    is_active: -1,
+  });
+  if (!byName) return null;
+  if (!byName.is_active) {
+    byName.is_active = true;
+    await byName.save();
+  }
+  return byName;
 }
 
 /**

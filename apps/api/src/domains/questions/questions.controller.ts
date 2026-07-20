@@ -11,6 +11,7 @@ import {
   updateQuestionTypeSchema,
   batchMcqImportSchema,
   batchDescriptiveImportSchema,
+  batchDifferencesImportSchema,
   batchQuestionIdsSchema,
 } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
@@ -116,6 +117,12 @@ export async function batchImportMcqHandler(req: AuthRequest, res: Response): Pr
 export async function batchImportDescriptiveHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = batchDescriptiveImportSchema.parse(req.body);
   const data = await questionsService.batchImportDescriptiveQuestions(dto, req.user!.id);
+  res.status(201).json({ data });
+}
+
+export async function batchImportDifferencesHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = batchDifferencesImportSchema.parse(req.body);
+  const data = await questionsService.batchImportDifferencesQuestions(dto, req.user!.id);
   res.status(201).json({ data });
 }
 

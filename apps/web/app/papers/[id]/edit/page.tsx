@@ -90,7 +90,7 @@ const emptyQuestion = {
   header_text: '',
   question_number: 1,
   display_question_number: '',
-  marks: 1,
+  marks: 0,
   marks_display_bn: '',
   is_compulsory: true,
 };
@@ -174,6 +174,13 @@ function questionFormFromRow(pq: PaperQuestionRow, groupId?: string) {
 
 const emptyPartEdit = { part_label: '(a)', marks: 1, marks_display_bn: '', question_id: '' };
 
+interface PartDraft {
+  question_id: string;
+  part_label: string;
+  marks: number;
+  marks_display_bn: string;
+}
+
 export default function PaperComposerPage() {
   const params = useParams();
   const paperId = params.id as string;
@@ -185,7 +192,7 @@ export default function PaperComposerPage() {
   const [panel, setPanel] = useState<Panel>('section');
   const [partBank, setPartBank] = useState<BankQuestion[]>([]);
   const [partBankQ, setPartBankQ] = useState('');
-  const [selectedPartQuestionIds, setSelectedPartQuestionIds] = useState<string[]>([]);
+  const [partDrafts, setPartDrafts] = useState<PartDraft[]>([]);
   const [partBusy, setPartBusy] = useState(false);
 
   const [sectionForm, setSectionForm] = useState(emptySection);
@@ -233,7 +240,7 @@ export default function PaperComposerPage() {
   }, [partBankQ, panel]);
 
   useEffect(() => {
-    setSelectedPartQuestionIds([]);
+    setPartDrafts([]);
     setEditPartId('');
     setPartEditForm(emptyPartEdit);
   }, [editQuestionId]);
@@ -245,7 +252,7 @@ export default function PaperComposerPage() {
     setPartEditForm(emptyPartEdit);
     setSectionForm(emptySection);
     setQuestionForm(emptyQuestion);
-    setSelectedPartQuestionIds([]);
+    setPartDrafts([]);
   }
 
   const readOnly = !isAdmin || data?.paper.is_published;
@@ -284,13 +291,32 @@ export default function PaperComposerPage() {
       : undefined;
     const existingPartCount = editingParent?.parts.length ?? 0;
     const hasHeader = Boolean(questionForm.header_text.trim());
-    const hasNewParts = selectedPartQuestionIds.length > 0;
+    const hasNewParts = partDrafts.length > 0;
 
     const isLegacyBank = Boolean(editingParent?.from_question_bank && editingParent.question_id);
 
     if (!hasHeader && !hasNewParts && existingPartCount === 0 && !isLegacyBank) {
       setError('Add an optional header and/or at least one sub-part from the question bank');
       return;
+    }
+
+    if (hasNewParts) {
+      const existingLabels = new Set(
+        (editingParent?.parts ?? []).map((p) => p.part_label.trim().toLowerCase()),
+      );
+      const seen = new Set<string>();
+      for (const draft of partDrafts) {
+        const key = draft.part_label.trim().toLowerCase();
+        if (!key) {
+          setError('Every sub-part needs a label');
+          return;
+        }
+        if (existingLabels.has(key) || seen.has(key)) {
+          setError(`Part label "${draft.part_label}" is already used — use a different label`);
+          return;
+        }
+        seen.add(key);
+      }
     }
 
     const existingQuestions = getAllQuestions(data);
@@ -330,36 +356,25 @@ export default function PaperComposerPage() {
         setEditQuestionId(res.data.id);
       }
 
-      if (targetId && selectedPartQuestionIds.length > 0) {
-        const composeBefore = await apiFetch<{ data: ComposeData }>(`/papers/${paperId}/compose`);
-        const parent = getAllQuestions(composeBefore.data).find((q) => q.id === targetId);
-        const labels = nextPartLabels(
-          parent?.parts.map((p) => p.part_label) ?? [],
-          selectedPartQuestionIds.length,
-        );
-        if (labels.length < selectedPartQuestionIds.length) {
-          setError('Not enough part labels available — remove some sub-parts or use fewer questions');
-          return;
-        }
+      if (targetId && partDrafts.length > 0) {
         setPartBusy(true);
-        for (let i = 0; i < selectedPartQuestionIds.length; i++) {
-          const questionId = selectedPartQuestionIds[i]!;
-          const bankQ = partBank.find((q) => q.id === questionId);
+        for (const draft of partDrafts) {
           await apiFetch(`/papers/questions/${targetId}/parts`, {
             method: 'POST',
             body: JSON.stringify({
-              question_id: questionId,
-              part_label: labels[i],
-              marks: bankQ?.marks ?? questionForm.marks,
+              question_id: draft.question_id,
+              part_label: draft.part_label,
+              marks: draft.marks,
+              marks_display_bn: draft.marks_display_bn.trim() || undefined,
             }),
           });
         }
         setMessage(
           wasCreate
-            ? `Question added with ${selectedPartQuestionIds.length} sub-part${selectedPartQuestionIds.length !== 1 ? 's' : ''}`
-            : `Question updated with ${selectedPartQuestionIds.length} new sub-part${selectedPartQuestionIds.length !== 1 ? 's' : ''}`,
+            ? `Question added with ${partDrafts.length} sub-part${partDrafts.length !== 1 ? 's' : ''}`
+            : `Question updated with ${partDrafts.length} new sub-part${partDrafts.length !== 1 ? 's' : ''}`,
         );
-        setSelectedPartQuestionIds([]);
+        setPartDrafts([]);
         setPartBusy(false);
       } else if (wasCreate) {
         setMessage('Question added to paper');
@@ -483,7 +498,7 @@ export default function PaperComposerPage() {
                   setEditQuestionId(pq.id);
                   setEditPartId('');
                   setPartEditForm(emptyPartEdit);
-                  setSelectedPartQuestionIds([]);
+                  setPartDrafts([]);
                   setQuestionForm(questionFormFromRow(pq, groupId));
                 }}
               >
@@ -578,6 +593,46 @@ export default function PaperComposerPage() {
     setPanel('question');
     setEditQuestionId('');
     setQuestionForm(freshQuestionForm(allQuestions, overrides));
+  }
+
+  function addPartDraft(q: BankQuestion) {
+    setPartDrafts((drafts) => {
+      const existingLabels = [
+        ...(editingQuestion?.parts.map((p) => p.part_label) ?? []),
+        ...drafts.map((d) => d.part_label),
+      ];
+      const [label] = nextPartLabels(existingLabels, 1);
+      return [
+        ...drafts,
+        {
+          question_id: q.id,
+          part_label: label ?? `(${existingLabels.length + 1})`,
+          marks: q.marks,
+          marks_display_bn: '',
+        },
+      ];
+    });
+  }
+
+  function addAllPartDrafts(questions: BankQuestion[]) {
+    setPartDrafts((drafts) => {
+      const existingLabels = [
+        ...(editingQuestion?.parts.map((p) => p.part_label) ?? []),
+        ...drafts.map((d) => d.part_label),
+      ];
+      const already = new Set(drafts.map((d) => d.question_id));
+      const toAdd = questions.filter((q) => !already.has(q.id));
+      const labels = nextPartLabels(existingLabels, toAdd.length);
+      return [
+        ...drafts,
+        ...toAdd.map((q, i) => ({
+          question_id: q.id,
+          part_label: labels[i] ?? `(${existingLabels.length + i + 1})`,
+          marks: q.marks,
+          marks_display_bn: '',
+        })),
+      ];
+    });
   }
 
   return (
@@ -720,7 +775,7 @@ export default function PaperComposerPage() {
 
                 <div className="grid gap-3 sm:grid-cols-3">
                   <OutlinedInput
-                    label="Marks (allocation)"
+                    label="Marks (allocation, optional)"
                     type="number"
                     value={questionForm.marks}
                     onChange={(e) => setQuestionForm((f) => ({ ...f, marks: Number(e.target.value) }))}
@@ -770,7 +825,7 @@ export default function PaperComposerPage() {
                 <div className="flex items-center justify-between gap-2 text-sm">
                   <span className="text-muted">
                     {questionForm.header_text.trim()
-                      ? 'Add sub-parts under the header — labels auto-assigned as (a), (b), (c)…'
+                      ? 'Add sub-parts under the header — label, marks & Bangla display are editable below'
                       : 'Without a header, the sub-part text appears beside the display number'}
                   </span>
                   {availablePartQuestions.length > 0 && (
@@ -779,9 +834,7 @@ export default function PaperComposerPage() {
                       size="sm"
                       variant="outline"
                       className="h-7"
-                      onClick={() =>
-                        setSelectedPartQuestionIds(availablePartQuestions.map((q) => q.id))
-                      }
+                      onClick={() => addAllPartDrafts(availablePartQuestions)}
                     >
                       Select all
                     </Button>
@@ -797,7 +850,7 @@ export default function PaperComposerPage() {
                   ) : (
                     <ul className="divide-y divide-border">
                       {availablePartQuestions.map((q) => {
-                        const checked = selectedPartQuestionIds.includes(q.id);
+                        const checked = partDrafts.some((d) => d.question_id === q.id);
                         return (
                           <li key={q.id}>
                             <label className="flex cursor-pointer items-start gap-3 p-3 hover:bg-slate-50/80">
@@ -807,11 +860,13 @@ export default function PaperComposerPage() {
                                 checked={checked}
                                 disabled={partBusy}
                                 onChange={(e) => {
-                                  setSelectedPartQuestionIds((ids) =>
-                                    e.target.checked
-                                      ? [...ids, q.id]
-                                      : ids.filter((id) => id !== q.id),
-                                  );
+                                  if (e.target.checked) {
+                                    addPartDraft(q);
+                                  } else {
+                                    setPartDrafts((drafts) =>
+                                      drafts.filter((d) => d.question_id !== q.id),
+                                    );
+                                  }
                                 }}
                               />
                               <span className="min-w-0 flex-1 text-sm">
@@ -829,13 +884,80 @@ export default function PaperComposerPage() {
                   )}
                 </div>
 
-                {selectedPartQuestionIds.length > 0 && (
+                {partDrafts.length > 0 && (
+                  <div className="space-y-2 rounded-lg border border-border bg-slate-50/60 p-3">
+                    <p className="text-sm font-medium">
+                      New sub-part{partDrafts.length !== 1 ? 's' : ''} to add ({partDrafts.length})
+                    </p>
+                    {partDrafts.map((draft, i) => {
+                      const bankQ = partBank.find((b) => b.id === draft.question_id);
+                      return (
+                        <div
+                          key={draft.question_id}
+                          className="space-y-2 rounded-md border border-border bg-surface p-2"
+                        >
+                          <p className="text-xs text-muted">{truncate(bankQ?.body_en ?? '', 100)}</p>
+                          <div className="grid gap-2 sm:grid-cols-3">
+                            <OutlinedInput
+                              label="Part label"
+                              value={draft.part_label}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setPartDrafts((drafts) =>
+                                  drafts.map((d, idx) =>
+                                    idx === i ? { ...d, part_label: value } : d,
+                                  ),
+                                );
+                              }}
+                            />
+                            <OutlinedInput
+                              label="Marks (allocation)"
+                              type="number"
+                              value={draft.marks}
+                              onChange={(e) => {
+                                const value = Number(e.target.value);
+                                setPartDrafts((drafts) =>
+                                  drafts.map((d, idx) => (idx === i ? { ...d, marks: value } : d)),
+                                );
+                              }}
+                            />
+                            <OutlinedInput
+                              label="Marks display (Bangla)"
+                              value={draft.marks_display_bn}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setPartDrafts((drafts) =>
+                                  drafts.map((d, idx) =>
+                                    idx === i ? { ...d, marks_display_bn: value } : d,
+                                  ),
+                                );
+                              }}
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-7"
+                            onClick={() =>
+                              setPartDrafts((drafts) => drafts.filter((_, idx) => idx !== i))
+                            }
+                          >
+                            <X className="h-3 w-3" /> Remove
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {partDrafts.length > 0 && (
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
                     disabled={partBusy}
-                    onClick={() => setSelectedPartQuestionIds([])}
+                    onClick={() => setPartDrafts([])}
                   >
                     Clear sub-part selection
                   </Button>
@@ -910,11 +1032,11 @@ export default function PaperComposerPage() {
 
                 <Button type="submit" size="sm" disabled={partBusy}>
                   {editQuestionId
-                    ? selectedPartQuestionIds.length > 0
-                      ? `Save question + add ${selectedPartQuestionIds.length} sub-part${selectedPartQuestionIds.length !== 1 ? 's' : ''}`
+                    ? partDrafts.length > 0
+                      ? `Save question + add ${partDrafts.length} sub-part${partDrafts.length !== 1 ? 's' : ''}`
                       : 'Update question'
-                    : selectedPartQuestionIds.length > 0
-                      ? `Save question + add ${selectedPartQuestionIds.length} sub-part${selectedPartQuestionIds.length !== 1 ? 's' : ''}`
+                    : partDrafts.length > 0
+                      ? `Save question + add ${partDrafts.length} sub-part${partDrafts.length !== 1 ? 's' : ''}`
                       : 'Save question'}
                 </Button>
               </form>

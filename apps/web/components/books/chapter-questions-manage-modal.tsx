@@ -7,7 +7,14 @@ import { QUESTION_LINK_LEVELS, type QuestionLinkLevel } from '@ibas/shared-const
 import { apiFetch } from '@/lib/api-client';
 import { chapterHeading } from '@/lib/book-display';
 import { buildNewQuestionHref } from '@/lib/question-book-context';
-import { parseMcqCsv, parseDescriptiveCsv, type ParsedMcqCsvRow, type ParsedDescriptiveCsvRow } from '@/lib/mcq-csv';
+import {
+  parseMcqCsv,
+  parseDescriptiveCsv,
+  parseDifferencesCsv,
+  type ParsedMcqCsvRow,
+  type ParsedDescriptiveCsvRow,
+  type ParsedDifferencesCsvRow,
+} from '@/lib/mcq-csv';
 import type { ReaderChapter } from '@/components/books/book-reader-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -51,7 +58,7 @@ interface RegulationItem {
 }
 
 type FilterMode = 'all' | 'draft' | 'published';
-type CsvImportKind = 'mcq' | 'descriptive';
+type CsvImportKind = 'mcq' | 'descriptive' | 'differences';
 
 function plainText(html: string) {
   return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -98,6 +105,7 @@ export function ChapterQuestionsManageModal({
   const [csvKind, setCsvKind] = useState<CsvImportKind>('mcq');
   const [csvMcqRows, setCsvMcqRows] = useState<ParsedMcqCsvRow[]>([]);
   const [csvDescRows, setCsvDescRows] = useState<ParsedDescriptiveCsvRow[]>([]);
+  const [csvDiffRows, setCsvDiffRows] = useState<ParsedDifferencesCsvRow[]>([]);
   const [csvExcluded, setCsvExcluded] = useState<Set<number>>(() => new Set());
   const [csvSelected, setCsvSelected] = useState<Set<number>>(() => new Set());
   const [csvParseNotes, setCsvParseNotes] = useState<string[]>([]);
@@ -105,6 +113,7 @@ export function ChapterQuestionsManageModal({
   const [csvPublish, setCsvPublish] = useState(false);
   const [csvImporting, setCsvImporting] = useState(false);
   const [csvDescTypeId, setCsvDescTypeId] = useState('');
+  const [csvDiffTypeId, setCsvDiffTypeId] = useState('');
   const [questionTypes, setQuestionTypes] = useState<
     Array<{ id: string; name: string; code: string; has_options: boolean }>
   >([]);
@@ -142,6 +151,7 @@ export function ChapterQuestionsManageModal({
     setCsvKind('mcq');
     setCsvMcqRows([]);
     setCsvDescRows([]);
+    setCsvDiffRows([]);
     setCsvExcluded(new Set());
     setCsvSelected(new Set());
     setCsvParseNotes([]);
@@ -149,6 +159,7 @@ export function ChapterQuestionsManageModal({
     setCsvPublish(false);
     setCsvImporting(false);
     setCsvDescTypeId('');
+    setCsvDiffTypeId('');
     apiFetch<{
       data: Array<{ id: string; name: string; code: string; has_options: boolean }>;
     }>('/questions/types')
@@ -162,6 +173,11 @@ export function ChapterQuestionsManageModal({
             (t) => !t.has_options && !/^differences?$/i.test(t.code) && t.code !== 'DF',
           );
         if (preferred) setCsvDescTypeId(preferred.id);
+        const preferredDiff =
+          res.data.find((t) => !t.has_options && /^differences?$/i.test(t.code)) ||
+          res.data.find((t) => !t.has_options && /^differences?$/i.test(t.name)) ||
+          res.data.find((t) => !t.has_options && /differences/i.test(t.name));
+        if (preferredDiff) setCsvDiffTypeId(preferredDiff.id);
       })
       .catch(() => setQuestionTypes([]));
   }, [open, loadRows]);
@@ -317,6 +333,7 @@ export function ChapterQuestionsManageModal({
   function clearCsvPreview() {
     setCsvMcqRows([]);
     setCsvDescRows([]);
+    setCsvDiffRows([]);
     setCsvExcluded(new Set());
     setCsvSelected(new Set());
     setCsvParseNotes([]);
@@ -375,7 +392,8 @@ export function ChapterQuestionsManageModal({
     setCsvSelected(new Set());
   }
 
-  const csvRowCount = csvKind === 'mcq' ? csvMcqRows.length : csvDescRows.length;
+  const csvRowCount =
+    csvKind === 'mcq' ? csvMcqRows.length : csvKind === 'descriptive' ? csvDescRows.length : csvDiffRows.length;
   const csvIncludedMcq = useMemo(
     () => csvMcqRows.filter((_, i) => !csvExcluded.has(i)),
     [csvMcqRows, csvExcluded],
@@ -384,7 +402,16 @@ export function ChapterQuestionsManageModal({
     () => csvDescRows.filter((_, i) => !csvExcluded.has(i)),
     [csvDescRows, csvExcluded],
   );
-  const csvIncludedCount = csvKind === 'mcq' ? csvIncludedMcq.length : csvIncludedDesc.length;
+  const csvIncludedDiff = useMemo(
+    () => csvDiffRows.filter((_, i) => !csvExcluded.has(i)),
+    [csvDiffRows, csvExcluded],
+  );
+  const csvIncludedCount =
+    csvKind === 'mcq'
+      ? csvIncludedMcq.length
+      : csvKind === 'descriptive'
+        ? csvIncludedDesc.length
+        : csvIncludedDiff.length;
   const csvAllSelected = csvRowCount > 0 && csvSelected.size === csvRowCount;
 
   function changeCsvKind(kind: CsvImportKind) {
@@ -410,14 +437,25 @@ export function ChapterQuestionsManageModal({
         setCsvParseNotes(parsed.errors);
         setCsvMcqRows(parsed.rows);
         setCsvDescRows([]);
+        setCsvDiffRows([]);
         if (parsed.rows.length === 0 && parsed.errors.length) {
           setError(parsed.errors[0]!);
         }
-      } else {
+      } else if (csvKind === 'descriptive') {
         const parsed = parseDescriptiveCsv(text);
         setCsvParseNotes(parsed.errors);
         setCsvDescRows(parsed.rows);
         setCsvMcqRows([]);
+        setCsvDiffRows([]);
+        if (parsed.rows.length === 0 && parsed.errors.length) {
+          setError(parsed.errors[0]!);
+        }
+      } else {
+        const parsed = parseDifferencesCsv(text);
+        setCsvParseNotes(parsed.errors);
+        setCsvDiffRows(parsed.rows);
+        setCsvMcqRows([]);
+        setCsvDescRows([]);
         if (parsed.rows.length === 0 && parsed.errors.length) {
           setError(parsed.errors[0]!);
         }
@@ -436,10 +474,22 @@ export function ChapterQuestionsManageModal({
     [questionTypes],
   );
 
+  const differencesTypes = useMemo(
+    () =>
+      questionTypes.filter(
+        (t) => !t.has_options && (/^differences?$/i.test(t.code) || /differences/i.test(t.name)),
+      ),
+    [questionTypes],
+  );
+
   async function importCsvRows() {
     if (csvIncludedCount === 0) return;
     if (csvKind === 'descriptive' && !csvDescTypeId) {
       setError('Select the existing Descriptive question type before importing.');
+      return;
+    }
+    if (csvKind === 'differences' && !csvDiffTypeId) {
+      setError('Select the existing DIFFERENCES question type before importing.');
       return;
     }
     setCsvImporting(true);
@@ -447,8 +497,12 @@ export function ChapterQuestionsManageModal({
     setMessage('');
     try {
       const path =
-        csvKind === 'mcq' ? '/questions/batch-import' : '/questions/batch-import-descriptive';
-      const rows = csvKind === 'mcq' ? csvIncludedMcq : csvIncludedDesc;
+        csvKind === 'mcq'
+          ? '/questions/batch-import'
+          : csvKind === 'descriptive'
+            ? '/questions/batch-import-descriptive'
+            : '/questions/batch-import-differences';
+      const rows = csvKind === 'mcq' ? csvIncludedMcq : csvKind === 'descriptive' ? csvIncludedDesc : csvIncludedDiff;
       const res = await apiFetch<{
         data: {
           created_count: number;
@@ -462,10 +516,11 @@ export function ChapterQuestionsManageModal({
           publish: csvPublish,
           rows,
           ...(csvKind === 'descriptive' ? { question_type_id: csvDescTypeId } : {}),
+          ...(csvKind === 'differences' ? { question_type_id: csvDiffTypeId } : {}),
         }),
       });
       const { created_count, failed_count, failed } = res.data;
-      const label = csvKind === 'mcq' ? 'MCQ' : 'descriptive question';
+      const label = csvKind === 'mcq' ? 'MCQ' : csvKind === 'descriptive' ? 'descriptive question' : 'DIFFERENCES question';
       const parts = [
         `Imported ${created_count} ${label}${created_count !== 1 ? 's' : ''} for this chapter`,
       ];
@@ -545,6 +600,7 @@ export function ChapterQuestionsManageModal({
                     [
                       { id: 'mcq', label: 'MCQ' },
                       { id: 'descriptive', label: 'Descriptive' },
+                      { id: 'differences', label: 'DIFFERENCES' },
                     ] as const
                   ).map((opt) => (
                     <Button
@@ -563,7 +619,9 @@ export function ChapterQuestionsManageModal({
                 <p className="text-xs text-muted">
                   {csvKind === 'mcq'
                     ? 'Columns: question, option_a, option_b, option_c, option_d, correct_option, explanation. Extra columns are ignored.'
-                    : 'Columns: question, title, description, note (or note_reference). Empty title/description/note fields are ignored. Uses your existing Descriptive type.'}
+                    : csvKind === 'descriptive'
+                      ? 'Columns: question, title, description, note (or note_reference). Empty title/description/note fields are ignored. Uses your existing Descriptive type.'
+                      : 'One row per comparison-table feature row, grouped by question_no. Columns: question_no, question, feature_header, column_1, column_2 (…column_6), feature, value_1, value_2 (…value_6). Fill question/feature_header/column_N only on each question’s first row.'}
                 </p>
                 {csvKind === 'descriptive' ? (
                   <div className="space-y-1">
@@ -579,6 +637,28 @@ export function ChapterQuestionsManageModal({
                         <option value="">No descriptive type found</option>
                       ) : (
                         descriptiveTypes.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name} ({t.code})
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  </div>
+                ) : null}
+                {csvKind === 'differences' ? (
+                  <div className="space-y-1">
+                    <Label htmlFor="csv-diff-type">Question type</Label>
+                    <select
+                      id="csv-diff-type"
+                      className="ibas-select"
+                      value={csvDiffTypeId}
+                      disabled={csvImporting || differencesTypes.length === 0}
+                      onChange={(e) => setCsvDiffTypeId(e.target.value)}
+                    >
+                      {differencesTypes.length === 0 ? (
+                        <option value="">No DIFFERENCES type found</option>
+                      ) : (
+                        differencesTypes.map((t) => (
                           <option key={t.id} value={t.id}>
                             {t.name} ({t.code})
                           </option>
@@ -690,19 +770,24 @@ export function ChapterQuestionsManageModal({
                         <th className="px-2 py-1.5 font-medium">Question</th>
                         {csvKind === 'mcq' ? (
                           <th className="px-2 py-1.5 font-medium">Ans</th>
-                        ) : (
+                        ) : csvKind === 'descriptive' ? (
                           <>
                             <th className="px-2 py-1.5 font-medium">Title</th>
                             <th className="px-2 py-1.5 font-medium">Description</th>
                             <th className="px-2 py-1.5 font-medium">Note</th>
+                          </>
+                        ) : (
+                          <>
+                            <th className="px-2 py-1.5 font-medium">Columns</th>
+                            <th className="px-2 py-1.5 font-medium">Rows</th>
                           </>
                         )}
                         <th className="px-2 py-1.5 text-right font-medium">Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {csvKind === 'mcq'
-                        ? csvMcqRows.map((r, i) => {
+                      {csvKind === 'mcq' ? (
+                        csvMcqRows.map((r, i) => {
                             const excluded = csvExcluded.has(i);
                             const selected = csvSelected.has(i);
                             return (
@@ -759,7 +844,8 @@ export function ChapterQuestionsManageModal({
                               </tr>
                             );
                           })
-                        : csvDescRows.map((r, i) => {
+                      ) : csvKind === 'descriptive' ? (
+                        csvDescRows.map((r, i) => {
                             const excluded = csvExcluded.has(i);
                             const selected = csvSelected.has(i);
                             return (
@@ -829,7 +915,74 @@ export function ChapterQuestionsManageModal({
                                 </td>
                               </tr>
                             );
-                          })}
+                          })
+                      ) : (
+                        csvDiffRows.map((r, i) => {
+                          const excluded = csvExcluded.has(i);
+                          const selected = csvSelected.has(i);
+                          const table = r.model_answer_comparison;
+                          return (
+                            <tr
+                              key={`diff-${i}-${r.question.slice(0, 24)}`}
+                              className={`border-t border-border ${
+                                excluded
+                                  ? 'bg-muted/30 opacity-55'
+                                  : selected
+                                    ? 'bg-primary-muted/40'
+                                    : ''
+                              }`}
+                            >
+                              <td className="px-2 py-1 align-top">
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4 rounded border-border"
+                                  checked={selected}
+                                  disabled={csvImporting}
+                                  onChange={() => toggleCsvSelect(i)}
+                                  aria-label={`Select row ${i + 1}`}
+                                />
+                              </td>
+                              <td className="px-2 py-1 align-top text-muted">{i + 1}</td>
+                              <td
+                                className={`px-2 py-1.5 align-top whitespace-pre-wrap break-words ${excluded ? 'line-through text-muted' : ''}`}
+                              >
+                                {plainText(r.question)}
+                              </td>
+                              <td
+                                className={`px-2 py-1.5 align-top whitespace-pre-wrap break-words ${excluded ? 'line-through text-muted' : ''}`}
+                              >
+                                {table.columns.join(' vs ')}
+                              </td>
+                              <td className={`px-2 py-1 align-top ${excluded ? 'text-muted' : ''}`}>
+                                {table.rows.length}
+                              </td>
+                              <td className="px-2 py-1 align-top text-right">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 px-2"
+                                  disabled={csvImporting}
+                                  onClick={() => toggleCsvExclude(i)}
+                                  title={excluded ? 'Include again' : 'Exclude from import'}
+                                >
+                                  {excluded ? (
+                                    <>
+                                      <Undo2 className="h-3.5 w-3.5" />
+                                      Include
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                      Exclude
+                                    </>
+                                  )}
+                                </Button>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -853,7 +1006,7 @@ export function ChapterQuestionsManageModal({
                   >
                     {csvImporting
                       ? 'Importing…'
-                      : `Import ${csvIncludedCount} ${csvKind === 'mcq' ? 'MCQ' : 'descriptive'}${csvIncludedCount !== 1 ? 's' : ''}`}
+                      : `Import ${csvIncludedCount} ${csvKind === 'mcq' ? 'MCQ' : csvKind === 'descriptive' ? 'descriptive' : 'DIFFERENCES'}${csvIncludedCount !== 1 ? 's' : ''}`}
                   </Button>
                   {csvExcluded.size > 0 ? (
                     <Button

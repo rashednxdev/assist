@@ -287,6 +287,28 @@ export const batchDescriptiveImportSchema = z.object({
 export type BatchDescriptiveImportRow = z.infer<typeof batchDescriptiveImportRowSchema>;
 export type BatchDescriptiveImportDto = z.infer<typeof batchDescriptiveImportSchema>;
 
+/** One DIFFERENCES row: question + its comparison-table model answer. */
+export const batchDifferencesImportRowSchema = z.object({
+  question: z.string().min(1, 'Question text is required'),
+  model_answer_comparison: comparisonTableSchema,
+});
+
+export const batchDifferencesImportSchema = z.object({
+  book_chapter_id: mongoId,
+  /** Existing question type id (prefer current DIFFERENCES). Must be a non-option type. */
+  question_type_id: mongoId.optional(),
+  publish: z.boolean().optional().default(false),
+  difficulty: z.enum(QUESTION_DIFFICULTIES).optional().default('medium'),
+  marks: z.number().positive().optional().default(5),
+  negative_marks: z.number().min(0).optional().default(0),
+  time_seconds: z.number().int().positive().optional().default(300),
+  language: z.enum(BOOK_LANGUAGES).optional().default('bn'),
+  rows: z.array(batchDifferencesImportRowSchema).min(1).max(500),
+});
+
+export type BatchDifferencesImportRow = z.infer<typeof batchDifferencesImportRowSchema>;
+export type BatchDifferencesImportDto = z.infer<typeof batchDifferencesImportSchema>;
+
 /** Shared body for batch trash / restore / permanent delete. */
 export const batchQuestionIdsSchema = z.object({
   ids: z.array(mongoId).min(1, 'Select at least one question').max(100),

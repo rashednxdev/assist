@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
 import { requireAdmin } from '../../middleware/requireAdmin.js';
 import { requireModuleAccess } from '../../middleware/requireModuleAccess.js';
+import { requireModulePermission } from '../../middleware/requireModulePermission.js';
 import { asyncHandler } from '../../shared/asyncHandler.js';
 import {
   listQuestionTypesHandler,
@@ -37,16 +38,23 @@ export const questionsRouter = Router();
 
 questionsRouter.use(authenticate);
 
-questionsRouter.get('/types', requireModuleAccess('QUESTIONS'), asyncHandler(listQuestionTypesHandler));
+const canBrowseQuestions = requireModulePermission([
+  { moduleCode: 'QUESTIONS', permission: 'can_read' },
+  { moduleCode: 'QUESTION_EDIT', permission: 'can_read' },
+]);
+const canEditQuestions = requireModulePermission([{ moduleCode: 'QUESTION_EDIT', permission: 'can_update' }]);
+
+questionsRouter.get('/types', canBrowseQuestions, asyncHandler(listQuestionTypesHandler));
 questionsRouter.post('/types', requireAdmin, asyncHandler(createQuestionTypeHandler));
 questionsRouter.patch('/types/:id', requireAdmin, asyncHandler(updateQuestionTypeHandler));
 questionsRouter.delete('/types/:id', requireAdmin, asyncHandler(deleteQuestionTypeHandler));
-questionsRouter.get('/', requireModuleAccess('QUESTIONS'), asyncHandler(listQuestionsHandler));
+
+questionsRouter.get('/', canBrowseQuestions, asyncHandler(listQuestionsHandler));
 questionsRouter.get('/trashed', requireAdmin, asyncHandler(listTrashedQuestionsHandler));
 questionsRouter.get('/marathon-review', requireModuleAccess('QUESTIONS'), asyncHandler(listMarathonReviewHandler));
 questionsRouter.get('/sync', requireModuleAccess('QUESTIONS'), asyncHandler(questionsSyncHandler));
 questionsRouter.get('/similar', requireModuleAccess('QUESTIONS'), asyncHandler(similarQuestionsHandler));
-questionsRouter.get('/:id', requireModuleAccess('QUESTIONS'), asyncHandler(getQuestionHandler));
+questionsRouter.get('/:id', canBrowseQuestions, asyncHandler(getQuestionHandler));
 
 questionsRouter.post('/batch-import', requireAdmin, asyncHandler(batchImportMcqHandler));
 questionsRouter.post(
@@ -67,21 +75,21 @@ questionsRouter.post(
   asyncHandler(batchPermanentlyDeleteQuestionsHandler),
 );
 questionsRouter.post('/', requireAdmin, asyncHandler(createQuestionHandler));
-questionsRouter.patch('/:id', requireAdmin, asyncHandler(updateQuestionHandler));
+questionsRouter.patch('/:id', canEditQuestions, asyncHandler(updateQuestionHandler));
 questionsRouter.post('/:id/restore', requireAdmin, asyncHandler(restoreQuestionHandler));
 questionsRouter.delete('/:id/permanent', requireAdmin, asyncHandler(permanentlyDeleteQuestionHandler));
 questionsRouter.delete('/:id', requireAdmin, asyncHandler(deleteQuestionHandler));
 questionsRouter.post(
   '/:id/submit-for-quality-check',
-  requireAdmin,
+  canEditQuestions,
   asyncHandler(submitQuestionForQualityCheckHandler),
 );
 questionsRouter.post(
   '/:id/return-to-draft',
-  requireAdmin,
+  canEditQuestions,
   asyncHandler(returnQuestionToDraftHandler),
 );
-questionsRouter.post('/:id/publish', requireAdmin, asyncHandler(publishQuestionHandler));
-questionsRouter.post('/:id/unpublish', requireAdmin, asyncHandler(unpublishQuestionHandler));
+questionsRouter.post('/:id/publish', canEditQuestions, asyncHandler(publishQuestionHandler));
+questionsRouter.post('/:id/unpublish', canEditQuestions, asyncHandler(unpublishQuestionHandler));
 questionsRouter.post('/:id/book-links', requireAdmin, asyncHandler(addQuestionBookLinkHandler));
 questionsRouter.delete('/:id/book-links/:linkId', requireAdmin, asyncHandler(deleteQuestionBookLinkHandler));

@@ -93,6 +93,21 @@ export async function upsertModuleAccess(userId: string, dto: UpsertModuleAccess
   return serializeAccess(doc);
 }
 
+/** True if the user has an active grant for moduleCode with the given permission flag set. */
+export async function hasModulePermission(
+  userId: string,
+  moduleCode: string,
+  permission: 'can_read' | 'can_create' | 'can_update' | 'can_delete' | 'can_grade' | 'can_publish',
+): Promise<boolean> {
+  const grant = await UserModuleAccess.exists({
+    user_id: userId,
+    module_code: moduleCode,
+    is_active: true,
+    [permission]: true,
+  });
+  return Boolean(grant);
+}
+
 export async function revokeModuleAccess(userId: string, moduleId: string) {
   const doc = await UserModuleAccess.findOne({ user_id: userId, module_id: moduleId });
   if (!doc) throw notFound('Module access not found');

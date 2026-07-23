@@ -15,6 +15,7 @@ import {
   batchQuestionIdsSchema,
 } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
+import { hasModulePermission } from '../users/module-access.service.js';
 import * as questionsService from './questions.service.js';
 
 export async function createQuestionTypeHandler(req: AuthRequest, res: Response): Promise<void> {
@@ -46,9 +47,12 @@ export async function listQuestionsHandler(req: AuthRequest, res: Response): Pro
     Boolean(user?.is_super_admin) ||
     user?.user_type === 'system_admin' ||
     user?.user_type === 'admin';
+  const canSeeAllStatuses =
+    isAdmin || (!!user && (await hasModulePermission(user.id, 'QUESTION_EDIT', 'can_read')));
 
-  // Non-admins (e.g. mobile Question Bank) only ever receive published questions.
-  const listFilters = isAdmin ? filters : { ...filters, is_published: true as const };
+  // Regular mobile Question Bank users only ever receive published questions; admins and
+  // the mobile Question Update module (draft/quality_check/published review workflow) see all.
+  const listFilters = canSeeAllStatuses ? filters : { ...filters, is_published: true as const };
 
   const { items, total, limit, offset } = await questionsService.listQuestions(listFilters);
   res.json({

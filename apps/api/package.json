@@ -14,6 +14,7 @@
     "migrate:explanations": "tsx scripts/migrations/migrate-explanation-sections.ts",
     "migrate:review-status": "tsx scripts/migrations/migrate-review-status.ts",
     "migrate:book-published": "tsx scripts/migrations/migrate-book-published.ts",
+    "migrate:question-edit-module": "tsx scripts/migrations/add-question-edit-module.ts",
     "test:db": "tsx scripts/test-connection.ts"
   },
   "dependencies": {

@@ -1,3 +1,6 @@
+/** Draft -> quality_check -> published, with published/quality_check able to fall back a stage. */
+export type ReviewStatus = 'draft' | 'quality_check' | 'published';
+
 export interface QuestionType {
   id: string;
   code: string;
@@ -16,6 +19,8 @@ export interface QuestionListItem {
   marks: number;
   time_seconds: number;
   is_published: boolean;
+  /** Not populated by the offline sync cache (Question Bank/Marathon) — only by live /questions calls. */
+  review_status?: ReviewStatus;
   book_chapter_id?: string;
   book_topic_id?: string;
   book_sub_topic_id?: string;
@@ -83,6 +88,8 @@ export interface QuestionDetail {
   negative_marks?: number;
   time_seconds: number;
   is_published: boolean;
+  /** Not populated by the offline sync cache (Question Bank/Marathon) — only by live /questions calls. */
+  review_status?: ReviewStatus;
   book_id?: string;
   book_name?: string;
   chapter_number?: string;

@@ -1,6 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { ModuleAccessGrant } from '@ibas/shared-types';
-import { hasLearningModule, learningGrants, setOnUnauthorized, type LearningModuleCode } from './api';
+import {
+  hasLearningModule,
+  hasLearningModuleUpdate,
+  learningGrants,
+  setOnUnauthorized,
+  type LearningModuleCode,
+} from './api';
 import {
   clearToken,
   fetchMe,
@@ -16,6 +22,7 @@ interface AuthState {
   refreshUser: () => Promise<MeUser>;
   signOut: () => Promise<void>;
   canAccess: (code: LearningModuleCode) => boolean;
+  canUpdate: (code: LearningModuleCode) => boolean;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -77,9 +84,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [user?.module_access],
   );
 
+  const canUpdate = useCallback(
+    (code: LearningModuleCode) => hasLearningModuleUpdate(user?.module_access ?? [], code),
+    [user?.module_access],
+  );
+
   const value = useMemo(
-    () => ({ user, loading, learningModules, refreshUser, signOut, canAccess }),
-    [user, loading, learningModules, refreshUser, signOut, canAccess],
+    () => ({ user, loading, learningModules, refreshUser, signOut, canAccess, canUpdate }),
+    [user, loading, learningModules, refreshUser, signOut, canAccess, canUpdate],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -70,12 +70,25 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   }
 }
 
-export const LEARNING_MODULE_CODES = ['BOOKS', 'QUESTIONS', 'EXAM', 'PAPER', 'OCR', 'PENSION'] as const;
+export const LEARNING_MODULE_CODES = [
+  'BOOKS',
+  'QUESTIONS',
+  'EXAM',
+  'PAPER',
+  'OCR',
+  'PENSION',
+  'QUESTION_EDIT',
+] as const;
 
 export type LearningModuleCode = (typeof LEARNING_MODULE_CODES)[number];
 
 export function hasLearningModule(grants: ModuleAccessGrant[], code: LearningModuleCode): boolean {
   return grants.some((g) => g.module_code === code && g.can_read);
+}
+
+/** True update permission (not just read) — e.g. the QUESTION_EDIT module's actual edit gate. */
+export function hasLearningModuleUpdate(grants: ModuleAccessGrant[], code: LearningModuleCode): boolean {
+  return grants.some((g) => g.module_code === code && g.can_update);
 }
 
 export function learningGrants(grants: ModuleAccessGrant[]): ModuleAccessGrant[] {

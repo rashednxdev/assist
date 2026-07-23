@@ -26,10 +26,16 @@ import { colors, spacing } from '@/theme';
 
 const MODULES: Array<{
   id: string;
-  code: 'BOOKS' | 'QUESTIONS' | 'EXAM' | 'PAPER' | 'PENSION';
+  code: 'BOOKS' | 'QUESTIONS' | 'EXAM' | 'PAPER' | 'PENSION' | 'QUESTION_EDIT';
   title: string;
   subtitle: string;
-  icon: 'library-outline' | 'help-circle-outline' | 'school-outline' | 'document-text-outline' | 'calculator-outline';
+  icon:
+    | 'library-outline'
+    | 'help-circle-outline'
+    | 'school-outline'
+    | 'document-text-outline'
+    | 'calculator-outline'
+    | 'create-outline';
   color: string;
   href: Href;
 }> = [
@@ -86,6 +92,15 @@ const MODULES: Array<{
     icon: 'calculator-outline' as const,
     color: '#0369a1',
     href: '/(app)/joining-period' as Href,
+  },
+  {
+    id: 'question-update',
+    code: 'QUESTION_EDIT' as const,
+    title: 'Question Update',
+    subtitle: 'Review & edit questions and answers',
+    icon: 'create-outline' as const,
+    color: '#B45309',
+    href: '/(app)/question-update' as Href,
   },
 ];
 

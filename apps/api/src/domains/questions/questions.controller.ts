@@ -165,6 +165,19 @@ export async function batchPermanentlyDeleteQuestionsHandler(req: AuthRequest, r
   res.json({ data });
 }
 
+export async function submitQuestionForQualityCheckHandler(
+  req: AuthRequest,
+  res: Response,
+): Promise<void> {
+  const data = await questionsService.submitQuestionForQualityCheck(String(req.params.id));
+  res.json({ data });
+}
+
+export async function returnQuestionToDraftHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await questionsService.returnQuestionToDraft(String(req.params.id));
+  res.json({ data });
+}
+
 export async function publishQuestionHandler(req: AuthRequest, res: Response): Promise<void> {
   const data = await questionsService.publishQuestion(String(req.params.id), req.user!.id);
   res.json({ data });

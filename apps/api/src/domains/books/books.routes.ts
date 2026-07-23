@@ -22,6 +22,8 @@ import {
   createBookHandler,
   updateBookHandler,
   deleteBookHandler,
+  publishBookHandler,
+  unpublishBookHandler,
   createChapterHandler,
   updateChapterHandler,
   deleteChapterHandler,
@@ -77,6 +79,8 @@ booksRouter.post('/regulations/:id/amendments', requireAdmin, asyncHandler(creat
 booksRouter.post('/:id/regulations', requireAdmin, asyncHandler(createBookRegulationHandler));
 booksRouter.patch('/:id', requireAdmin, asyncHandler(updateBookHandler));
 booksRouter.delete('/:id', requireAdmin, asyncHandler(deleteBookHandler));
+booksRouter.post('/:id/publish', requireAdmin, asyncHandler(publishBookHandler));
+booksRouter.post('/:id/unpublish', requireAdmin, asyncHandler(unpublishBookHandler));
 booksRouter.post('/:id/chapters', requireAdmin, asyncHandler(createChapterHandler));
 booksRouter.patch('/chapters/:chapterId', requireAdmin, asyncHandler(updateChapterHandler));
 booksRouter.delete('/chapters/:chapterId', requireAdmin, asyncHandler(deleteChapterHandler));

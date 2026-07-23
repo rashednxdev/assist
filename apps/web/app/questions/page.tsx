@@ -1,15 +1,22 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { HelpCircle, Pencil, Plus, Search, Trash2, Upload, Download } from 'lucide-react';
-import { QUESTION_DIFFICULTIES } from '@ibas/shared-constants';
+import { ChevronLeft, ChevronRight, HelpCircle, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import {
+  QUESTION_DIFFICULTIES,
+  QUESTION_REVIEW_STATUSES,
+  QUESTION_SORT_OPTIONS,
+  type QuestionSortOption,
+} from '@ibas/shared-constants';
 import { apiFetch } from '@/lib/api-client';
 import { confirmDelete, confirmBatchTrash } from '@/lib/confirm-action';
 import { fetchMe } from '@/lib/auth';
 import { isPlatformAdmin } from '@/lib/capabilities';
 import { RowActions } from '@/components/shared/row-actions';
 import { QuestionEditModal } from '@/components/questions/question-edit-modal';
+import { CsvBatchImport } from '@/components/questions/csv-batch-import';
+import { ReviewStatusActions, ReviewStatusBadge, type ReviewStatus } from '@/components/questions/review-status';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -38,6 +45,7 @@ interface QuestionItem {
   marks: number;
   time_seconds: number;
   is_published: boolean;
+  review_status: ReviewStatus;
   book_chapter_id?: string;
   book_topic_id?: string;
   book_sub_topic_id?: string;
@@ -54,6 +62,17 @@ function linkBadge(item: QuestionItem) {
   return null;
 }
 
+const SORT_LABEL: Record<QuestionSortOption, string> = {
+  updated_desc: 'Recently updated',
+  updated_asc: 'Oldest updated',
+  created_desc: 'Recently created',
+  created_asc: 'Oldest created',
+  marks_desc: 'Marks: high to low',
+  marks_asc: 'Marks: low to high',
+  body_en_asc: 'Question text (A–Z)',
+  body_en_desc: 'Question text (Z–A)',
+};
+
 export default function QuestionsPage() {
   const [items, setItems] = useState<QuestionItem[]>([]);
   const [types, setTypes] = useState<QuestionType[]>([]);
@@ -61,7 +80,7 @@ export default function QuestionsPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [q, setQ] = useState('');
   const [difficulty, setDifficulty] = useState('');
-  const [published, setPublished] = useState('');
+  const [reviewStatusFilter, setReviewStatusFilter] = useState('');
   const [typeCode, setTypeCode] = useState('');
   const [typeMsg, setTypeMsg] = useState('');
   const [typeErr, setTypeErr] = useState('');
@@ -75,22 +94,51 @@ export default function QuestionsPage() {
   const [trashingId, setTrashingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [batchBusy, setBatchBusy] = useState(false);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [importBooks, setImportBooks] = useState<Array<{ id: string; name: string; short_name?: string }>>([]);
+  const [importBookId, setImportBookId] = useState('');
+  const [importChapters, setImportChapters] = useState<
+    Array<{ id: string; name: string; chapter_number?: string }>
+  >([]);
+  const [importChapterId, setImportChapterId] = useState('');
+  const [filterBookId, setFilterBookId] = useState('');
+  const [filterChapters, setFilterChapters] = useState<
+    Array<{ id: string; name: string; chapter_number?: string }>
+  >([]);
+  const [filterChapterId, setFilterChapterId] = useState('');
+  const [sortOption, setSortOption] = useState<QuestionSortOption>('updated_desc');
+
+  const PAGE_SIZE = 50;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const loadTypes = () =>
     apiFetch<{ data: QuestionType[] }>('/questions/types').then((r) => setTypes(r.data));
 
-  function load(search?: string, diff?: string, pub?: string, code?: string) {
+  function load(pageArg?: number) {
+    const targetPage = pageArg ?? page;
     setLoading(true);
     const params = new URLSearchParams();
-    if (search?.trim()) params.set('q', search.trim());
-    if (diff) params.set('difficulty', diff);
-    if (pub === 'true' || pub === 'false') params.set('is_published', pub);
-    if (code) params.set('question_type_code', code);
-    const qs = params.toString() ? `?${params.toString()}` : '';
-    apiFetch<{ data: QuestionItem[] }>(`/questions${qs}`)
+    if (q.trim()) params.set('q', q.trim());
+    if (difficulty) params.set('difficulty', difficulty);
+    if (reviewStatusFilter) params.set('review_status', reviewStatusFilter);
+    if (typeCode) params.set('question_type_code', typeCode);
+    if (filterChapterId) params.set('book_chapter_id', filterChapterId);
+    else if (filterBookId) params.set('book_info_id', filterBookId);
+    if (sortOption && sortOption !== 'updated_desc') params.set('sort', sortOption);
+    params.set('limit', String(PAGE_SIZE));
+    params.set('offset', String((targetPage - 1) * PAGE_SIZE));
+    apiFetch<{
+      data: QuestionItem[];
+      meta?: { total: number; limit: number; offset: number; has_more: boolean };
+    }>(`/questions?${params.toString()}`)
       .then((r) => {
         setItems(r.data);
         setSelectedIds([]);
+        setPage(targetPage);
+        setTotal(r.meta?.total ?? r.data.length);
+        setHasMore(r.meta?.has_more ?? false);
       })
       .finally(() => setLoading(false));
   }
@@ -102,6 +150,44 @@ export default function QuestionsPage() {
       .then((res) => setIsAdmin(isPlatformAdmin(res.data)))
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    apiFetch<{ data: Array<{ id: string; name: string; short_name?: string }> }>('/books')
+      .then((r) => setImportBooks(r.data))
+      .catch(() => setImportBooks([]));
+  }, []);
+
+  useEffect(() => {
+    if (!importBookId) {
+      setImportChapters([]);
+      setImportChapterId('');
+      return;
+    }
+    apiFetch<{ data: Array<{ id: string; name: string; chapter_number?: string }> }>(
+      `/books/${importBookId}/chapters`,
+    )
+      .then((r) => {
+        setImportChapters(r.data);
+        setImportChapterId('');
+      })
+      .catch(() => setImportChapters([]));
+  }, [importBookId]);
+
+  useEffect(() => {
+    if (!filterBookId) {
+      setFilterChapters([]);
+      setFilterChapterId('');
+      return;
+    }
+    apiFetch<{ data: Array<{ id: string; name: string; chapter_number?: string }> }>(
+      `/books/${filterBookId}/chapters`,
+    )
+      .then((r) => {
+        setFilterChapters(r.data);
+        setFilterChapterId('');
+      })
+      .catch(() => setFilterChapters([]));
+  }, [filterBookId]);
 
   async function saveQuestionType(e: React.FormEvent) {
     e.preventDefault();
@@ -175,21 +261,36 @@ export default function QuestionsPage() {
     }
   }
 
-  async function togglePublish(item: QuestionItem, e: React.MouseEvent) {
+  type ReviewTransition = 'submit-for-quality-check' | 'return-to-draft' | 'publish' | 'unpublish';
+
+  const REVIEW_TRANSITION_MESSAGE: Record<ReviewTransition, string> = {
+    'submit-for-quality-check': 'Question submitted for quality check',
+    'return-to-draft': 'Question sent back to draft',
+    publish: 'Question published',
+    unpublish: 'Question sent to quality check',
+  };
+
+  async function transitionReviewStatus(item: QuestionItem, action: ReviewTransition, e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
     setListErr('');
     setListMsg('');
     setPublishingId(item.id);
     try {
-      const path = item.is_published ? `/questions/${item.id}/unpublish` : `/questions/${item.id}/publish`;
-      await apiFetch(path, { method: 'POST' });
-      setItems((prev) =>
-        prev.map((q) => (q.id === item.id ? { ...q, is_published: !q.is_published } : q)),
+      const { data } = await apiFetch<{ data: { review_status: ReviewStatus; is_published: boolean } }>(
+        `/questions/${item.id}/${action}`,
+        { method: 'POST' },
       );
-      setListMsg(item.is_published ? 'Question unpublished' : 'Question published');
+      setItems((prev) =>
+        prev.map((q) =>
+          q.id === item.id
+            ? { ...q, review_status: data.review_status, is_published: data.is_published }
+            : q,
+        ),
+      );
+      setListMsg(REVIEW_TRANSITION_MESSAGE[action]);
     } catch (err) {
-      setListErr(err instanceof Error ? err.message : 'Publish action failed');
+      setListErr(err instanceof Error ? err.message : 'Status update failed');
     } finally {
       setPublishingId(null);
     }
@@ -214,7 +315,7 @@ export default function QuestionsPage() {
       setItems((prev) => prev.filter((q) => q.id !== item.id));
       setSelectedIds((prev) => prev.filter((id) => id !== item.id));
       setListMsg('Question moved to trash (inactive & unpublished)');
-      load(q, difficulty, published, typeCode);
+      load();
     } catch (err) {
       setListErr(err instanceof Error ? err.message : 'Failed to move to trash');
     } finally {
@@ -256,12 +357,18 @@ export default function QuestionsPage() {
       );
       if (failed > 0) setListErr(`${failed} question(s) could not be moved to trash`);
       setSelectedIds([]);
-      load(q, difficulty, published, typeCode);
+      load();
     } catch (err) {
       setListErr(err instanceof Error ? err.message : 'Batch trash failed');
     } finally {
       setBatchBusy(false);
     }
+  }
+
+  function goToPage(next: number) {
+    const clamped = Math.max(1, Math.min(totalPages, next));
+    if (clamped === page) return;
+    load(clamped);
   }
 
   return (
@@ -386,15 +493,72 @@ export default function QuestionsPage() {
         </Card>
       )}
 
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Batch import (CSV)</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted">
+              Optionally tag imported questions to a book chapter. Leave both unselected to import
+              standalone questions with no chapter link.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="import-book">Book (optional)</Label>
+                <select
+                  id="import-book"
+                  className="ibas-select"
+                  value={importBookId}
+                  onChange={(e) => setImportBookId(e.target.value)}
+                >
+                  <option value="">— No book —</option>
+                  {importBooks.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="import-chapter">Chapter (optional)</Label>
+                <select
+                  id="import-chapter"
+                  className="ibas-select"
+                  value={importChapterId}
+                  disabled={!importBookId || importChapters.length === 0}
+                  onChange={(e) => setImportChapterId(e.target.value)}
+                >
+                  <option value="">
+                    {importBookId ? '— No chapter —' : 'Select a book first'}
+                  </option>
+                  {importChapters.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.chapter_number ? `${c.chapter_number}: ` : ''}
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <CsvBatchImport
+              key={importChapterId || 'no-chapter'}
+              bookChapterId={importChapterId || undefined}
+              onImported={() => load()}
+            />
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader className="border-b border-border pb-4">
           <div className="flex flex-col gap-4">
             <CardTitle className="text-lg">Questions</CardTitle>
             <form
-              className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"
+              className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
               onSubmit={(e) => {
                 e.preventDefault();
-                load(q, difficulty, published, typeCode);
+                load(1);
               }}
             >
               <div className="space-y-1.5 sm:col-span-2">
@@ -439,19 +603,71 @@ export default function QuestionsPage() {
                 </select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="published">Status</Label>
+                <Label htmlFor="review_status">Status</Label>
                 <select
-                  id="published"
-                  value={published}
-                  onChange={(e) => setPublished(e.target.value)}
+                  id="review_status"
+                  value={reviewStatusFilter}
+                  onChange={(e) => setReviewStatusFilter(e.target.value)}
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 >
                   <option value="">All</option>
-                  <option value="true">Published</option>
-                  <option value="false">Draft</option>
+                  {QUESTION_REVIEW_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {s === 'quality_check' ? 'Quality check' : s === 'published' ? 'Published' : 'Draft'}
+                    </option>
+                  ))}
                 </select>
               </div>
-              <div className="flex items-end sm:col-span-2 lg:col-span-5">
+              <div className="space-y-1.5">
+                <Label htmlFor="filter-book">Book / Tool</Label>
+                <select
+                  id="filter-book"
+                  value={filterBookId}
+                  onChange={(e) => setFilterBookId(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">All books</option>
+                  {importBooks.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="filter-chapter">Chapter</Label>
+                <select
+                  id="filter-chapter"
+                  value={filterChapterId}
+                  disabled={!filterBookId || filterChapters.length === 0}
+                  onChange={(e) => setFilterChapterId(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">{filterBookId ? 'All chapters' : 'Select a book first'}</option>
+                  {filterChapters.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.chapter_number ? `${c.chapter_number}: ` : ''}
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="sort">Sort by</Label>
+                <select
+                  id="sort"
+                  value={sortOption}
+                  onChange={(e) => setSortOption(e.target.value as QuestionSortOption)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  {QUESTION_SORT_OPTIONS.map((s) => (
+                    <option key={s} value={s}>
+                      {SORT_LABEL[s]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-end sm:col-span-2 lg:col-span-4">
                 <Button type="submit" size="sm" variant="outline">
                   <Search className="h-4 w-4" />
                   Search
@@ -546,11 +762,7 @@ export default function QuestionsPage() {
                           {item.option_count > 0 && (
                             <Badge variant="outline">{item.option_count} options</Badge>
                           )}
-                          {isAdmin && (
-                            <Badge variant={item.is_published ? 'default' : 'outline'}>
-                              {item.is_published ? 'Published' : 'Draft'}
-                            </Badge>
-                          )}
+                          {isAdmin && <ReviewStatusBadge status={item.review_status} />}
                         </div>
                       </div>
                     </Link>
@@ -566,26 +778,16 @@ export default function QuestionsPage() {
                           <Pencil className="h-4 w-4" />
                           Edit
                         </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="shrink-0"
-                          disabled={busy}
-                          onClick={(e) => togglePublish(item, e)}
-                        >
-                          {item.is_published ? (
-                            <>
-                              <Download className="h-4 w-4" />
-                              Unpublish
-                            </>
-                          ) : (
-                            <>
-                              <Upload className="h-4 w-4" />
-                              Publish
-                            </>
-                          )}
-                        </Button>
+                        <ReviewStatusActions
+                          status={item.review_status}
+                          busy={busy}
+                          onSubmitForQualityCheck={(e) =>
+                            transitionReviewStatus(item, 'submit-for-quality-check', e)
+                          }
+                          onReturnToDraft={(e) => transitionReviewStatus(item, 'return-to-draft', e)}
+                          onPublish={(e) => transitionReviewStatus(item, 'publish', e)}
+                          onUnpublish={(e) => transitionReviewStatus(item, 'unpublish', e)}
+                        />
                         <Button
                           type="button"
                           size="sm"
@@ -604,6 +806,38 @@ export default function QuestionsPage() {
               })}
             </div>
           )}
+          {!loading && total > 0 && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+              <p className="text-sm text-muted">
+                Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} of {total}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={page <= 1}
+                  onClick={() => goToPage(page - 1)}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Previous
+                </Button>
+                <span className="text-sm text-muted">
+                  Page {page} of {totalPages}
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={!hasMore && page >= totalPages}
+                  onClick={() => goToPage(page + 1)}
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -611,7 +845,7 @@ export default function QuestionsPage() {
         open={!!editingQuestionId}
         questionId={editingQuestionId}
         onClose={() => setEditingQuestionId(null)}
-        onSaved={() => load(q, difficulty, published, typeCode)}
+        onSaved={() => load()}
       />
     </div>
   );

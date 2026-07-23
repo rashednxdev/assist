@@ -4,6 +4,8 @@ import {
   OPTION_KEYS,
   QUESTION_DIFFICULTIES,
   QUESTION_LINK_LEVELS,
+  QUESTION_REVIEW_STATUSES,
+  QUESTION_SORT_OPTIONS,
 } from '@ibas/shared-constants';
 import { explanationSectionSchema, type ExplanationSection } from './explanation.js';
 import { comparisonTableSchema, type ComparisonTable } from './comparison-table.js';
@@ -147,6 +149,8 @@ export const listQuestionsQuerySchema = z.object({
     .enum(['true', 'false'])
     .optional()
     .transform((v) => (v === undefined ? undefined : v === 'true')),
+  /** Draft / quality_check / published — a finer-grained alternative to is_published. */
+  review_status: z.enum(QUESTION_REVIEW_STATUSES).optional(),
   /** When true, list soft-deleted (trashed) questions only. */
   trashed: z
     .enum(['true', 'false'])
@@ -158,6 +162,8 @@ export const listQuestionsQuerySchema = z.object({
   regulation_id: mongoId.optional(),
   /** Filter questions linked to any chapter of this book. */
   book_info_id: mongoId.optional(),
+  /** List sort order, defaults to most-recently-updated first. */
+  sort: z.enum(QUESTION_SORT_OPTIONS).optional(),
   /** Page size (load first N, then request more with offset). */
   limit: z.coerce.number().int().min(1).max(100).default(50),
   /** How many rows to skip (for infinite scroll / pagination). */
@@ -250,8 +256,7 @@ export const batchMcqImportRowSchema = z.object({
 });
 
 export const batchMcqImportSchema = z.object({
-  book_chapter_id: mongoId,
-  publish: z.boolean().optional().default(false),
+  book_chapter_id: mongoId.optional(),
   difficulty: z.enum(QUESTION_DIFFICULTIES).optional().default('medium'),
   marks: z.number().positive().optional().default(1),
   negative_marks: z.number().min(0).optional().default(0),
@@ -272,10 +277,9 @@ export const batchDescriptiveImportRowSchema = z.object({
 });
 
 export const batchDescriptiveImportSchema = z.object({
-  book_chapter_id: mongoId,
+  book_chapter_id: mongoId.optional(),
   /** Existing question type id (prefer current Descriptive). Must be a non-option type. */
   question_type_id: mongoId.optional(),
-  publish: z.boolean().optional().default(false),
   difficulty: z.enum(QUESTION_DIFFICULTIES).optional().default('medium'),
   marks: z.number().positive().optional().default(5),
   negative_marks: z.number().min(0).optional().default(0),
@@ -294,10 +298,9 @@ export const batchDifferencesImportRowSchema = z.object({
 });
 
 export const batchDifferencesImportSchema = z.object({
-  book_chapter_id: mongoId,
+  book_chapter_id: mongoId.optional(),
   /** Existing question type id (prefer current DIFFERENCES). Must be a non-option type. */
   question_type_id: mongoId.optional(),
-  publish: z.boolean().optional().default(false),
   difficulty: z.enum(QUESTION_DIFFICULTIES).optional().default('medium'),
   marks: z.number().positive().optional().default(5),
   negative_marks: z.number().min(0).optional().default(0),

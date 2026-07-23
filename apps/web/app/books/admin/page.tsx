@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Plus, BookOpen, Layers } from 'lucide-react';
+import { Plus, BookOpen, Layers, Send, Upload } from 'lucide-react';
 import { RowActions } from '@/components/shared/row-actions';
 import { confirmDelete } from '@/lib/confirm-action';
 import { BOOK_LANGUAGES } from '@ibas/shared-constants';
@@ -32,6 +32,7 @@ interface BookItem {
   name_bn: string;
   short_name: string;
   book_type_name?: string;
+  is_published: boolean;
 }
 
 function slugShortName(name: string) {
@@ -64,6 +65,7 @@ export default function BooksAdminPage() {
   const [typeMessage, setTypeMessage] = useState('');
   const [error, setError] = useState('');
   const [typeError, setTypeError] = useState('');
+  const [publishBusyId, setPublishBusyId] = useState<string | null>(null);
 
   const [typeForm, setTypeForm] = useState({
     name: '',
@@ -211,6 +213,21 @@ export default function BooksAdminPage() {
       setError(err instanceof Error ? err.message : 'Failed to remove book');
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function toggleBookPublish(b: BookItem) {
+    setPublishBusyId(b.id);
+    setError('');
+    try {
+      const path = b.is_published ? `/books/${b.id}/unpublish` : `/books/${b.id}/publish`;
+      await apiFetch(path, { method: 'POST' });
+      setMessage(b.is_published ? 'Book sent back to draft' : 'Book published');
+      await loadBooks();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update book status');
+    } finally {
+      setPublishBusyId(null);
     }
   }
 
@@ -591,12 +608,28 @@ export default function BooksAdminPage() {
                     <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                     <div className="min-w-0">
                       <div className="truncate font-medium">{b.name}</div>
-                      <Badge variant="outline" className="mt-1">
-                        {b.short_name}
-                      </Badge>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        <Badge variant="outline">{b.short_name}</Badge>
+                        <Badge variant={b.is_published ? 'success' : 'outline'}>
+                          {b.is_published ? 'Published' : 'Draft'}
+                        </Badge>
+                      </div>
                     </div>
                   </Link>
-                  <RowActions onDelete={() => removeBook(b)} busy={busy} />
+                  <div className="flex shrink-0 items-start gap-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 px-2"
+                      disabled={publishBusyId === b.id || busy}
+                      onClick={() => void toggleBookPublish(b)}
+                    >
+                      {b.is_published ? <Send className="h-3.5 w-3.5" /> : <Upload className="h-3.5 w-3.5" />}
+                      {b.is_published ? 'Unpublish' : 'Publish'}
+                    </Button>
+                    <RowActions onDelete={() => removeBook(b)} busy={busy} />
+                  </div>
                 </div>
               ))
             )}

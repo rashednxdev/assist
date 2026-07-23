@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Eye, Pencil, Trash2, Upload, Download } from 'lucide-react';
+import { ArrowLeft, Eye, Pencil, Trash2 } from 'lucide-react';
 import { apiFetch, ApiError } from '@/lib/api-client';
+import { ReviewStatusActions, ReviewStatusBadge, type ReviewStatus } from '@/components/questions/review-status';
 import { confirmDelete } from '@/lib/confirm-action';
 import { fetchMe } from '@/lib/auth';
 import { PageHeader } from '@/components/shared/page-header';
@@ -42,6 +43,7 @@ interface QuestionDetail {
   negative_marks?: number;
   time_seconds: number;
   is_published: boolean;
+  review_status: ReviewStatus;
   question_type_id: string;
   question_type_code: string;
   question_type_name?: string;
@@ -132,15 +134,26 @@ export default function QuestionDetailPage() {
     }
   }
 
-  async function togglePublish() {
+  const REVIEW_TRANSITION_MESSAGE: Record<
+    'submit-for-quality-check' | 'return-to-draft' | 'publish' | 'unpublish',
+    string
+  > = {
+    'submit-for-quality-check': 'Submitted for quality check',
+    'return-to-draft': 'Sent back to draft',
+    publish: 'Published',
+    unpublish: 'Sent to quality check',
+  };
+
+  async function transitionReviewStatus(
+    action: 'submit-for-quality-check' | 'return-to-draft' | 'publish' | 'unpublish',
+  ) {
     if (!question) return;
     setBusy(true);
     setError('');
     try {
-      const path = question.is_published ? `/questions/${id}/unpublish` : `/questions/${id}/publish`;
-      await apiFetch(path, { method: 'POST' });
+      await apiFetch(`/questions/${id}/${action}`, { method: 'POST' });
       await reload();
-      setMessage(question.is_published ? 'Unpublished' : 'Published');
+      setMessage(REVIEW_TRANSITION_MESSAGE[action]);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Action failed');
     } finally {
@@ -198,19 +211,14 @@ export default function QuestionDetailPage() {
                   <Pencil className="h-4 w-4" />
                   Edit
                 </Button>
-                <Button size="sm" variant="outline" onClick={togglePublish} disabled={busy}>
-                  {question.is_published ? (
-                    <>
-                      <Download className="h-4 w-4" />
-                      Unpublish
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="h-4 w-4" />
-                      Publish
-                    </>
-                  )}
-                </Button>
+                <ReviewStatusActions
+                  status={question.review_status}
+                  busy={busy}
+                  onSubmitForQualityCheck={() => transitionReviewStatus('submit-for-quality-check')}
+                  onReturnToDraft={() => transitionReviewStatus('return-to-draft')}
+                  onPublish={() => transitionReviewStatus('publish')}
+                  onUnpublish={() => transitionReviewStatus('unpublish')}
+                />
                 <Button size="sm" variant="outline" onClick={handleDelete} disabled={busy}>
                   <Trash2 className="h-4 w-4" />
                   Move to trash
@@ -234,9 +242,7 @@ export default function QuestionDetailPage() {
         <Badge variant="secondary">{question.difficulty}</Badge>
         <Badge variant="outline">{question.marks} marks</Badge>
         {question.negative_marks ? <Badge variant="outline">−{question.negative_marks} wrong</Badge> : null}
-        <Badge variant={question.is_published ? 'default' : 'outline'}>
-          {question.is_published ? 'Published' : 'Draft'}
-        </Badge>
+        <ReviewStatusBadge status={question.review_status} />
       </div>
 
       {editMode && isAdmin ? (

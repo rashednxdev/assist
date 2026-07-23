@@ -25,6 +25,8 @@ import {
   batchTrashQuestionsHandler,
   batchRestoreQuestionsHandler,
   batchPermanentlyDeleteQuestionsHandler,
+  submitQuestionForQualityCheckHandler,
+  returnQuestionToDraftHandler,
   publishQuestionHandler,
   unpublishQuestionHandler,
   addQuestionBookLinkHandler,
@@ -69,6 +71,16 @@ questionsRouter.patch('/:id', requireAdmin, asyncHandler(updateQuestionHandler))
 questionsRouter.post('/:id/restore', requireAdmin, asyncHandler(restoreQuestionHandler));
 questionsRouter.delete('/:id/permanent', requireAdmin, asyncHandler(permanentlyDeleteQuestionHandler));
 questionsRouter.delete('/:id', requireAdmin, asyncHandler(deleteQuestionHandler));
+questionsRouter.post(
+  '/:id/submit-for-quality-check',
+  requireAdmin,
+  asyncHandler(submitQuestionForQualityCheckHandler),
+);
+questionsRouter.post(
+  '/:id/return-to-draft',
+  requireAdmin,
+  asyncHandler(returnQuestionToDraftHandler),
+);
 questionsRouter.post('/:id/publish', requireAdmin, asyncHandler(publishQuestionHandler));
 questionsRouter.post('/:id/unpublish', requireAdmin, asyncHandler(unpublishQuestionHandler));
 questionsRouter.post('/:id/book-links', requireAdmin, asyncHandler(addQuestionBookLinkHandler));

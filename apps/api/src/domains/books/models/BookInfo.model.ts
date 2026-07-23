@@ -16,6 +16,8 @@ export interface IBookInfo extends Document {
   is_active: boolean;
   is_superseded: boolean;
   superseded_by?: Types.ObjectId;
+  /** Visibility to non-admin users (mobile app, web reader). New books start unpublished. */
+  is_published: boolean;
   tags: string[];
   created_at: Date;
   updated_at: Date;
@@ -38,6 +40,7 @@ const schema = new Schema<IBookInfo>(
     is_active: { type: Boolean, default: true },
     is_superseded: { type: Boolean, default: false },
     superseded_by: { type: Schema.Types.ObjectId },
+    is_published: { type: Boolean, default: false },
     tags: { type: [String], default: [] },
   },
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } },
@@ -46,5 +49,6 @@ const schema = new Schema<IBookInfo>(
 schema.index({ book_type_id: 1, is_active: 1 });
 schema.index({ tags: 1 });
 schema.index({ is_superseded: 1 });
+schema.index({ is_published: 1 });
 
 export const BookInfo = mongoose.model<IBookInfo>('BookInfo', schema, 'books_info');

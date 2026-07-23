@@ -16,6 +16,7 @@ export interface ReaderBook {
   language: string;
   tags: string[];
   book_type_name?: string;
+  is_published: boolean;
 }
 
 export interface ReaderChapterTopic {

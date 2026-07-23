@@ -3,12 +3,14 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Pencil } from 'lucide-react';
+import { ArrowLeft, Pencil, Send, Upload } from 'lucide-react';
 import { ProgressLinkButton } from '@/components/evaluation/progress-link-button';
+import { apiFetch } from '@/lib/api-client';
 import { fetchMe } from '@/lib/auth';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Alert } from '@/components/ui/alert';
 import { RichTextView } from '@/components/books/rich-text-view';
 import { BookContents } from '@/components/books/book-contents';
 import { BookReaderGate, useBookReader } from '@/components/books/book-reader-context';
@@ -26,8 +28,25 @@ function BookDetailBody({
 }) {
   const { bookId, outline, reload } = useBookReader();
   const book = outline?.book;
+  const [publishBusy, setPublishBusy] = useState(false);
+  const [publishError, setPublishError] = useState('');
 
   if (!book) return null;
+
+  async function togglePublish() {
+    if (!book) return;
+    setPublishBusy(true);
+    setPublishError('');
+    try {
+      const path = book.is_published ? `/books/${bookId}/unpublish` : `/books/${bookId}/publish`;
+      await apiFetch(path, { method: 'POST' });
+      await reload({ silent: true });
+    } catch (err) {
+      setPublishError(err instanceof Error ? err.message : 'Failed to update book status');
+    } finally {
+      setPublishBusy(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -48,7 +67,15 @@ function BookDetailBody({
             {editMode ? 'View mode' : 'Edit content'}
           </Button>
         )}
+        {isAdmin && (
+          <Button size="sm" variant="outline" disabled={publishBusy} onClick={() => void togglePublish()}>
+            {book.is_published ? <Send className="h-4 w-4" /> : <Upload className="h-4 w-4" />}
+            {book.is_published ? 'Unpublish' : 'Publish'}
+          </Button>
+        )}
       </div>
+
+      {publishError && <Alert variant="error">{publishError}</Alert>}
 
       <PageHeader title={book.name} description={book.name_bn} />
 
@@ -58,6 +85,11 @@ function BookDetailBody({
         <Badge variant="outline">{book.language}</Badge>
         {book.published_by && <Badge variant="outline">{book.published_by}</Badge>}
         {book.book_type_name && <Badge variant="secondary">{book.book_type_name}</Badge>}
+        {isAdmin && (
+          <Badge variant={book.is_published ? 'success' : 'outline'}>
+            {book.is_published ? 'Published' : 'Draft'}
+          </Badge>
+        )}
       </div>
 
       {!editMode && book.description?.trim() && (

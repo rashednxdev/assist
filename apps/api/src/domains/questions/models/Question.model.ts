@@ -1,4 +1,5 @@
 import mongoose, { Schema, type Document, type Types } from 'mongoose';
+import { QUESTION_REVIEW_STATUSES, type QuestionReviewStatus } from '@ibas/shared-constants';
 
 export interface IQuestion extends Document {
   question_type_id: Types.ObjectId;
@@ -13,7 +14,11 @@ export interface IQuestion extends Document {
   marks: number;
   negative_marks?: number;
   time_seconds: number;
+  /** Kept in sync with review_status (true only when review_status === 'published') for every
+   * existing is_published-based query (mobile sync, public listing, indexes) to keep working
+   * unchanged. */
   is_published: boolean;
+  review_status: QuestionReviewStatus;
   is_active: boolean;
   language: string;
   created_by: Types.ObjectId;
@@ -37,6 +42,7 @@ const schema = new Schema<IQuestion>(
     negative_marks: { type: Number },
     time_seconds: { type: Number, required: true },
     is_published: { type: Boolean, default: false },
+    review_status: { type: String, enum: QUESTION_REVIEW_STATUSES, default: 'draft' },
     is_active: { type: Boolean, default: true },
     language: { type: String, default: 'both' },
     created_by: { type: Schema.Types.ObjectId, required: true, ref: 'User' },
@@ -50,5 +56,6 @@ schema.index({ book_topic_id: 1, is_published: 1 });
 schema.index({ regulation_id: 1 });
 schema.index({ difficulty: 1, is_published: 1 });
 schema.index({ created_by: 1 });
+schema.index({ review_status: 1 });
 
 export const Question = mongoose.model<IQuestion>('Question', schema, 'questions');

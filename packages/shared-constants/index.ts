@@ -56,6 +56,26 @@ export type QuestionTypeCode = (typeof QUESTION_TYPE_CODES)[number];
 export const QUESTION_LINK_LEVELS = ['chapter', 'rule', 'sub_rule'] as const;
 export type QuestionLinkLevel = (typeof QUESTION_LINK_LEVELS)[number];
 
+/**
+ * Question review workflow: draft -> quality_check -> published, with published/quality_check
+ * both able to fall back to an earlier stage (published -> quality_check, quality_check -> draft).
+ */
+export const QUESTION_REVIEW_STATUSES = ['draft', 'quality_check', 'published'] as const;
+export type QuestionReviewStatus = (typeof QUESTION_REVIEW_STATUSES)[number];
+
+/** Question Bank list sort options. */
+export const QUESTION_SORT_OPTIONS = [
+  'updated_desc',
+  'updated_asc',
+  'created_desc',
+  'created_asc',
+  'marks_desc',
+  'marks_asc',
+  'body_en_asc',
+  'body_en_desc',
+] as const;
+export type QuestionSortOption = (typeof QUESTION_SORT_OPTIONS)[number];
+
 export const OPTION_KEYS = ['a', 'b', 'c', 'd', 'e'] as const;
 export type OptionKey = (typeof OPTION_KEYS)[number];
 

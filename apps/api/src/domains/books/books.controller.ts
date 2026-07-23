@@ -45,7 +45,23 @@ export async function deleteBookTypeHandler(req: AuthRequest, res: Response): Pr
 export async function listBooksHandler(req: AuthRequest, res: Response): Promise<void> {
   const book_type_id = typeof req.query.book_type_id === 'string' ? req.query.book_type_id : undefined;
   const q = typeof req.query.q === 'string' ? req.query.q : undefined;
-  const data = await booksService.listBooks({ book_type_id, q });
+  const user = req.user;
+  const isAdmin =
+    Boolean(user?.is_super_admin) ||
+    user?.user_type === 'system_admin' ||
+    user?.user_type === 'admin';
+  // Non-admins (e.g. mobile Book library) only ever see published books.
+  const data = await booksService.listBooks({ book_type_id, q, ...(isAdmin ? {} : { is_published: true }) });
+  res.json({ data });
+}
+
+export async function publishBookHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await booksService.publishBook(String(req.params.id));
+  res.json({ data });
+}
+
+export async function unpublishBookHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await booksService.unpublishBook(String(req.params.id));
   res.json({ data });
 }
 

@@ -63,6 +63,7 @@ function serializeBook(doc: InstanceType<typeof BookInfo>, typeName?: string) {
     language: doc.language,
     is_active: doc.is_active,
     is_superseded: doc.is_superseded,
+    is_published: doc.is_published,
     tags: doc.tags,
     created_at: doc.created_at,
     updated_at: doc.updated_at,
@@ -224,9 +225,10 @@ export async function deleteRegulation(id: string) {
 
 type BookListItem = Awaited<ReturnType<typeof listBooksFromDb>>[number];
 
-async function listBooksFromDb(filters: { book_type_id?: string; q?: string }) {
+async function listBooksFromDb(filters: { book_type_id?: string; q?: string; is_published?: boolean }) {
   const query: Record<string, unknown> = { is_active: true, is_superseded: false };
   if (filters.book_type_id) query.book_type_id = filters.book_type_id;
+  if (filters.is_published !== undefined) query.is_published = filters.is_published;
   if (filters.q) {
     query.$or = [
       { name: { $regex: filters.q, $options: 'i' } },
@@ -244,10 +246,16 @@ async function listBooksFromDb(filters: { book_type_id?: string; q?: string }) {
   return books.map((b) => serializeBook(b, typeMap[String(b.book_type_id)]));
 }
 
-function filterCachedBooks(items: BookListItem[], filters: { book_type_id?: string; q?: string }) {
+function filterCachedBooks(
+  items: BookListItem[],
+  filters: { book_type_id?: string; q?: string; is_published?: boolean },
+) {
   let list = items;
   if (filters.book_type_id) {
     list = list.filter((b) => String(b.book_type_id) === filters.book_type_id);
+  }
+  if (filters.is_published !== undefined) {
+    list = list.filter((b) => b.is_published === filters.is_published);
   }
   if (filters.q?.trim()) {
     const q = filters.q.trim().toLowerCase();
@@ -265,7 +273,7 @@ function filterCachedBooks(items: BookListItem[], filters: { book_type_id?: stri
 }
 
 export async function listBooks(
-  filters: { book_type_id?: string; q?: string },
+  filters: { book_type_id?: string; q?: string; is_published?: boolean },
   options?: { bypassCache?: boolean },
 ) {
   if (!options?.bypassCache) {
@@ -393,9 +401,30 @@ export async function createBook(dto: CreateBookDto) {
     description: dto.description?.trim() ?? '',
     is_active: true,
     is_superseded: false,
+    is_published: false,
     tags: dto.tags ?? [],
   });
   return serializeBook(book, bookType.name);
+}
+
+/** Draft -> published, visible to non-admin users (mobile app, web reader). */
+export async function publishBook(id: string) {
+  const book = await BookInfo.findById(id);
+  if (!book || !book.is_active) throw notFound('Book not found');
+  book.is_published = true;
+  await book.save();
+  const bookType = await BookType.findById(book.book_type_id);
+  return serializeBook(book, bookType?.name);
+}
+
+/** Published -> draft, hidden from non-admin users again. */
+export async function unpublishBook(id: string) {
+  const book = await BookInfo.findById(id);
+  if (!book || !book.is_active) throw notFound('Book not found');
+  book.is_published = false;
+  await book.save();
+  const bookType = await BookType.findById(book.book_type_id);
+  return serializeBook(book, bookType?.name);
 }
 
 export async function updateBook(id: string, dto: UpdateBookDto) {
@@ -710,6 +739,7 @@ export async function listChapterQuestionsForManage(chapterId: string) {
         marks: q.marks,
         question_type_code: q.question_type_code,
         is_published: q.is_published,
+        review_status: q.review_status,
       };
     })
     .filter((row): row is NonNullable<typeof row> => row !== null);

@@ -347,6 +347,7 @@ function serializeQuestionListItem(
     marks: q.marks,
     time_seconds: q.time_seconds,
     is_published: q.is_published,
+    review_status: q.review_status,
     book_chapter_id: idStr(q.book_chapter_id),
     book_topic_id: idStr(q.book_topic_id),
     book_sub_topic_id: idStr(q.book_sub_topic_id),
@@ -414,6 +415,7 @@ async function loadQuestionDetail(questionId: string) {
     negative_marks: question.negative_marks,
     time_seconds: question.time_seconds,
     is_published: question.is_published,
+    review_status: question.review_status,
     language: question.language,
     created_by: String(question.created_by),
     reviewed_by: idStr(question.reviewed_by),
@@ -824,6 +826,53 @@ export async function findSimilarQuestions(params: {
     .map(({ score: _score, ...item }) => item);
 }
 
+/** Mongo `.sort()` spec for each QUESTION_SORT_OPTIONS value; `_id` tiebreaker keeps skip/limit pages stable. */
+function questionMongoSort(sort?: string): Record<string, 1 | -1> {
+  switch (sort) {
+    case 'updated_asc':
+      return { updated_at: 1, _id: 1 };
+    case 'created_desc':
+      return { created_at: -1, _id: -1 };
+    case 'created_asc':
+      return { created_at: 1, _id: 1 };
+    case 'marks_desc':
+      return { marks: -1, _id: -1 };
+    case 'marks_asc':
+      return { marks: 1, _id: 1 };
+    case 'body_en_asc':
+      return { body_en: 1, _id: 1 };
+    case 'body_en_desc':
+      return { body_en: -1, _id: -1 };
+    case 'updated_desc':
+    default:
+      return { updated_at: -1, _id: -1 };
+  }
+}
+
+/** In-memory equivalent of questionMongoSort() for the cached-published-questions fast path. */
+function sortCachedQuestions<T extends { updated_at?: string; created_at?: string; marks?: number; body_en?: string | null }>(
+  list: T[],
+  sort?: string,
+): T[] {
+  const ascending = sort?.endsWith('_asc') ?? false;
+  const key: keyof T = sort?.startsWith('marks')
+    ? 'marks'
+    : sort?.startsWith('created')
+      ? 'created_at'
+      : sort?.startsWith('body_en')
+        ? 'body_en'
+        : 'updated_at';
+  return [...list].sort((a, b) => {
+    const av = a[key];
+    const bv = b[key];
+    if (av === bv) return 0;
+    if (av === undefined || av === null) return 1;
+    if (bv === undefined || bv === null) return -1;
+    const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+    return ascending ? cmp : -cmp;
+  });
+}
+
 export async function listQuestions(
   filters: {
     q?: string;
@@ -831,12 +880,14 @@ export async function listQuestions(
     question_type_id?: string;
     question_type_code?: string;
     is_published?: boolean;
+    review_status?: string;
     trashed?: boolean;
     book_chapter_id?: string;
     book_topic_id?: string;
     book_sub_topic_id?: string;
     regulation_id?: string;
     book_info_id?: string;
+    sort?: string;
     limit: number;
     offset?: number;
   },
@@ -862,6 +913,8 @@ export async function listQuestions(
       book_sub_topic_id?: string;
       regulation_id?: string;
       book_id?: string;
+      marks?: number;
+      created_at?: string;
       updated_at?: string;
     };
     const cached = cachedPublishedQuestions<QItem>();
@@ -891,6 +944,7 @@ export async function listQuestions(
             (row.body_bn ?? '').toLowerCase().includes(q),
         );
       }
+      list = sortCachedQuestions(list, filters.sort);
       const total = list.length;
       const items = list.slice(offset, offset + limit);
       return { items, total, limit, offset };
@@ -902,6 +956,7 @@ export async function listQuestions(
   if (filters.question_type_id) query.question_type_id = filters.question_type_id;
   if (filters.question_type_code) query.question_type_code = filters.question_type_code;
   if (filters.is_published !== undefined) query.is_published = filters.is_published;
+  if (filters.review_status) query.review_status = filters.review_status;
   if (filters.book_chapter_id) query.book_chapter_id = filters.book_chapter_id;
   if (filters.book_topic_id) query.book_topic_id = filters.book_topic_id;
   if (filters.book_sub_topic_id) query.book_sub_topic_id = filters.book_sub_topic_id;
@@ -926,8 +981,8 @@ export async function listQuestions(
 
   const [total, items] = await Promise.all([
     Question.countDocuments(query),
-    // Stable sort so skip/offset pages do not overlap or repeat
-    Question.find(query).sort({ updated_at: -1, _id: -1 }).skip(offset).limit(limit),
+    // _id tiebreaker so skip/offset pages do not overlap or repeat
+    Question.find(query).sort(questionMongoSort(filters.sort)).skip(offset).limit(limit),
   ]);
 
   const typeIds = [...new Set(items.map((q) => String(q.question_type_id)))];
@@ -1138,6 +1193,7 @@ export async function createQuestion(dto: CreateQuestionDto, createdBy: string) 
     time_seconds: dto.time_seconds,
     language: dto.language,
     is_published: false,
+    review_status: 'draft',
     is_active: true,
     created_by: new mongoose.Types.ObjectId(createdBy),
   });
@@ -1281,6 +1337,7 @@ export async function deleteQuestion(id: string) {
 
   question.is_active = false;
   question.is_published = false;
+  question.review_status = 'draft';
   await question.save();
 
   // Hide chapter/book placements while trashed (restored with the question)
@@ -1406,9 +1463,44 @@ export async function listTrashedQuestions(filters: { q?: string; limit?: number
   return items;
 }
 
+/**
+ * Draft -> quality_check. A question sits here for an admin to review before it can be published;
+ * it stays unpublished the whole time, so no content validation is required to enter review.
+ */
+export async function submitQuestionForQualityCheck(id: string) {
+  const question = await Question.findById(id);
+  if (!question || !question.is_active) throw notFound('Question not found');
+  if (question.review_status !== 'draft') {
+    throw badRequest('Only draft questions can be submitted for quality check');
+  }
+  question.review_status = 'quality_check';
+  await question.save();
+  return loadQuestionDetail(id);
+}
+
+/** Quality_check -> draft, e.g. when review finds it needs more work. */
+export async function returnQuestionToDraft(id: string) {
+  const question = await Question.findById(id);
+  if (!question || !question.is_active) throw notFound('Question not found');
+  if (question.review_status !== 'quality_check') {
+    throw badRequest('Only questions in quality check can be sent back to draft');
+  }
+  question.review_status = 'draft';
+  await question.save();
+  return loadQuestionDetail(id);
+}
+
+/**
+ * Quality_check -> published. Requires the question to have already passed through quality check
+ * (drafts can't publish directly) and to have real content (options+correct answer for MCQ/TF, a
+ * comparison table for DIFFERENCES, a model answer for everything else).
+ */
 export async function publishQuestion(id: string, reviewerId: string) {
   const question = await Question.findById(id);
   if (!question || !question.is_active) throw notFound('Question not found');
+  if (question.review_status !== 'quality_check') {
+    throw badRequest('Submit this question for quality check before publishing');
+  }
 
   const qType = await QuestionType.findById(question.question_type_id);
   if (!qType) throw notFound('Question type not found');
@@ -1437,22 +1529,28 @@ export async function publishQuestion(id: string, reviewerId: string) {
   }
 
   question.is_published = true;
+  question.review_status = 'published';
   question.reviewed_by = new mongoose.Types.ObjectId(reviewerId);
   await question.save();
   return loadQuestionDetail(id);
 }
 
+/** Published -> quality_check (not draft) — pulls a live question back for re-review. */
 export async function unpublishQuestion(id: string) {
   const question = await Question.findById(id);
   if (!question || !question.is_active) throw notFound('Question not found');
   question.is_published = false;
+  question.review_status = 'quality_check';
   await question.save();
   return loadQuestionDetail(id);
 }
 
 export async function batchImportMcqQuestions(dto: BatchMcqImportDto, createdBy: string) {
-  const chapter = await BookChapter.findById(dto.book_chapter_id);
-  if (!chapter || !chapter.is_active) throw notFound('Chapter not found');
+  let chapter: InstanceType<typeof BookChapter> | null = null;
+  if (dto.book_chapter_id) {
+    chapter = await BookChapter.findById(dto.book_chapter_id);
+    if (!chapter || !chapter.is_active) throw notFound('Chapter not found');
+  }
 
   const qType = await QuestionType.findOne({ code: 'MCQ', is_active: true });
   if (!qType) throw badRequest('MCQ question type is not configured. Create an MCQ type first.');
@@ -1484,18 +1582,17 @@ export async function batchImportMcqQuestions(dto: BatchMcqImportDto, createdBy:
         explanation_sections: explanation
           ? [{ title: 'Explanation', details: explanation, subsections: [] }]
           : [],
-        book_links: [
-          {
-            link_level: 'chapter',
-            book_chapter_id: String(chapter._id),
-          },
-        ],
+        book_links: chapter
+          ? [
+              {
+                link_level: 'chapter',
+                book_chapter_id: String(chapter._id),
+              },
+            ]
+          : undefined,
       };
 
       const detail = await createQuestion(createDto, createdBy);
-      if (dto.publish) {
-        await publishQuestion(detail.id, createdBy);
-      }
       created.push({ row: rowNumber, id: detail.id });
     } catch (err) {
       failed.push({
@@ -1506,11 +1603,10 @@ export async function batchImportMcqQuestions(dto: BatchMcqImportDto, createdBy:
   }
 
   return {
-    book_chapter_id: String(chapter._id),
+    book_chapter_id: chapter ? String(chapter._id) : undefined,
     total: dto.rows.length,
     created_count: created.length,
     failed_count: failed.length,
-    published: dto.publish,
     created,
     failed,
   };
@@ -1520,8 +1616,11 @@ export async function batchImportDescriptiveQuestions(
   dto: BatchDescriptiveImportDto,
   createdBy: string,
 ) {
-  const chapter = await BookChapter.findById(dto.book_chapter_id);
-  if (!chapter || !chapter.is_active) throw notFound('Chapter not found');
+  let chapter: InstanceType<typeof BookChapter> | null = null;
+  if (dto.book_chapter_id) {
+    chapter = await BookChapter.findById(dto.book_chapter_id);
+    if (!chapter || !chapter.is_active) throw notFound('Chapter not found');
+  }
 
   const qType = await resolveDescriptiveQuestionType(dto.question_type_id);
   if (!qType) {
@@ -1566,18 +1665,17 @@ export async function batchImportDescriptiveQuestions(
         language: dto.language,
         model_answer_sections,
         explanation_sections: [],
-        book_links: [
-          {
-            link_level: 'chapter',
-            book_chapter_id: String(chapter._id),
-          },
-        ],
+        book_links: chapter
+          ? [
+              {
+                link_level: 'chapter',
+                book_chapter_id: String(chapter._id),
+              },
+            ]
+          : undefined,
       };
 
       const detail = await createQuestion(createDto, createdBy);
-      if (dto.publish) {
-        await publishQuestion(detail.id, createdBy);
-      }
       created.push({ row: rowNumber, id: detail.id });
     } catch (err) {
       failed.push({
@@ -1588,11 +1686,10 @@ export async function batchImportDescriptiveQuestions(
   }
 
   return {
-    book_chapter_id: String(chapter._id),
+    book_chapter_id: chapter ? String(chapter._id) : undefined,
     total: dto.rows.length,
     created_count: created.length,
     failed_count: failed.length,
-    published: dto.publish,
     created,
     failed,
   };
@@ -1651,8 +1748,11 @@ export async function batchImportDifferencesQuestions(
   dto: BatchDifferencesImportDto,
   createdBy: string,
 ) {
-  const chapter = await BookChapter.findById(dto.book_chapter_id);
-  if (!chapter || !chapter.is_active) throw notFound('Chapter not found');
+  let chapter: InstanceType<typeof BookChapter> | null = null;
+  if (dto.book_chapter_id) {
+    chapter = await BookChapter.findById(dto.book_chapter_id);
+    if (!chapter || !chapter.is_active) throw notFound('Chapter not found');
+  }
 
   const qType = await resolveDifferencesQuestionType(dto.question_type_id);
   if (!qType) {
@@ -1688,18 +1788,17 @@ export async function batchImportDifferencesQuestions(
         model_answer_comparison: comparison,
         model_answer_sections: [],
         explanation_sections: [],
-        book_links: [
-          {
-            link_level: 'chapter',
-            book_chapter_id: String(chapter._id),
-          },
-        ],
+        book_links: chapter
+          ? [
+              {
+                link_level: 'chapter',
+                book_chapter_id: String(chapter._id),
+              },
+            ]
+          : undefined,
       };
 
       const detail = await createQuestion(createDto, createdBy);
-      if (dto.publish) {
-        await publishQuestion(detail.id, createdBy);
-      }
       created.push({ row: rowNumber, id: detail.id });
     } catch (err) {
       failed.push({
@@ -1710,11 +1809,10 @@ export async function batchImportDifferencesQuestions(
   }
 
   return {
-    book_chapter_id: String(chapter._id),
+    book_chapter_id: chapter ? String(chapter._id) : undefined,
     total: dto.rows.length,
     created_count: created.length,
     failed_count: failed.length,
-    published: dto.publish,
     created,
     failed,
   };

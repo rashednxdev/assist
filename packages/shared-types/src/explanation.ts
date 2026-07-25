@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { comparisonTableSchema, cleanComparisonTable, hasComparisonTableContent } from './comparison-table.js';
 
 export const explanationSubsectionSchema = z.object({
   subtitle: z.string(),
@@ -11,6 +12,8 @@ export const explanationSectionSchema = z.object({
   details: z.string().optional(),
   note: z.string().optional(),
   subsections: z.array(explanationSubsectionSchema).default([]),
+  /** Optional comparison table nested under this section's title (e.g. a "Differences" table inside a normal model answer). */
+  table: comparisonTableSchema.optional(),
 });
 
 export type ExplanationSubsection = z.infer<typeof explanationSubsectionSchema>;
@@ -30,6 +33,7 @@ function subsectionHasContent(sub: ExplanationSubsection): boolean {
 
 function sectionHasContent(section: ExplanationSection): boolean {
   if (section.title.trim() || section.details?.trim() || section.note?.trim()) return true;
+  if (hasComparisonTableContent(section.table)) return true;
   return (section.subsections ?? []).some(subsectionHasContent);
 }
 
@@ -46,6 +50,7 @@ export function cleanExplanationSections(sections: ExplanationSection[]): Explan
           details: sub.details?.trim() || undefined,
           note: sub.note?.trim() || undefined,
         })),
+      table: cleanComparisonTable(section.table),
     }))
     .filter(sectionHasContent);
 }
@@ -83,5 +88,6 @@ export function serializeExplanationSections(
       details: sub.details,
       note: sub.note,
     })),
+    table: section.table,
   }));
 }

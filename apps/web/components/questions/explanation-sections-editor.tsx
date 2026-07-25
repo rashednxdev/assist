@@ -1,11 +1,12 @@
 'use client';
 
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Table2 } from 'lucide-react';
 import type { ExplanationSection } from '@ibas/shared-types';
-import { emptyExplanationSection, emptyExplanationSubsection } from '@ibas/shared-types';
+import { emptyExplanationSection, emptyExplanationSubsection, emptyComparisonTable } from '@ibas/shared-types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { ComparisonTableEditor } from './comparison-table-editor';
 
 interface ExplanationSectionsEditorProps {
   sections: ExplanationSection[];
@@ -106,6 +107,47 @@ export function ExplanationSectionsEditor({ sections, onChange, disabled }: Expl
               onChange={(e) => updateSection(sectionIndex, { note: e.target.value })}
               className="ibas-textarea min-h-[72px]"
             />
+          </div>
+
+          <div className="space-y-1.5 border-t border-border pt-4">
+            <div className="flex items-center justify-between gap-2">
+              <Label>Comparison table (optional)</Label>
+              {section.table ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="text-destructive"
+                  disabled={disabled}
+                  onClick={() => updateSection(sectionIndex, { table: undefined })}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Remove table
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={disabled}
+                  onClick={() => updateSection(sectionIndex, { table: emptyComparisonTable(2) })}
+                >
+                  <Table2 className="h-4 w-4" />
+                  Add table
+                </Button>
+              )}
+            </div>
+            {section.table ? (
+              <ComparisonTableEditor
+                value={section.table}
+                onChange={(table) => updateSection(sectionIndex, { table })}
+                disabled={disabled}
+              />
+            ) : (
+              <p className="text-xs text-muted">
+                Add a Differences-style table under this title (e.g. compare two items side by side).
+              </p>
+            )}
           </div>
 
           <div className="space-y-3 border-t border-border pt-4">

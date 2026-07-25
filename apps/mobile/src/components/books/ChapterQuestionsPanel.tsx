@@ -51,6 +51,10 @@ function hasSavedEval(evaluation: QuestionEvaluationRecord | null) {
   return evaluation.is_correct !== undefined || Boolean(evaluation.selected_option_id);
 }
 
+function sectionHasTable(section: ExplanationSection) {
+  return Boolean(section.table && section.table.columns.length >= 2 && section.table.rows.length > 0);
+}
+
 function renderSection(section: ExplanationSection, index: number) {
   return (
     <View key={`sec-${index}`} style={styles.answerSection}>
@@ -62,6 +66,7 @@ function renderSection(section: ExplanationSection, index: number) {
         <BookRichText html={section.details} style={styles.answerText} />
       ) : null}
       {section.note?.trim() ? <BookRichText html={section.note} style={styles.answerNote} /> : null}
+      {sectionHasTable(section) ? <ComparisonTableAnswer table={section.table} /> : null}
     </View>
   );
 }
@@ -167,8 +172,16 @@ export function ChapterQuestionsPanel({
       (question.question_type_code === 'DIFFERENCES' || hasComparison) &&
       hasComparison,
   );
+  const hasSectionTable =
+    open &&
+    panelView === 'detail' &&
+    showAnswer &&
+    Boolean(
+      question?.model_answer_sections?.some(sectionHasTable) ||
+        question?.explanation_sections?.some(sectionHasTable),
+    );
 
-  useDifferencesLandscape(showDifferencesAnswer);
+  useDifferencesLandscape(showDifferencesAnswer || hasSectionTable);
 
   useEffect(() => {
     if (!open) {

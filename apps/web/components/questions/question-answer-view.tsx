@@ -65,6 +65,7 @@ function SectionBlock({ section }: { section: ExplanationSection }) {
     section.title?.trim() ||
     section.details?.trim() ||
     section.note?.trim() ||
+    hasComparisonTableContent(section.table) ||
     section.subsections?.some((sub) => sub.subtitle?.trim() || sub.details?.trim() || sub.note?.trim());
 
   if (!hasContent) return null;
@@ -74,6 +75,7 @@ function SectionBlock({ section }: { section: ExplanationSection }) {
       {section.title?.trim() && <h4 className="text-base font-semibold text-foreground">{section.title}</h4>}
       <TextBlock text={section.details} />
       <TextBlock text={section.note} />
+      {hasComparisonTableContent(section.table) && <ComparisonTableView table={section.table} label="" />}
 
       {section.subsections?.length > 0 && (
         <div className="space-y-3 border-l-2 border-primary/25 pl-4">

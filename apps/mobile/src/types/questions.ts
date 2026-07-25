@@ -53,6 +53,8 @@ export interface ExplanationSection {
     details?: string;
     note?: string;
   }[];
+  /** Optional comparison table nested under this section's title. */
+  table?: ComparisonTable;
 }
 
 export interface ComparisonTable {

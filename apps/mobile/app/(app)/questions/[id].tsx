@@ -135,8 +135,10 @@ export default function QuestionDetailScreen() {
     Boolean(comparisonTable?.columns && comparisonTable.columns.length >= 2) &&
     Boolean(comparisonTable?.rows && comparisonTable.rows.length > 0);
   const showDifferencesAnswer = Boolean(showAnswer && isDifferences && hasComparison);
+  const hasSectionTable =
+    showAnswer && (modelSections.some(sectionHasTable) || explanationSections.some(sectionHasTable));
 
-  useDifferencesLandscape(showDifferencesAnswer);
+  useDifferencesLandscape(showDifferencesAnswer || hasSectionTable);
 
   useLayoutEffect(() => {
     const headerEval = showPreviousEval ? evaluation : null;
@@ -468,10 +470,15 @@ function hasSavedEval(evaluation: QuestionEvaluationRecord | null, isMcq: boolea
   return !!evaluation.self_rating;
 }
 
+function sectionHasTable(sec: ExplanationSection) {
+  return Boolean(sec.table && sec.table.columns.length >= 2 && sec.table.rows.length > 0);
+}
+
 function normalizeSections(sections?: ExplanationSection[]) {
   return (sections ?? []).filter(
     (sec) =>
       Boolean(sec.title?.trim() || sec.content?.trim() || sec.details?.trim() || sec.note?.trim()) ||
+      sectionHasTable(sec) ||
       (sec.subsections?.length ?? 0) > 0,
   );
 }
@@ -483,6 +490,7 @@ function renderSection(sec: ExplanationSection, idx: number, keyPrefix: string) 
       {sec.content?.trim() ? <BookRichText html={sec.content} style={styles.sectionText} /> : null}
       {sec.details?.trim() ? <BookRichText html={sec.details} style={styles.sectionText} /> : null}
       {sec.note?.trim() ? <BookRichText html={sec.note} style={styles.sectionNote} /> : null}
+      {sectionHasTable(sec) ? <ComparisonTableAnswer table={sec.table} /> : null}
       {sec.subsections?.map((sub, i) => (
         <View key={`${keyPrefix}-${idx}-sub-${i}`} style={styles.subsectionBlock}>
           {sub.subtitle?.trim() ? <Text style={styles.subsectionTitle}>{sub.subtitle}</Text> : null}

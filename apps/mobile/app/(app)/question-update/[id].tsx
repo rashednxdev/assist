@@ -10,6 +10,9 @@ import { BookRichText } from '@/components/books/BookRichText';
 import { ReviewStatusBadge } from '@/components/questions/ReviewStatusBadge';
 import { CollapsibleSection } from '@/components/questions/CollapsibleSection';
 import { EditableLabel } from '@/components/questions/EditableLabel';
+import { emptyComparisonTable } from '@/components/questions/ComparisonTableEditor';
+import { ComparisonTableEditorModal } from '@/components/questions/ComparisonTableEditorModal';
+import { ComparisonTableAnswer } from '@/components/questions/ComparisonTableAnswer';
 import { TextField } from '@/components/ui/TextField';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/lib/auth-context';
@@ -20,7 +23,7 @@ import {
   updateQuestionContent,
   type ReviewTransition,
 } from '@/lib/question-edit-api';
-import type { ExplanationSection, QuestionDetail, ReviewStatus } from '@/types/questions';
+import type { ComparisonTable, ExplanationSection, QuestionDetail, ReviewStatus } from '@/types/questions';
 import { colors, spacing } from '@/theme';
 
 interface OptionRow {
@@ -40,6 +43,7 @@ interface SectionRow {
   details: string;
   note?: string;
   subsections: SubsectionRow[];
+  table?: ComparisonTable;
 }
 
 function toOptionRows(item: QuestionDetail): OptionRow[] {
@@ -67,7 +71,12 @@ function toSectionRows(sections?: ExplanationSection[]): SectionRow[] {
       details: sub.details ?? '',
       note: sub.note,
     })),
+    table: s.table,
   }));
+}
+
+function hasTableContent(table?: ComparisonTable) {
+  return Boolean(table && table.columns.length >= 2 && table.rows.length > 0);
 }
 
 /** Read-only render matching how Question Bank shows a model answer / explanation to end users. */
@@ -77,6 +86,7 @@ function renderSectionPreview(sections: SectionRow[]) {
       {sec.title?.trim() ? <Text style={previewStyles.heading}>{sec.title}</Text> : null}
       {sec.details?.trim() ? <BookRichText html={sec.details} style={previewStyles.text} /> : null}
       {sec.note?.trim() ? <BookRichText html={sec.note} style={previewStyles.note} /> : null}
+      {hasTableContent(sec.table) ? <ComparisonTableAnswer table={sec.table} /> : null}
       {sec.subsections.map((sub, subIdx) => (
         <View key={subIdx} style={previewStyles.subBlock}>
           {sub.subtitle?.trim() ? <Text style={previewStyles.subHeading}>{sub.subtitle}</Text> : null}
@@ -90,7 +100,11 @@ function renderSectionPreview(sections: SectionRow[]) {
 
 function hasPreviewContent(sections: SectionRow[]) {
   return sections.some(
-    (s) => s.title.trim() || s.details.trim() || s.subsections.some((sub) => sub.subtitle.trim() || sub.details.trim()),
+    (s) =>
+      s.title.trim() ||
+      s.details.trim() ||
+      hasTableContent(s.table) ||
+      s.subsections.some((sub) => sub.subtitle.trim() || sub.details.trim()),
   );
 }
 
@@ -156,7 +170,14 @@ function useSectionHandlers(setSections: React.Dispatch<React.SetStateAction<Sec
     [setSections],
   );
 
-  return { update, removeTitle, add, remove, updateSub, addSub, removeSub };
+  const setTable = useCallback(
+    (index: number, table: ComparisonTable | undefined) => {
+      setSections((prev) => prev.map((s, i) => (i === index ? { ...s, table } : s)));
+    },
+    [setSections],
+  );
+
+  return { update, removeTitle, add, remove, updateSub, addSub, removeSub, setTable };
 }
 
 const TRANSITION_LABEL: Record<ReviewTransition, string> = {
@@ -194,9 +215,25 @@ function QuestionUpdateEditBody() {
   const [explanationSections, setExplanationSections] = useState<SectionRow[]>([]);
   const [previewModelAnswer, setPreviewModelAnswer] = useState(false);
   const [previewExplanation, setPreviewExplanation] = useState(false);
+  const [editingTable, setEditingTable] = useState<{ scope: 'model' | 'explanation'; index: number } | null>(
+    null,
+  );
 
   const modelAnswerHandlers = useSectionHandlers(setSections);
   const explanationHandlers = useSectionHandlers(setExplanationSections);
+
+  const editingTableValue =
+    editingTable?.scope === 'model'
+      ? sections[editingTable.index]?.table
+      : editingTable?.scope === 'explanation'
+        ? explanationSections[editingTable.index]?.table
+        : undefined;
+
+  function handleEditingTableChange(table: ComparisonTable) {
+    if (!editingTable) return;
+    const handlers = editingTable.scope === 'model' ? modelAnswerHandlers : explanationHandlers;
+    handlers.setTable(editingTable.index, table);
+  }
 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -303,6 +340,7 @@ function QuestionUpdateEditBody() {
             details: sub.details,
             note: sub.note,
           })),
+          table: s.table,
         }));
       } else if (isTf) {
         payload.correct_true_false = correctTrueFalse;
@@ -315,6 +353,7 @@ function QuestionUpdateEditBody() {
             details: sub.details,
             note: sub.note,
           })),
+          table: s.table,
         }));
       } else if (isDescriptiveLike) {
         payload.model_answer_sections = sections.map((s) => ({
@@ -326,6 +365,7 @@ function QuestionUpdateEditBody() {
             details: sub.details,
             note: sub.note,
           })),
+          table: s.table,
         }));
       }
       const updated = await updateQuestionContent(id, payload);
@@ -362,6 +402,7 @@ function QuestionUpdateEditBody() {
   const busy = saving || transitioning;
 
   return (
+    <>
     <ScrollView
       ref={keyboardScroll?.scrollRef}
       style={styles.root}
@@ -521,6 +562,46 @@ function QuestionUpdateEditBody() {
                     numberOfLines={6}
                     editable={editable && !busy}
                   />
+                  {sec.table ? (
+                    <View style={styles.tableSummaryRow}>
+                      <View style={styles.tableSummaryInfo}>
+                        <Ionicons name="grid-outline" size={16} color={colors.primary} />
+                        <Text style={styles.tableSummaryText}>
+                          Comparison table • {sec.table.columns.length} cols, {sec.table.rows.length} rows
+                        </Text>
+                      </View>
+                      {editable ? (
+                        <View style={styles.tableSummaryActions}>
+                          <Pressable
+                            onPress={() => setEditingTable({ scope: 'explanation', index })}
+                            hitSlop={8}
+                            disabled={busy}
+                          >
+                            <Ionicons name="create-outline" size={20} color={colors.primary} />
+                          </Pressable>
+                          <Pressable
+                            onPress={() => explanationHandlers.setTable(index, undefined)}
+                            hitSlop={8}
+                            disabled={busy}
+                          >
+                            <Ionicons name="trash-outline" size={20} color={colors.error} />
+                          </Pressable>
+                        </View>
+                      ) : null}
+                    </View>
+                  ) : editable ? (
+                    <Pressable
+                      style={styles.addBtn}
+                      onPress={() => {
+                        explanationHandlers.setTable(index, emptyComparisonTable());
+                        setEditingTable({ scope: 'explanation', index });
+                      }}
+                      disabled={busy}
+                    >
+                      <Ionicons name="grid-outline" size={16} color={colors.primary} />
+                      <Text style={styles.addBtnText}>Add comparison table</Text>
+                    </Pressable>
+                  ) : null}
                   {sec.subsections.map((sub, subIndex) => (
                     <View key={subIndex} style={styles.subsectionEditBlock}>
                       <Text style={styles.sectionBlockLabel}>Subsection {subIndex + 1}</Text>
@@ -620,6 +701,46 @@ function QuestionUpdateEditBody() {
                     style={styles.modelAnswerInput}
                     editable={editable && !busy}
                   />
+                  {sec.table ? (
+                    <View style={styles.tableSummaryRow}>
+                      <View style={styles.tableSummaryInfo}>
+                        <Ionicons name="grid-outline" size={16} color={colors.primary} />
+                        <Text style={styles.tableSummaryText}>
+                          Comparison table • {sec.table.columns.length} cols, {sec.table.rows.length} rows
+                        </Text>
+                      </View>
+                      {editable ? (
+                        <View style={styles.tableSummaryActions}>
+                          <Pressable
+                            onPress={() => setEditingTable({ scope: 'model', index })}
+                            hitSlop={8}
+                            disabled={busy}
+                          >
+                            <Ionicons name="create-outline" size={20} color={colors.primary} />
+                          </Pressable>
+                          <Pressable
+                            onPress={() => modelAnswerHandlers.setTable(index, undefined)}
+                            hitSlop={8}
+                            disabled={busy}
+                          >
+                            <Ionicons name="trash-outline" size={20} color={colors.error} />
+                          </Pressable>
+                        </View>
+                      ) : null}
+                    </View>
+                  ) : editable ? (
+                    <Pressable
+                      style={styles.addBtn}
+                      onPress={() => {
+                        modelAnswerHandlers.setTable(index, emptyComparisonTable());
+                        setEditingTable({ scope: 'model', index });
+                      }}
+                      disabled={busy}
+                    >
+                      <Ionicons name="grid-outline" size={16} color={colors.primary} />
+                      <Text style={styles.addBtnText}>Add comparison table</Text>
+                    </Pressable>
+                  ) : null}
                   {sec.subsections.map((sub, subIndex) => (
                     <View key={subIndex} style={styles.subsectionEditBlock}>
                       <Text style={styles.sectionBlockLabel}>Subsection {subIndex + 1}</Text>
@@ -734,6 +855,15 @@ function QuestionUpdateEditBody() {
         <Text style={styles.backLinkText}>Back to list</Text>
       </Pressable>
     </ScrollView>
+
+    <ComparisonTableEditorModal
+      visible={editingTable !== null}
+      value={editingTableValue}
+      onChange={handleEditingTableChange}
+      onClose={() => setEditingTable(null)}
+      disabled={!editable || busy}
+    />
+    </>
   );
 }
 
@@ -904,6 +1034,35 @@ const styles = StyleSheet.create({
     paddingLeft: spacing.sm,
     borderLeftWidth: 2,
     borderLeftColor: colors.border,
+  },
+  tableSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 10,
+    backgroundColor: colors.background,
+  },
+  tableSummaryInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  tableSummaryText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  tableSummaryActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
   },
   previewToggleBtn: {
     flexDirection: 'row',

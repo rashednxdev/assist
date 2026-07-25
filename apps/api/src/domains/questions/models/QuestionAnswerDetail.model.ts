@@ -11,6 +11,8 @@ export interface IExplanationSection {
   details?: string;
   note?: string;
   subsections: IExplanationSubsection[];
+  /** Optional comparison table nested under this section's title. */
+  table?: IComparisonTable;
 }
 
 export interface IComparisonTableRow {
@@ -47,16 +49,6 @@ const subsectionSchema = new Schema<IExplanationSubsection>(
   { _id: false },
 );
 
-const sectionSchema = new Schema<IExplanationSection>(
-  {
-    title: { type: String, required: true, default: '' },
-    details: { type: String },
-    note: { type: String },
-    subsections: { type: [subsectionSchema], default: [] },
-  },
-  { _id: false },
-);
-
 const comparisonRowSchema = new Schema<IComparisonTableRow>(
   {
     feature: { type: String, default: '' },
@@ -70,6 +62,18 @@ const comparisonTableMongooseSchema = new Schema<IComparisonTable>(
     feature_header: { type: String, default: 'Feature' },
     columns: { type: [String], default: [] },
     rows: { type: [comparisonRowSchema], default: [] },
+  },
+  { _id: false },
+);
+
+const sectionSchema = new Schema<IExplanationSection>(
+  {
+    title: { type: String, required: true, default: '' },
+    details: { type: String },
+    note: { type: String },
+    subsections: { type: [subsectionSchema], default: [] },
+    // Nested schema path (not `{ type: schema }`) so $set/$get round-trip reliably.
+    table: comparisonTableMongooseSchema,
   },
   { _id: false },
 );

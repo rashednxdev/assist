@@ -1,12 +1,21 @@
 import type { ComparisonTable } from '@ibas/shared-types';
 import { hasComparisonTableContent } from '@ibas/shared-types';
 
-export function ComparisonTableView({ table }: { table?: ComparisonTable | null }) {
+export function ComparisonTableView({
+  table,
+  label = 'Model answer',
+}: {
+  table?: ComparisonTable | null;
+  /** Pass "" to omit the label — e.g. when nested under a section that already shows its own title. */
+  label?: string;
+}) {
   if (!hasComparisonTableContent(table) || !table) return null;
 
   return (
     <section className="space-y-3 rounded-xl border border-primary/30 bg-primary-muted/20 p-4">
-      <div className="text-xs font-semibold uppercase tracking-wide text-primary">Model answer</div>
+      {label ? (
+        <div className="text-xs font-semibold uppercase tracking-wide text-primary">{label}</div>
+      ) : null}
       <div className="overflow-x-auto rounded-lg border border-border bg-white">
         <table className="min-w-full border-collapse text-sm">
           <thead>

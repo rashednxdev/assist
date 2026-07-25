@@ -32,14 +32,18 @@ const KeyboardScrollContext = createContext<KeyboardScrollContextValue | null>(n
 
 const GAP = 20;
 
+/**
+ * `Dimensions.get('screen')` is the physical display size and does NOT change when the
+ * keyboard opens — unlike `Dimensions.get('window')`, which on Android is only supposed to
+ * shrink under `adjustResize` but in practice does not reliably update in JS (a long-standing
+ * RN gap). Subtracting the keyboard's own reported height from the stable screen height gives
+ * the visible-bottom threshold on both platforms without depending on that resize signal:
+ * iOS keyboard overlays the window (no resize), Android's `adjustResize` shrinks the window by
+ * ~keyboardHeight — either way `screenHeight - keyboardHeight` approximates the visible bottom.
+ */
 function visibleBottomY(keyboardHeight: number): number {
-  const windowH = Dimensions.get('window').height;
-  // iOS: keyboard overlays the window — subtract keyboard height.
-  // Android adjustResize: window is already shortened; still use a small inset.
-  if (Platform.OS === 'ios') {
-    return windowH - keyboardHeight - GAP;
-  }
-  return windowH - GAP;
+  const screenH = Dimensions.get('screen').height;
+  return screenH - keyboardHeight - GAP;
 }
 
 export function KeyboardScrollProvider({ children }: { children: ReactNode }) {
@@ -67,7 +71,7 @@ export function KeyboardScrollProvider({ children }: { children: ReactNode }) {
     (target: View | null) => {
       if (!target) return;
       pendingTargetRef.current = target;
-      // Retry after layout / keyboard animation so padding has applied.
+      // Retry after layout / keyboard animation so the resize/reflow has settled.
       const delays = Platform.OS === 'ios' ? [50, 180, 320] : [80, 200, 360];
       for (const ms of delays) {
         setTimeout(() => {

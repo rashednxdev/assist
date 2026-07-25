@@ -21,7 +21,8 @@ export default function QuestionUpdateLayout() {
       <Stack.Screen
         name="[id]"
         options={{
-          title: 'Edit question',
+          title: '',
+          headerTitleAlign: 'center',
         }}
       />
     </Stack>

@@ -1,15 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, Pressable, ActivityIndicator } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, StyleSheet, FlatList, TextInput, Pressable, ScrollView, ActivityIndicator } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { QUESTION_DIFFICULTIES, QUESTION_REVIEW_STATUSES, QUESTION_SORT_OPTIONS } from '@ibas/shared-constants';
+import { QUESTION_REVIEW_STATUSES, QUESTION_SORT_OPTIONS } from '@ibas/shared-constants';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
 import { BookBadge } from '@/components/books/BookBadge';
 import { ReviewStatusBadge } from '@/components/questions/ReviewStatusBadge';
 import { fetchQuestionTypes } from '@/lib/questions-api';
-import { fetchQuestionsForEdit } from '@/lib/question-edit-api';
+import { fetchQuestionForEdit, fetchQuestionsForEdit } from '@/lib/question-edit-api';
+import { fetchBooks } from '@/lib/books-api';
 import type { QuestionListItem, ReviewStatus } from '@/types/questions';
 import type { QuestionType } from '@/types/questions';
+import type { BookListItem } from '@/types/books';
 import { colors, spacing } from '@/theme';
 
 const PAGE_SIZE = 20;
@@ -35,6 +37,7 @@ export default function QuestionUpdateListScreen() {
   const router = useRouter();
   const [items, setItems] = useState<QuestionListItem[]>([]);
   const [types, setTypes] = useState<QuestionType[]>([]);
+  const [books, setBooks] = useState<BookListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -44,7 +47,8 @@ export default function QuestionUpdateListScreen() {
   const [query, setQuery] = useState('');
   const [appliedQuery, setAppliedQuery] = useState('');
   const [typeCode, setTypeCode] = useState('');
-  const [difficulty, setDifficulty] = useState('');
+  const [bookId, setBookId] = useState('');
+  const [bookMenuOpen, setBookMenuOpen] = useState(false);
   const [reviewStatus, setReviewStatus] = useState<ReviewStatus | ''>('');
   const [sort, setSort] = useState<(typeof QUESTION_SORT_OPTIONS)[number]>('updated_desc');
 
@@ -60,7 +64,7 @@ export default function QuestionUpdateListScreen() {
         const res = await fetchQuestionsForEdit({
           q: appliedQuery || undefined,
           question_type_code: typeCode || undefined,
-          difficulty: difficulty || undefined,
+          book_info_id: bookId || undefined,
           review_status: reviewStatus || undefined,
           sort,
           limit: PAGE_SIZE,
@@ -80,7 +84,7 @@ export default function QuestionUpdateListScreen() {
         setLoadingMore(false);
       }
     },
-    [appliedQuery, typeCode, difficulty, reviewStatus, sort],
+    [appliedQuery, typeCode, bookId, reviewStatus, sort],
   );
 
   useEffect(() => {
@@ -91,15 +95,55 @@ export default function QuestionUpdateListScreen() {
     fetchQuestionTypes()
       .then(setTypes)
       .catch(() => {});
+    fetchBooks()
+      .then(setBooks)
+      .catch(() => {});
   }, []);
+
+  const lastOpenedIdRef = useRef<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
-      // Refresh on return from the edit screen so status/content changes are visible.
-      void load(0, false);
-      // eslint-disable-next-line react-hooks/exhaustive-deps -- only refresh on focus, not every dep change
+      // Patch just the question we came back from editing — a full reload would drop it out
+      // of the current filter (e.g. status just changed) or reshuffle sort order, breaking the
+      // "work through this filtered batch one by one" flow.
+      const openedId = lastOpenedIdRef.current;
+      if (!openedId) return;
+      lastOpenedIdRef.current = null;
+      void fetchQuestionForEdit(openedId)
+        .then((detail) => {
+          setItems((prev) =>
+            prev.map((it) =>
+              it.id === openedId
+                ? {
+                    ...it,
+                    body_en: detail.body_en,
+                    body_bn: detail.body_bn,
+                    difficulty: detail.difficulty,
+                    marks: detail.marks,
+                    is_published: detail.is_published,
+                    review_status: detail.review_status,
+                  }
+                : it,
+            ),
+          );
+        })
+        .catch(() => {
+          // Non-fatal — the row just keeps showing its last-known state until the next full reload.
+        });
     }, []),
   );
+
+  function openQuestion(id: string) {
+    lastOpenedIdRef.current = id;
+    router.push(`/(app)/question-update/${id}` as never);
+  }
+
+  const bookOptions = useMemo(
+    () => [...books].sort((a, b) => a.name.localeCompare(b.name)),
+    [books],
+  );
+  const selectedBookName = bookId ? bookOptions.find((b) => b.id === bookId)?.name : null;
 
   function submitSearch() {
     setAppliedQuery(query.trim());
@@ -108,6 +152,15 @@ export default function QuestionUpdateListScreen() {
   function loadMore() {
     if (loadingMore || loading || !hasMore) return;
     void load(items.length, true);
+  }
+
+  function toggleBookMenu() {
+    setBookMenuOpen((v) => !v);
+  }
+
+  function selectBook(id: string) {
+    setBookId(id);
+    setBookMenuOpen(false);
   }
 
   return (
@@ -133,7 +186,70 @@ export default function QuestionUpdateListScreen() {
         <Pressable style={styles.searchBtn} onPress={submitSearch}>
           <Text style={styles.searchBtnText}>Search</Text>
         </Pressable>
+        <Pressable
+          style={[styles.moreIconBtn, bookMenuOpen && styles.moreIconBtnActive]}
+          onPress={toggleBookMenu}
+          hitSlop={8}
+          accessibilityLabel="Books and tools list"
+        >
+          <Ionicons
+            name="ellipsis-vertical"
+            size={20}
+            color={bookMenuOpen ? colors.white : colors.primary}
+          />
+        </Pressable>
       </View>
+
+      {bookMenuOpen ? (
+        <View style={styles.bookMenu}>
+          <Text style={styles.bookMenuTitle}>Books &amp; Tools</Text>
+          <Text style={styles.bookMenuSub}>Filter questions by book</Text>
+          <ScrollView nestedScrollEnabled style={{ maxHeight: 220 }} contentContainerStyle={styles.bookMenuList}>
+            <Pressable
+              style={[styles.bookMenuItem, !bookId && styles.bookMenuItemActive]}
+              onPress={() => selectBook('')}
+            >
+              <Text style={[styles.bookMenuItemText, !bookId && styles.bookMenuItemTextActive]}>
+                All books &amp; tools
+              </Text>
+            </Pressable>
+            {bookOptions.length === 0 ? (
+              <Text style={styles.bookMenuEmpty}>No books loaded yet.</Text>
+            ) : (
+              bookOptions.map((book) => {
+                const active = bookId === book.id;
+                return (
+                  <Pressable
+                    key={book.id}
+                    style={[styles.bookMenuItem, active && styles.bookMenuItemActive]}
+                    onPress={() => selectBook(book.id)}
+                  >
+                    <Text
+                      style={[styles.bookMenuItemText, active && styles.bookMenuItemTextActive]}
+                      numberOfLines={2}
+                    >
+                      {book.name}
+                    </Text>
+                  </Pressable>
+                );
+              })
+            )}
+          </ScrollView>
+        </View>
+      ) : null}
+
+      {selectedBookName ? (
+        <View style={styles.filterChipRow}>
+          <View style={styles.filterChip}>
+            <Text style={styles.filterChipText} numberOfLines={1}>
+              {selectedBookName}
+            </Text>
+            <Pressable onPress={() => selectBook('')} hitSlop={8} accessibilityLabel="Clear book filter">
+              <Ionicons name="close-circle" size={16} color={colors.primary} />
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
 
       <Text style={styles.metaText}>
         {loading ? 'Loading…' : `${total} question${total === 1 ? '' : 's'}`}
@@ -158,21 +274,6 @@ export default function QuestionUpdateListScreen() {
               onPress={() => setTypeCode(item.id)}
             >
               <Text style={[styles.chipText, typeCode === item.id && styles.chipTextActive]}>{item.label}</Text>
-            </Pressable>
-          )}
-        />
-        <FlatList
-          horizontal
-          data={[{ id: '', label: 'All difficulty' }, ...QUESTION_DIFFICULTIES.map((d) => ({ id: d, label: d }))]}
-          keyExtractor={(item) => `difficulty-${item.id || 'all'}`}
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chips}
-          renderItem={({ item }) => (
-            <Pressable
-              style={[styles.chip, difficulty === item.id && styles.chipActive]}
-              onPress={() => setDifficulty(item.id)}
-            >
-              <Text style={[styles.chipText, difficulty === item.id && styles.chipTextActive]}>{item.label}</Text>
             </Pressable>
           )}
         />
@@ -240,7 +341,7 @@ export default function QuestionUpdateListScreen() {
           renderItem={({ item }) => (
             <Pressable
               style={({ pressed }) => [styles.card, pressed && styles.pressed]}
-              onPress={() => router.push(`/(app)/question-update/${item.id}` as never)}
+              onPress={() => openQuestion(item.id)}
             >
               <View style={styles.cardIcon}>
                 <Ionicons name="create-outline" size={20} color="#7c3aed" />
@@ -307,6 +408,94 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontWeight: '600',
     fontSize: 14,
+  },
+  moreIconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    flexShrink: 0,
+  },
+  moreIconBtnActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  bookMenu: {
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.sm,
+    maxHeight: 280,
+  },
+  bookMenuTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.text,
+    paddingHorizontal: 8,
+    paddingTop: 4,
+  },
+  bookMenuSub: {
+    fontSize: 12,
+    color: colors.textMuted,
+    paddingHorizontal: 8,
+    paddingBottom: 8,
+  },
+  bookMenuList: {
+    gap: 2,
+  },
+  bookMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+  },
+  bookMenuItemActive: {
+    backgroundColor: '#e8f3fa',
+  },
+  bookMenuItemText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  bookMenuItemTextActive: {
+    color: colors.primary,
+  },
+  bookMenuEmpty: {
+    padding: 12,
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+  filterChipRow: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  filterChip: {
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#e8f3fa',
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingLeft: 12,
+    paddingRight: 8,
+  },
+  filterChipText: {
+    flexShrink: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
   },
   metaText: {
     paddingHorizontal: spacing.md,

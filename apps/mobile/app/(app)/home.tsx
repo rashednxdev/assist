@@ -9,7 +9,7 @@ import {
   Alert,
   Modal,
 } from 'react-native';
-import { useRouter, type Href } from 'expo-router';
+import { useFocusEffect, useRouter, type Href } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -168,6 +168,14 @@ export default function HomeScreen() {
     void loadData();
   }, [loadData]);
 
+  // Module grants can change while the app stays open (e.g. an admin grants/revokes access) —
+  // re-check on every visit to home, not just at login, so tile visibility stays current.
+  useFocusEffect(
+    useCallback(() => {
+      void refreshUser().catch(() => {});
+    }, [refreshUser]),
+  );
+
   function confirmSignOut() {
     setMenuOpen(false);
     Alert.alert('Sign out?', 'You will need to sign in again to continue.', [
@@ -263,6 +271,9 @@ export default function HomeScreen() {
           {MODULES.map((m) => {
             const enabled =
               m.code === 'BOOKS' ? canAccess('BOOKS') || canAccess('OCR') : canAccess(m.code);
+            // Question Update is an admin-approved facility, not a default learning module —
+            // stay hidden entirely (not just disabled) until access is actually granted.
+            if (m.code === 'QUESTION_EDIT' && !enabled) return null;
             return (
               <ModuleTile
                 key={m.id}

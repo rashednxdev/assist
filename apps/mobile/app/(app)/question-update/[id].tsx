@@ -1,14 +1,19 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { OPTION_KEYS } from '@ibas/shared-constants';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
 import { BookBadge } from '@/components/books/BookBadge';
+import { BookRichText } from '@/components/books/BookRichText';
 import { ReviewStatusBadge } from '@/components/questions/ReviewStatusBadge';
+import { CollapsibleSection } from '@/components/questions/CollapsibleSection';
+import { EditableLabel } from '@/components/questions/EditableLabel';
 import { TextField } from '@/components/ui/TextField';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/lib/auth-context';
+import { KeyboardScrollProvider, useKeyboardScroll } from '@/lib/keyboard-scroll';
 import {
   fetchQuestionForEdit,
   transitionQuestionReviewStatus,
@@ -24,11 +29,17 @@ interface OptionRow {
   option_text_bn: string;
 }
 
+interface SubsectionRow {
+  subtitle: string;
+  details: string;
+  note?: string;
+}
+
 interface SectionRow {
   title: string;
   details: string;
   note?: string;
-  subsections?: ExplanationSection['subsections'];
+  subsections: SubsectionRow[];
 }
 
 function toOptionRows(item: QuestionDetail): OptionRow[] {
@@ -46,13 +57,106 @@ function toOptionRows(item: QuestionDetail): OptionRow[] {
 }
 
 function toSectionRows(sections?: ExplanationSection[]): SectionRow[] {
-  if (!sections || sections.length === 0) return [{ title: '', details: '' }];
+  if (!sections || sections.length === 0) return [{ title: '', details: '', subsections: [] }];
   return sections.map((s) => ({
     title: s.title ?? '',
     details: s.details ?? s.content ?? '',
     note: s.note,
-    subsections: s.subsections,
+    subsections: (s.subsections ?? []).map((sub) => ({
+      subtitle: sub.subtitle ?? '',
+      details: sub.details ?? '',
+      note: sub.note,
+    })),
   }));
+}
+
+/** Read-only render matching how Question Bank shows a model answer / explanation to end users. */
+function renderSectionPreview(sections: SectionRow[]) {
+  return sections.map((sec, idx) => (
+    <View key={idx} style={previewStyles.block}>
+      {sec.title?.trim() ? <Text style={previewStyles.heading}>{sec.title}</Text> : null}
+      {sec.details?.trim() ? <BookRichText html={sec.details} style={previewStyles.text} /> : null}
+      {sec.note?.trim() ? <BookRichText html={sec.note} style={previewStyles.note} /> : null}
+      {sec.subsections.map((sub, subIdx) => (
+        <View key={subIdx} style={previewStyles.subBlock}>
+          {sub.subtitle?.trim() ? <Text style={previewStyles.subHeading}>{sub.subtitle}</Text> : null}
+          {sub.details?.trim() ? <BookRichText html={sub.details} style={previewStyles.text} /> : null}
+          {sub.note?.trim() ? <BookRichText html={sub.note} style={previewStyles.note} /> : null}
+        </View>
+      ))}
+    </View>
+  ));
+}
+
+function hasPreviewContent(sections: SectionRow[]) {
+  return sections.some(
+    (s) => s.title.trim() || s.details.trim() || s.subsections.some((sub) => sub.subtitle.trim() || sub.details.trim()),
+  );
+}
+
+/** Shared add/update/remove handlers for a top-level sections array (model answer or explanation). */
+function useSectionHandlers(setSections: React.Dispatch<React.SetStateAction<SectionRow[]>>) {
+  const update = useCallback(
+    (index: number, field: 'title' | 'details', value: string) => {
+      setSections((prev) => prev.map((s, i) => (i === index ? { ...s, [field]: value } : s)));
+    },
+    [setSections],
+  );
+
+  const removeTitle = useCallback(
+    (index: number) => {
+      setSections((prev) => prev.map((s, i) => (i === index ? { ...s, title: '' } : s)));
+    },
+    [setSections],
+  );
+
+  const add = useCallback(() => {
+    setSections((prev) => [...prev, { title: '', details: '', subsections: [] }]);
+  }, [setSections]);
+
+  const remove = useCallback(
+    (index: number) => {
+      setSections((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
+    },
+    [setSections],
+  );
+
+  const updateSub = useCallback(
+    (sectionIndex: number, subIndex: number, field: 'subtitle' | 'details', value: string) => {
+      setSections((prev) =>
+        prev.map((s, i) =>
+          i === sectionIndex
+            ? { ...s, subsections: s.subsections.map((sub, j) => (j === subIndex ? { ...sub, [field]: value } : sub)) }
+            : s,
+        ),
+      );
+    },
+    [setSections],
+  );
+
+  const addSub = useCallback(
+    (sectionIndex: number) => {
+      setSections((prev) =>
+        prev.map((s, i) =>
+          i === sectionIndex ? { ...s, subsections: [...s.subsections, { subtitle: '', details: '' }] } : s,
+        ),
+      );
+    },
+    [setSections],
+  );
+
+  const removeSub = useCallback(
+    (sectionIndex: number, subIndex: number) => {
+      setSections((prev) =>
+        prev.map((s, i) =>
+          i === sectionIndex ? { ...s, subsections: s.subsections.filter((_, j) => j !== subIndex) } : s,
+        ),
+      );
+    },
+    [setSections],
+  );
+
+  return { update, removeTitle, add, remove, updateSub, addSub, removeSub };
 }
 
 const TRANSITION_LABEL: Record<ReviewTransition, string> = {
@@ -63,21 +167,36 @@ const TRANSITION_LABEL: Record<ReviewTransition, string> = {
 };
 
 export default function QuestionUpdateEditScreen() {
+  return (
+    <KeyboardScrollProvider>
+      <QuestionUpdateEditBody />
+    </KeyboardScrollProvider>
+  );
+}
+
+function QuestionUpdateEditBody() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const navigation = useNavigation();
   const { canUpdate } = useAuth();
   const editable = canUpdate('QUESTION_EDIT');
+  const keyboardScroll = useKeyboardScroll();
 
   const [item, setItem] = useState<QuestionDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
   const [bodyEn, setBodyEn] = useState('');
-  const [bodyBn, setBodyBn] = useState('');
   const [options, setOptions] = useState<OptionRow[]>([]);
   const [correctOptionKey, setCorrectOptionKey] = useState('');
   const [correctTrueFalse, setCorrectTrueFalse] = useState<'true' | 'false'>('true');
   const [sections, setSections] = useState<SectionRow[]>([]);
+  const [explanationSections, setExplanationSections] = useState<SectionRow[]>([]);
+  const [previewModelAnswer, setPreviewModelAnswer] = useState(false);
+  const [previewExplanation, setPreviewExplanation] = useState(false);
+
+  const modelAnswerHandlers = useSectionHandlers(setSections);
+  const explanationHandlers = useSectionHandlers(setExplanationSections);
 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -92,11 +211,11 @@ export default function QuestionUpdateEditScreen() {
       .then((data) => {
         setItem(data);
         setBodyEn(data.body_en);
-        setBodyBn(data.body_bn ?? '');
         setOptions(toOptionRows(data));
         setCorrectOptionKey(data.correct_option_key ?? 'a');
         setCorrectTrueFalse(data.correct_true_false ?? 'true');
         setSections(toSectionRows(data.model_answer_sections));
+        setExplanationSections(toSectionRows(data.explanation_sections));
       })
       .catch((err) => setLoadError(err instanceof Error ? err.message : 'Failed to load question'))
       .finally(() => setLoading(false));
@@ -105,6 +224,30 @@ export default function QuestionUpdateEditScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      title: '',
+      headerTitleAlign: 'center',
+      headerTitle: () => (
+        <View style={headerStyles.bookChapterWrap}>
+          {item?.book_name ? (
+            <Text style={headerStyles.headerBookText} numberOfLines={1}>
+              {item.book_name}
+            </Text>
+          ) : null}
+          {item?.chapter_name ? (
+            <Text style={headerStyles.headerChapterText} numberOfLines={1}>
+              {item.chapter_number ? `${item.chapter_number}: ${item.chapter_name}` : item.chapter_name}
+            </Text>
+          ) : null}
+          {!item?.book_name && !item?.chapter_name ? (
+            <Text style={headerStyles.headerBookText}>Edit question</Text>
+          ) : null}
+        </View>
+      ),
+    });
+  }, [navigation, item?.book_name, item?.chapter_number, item?.chapter_name]);
 
   const isMcq = item?.question_type_code === 'MCQ';
   const isTf = item?.question_type_code === 'TF';
@@ -135,18 +278,6 @@ export default function QuestionUpdateEditScreen() {
     });
   }
 
-  function updateSection(index: number, field: 'title' | 'details', value: string) {
-    setSections((prev) => prev.map((s, i) => (i === index ? { ...s, [field]: value } : s)));
-  }
-
-  function addSection() {
-    setSections((prev) => [...prev, { title: '', details: '' }]);
-  }
-
-  function removeSection(index: number) {
-    setSections((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
-  }
-
   async function handleSave() {
     if (!id || !item) return;
     setSaving(true);
@@ -155,7 +286,6 @@ export default function QuestionUpdateEditScreen() {
     try {
       const payload: Parameters<typeof updateQuestionContent>[1] = {
         body_en: bodyEn.trim(),
-        body_bn: bodyBn.trim() || undefined,
       };
       if (isMcq) {
         payload.options = options.map((o) => ({
@@ -164,14 +294,38 @@ export default function QuestionUpdateEditScreen() {
           option_text_bn: o.option_text_bn.trim() || undefined,
         }));
         payload.correct_option_key = correctOptionKey;
+        payload.explanation_sections = explanationSections.map((s) => ({
+          title: s.title,
+          details: s.details,
+          note: s.note,
+          subsections: s.subsections.map((sub) => ({
+            subtitle: sub.subtitle,
+            details: sub.details,
+            note: sub.note,
+          })),
+        }));
       } else if (isTf) {
         payload.correct_true_false = correctTrueFalse;
+        payload.explanation_sections = explanationSections.map((s) => ({
+          title: s.title,
+          details: s.details,
+          note: s.note,
+          subsections: s.subsections.map((sub) => ({
+            subtitle: sub.subtitle,
+            details: sub.details,
+            note: sub.note,
+          })),
+        }));
       } else if (isDescriptiveLike) {
         payload.model_answer_sections = sections.map((s) => ({
           title: s.title,
           details: s.details,
           note: s.note,
-          subsections: s.subsections ?? [],
+          subsections: s.subsections.map((sub) => ({
+            subtitle: sub.subtitle,
+            details: sub.details,
+            note: sub.note,
+          })),
         }));
       }
       const updated = await updateQuestionContent(id, payload);
@@ -208,7 +362,17 @@ export default function QuestionUpdateEditScreen() {
   const busy = saving || transitioning;
 
   return (
-    <ScrollView style={styles.root} contentContainerStyle={styles.content}>
+    <ScrollView
+      ref={keyboardScroll?.scrollRef}
+      style={styles.root}
+      contentContainerStyle={[
+        styles.content,
+        { paddingBottom: spacing.xl + (keyboardScroll?.keyboardInset ?? 0) },
+      ]}
+      onScroll={keyboardScroll?.onScroll}
+      scrollEventThrottle={16}
+      keyboardShouldPersistTaps="handled"
+    >
       <View style={styles.headerRow}>
         <BookBadge label={item.question_type_name ?? item.question_type_code} variant="muted" />
         <ReviewStatusBadge status={status} />
@@ -233,28 +397,19 @@ export default function QuestionUpdateEditScreen() {
         </View>
       ) : null}
 
-      <View style={styles.panel}>
+      <CollapsibleSection title="Question text">
         <TextField
-          label="Question (English)"
+          label=""
           value={bodyEn}
           onChangeText={setBodyEn}
           multiline
-          numberOfLines={4}
+          numberOfLines={5}
           editable={editable && !busy}
         />
-        <TextField
-          label="Question (Bangla)"
-          value={bodyBn}
-          onChangeText={setBodyBn}
-          multiline
-          numberOfLines={4}
-          editable={editable && !busy}
-        />
-      </View>
+      </CollapsibleSection>
 
       {isMcq ? (
-        <View style={styles.panel}>
-          <Text style={styles.sectionTitle}>Options &amp; correct answer</Text>
+        <CollapsibleSection title="Options & correct answer">
           {options.map((opt, index) => {
             const isCorrect = correctOptionKey === opt.option_key;
             return (
@@ -274,14 +429,7 @@ export default function QuestionUpdateEditScreen() {
                     label=""
                     value={opt.option_text_en}
                     onChangeText={(v) => updateOption(index, 'option_text_en', v)}
-                    placeholder={`Option ${opt.option_key.toUpperCase()} (English)`}
-                    editable={editable && !busy}
-                  />
-                  <TextField
-                    label=""
-                    value={opt.option_text_bn}
-                    onChangeText={(v) => updateOption(index, 'option_text_bn', v)}
-                    placeholder={`Option ${opt.option_key.toUpperCase()} (Bangla, optional)`}
+                    placeholder={`Option ${opt.option_key.toUpperCase()}`}
                     editable={editable && !busy}
                   />
                 </View>
@@ -299,12 +447,11 @@ export default function QuestionUpdateEditScreen() {
               <Text style={styles.addBtnText}>Add option</Text>
             </Pressable>
           ) : null}
-        </View>
+        </CollapsibleSection>
       ) : null}
 
       {isTf ? (
-        <View style={styles.panel}>
-          <Text style={styles.sectionTitle}>Correct answer</Text>
+        <CollapsibleSection title="Correct answer">
           <View style={styles.tfRow}>
             {(['true', 'false'] as const).map((v) => (
               <Pressable
@@ -319,66 +466,222 @@ export default function QuestionUpdateEditScreen() {
               </Pressable>
             ))}
           </View>
-        </View>
+        </CollapsibleSection>
+      ) : null}
+
+      {isMcq || isTf ? (
+        <CollapsibleSection
+          title="Explanation"
+          right={
+            hasPreviewContent(explanationSections) ? (
+              <Pressable
+                style={styles.previewToggleBtn}
+                onPress={() => setPreviewExplanation((v) => !v)}
+                hitSlop={8}
+              >
+                <Ionicons
+                  name={previewExplanation ? 'create-outline' : 'eye-outline'}
+                  size={15}
+                  color={colors.primary}
+                />
+                <Text style={styles.previewToggleText}>{previewExplanation ? 'Edit' : 'Preview'}</Text>
+              </Pressable>
+            ) : undefined
+          }
+        >
+          {previewExplanation ? (
+            <View>{renderSectionPreview(explanationSections)}</View>
+          ) : (
+            <>
+              {explanationSections.map((sec, index) => (
+                <View key={index} style={styles.sectionBlock}>
+                  <View style={styles.sectionBlockHeader}>
+                    <Text style={styles.sectionBlockLabel}>Section {index + 1}</Text>
+                    {explanationSections.length > 1 && editable ? (
+                      <Pressable onPress={() => explanationHandlers.remove(index)} hitSlop={8} disabled={busy}>
+                        <Ionicons name="close-circle-outline" size={18} color={colors.error} />
+                      </Pressable>
+                    ) : null}
+                  </View>
+                  <EditableLabel
+                    value={sec.title}
+                    placeholder="Section heading (optional)"
+                    onChange={(v) => explanationHandlers.update(index, 'title', v)}
+                    onRemove={() => explanationHandlers.removeTitle(index)}
+                    removeLabel="Clear heading"
+                    editable={editable}
+                    disabled={busy}
+                  />
+                  <TextField
+                    label=""
+                    value={sec.details}
+                    onChangeText={(v) => explanationHandlers.update(index, 'details', v)}
+                    placeholder="Explanation text"
+                    multiline
+                    numberOfLines={6}
+                    editable={editable && !busy}
+                  />
+                  {sec.subsections.map((sub, subIndex) => (
+                    <View key={subIndex} style={styles.subsectionEditBlock}>
+                      <Text style={styles.sectionBlockLabel}>Subsection {subIndex + 1}</Text>
+                      <EditableLabel
+                        value={sub.subtitle}
+                        placeholder="Subsection heading"
+                        onChange={(v) => explanationHandlers.updateSub(index, subIndex, 'subtitle', v)}
+                        onRemove={() => explanationHandlers.removeSub(index, subIndex)}
+                        removeLabel="Remove subsection"
+                        editable={editable}
+                        disabled={busy}
+                      />
+                      <TextField
+                        label=""
+                        value={sub.details}
+                        onChangeText={(v) => explanationHandlers.updateSub(index, subIndex, 'details', v)}
+                        placeholder="Subsection text"
+                        multiline
+                        numberOfLines={5}
+                        editable={editable && !busy}
+                      />
+                    </View>
+                  ))}
+                  {editable ? (
+                    <Pressable
+                      style={styles.addBtn}
+                      onPress={() => explanationHandlers.addSub(index)}
+                      disabled={busy}
+                    >
+                      <Ionicons name="add-circle-outline" size={16} color={colors.primary} />
+                      <Text style={styles.addBtnText}>Add subsection</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              ))}
+              {editable ? (
+                <Pressable style={styles.addBtn} onPress={explanationHandlers.add} disabled={busy}>
+                  <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
+                  <Text style={styles.addBtnText}>Add section</Text>
+                </Pressable>
+              ) : null}
+            </>
+          )}
+        </CollapsibleSection>
       ) : null}
 
       {isDescriptiveLike ? (
-        <View style={styles.panel}>
-          <Text style={styles.sectionTitle}>Model answer</Text>
-          {sections.map((sec, index) => (
-            <View key={index} style={styles.sectionBlock}>
-              <View style={styles.sectionBlockHeader}>
-                <Text style={styles.sectionBlockLabel}>Section {index + 1}</Text>
-                {sections.length > 1 && editable ? (
-                  <Pressable onPress={() => removeSection(index)} hitSlop={8} disabled={busy}>
-                    <Ionicons name="close-circle-outline" size={18} color={colors.error} />
-                  </Pressable>
-                ) : null}
-              </View>
-              <TextField
-                label=""
-                value={sec.title}
-                onChangeText={(v) => updateSection(index, 'title', v)}
-                placeholder="Section heading (optional)"
-                editable={editable && !busy}
-              />
-              <TextField
-                label=""
-                value={sec.details}
-                onChangeText={(v) => updateSection(index, 'details', v)}
-                placeholder="Answer text"
-                multiline
-                numberOfLines={5}
-                editable={editable && !busy}
-              />
-            </View>
-          ))}
-          {editable ? (
-            <Pressable style={styles.addBtn} onPress={addSection} disabled={busy}>
-              <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
-              <Text style={styles.addBtnText}>Add section</Text>
-            </Pressable>
-          ) : null}
-        </View>
+        <CollapsibleSection
+          title="Model answer"
+          right={
+            hasPreviewContent(sections) ? (
+              <Pressable
+                style={styles.previewToggleBtn}
+                onPress={() => setPreviewModelAnswer((v) => !v)}
+                hitSlop={8}
+              >
+                <Ionicons
+                  name={previewModelAnswer ? 'create-outline' : 'eye-outline'}
+                  size={15}
+                  color={colors.primary}
+                />
+                <Text style={styles.previewToggleText}>{previewModelAnswer ? 'Edit' : 'Preview'}</Text>
+              </Pressable>
+            ) : undefined
+          }
+        >
+          {previewModelAnswer ? (
+            <View>{renderSectionPreview(sections)}</View>
+          ) : (
+            <>
+              {sections.map((sec, index) => (
+                <View key={index} style={styles.sectionBlock}>
+                  <View style={styles.sectionBlockHeader}>
+                    <Text style={styles.sectionBlockLabel}>Section {index + 1}</Text>
+                    {sections.length > 1 && editable ? (
+                      <Pressable onPress={() => modelAnswerHandlers.remove(index)} hitSlop={8} disabled={busy}>
+                        <Ionicons name="close-circle-outline" size={18} color={colors.error} />
+                      </Pressable>
+                    ) : null}
+                  </View>
+                  <EditableLabel
+                    value={sec.title}
+                    placeholder="Section heading (optional)"
+                    onChange={(v) => modelAnswerHandlers.update(index, 'title', v)}
+                    onRemove={() => modelAnswerHandlers.removeTitle(index)}
+                    removeLabel="Clear heading"
+                    editable={editable}
+                    disabled={busy}
+                  />
+                  <TextField
+                    label=""
+                    value={sec.details}
+                    onChangeText={(v) => modelAnswerHandlers.update(index, 'details', v)}
+                    placeholder="Answer text"
+                    multiline
+                    numberOfLines={12}
+                    style={styles.modelAnswerInput}
+                    editable={editable && !busy}
+                  />
+                  {sec.subsections.map((sub, subIndex) => (
+                    <View key={subIndex} style={styles.subsectionEditBlock}>
+                      <Text style={styles.sectionBlockLabel}>Subsection {subIndex + 1}</Text>
+                      <EditableLabel
+                        value={sub.subtitle}
+                        placeholder="Subsection heading"
+                        onChange={(v) => modelAnswerHandlers.updateSub(index, subIndex, 'subtitle', v)}
+                        onRemove={() => modelAnswerHandlers.removeSub(index, subIndex)}
+                        removeLabel="Remove subsection"
+                        editable={editable}
+                        disabled={busy}
+                      />
+                      <TextField
+                        label=""
+                        value={sub.details}
+                        onChangeText={(v) => modelAnswerHandlers.updateSub(index, subIndex, 'details', v)}
+                        placeholder="Subsection text"
+                        multiline
+                        numberOfLines={6}
+                        editable={editable && !busy}
+                      />
+                    </View>
+                  ))}
+                  {editable ? (
+                    <Pressable
+                      style={styles.addBtn}
+                      onPress={() => modelAnswerHandlers.addSub(index)}
+                      disabled={busy}
+                    >
+                      <Ionicons name="add-circle-outline" size={16} color={colors.primary} />
+                      <Text style={styles.addBtnText}>Add subsection</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              ))}
+              {editable ? (
+                <Pressable style={styles.addBtn} onPress={modelAnswerHandlers.add} disabled={busy}>
+                  <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
+                  <Text style={styles.addBtnText}>Add section</Text>
+                </Pressable>
+              ) : null}
+            </>
+          )}
+        </CollapsibleSection>
       ) : null}
 
       {isDifferences ? (
-        <View style={styles.panel}>
-          <Text style={styles.sectionTitle}>Comparison table</Text>
+        <CollapsibleSection title="Comparison table">
           <Text style={styles.mutedText}>
             The comparison table for DIFFERENCES questions can only be edited from the web admin. You can
             still edit the question text above and change its review status below.
           </Text>
-        </View>
+        </CollapsibleSection>
       ) : null}
 
       {isUnsupportedOptions ? (
-        <View style={styles.panel}>
+        <CollapsibleSection title="Answer">
           <Text style={styles.mutedText}>
             This question type&apos;s answer format isn&apos;t supported for mobile editing yet. Edit the
             question text above, or use the web admin for the answer.
           </Text>
-        </View>
+        </CollapsibleSection>
       ) : null}
 
       {editable ? (
@@ -386,8 +689,7 @@ export default function QuestionUpdateEditScreen() {
       ) : null}
 
       {editable ? (
-        <View style={styles.panel}>
-          <Text style={styles.sectionTitle}>Review status</Text>
+        <CollapsibleSection title="Review status" right={<ReviewStatusBadge status={status} />}>
           <View style={styles.transitionRow}>
             {status === 'draft' ? (
               <Button
@@ -424,7 +726,7 @@ export default function QuestionUpdateEditScreen() {
               />
             ) : null}
           </View>
-        </View>
+        </CollapsibleSection>
       ) : null}
 
       <Pressable style={styles.backLink} onPress={() => router.back()}>
@@ -435,6 +737,25 @@ export default function QuestionUpdateEditScreen() {
   );
 }
 
+const headerStyles = StyleSheet.create({
+  bookChapterWrap: {
+    maxWidth: 220,
+    alignItems: 'center',
+  },
+  headerBookText: {
+    color: colors.white,
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  headerChapterText: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 1,
+  },
+});
+
 const styles = StyleSheet.create({
   root: {
     flex: 1,
@@ -442,7 +763,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: spacing.md,
-    gap: spacing.md,
+    gap: spacing.sm,
     paddingBottom: spacing.xl,
   },
   headerRow: {
@@ -484,21 +805,6 @@ const styles = StyleSheet.create({
     color: colors.success,
     fontSize: 12,
     fontWeight: '600',
-  },
-  panel: {
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
   },
   mutedText: {
     fontSize: 13,
@@ -578,6 +884,10 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     paddingTop: spacing.sm,
   },
+  modelAnswerInput: {
+    minHeight: 220,
+    textAlignVertical: 'top',
+  },
   sectionBlockHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -587,6 +897,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: colors.textMuted,
+  },
+  subsectionEditBlock: {
+    gap: 6,
+    marginLeft: spacing.md,
+    paddingLeft: spacing.sm,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.border,
+  },
+  previewToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  previewToggleText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
   },
   transitionRow: {
     flexDirection: 'row',
@@ -607,5 +939,43 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: colors.primary,
+  },
+});
+
+const previewStyles = StyleSheet.create({
+  block: {
+    gap: 4,
+    paddingVertical: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  heading: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  text: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.text,
+  },
+  note: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: colors.textMuted,
+    fontStyle: 'italic',
+  },
+  subBlock: {
+    marginTop: 6,
+    marginLeft: spacing.sm,
+    paddingLeft: spacing.sm,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.border,
+    gap: 4,
+  },
+  subHeading: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
   },
 });

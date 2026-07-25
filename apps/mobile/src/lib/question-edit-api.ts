@@ -5,8 +5,8 @@ import type { ExplanationSection, QuestionDetail, QuestionListItem, ReviewStatus
 export interface QuestionEditListParams {
   q?: string;
   question_type_code?: string;
-  difficulty?: string;
   review_status?: ReviewStatus;
+  book_info_id?: string;
   sort?: QuestionSortOption;
   limit?: number;
   offset?: number;
@@ -23,8 +23,8 @@ export async function fetchQuestionsForEdit(params: QuestionEditListParams): Pro
   const query = new URLSearchParams();
   if (params.q?.trim()) query.set('q', params.q.trim());
   if (params.question_type_code) query.set('question_type_code', params.question_type_code);
-  if (params.difficulty) query.set('difficulty', params.difficulty);
   if (params.review_status) query.set('review_status', params.review_status);
+  if (params.book_info_id) query.set('book_info_id', params.book_info_id);
   if (params.sort) query.set('sort', params.sort);
   query.set('limit', String(params.limit ?? 20));
   query.set('offset', String(params.offset ?? 0));
@@ -47,6 +47,7 @@ export interface QuestionUpdatePayload {
   options?: Array<{ option_key: string; option_text_en: string; option_text_bn?: string }>;
   correct_option_key?: string;
   correct_true_false?: 'true' | 'false';
+  explanation_sections?: ExplanationSection[];
   model_answer_sections?: ExplanationSection[];
 }
 

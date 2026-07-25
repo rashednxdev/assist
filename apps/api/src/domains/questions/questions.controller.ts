@@ -13,6 +13,7 @@ import {
   batchDescriptiveImportSchema,
   batchDifferencesImportSchema,
   batchQuestionIdsSchema,
+  setMotherQuestionSchema,
 } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
 import { hasModulePermission } from '../users/module-access.service.js';
@@ -138,6 +139,17 @@ export async function updateQuestionHandler(req: AuthRequest, res: Response): Pr
 
 export async function deleteQuestionHandler(req: AuthRequest, res: Response): Promise<void> {
   const data = await questionsService.deleteQuestion(String(req.params.id));
+  res.json({ data });
+}
+
+export async function setMotherQuestionHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = setMotherQuestionSchema.parse(req.body);
+  const data = await questionsService.setMotherQuestion(String(req.params.id), dto.mother_question_id);
+  res.json({ data });
+}
+
+export async function removeMotherQuestionHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await questionsService.removeMotherQuestion(String(req.params.id));
   res.json({ data });
 }
 

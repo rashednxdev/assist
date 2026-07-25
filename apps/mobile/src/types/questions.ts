@@ -101,6 +101,11 @@ export interface QuestionDetail {
   correct_true_false?: 'true' | 'false';
   explanation_sections?: ExplanationSection[];
   model_answer_sections?: ExplanationSection[];
+  /** Set when this question is a "prototype" sharing its model answer from a "mother" question. */
+  mother_question_id?: string;
+  mother_question_label?: string;
+  /** Other prototype questions in the same family (siblings if viewing a prototype, followers if viewing the mother). */
+  prototype_questions?: Array<{ id: string; label: string }>;
   model_answer_comparison?: ComparisonTable;
   note?: string;
   book_links?: QuestionBookLink[];

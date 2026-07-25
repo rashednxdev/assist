@@ -71,3 +71,18 @@ export async function transitionQuestionReviewStatus(
   );
   return res.data;
 }
+
+export async function setMotherQuestion(id: string, motherQuestionId: string): Promise<QuestionDetail> {
+  const res = await apiFetch<{ data: QuestionDetail }>(`/questions/${id}/mother-question`, {
+    method: 'POST',
+    body: JSON.stringify({ mother_question_id: motherQuestionId }),
+  });
+  return res.data;
+}
+
+export async function removeMotherQuestion(id: string): Promise<QuestionDetail> {
+  const res = await apiFetch<{ data: QuestionDetail }>(`/questions/${id}/mother-question`, {
+    method: 'DELETE',
+  });
+  return res.data;
+}

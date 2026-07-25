@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Link2, Unlink, X } from 'lucide-react';
 import { BOOK_LANGUAGES, OPTION_KEYS, QUESTION_DIFFICULTIES } from '@ibas/shared-constants';
 import type { ComparisonTable, ExplanationSection } from '@ibas/shared-types';
 import { emptyComparisonTable } from '@ibas/shared-types';
@@ -13,6 +13,8 @@ import {
 } from '@/components/questions/question-book-links-editor';
 import { ExplanationSectionsEditor } from '@/components/questions/explanation-sections-editor';
 import { ComparisonTableEditor } from '@/components/questions/comparison-table-editor';
+import { ModelAnswerLinkPanel } from '@/components/questions/model-answer-link';
+import { MotherQuestionSearch } from '@/components/questions/mother-question-search';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -54,6 +56,9 @@ export interface QuestionFormValues {
   explanation_sections: ExplanationSection[];
   note: string;
   book_links: QuestionBookLinkForm[];
+  /** Pending mother-question pick, before the question exists yet (new-question flow only). */
+  mother_question_id?: string;
+  mother_question_label?: string;
 }
 
 export type { QuestionBookLinkForm };
@@ -84,6 +89,8 @@ export const emptyQuestionForm: QuestionFormValues = {
   explanation_sections: [],
   note: '',
   book_links: [],
+  mother_question_id: undefined,
+  mother_question_label: undefined,
 };
 
 /** Clear question fields for another entry while keeping the selected type. */
@@ -112,6 +119,67 @@ interface QuestionTypeItem {
   note?: string;
 }
 
+/** Pick a mother question before the new question has been saved — stores the pick locally, links it on create. */
+function PendingMotherQuestionPicker({
+  motherQuestionId,
+  motherQuestionLabel,
+  onPick,
+  onRemove,
+  disabled,
+}: {
+  motherQuestionId?: string;
+  motherQuestionLabel?: string;
+  onPick: (question: { id: string; label: string }) => void;
+  onRemove: () => void;
+  disabled?: boolean;
+}) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  if (motherQuestionId) {
+    return (
+      <div className="flex items-center justify-between gap-2 rounded-md border border-primary/30 bg-primary-muted/20 px-2.5 py-2 text-sm">
+        <span className="min-w-0 flex-1">
+          Will link to mother question:{' '}
+          <a
+            href={`/questions/${motherQuestionId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline"
+          >
+            {motherQuestionLabel || motherQuestionId}
+          </a>
+        </span>
+        <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={onRemove}>
+          <Unlink className="h-3.5 w-3.5" />
+          Remove
+        </Button>
+      </div>
+    );
+  }
+
+  return !pickerOpen ? (
+    <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => setPickerOpen(true)}>
+      <Link2 className="h-3.5 w-3.5" />
+      Link answer with another question
+    </Button>
+  ) : (
+    <div className="space-y-2">
+      <div className="flex justify-end">
+        <Button type="button" size="sm" variant="ghost" onClick={() => setPickerOpen(false)}>
+          <X className="h-3.5 w-3.5" />
+          Close
+        </Button>
+      </div>
+      <MotherQuestionSearch
+        onPick={(q) => {
+          onPick(q);
+          setPickerOpen(false);
+        }}
+      />
+    </div>
+  );
+}
+
 interface QuestionEditorProps {
   value: QuestionFormValues;
   onChange: (value: QuestionFormValues) => void;
@@ -126,6 +194,11 @@ interface QuestionEditorProps {
   questionId?: string;
   onBookLinksChange?: () => void;
   isPublished?: boolean;
+  /** Mother/prototype model-answer sharing — only meaningful once the question exists (questionId set). */
+  motherQuestionId?: string;
+  motherQuestionLabel?: string;
+  prototypeQuestions?: Array<{ id: string; label: string }>;
+  onMotherQuestionChange?: () => void;
 }
 
 export function QuestionEditor({
@@ -140,6 +213,10 @@ export function QuestionEditor({
   questionId,
   onBookLinksChange,
   isPublished,
+  motherQuestionId,
+  motherQuestionLabel,
+  prototypeQuestions,
+  onMotherQuestionChange,
 }: QuestionEditorProps) {
   const [similarQuestions, setSimilarQuestions] = useState<SimilarQuestion[]>([]);
   const [similarLoading, setSimilarLoading] = useState(false);
@@ -453,13 +530,31 @@ export function QuestionEditor({
               </>
             ) : (
               <>
+                {questionId ? (
+                  <ModelAnswerLinkPanel
+                    questionId={questionId}
+                    motherQuestionId={motherQuestionId}
+                    motherQuestionLabel={motherQuestionLabel}
+                    prototypeQuestions={prototypeQuestions}
+                    disabled={busy}
+                    onChange={() => onMotherQuestionChange?.()}
+                  />
+                ) : (
+                  <PendingMotherQuestionPicker
+                    motherQuestionId={value.mother_question_id}
+                    motherQuestionLabel={value.mother_question_label}
+                    disabled={busy}
+                    onPick={(q) => patch({ mother_question_id: q.id, mother_question_label: q.label })}
+                    onRemove={() => patch({ mother_question_id: undefined, mother_question_label: undefined })}
+                  />
+                )}
                 <p className="text-xs text-muted">
                   Add one or more titles. Under each title you can add sub-titles with their own details and notes.
                 </p>
                 <ExplanationSectionsEditor
                   sections={value.model_answer_sections}
                   onChange={(model_answer_sections) => patch({ model_answer_sections })}
-                  disabled={busy}
+                  disabled={busy || Boolean(!questionId && value.mother_question_id)}
                 />
               </>
             )}
@@ -550,6 +645,8 @@ export function questionFormToPayload(
         book_sub_topic_id: l.book_sub_topic_id || undefined,
         regulation_id: l.regulation_id || undefined,
       }));
+    // Only meaningful on first create — a pending mother-question pick made before the question exists.
+    payload.mother_question_id = form.mother_question_id || undefined;
   }
 
   if (form.question_type_code === 'TF') {

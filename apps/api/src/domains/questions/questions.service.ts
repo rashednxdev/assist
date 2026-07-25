@@ -392,6 +392,35 @@ async function loadQuestionDetail(questionId: string) {
   );
   const differences = isDifferencesType(typeCode) || Boolean(comparison);
 
+  // Mother/prototype model answer sharing: a "prototype" question shares its model answer from
+  // a "mother" question instead of owning its own — resolve to the mother's content, and surface
+  // the whole family (mother + sibling prototypes) regardless of which side we're viewing from.
+  const familyMotherId = question.mother_question_id ?? question._id;
+  let modelAnswerQuestionId = question._id;
+  let modelAnswerDetail = detail as IQuestionAnswerDetail | null;
+  let motherQuestionId: string | undefined;
+  let motherQuestionLabel: string | undefined;
+  if (question.mother_question_id) {
+    const mother = await Question.findById(question.mother_question_id);
+    if (mother && mother.is_active) {
+      motherQuestionId = String(mother._id);
+      motherQuestionLabel = mother.body_en.slice(0, 160);
+      modelAnswerQuestionId = mother._id;
+      modelAnswerDetail = (await QuestionAnswerDetail.findOne({
+        question_id: mother._id,
+      }).lean()) as IQuestionAnswerDetail | null;
+    }
+  }
+  const prototypeDocs = await Question.find({
+    mother_question_id: familyMotherId,
+    is_active: true,
+    _id: { $ne: question._id },
+  }).select('body_en');
+  const prototypeQuestions = prototypeDocs.map((p) => ({
+    id: String(p._id),
+    label: p.body_en.slice(0, 160),
+  }));
+
   return {
     id: String(question._id),
     question_type_id: String(question.question_type_id),
@@ -437,8 +466,11 @@ async function loadQuestionDetail(questionId: string) {
         : undefined,
     model_answer_sections:
       qType && !qType.has_options && !differences
-        ? await loadModelAnswerSections(question._id, detail as IQuestionAnswerDetail | null)
+        ? await loadModelAnswerSections(modelAnswerQuestionId, modelAnswerDetail)
         : undefined,
+    mother_question_id: motherQuestionId,
+    mother_question_label: motherQuestionLabel,
+    prototype_questions: prototypeQuestions,
     model_answer_comparison: comparison,
     explanation_sections:
       qType?.has_options && isMcqOrTf(typeCode)
@@ -1182,6 +1214,18 @@ export async function createQuestion(dto: CreateQuestionDto, createdBy: string) 
   const qType = await QuestionType.findById(dto.question_type_id);
   if (!qType || !qType.is_active) throw notFound('Question type not found');
 
+  let motherId: mongoose.Types.ObjectId | undefined;
+  if (dto.mother_question_id) {
+    const mother = await Question.findById(dto.mother_question_id);
+    if (!mother || !mother.is_active) throw notFound('Mother question not found');
+    if (mother.mother_question_id) {
+      throw badRequest(
+        'That question is itself a prototype of another question — pick the original mother question instead.',
+      );
+    }
+    motherId = mother._id;
+  }
+
   const question = await Question.create({
     question_type_id: qType._id,
     question_type_code: qType.code,
@@ -1196,6 +1240,7 @@ export async function createQuestion(dto: CreateQuestionDto, createdBy: string) 
     review_status: 'draft',
     is_active: true,
     created_by: new mongoose.Types.ObjectId(createdBy),
+    mother_question_id: motherId,
   });
 
   const links = linksFromDto(dto) ?? [];
@@ -1305,7 +1350,24 @@ export async function updateQuestion(id: string, dto: UpdateQuestionDto) {
     dto.explanation_sections !== undefined;
 
   if (hasAnswerUpdate) {
-    await applyAnswerPayload(question._id, qType, dto as CreateQuestionDto);
+    if (question.mother_question_id && dto.model_answer_sections !== undefined) {
+      // This question is a prototype — the model answer belongs to the mother question.
+      // Editing it "normally" here edits the mother's copy, which every prototype resolves to.
+      await saveAnswerDetail(question.mother_question_id, {
+        model_answer_sections: dto.model_answer_sections,
+      });
+      await Question.updateMany(
+        {
+          $or: [
+            { _id: question.mother_question_id },
+            { mother_question_id: question.mother_question_id },
+          ],
+        },
+        { $set: { updated_at: new Date() } },
+      );
+    } else {
+      await applyAnswerPayload(question._id, qType, dto as CreateQuestionDto);
+    }
   } else if (dto.note !== undefined || dto.reference_regulation_id !== undefined) {
     await saveAnswerDetail(question._id, {
       note: dto.note,
@@ -1324,6 +1386,67 @@ export async function updateQuestion(id: string, dto: UpdateQuestionDto) {
     await Question.updateOne({ _id: question._id }, { $set: { updated_at: new Date() } });
   }
 
+  return loadQuestionDetail(id);
+}
+
+/**
+ * Make this question a "prototype" that shares its model answer from a "mother" question —
+ * reads resolve to the mother's content, and editing the answer from either side (normally,
+ * no special mode) edits the mother's copy. Only one hop is allowed (a mother cannot itself be
+ * a prototype), and a question that already has prototypes of its own cannot become a prototype
+ * itself, so the relationship always stays a simple star (one mother, many prototypes), never a
+ * chain.
+ */
+export async function setMotherQuestion(id: string, motherQuestionId: string) {
+  if (id === motherQuestionId) {
+    throw badRequest('A question cannot be its own mother question');
+  }
+
+  const question = await Question.findById(id);
+  if (!question || !question.is_active) throw notFound('Question not found');
+
+  const mother = await Question.findById(motherQuestionId);
+  if (!mother || !mother.is_active) throw notFound('Mother question not found');
+
+  if (mother.mother_question_id) {
+    throw badRequest(
+      'That question is itself a prototype of another question — pick the original mother question instead.',
+    );
+  }
+
+  const prototypeCount = await Question.countDocuments({
+    mother_question_id: question._id,
+    is_active: true,
+  });
+  if (prototypeCount > 0) {
+    throw badRequest(
+      `This question already has ${prototypeCount} prototype question(s) of its own — remove those links first before making this question a prototype of another.`,
+    );
+  }
+
+  question.mother_question_id = mother._id;
+  await question.save();
+  return loadQuestionDetail(id);
+}
+
+/** Remove the mother link — copies the currently-resolved (mother's) content in first, so nothing is lost. */
+export async function removeMotherQuestion(id: string) {
+  const question = await Question.findById(id);
+  if (!question || !question.is_active) throw notFound('Question not found');
+  if (!question.mother_question_id) return loadQuestionDetail(id);
+
+  const mother = await Question.findById(question.mother_question_id);
+  if (mother) {
+    const motherDetail = await QuestionAnswerDetail.findOne({ question_id: mother._id }).lean();
+    const sections = serializeExplanationSections(
+      motherDetail?.model_answer_sections as ExplanationSection[] | undefined,
+    );
+    await saveAnswerDetail(question._id, { model_answer_sections: sections });
+  }
+
+  question.mother_question_id = undefined;
+  await question.save();
+  await Question.updateOne({ _id: question._id }, { $set: { updated_at: new Date() } });
   return loadQuestionDetail(id);
 }
 

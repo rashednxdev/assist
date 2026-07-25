@@ -52,6 +52,8 @@ const questionFieldsSchema = z.object({
   correct_option_key: z.enum(OPTION_KEYS).optional(),
   correct_true_false: z.enum(['true', 'false']).optional(),
   book_links: z.array(questionBookLinkInputSchema).optional(),
+  /** Create this question as a prototype sharing its model answer from an existing "mother" question. */
+  mother_question_id: mongoId.optional(),
 });
 
 function validateBookLink(
@@ -318,6 +320,13 @@ export const batchQuestionIdsSchema = z.object({
 });
 
 export type BatchQuestionIdsDto = z.infer<typeof batchQuestionIdsSchema>;
+
+/** Make this question a "prototype" that shares its model answer from a "mother" question. */
+export const setMotherQuestionSchema = z.object({
+  mother_question_id: mongoId,
+});
+
+export type SetMotherQuestionDto = z.infer<typeof setMotherQuestionSchema>;
 
 export type CreateQuestionDto = z.infer<typeof createQuestionSchema>;
 export type UpdateQuestionDto = z.infer<typeof updateQuestionSchema>;

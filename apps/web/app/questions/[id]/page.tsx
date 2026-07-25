@@ -24,6 +24,7 @@ import {
   type QuestionFormValues,
 } from '@/components/questions/question-editor';
 import { QuestionAnswerView } from '@/components/questions/question-answer-view';
+import { ModelAnswerLinkPanel } from '@/components/questions/model-answer-link';
 import { taggedQuestionLocationHref } from '@/lib/book-links';
 import { questionDetailToForm } from '@/lib/question-detail-form';
 
@@ -56,6 +57,9 @@ interface QuestionDetail {
   book_links?: QuestionBookLinkForm[];
   explanation_sections?: ExplanationSection[];
   model_answer_sections?: ExplanationSection[];
+  mother_question_id?: string;
+  mother_question_label?: string;
+  prototype_questions?: Array<{ id: string; label: string }>;
   model_answer_comparison?: ComparisonTable;
   note?: string;
   correct_true_false?: 'true' | 'false';
@@ -191,6 +195,7 @@ export default function QuestionDetailPage() {
 
   const link = linkLabel(question.link_level);
   const bookLinks = question.book_links ?? [];
+  const isTextAnswerType = !question.has_options && question.question_type_code !== 'DIFFERENCES';
 
   return (
     <div className="space-y-6">
@@ -265,6 +270,10 @@ export default function QuestionDetailPage() {
               })
               .catch(() => {});
           }}
+          motherQuestionId={question.mother_question_id}
+          motherQuestionLabel={question.mother_question_label}
+          prototypeQuestions={question.prototype_questions}
+          onMotherQuestionChange={() => void reload()}
         />
       ) : (
         <Card>
@@ -287,6 +296,19 @@ export default function QuestionDetailPage() {
               answer_note={question.note}
               showAnswer={showAnswer}
             />
+
+            {isAdmin && isTextAnswerType && (
+              <div className="space-y-2 border-t border-border pt-4">
+                <div className="text-sm font-semibold">Model answer sharing</div>
+                <ModelAnswerLinkPanel
+                  questionId={id}
+                  motherQuestionId={question.mother_question_id}
+                  motherQuestionLabel={question.mother_question_label}
+                  prototypeQuestions={question.prototype_questions}
+                  onChange={() => void reload()}
+                />
+              </div>
+            )}
 
             {bookLinks.length > 0 && (
               <div className="space-y-2 border-t border-border pt-4">

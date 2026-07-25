@@ -32,6 +32,8 @@ import {
   unpublishQuestionHandler,
   addQuestionBookLinkHandler,
   deleteQuestionBookLinkHandler,
+  setMotherQuestionHandler,
+  removeMotherQuestionHandler,
 } from './questions.controller.js';
 
 export const questionsRouter = Router();
@@ -93,3 +95,5 @@ questionsRouter.post('/:id/publish', canEditQuestions, asyncHandler(publishQuest
 questionsRouter.post('/:id/unpublish', canEditQuestions, asyncHandler(unpublishQuestionHandler));
 questionsRouter.post('/:id/book-links', requireAdmin, asyncHandler(addQuestionBookLinkHandler));
 questionsRouter.delete('/:id/book-links/:linkId', requireAdmin, asyncHandler(deleteQuestionBookLinkHandler));
+questionsRouter.post('/:id/mother-question', canEditQuestions, asyncHandler(setMotherQuestionHandler));
+questionsRouter.delete('/:id/mother-question', canEditQuestions, asyncHandler(removeMotherQuestionHandler));

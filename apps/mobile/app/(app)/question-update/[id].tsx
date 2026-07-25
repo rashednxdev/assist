@@ -13,6 +13,7 @@ import { EditableLabel } from '@/components/questions/EditableLabel';
 import { emptyComparisonTable } from '@/components/questions/ComparisonTableEditor';
 import { ComparisonTableEditorModal } from '@/components/questions/ComparisonTableEditorModal';
 import { ComparisonTableAnswer } from '@/components/questions/ComparisonTableAnswer';
+import { ModelAnswerLinkPanel } from '@/components/questions/ModelAnswerLinkPanel';
 import { TextField } from '@/components/ui/TextField';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/lib/auth-context';
@@ -668,6 +669,14 @@ function QuestionUpdateEditBody() {
             ) : undefined
           }
         >
+          <ModelAnswerLinkPanel
+            questionId={id}
+            motherQuestionId={item.mother_question_id}
+            motherQuestionLabel={item.mother_question_label}
+            prototypeQuestions={item.prototype_questions}
+            disabled={busy}
+            onChange={() => load()}
+          />
           {previewModelAnswer ? (
             <View>{renderSectionPreview(sections)}</View>
           ) : (

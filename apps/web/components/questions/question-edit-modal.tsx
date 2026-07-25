@@ -22,6 +22,12 @@ interface QuestionType {
   has_options: boolean;
 }
 
+interface MotherQuestionFamily {
+  mother_question_id?: string;
+  mother_question_label?: string;
+  prototype_questions?: Array<{ id: string; label: string }>;
+}
+
 export function QuestionEditModal({
   questionId,
   open,
@@ -35,10 +41,24 @@ export function QuestionEditModal({
 }) {
   const [types, setTypes] = useState<QuestionType[]>([]);
   const [form, setForm] = useState<QuestionFormValues>(emptyQuestionForm);
+  const [family, setFamily] = useState<MotherQuestionFamily>({});
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+
+  const reloadFamily = () => {
+    if (!questionId) return;
+    apiFetch<{ data: MotherQuestionFamily }>(`/questions/${questionId}`)
+      .then((r) => {
+        setFamily({
+          mother_question_id: r.data.mother_question_id,
+          mother_question_label: r.data.mother_question_label,
+          prototype_questions: r.data.prototype_questions,
+        });
+      })
+      .catch(() => {});
+  };
 
   useEffect(() => {
     if (!open || !questionId) return;
@@ -47,12 +67,19 @@ export function QuestionEditModal({
     setError('');
     setMessage('');
     Promise.all([
-      apiFetch<{ data: Parameters<typeof questionDetailToForm>[0] }>(`/questions/${questionId}`),
+      apiFetch<{ data: Parameters<typeof questionDetailToForm>[0] & MotherQuestionFamily }>(
+        `/questions/${questionId}`,
+      ),
       apiFetch<{ data: QuestionType[] }>('/questions/types'),
     ])
       .then(([detailRes, typesRes]) => {
         if (cancelled) return;
         setForm(questionDetailToForm(detailRes.data));
+        setFamily({
+          mother_question_id: detailRes.data.mother_question_id,
+          mother_question_label: detailRes.data.mother_question_label,
+          prototype_questions: detailRes.data.prototype_questions,
+        });
         setTypes(typesRes.data);
       })
       .catch((err) => {
@@ -141,6 +168,10 @@ export function QuestionEditModal({
               busy={busy}
               submitLabel="Save changes"
               error={error}
+              motherQuestionId={family.mother_question_id}
+              motherQuestionLabel={family.mother_question_label}
+              prototypeQuestions={family.prototype_questions}
+              onMotherQuestionChange={reloadFamily}
             />
           )}
         </div>

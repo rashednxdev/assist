@@ -41,7 +41,9 @@ function parse(raw: string | null): SavedShortcut[] {
 
 export function subscribeSavedShortcuts(listener: () => void) {
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 export async function loadSavedShortcuts(): Promise<SavedShortcut[]> {

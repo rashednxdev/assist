@@ -6,8 +6,7 @@ import {
   StyleSheet,
   Pressable,
   type TextInputProps,
-  type NativeSyntheticEvent,
-  type TextInputFocusEventData,
+  type FocusEvent,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useKeyboardScroll } from '@/lib/keyboard-scroll';
@@ -37,7 +36,7 @@ export function TextField({
   const wrapRef = useRef<View>(null);
   const keyboardScroll = useKeyboardScroll();
 
-  function handleFocus(e: NativeSyntheticEvent<TextInputFocusEventData>) {
+  function handleFocus(e: FocusEvent) {
     onFocus?.(e);
     // Defer so the keyboard event + content padding can settle first.
     requestAnimationFrame(() => {

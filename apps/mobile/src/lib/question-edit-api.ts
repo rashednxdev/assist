@@ -86,3 +86,8 @@ export async function removeMotherQuestion(id: string): Promise<QuestionDetail> 
   });
   return res.data;
 }
+
+/** Move a question to trash (soft delete) — reversible from the web admin's trash bin. */
+export async function trashQuestion(id: string): Promise<void> {
+  await apiFetch(`/questions/${id}`, { method: 'DELETE' });
+}

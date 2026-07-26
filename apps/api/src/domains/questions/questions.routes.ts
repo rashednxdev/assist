@@ -45,6 +45,7 @@ const canBrowseQuestions = requireModulePermission([
   { moduleCode: 'QUESTION_EDIT', permission: 'can_read' },
 ]);
 const canEditQuestions = requireModulePermission([{ moduleCode: 'QUESTION_EDIT', permission: 'can_update' }]);
+const canTrashQuestions = requireModulePermission([{ moduleCode: 'QUESTION_EDIT', permission: 'can_delete' }]);
 
 questionsRouter.get('/types', canBrowseQuestions, asyncHandler(listQuestionTypesHandler));
 questionsRouter.post('/types', requireAdmin, asyncHandler(createQuestionTypeHandler));
@@ -80,7 +81,7 @@ questionsRouter.post('/', requireAdmin, asyncHandler(createQuestionHandler));
 questionsRouter.patch('/:id', canEditQuestions, asyncHandler(updateQuestionHandler));
 questionsRouter.post('/:id/restore', requireAdmin, asyncHandler(restoreQuestionHandler));
 questionsRouter.delete('/:id/permanent', requireAdmin, asyncHandler(permanentlyDeleteQuestionHandler));
-questionsRouter.delete('/:id', requireAdmin, asyncHandler(deleteQuestionHandler));
+questionsRouter.delete('/:id', canTrashQuestions, asyncHandler(deleteQuestionHandler));
 questionsRouter.post(
   '/:id/submit-for-quality-check',
   canEditQuestions,

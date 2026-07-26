@@ -3,6 +3,7 @@ import type { ModuleAccessGrant } from '@ibas/shared-types';
 import {
   hasLearningModule,
   hasLearningModuleUpdate,
+  hasLearningModuleDelete,
   learningGrants,
   setOnUnauthorized,
   type LearningModuleCode,
@@ -23,6 +24,7 @@ interface AuthState {
   signOut: () => Promise<void>;
   canAccess: (code: LearningModuleCode) => boolean;
   canUpdate: (code: LearningModuleCode) => boolean;
+  canDelete: (code: LearningModuleCode) => boolean;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -89,9 +91,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [user?.module_access],
   );
 
+  const canDelete = useCallback(
+    (code: LearningModuleCode) => hasLearningModuleDelete(user?.module_access ?? [], code),
+    [user?.module_access],
+  );
+
   const value = useMemo(
-    () => ({ user, loading, learningModules, refreshUser, signOut, canAccess, canUpdate }),
-    [user, loading, learningModules, refreshUser, signOut, canAccess, canUpdate],
+    () => ({ user, loading, learningModules, refreshUser, signOut, canAccess, canUpdate, canDelete }),
+    [user, loading, learningModules, refreshUser, signOut, canAccess, canUpdate, canDelete],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

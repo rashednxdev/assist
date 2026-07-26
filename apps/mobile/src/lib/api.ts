@@ -91,6 +91,11 @@ export function hasLearningModuleUpdate(grants: ModuleAccessGrant[], code: Learn
   return grants.some((g) => g.module_code === code && g.can_update);
 }
 
+/** True delete permission — e.g. the QUESTION_EDIT module's trash/move-to-trash gate. */
+export function hasLearningModuleDelete(grants: ModuleAccessGrant[], code: LearningModuleCode): boolean {
+  return grants.some((g) => g.module_code === code && g.can_delete);
+}
+
 export function learningGrants(grants: ModuleAccessGrant[]): ModuleAccessGrant[] {
   return grants.filter((g) => LEARNING_MODULE_CODES.includes(g.module_code as LearningModuleCode) && g.can_read);
 }

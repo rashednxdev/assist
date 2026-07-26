@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,6 +21,7 @@ import { KeyboardScrollProvider, useKeyboardScroll } from '@/lib/keyboard-scroll
 import {
   fetchQuestionForEdit,
   transitionQuestionReviewStatus,
+  trashQuestion,
   updateQuestionContent,
   type ReviewTransition,
 } from '@/lib/question-edit-api';
@@ -200,8 +201,9 @@ function QuestionUpdateEditBody() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const navigation = useNavigation();
-  const { canUpdate } = useAuth();
+  const { canUpdate, canDelete } = useAuth();
   const editable = canUpdate('QUESTION_EDIT');
+  const canTrash = canDelete('QUESTION_EDIT');
   const keyboardScroll = useKeyboardScroll();
 
   const [item, setItem] = useState<QuestionDetail | null>(null);
@@ -240,6 +242,7 @@ function QuestionUpdateEditBody() {
   const [saveError, setSaveError] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
   const [transitioning, setTransitioning] = useState(false);
+  const [trashing, setTrashing] = useState(false);
 
   const load = useCallback(() => {
     if (!id) return;
@@ -395,12 +398,37 @@ function QuestionUpdateEditBody() {
     }
   }
 
+  async function doTrash() {
+    if (!id) return;
+    setTrashing(true);
+    setSaveError('');
+    try {
+      await trashQuestion(id);
+      router.back();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to move to trash');
+    } finally {
+      setTrashing(false);
+    }
+  }
+
+  function handleTrash() {
+    Alert.alert(
+      'Move to trash?',
+      'This question will be hidden from the Question Bank. An admin can restore it from the web admin trash bin.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Move to trash', style: 'destructive', onPress: () => void doTrash() },
+      ],
+    );
+  }
+
   if (loading) return <BookLoading />;
   if (loadError) return <BookError message={loadError} />;
   if (!item) return <BookEmpty title="Question not found" />;
 
   const status = item.review_status ?? 'draft';
-  const busy = saving || transitioning;
+  const busy = saving || transitioning || trashing;
 
   return (
     <>
@@ -859,6 +887,17 @@ function QuestionUpdateEditBody() {
         </CollapsibleSection>
       ) : null}
 
+      {canTrash ? (
+        <Pressable
+          style={({ pressed }) => [styles.trashBtn, (busy || pressed) && styles.trashBtnPressed]}
+          onPress={handleTrash}
+          disabled={busy}
+        >
+          <Ionicons name="trash-outline" size={18} color={colors.error} />
+          <Text style={styles.trashBtnText}>{trashing ? 'Moving to trash…' : 'Move to trash'}</Text>
+        </Pressable>
+      ) : null}
+
       <Pressable style={styles.backLink} onPress={() => router.back()}>
         <Ionicons name="arrow-back" size={16} color={colors.primary} />
         <Text style={styles.backLinkText}>Back to list</Text>
@@ -1095,6 +1134,25 @@ const styles = StyleSheet.create({
   },
   transitionBtn: {
     flex: 1,
+  },
+  trashBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.error,
+    borderRadius: 14,
+    paddingVertical: 14,
+    marginTop: spacing.sm,
+  },
+  trashBtnPressed: {
+    opacity: 0.6,
+  },
+  trashBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.error,
   },
   backLink: {
     flexDirection: 'row',

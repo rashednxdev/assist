@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, HelpCircle, RotateCcw, Search, Trash2 } from 'lucide-react';
+import { QUESTION_SORT_OPTIONS, type QuestionSortOption } from '@ibas/shared-constants';
 import { apiFetch } from '@/lib/api-client';
 import {
   confirmPermanentDelete,
@@ -29,7 +30,33 @@ interface QuestionItem {
   difficulty: string;
   marks: number;
   is_published: boolean;
+  book_chapter_id?: string;
+  book_topic_id?: string;
+  book_sub_topic_id?: string;
+  book_link_count?: number;
   updated_at: string;
+}
+
+/** Sentinel for the "Untagged" option in the book/tool filter select. */
+const UNTAGGED = '__untagged__';
+
+const SORT_LABEL: Record<QuestionSortOption, string> = {
+  updated_desc: 'Recently updated',
+  updated_asc: 'Oldest updated',
+  created_desc: 'Recently created',
+  created_asc: 'Oldest created',
+  marks_desc: 'Marks: high to low',
+  marks_asc: 'Marks: low to high',
+  body_en_asc: 'Question text (A–Z)',
+  body_en_desc: 'Question text (Z–A)',
+};
+
+function linkBadge(item: QuestionItem): string | null {
+  if ((item.book_link_count ?? 0) > 1) return `${item.book_link_count} links`;
+  if (item.book_sub_topic_id) return 'Sub-rule';
+  if (item.book_topic_id) return 'Rule';
+  if (item.book_chapter_id) return 'Chapter';
+  return null;
 }
 
 export default function QuestionsTrashPage() {
@@ -43,12 +70,27 @@ export default function QuestionsTrashPage() {
   const [batchBusy, setBatchBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
+  const [books, setBooks] = useState<Array<{ id: string; name: string; short_name?: string }>>([]);
+  const [filterBookId, setFilterBookId] = useState('');
+  const [filterChapters, setFilterChapters] = useState<
+    Array<{ id: string; name: string; chapter_number?: string }>
+  >([]);
+  const [filterChapterId, setFilterChapterId] = useState('');
+  const [sortOption, setSortOption] = useState<QuestionSortOption>('updated_desc');
 
-  function load(search?: string) {
+  function load() {
     setLoading(true);
     setErr('');
     const params = new URLSearchParams();
-    if (search?.trim()) params.set('q', search.trim());
+    if (q.trim()) params.set('q', q.trim());
+    if (filterBookId === UNTAGGED) {
+      params.set('untagged', 'true');
+    } else if (filterChapterId) {
+      params.set('book_chapter_id', filterChapterId);
+    } else if (filterBookId) {
+      params.set('book_info_id', filterBookId);
+    }
+    if (sortOption && sortOption !== 'updated_desc') params.set('sort', sortOption);
     const qs = params.toString();
     apiFetch<{ data: QuestionItem[] }>(`/questions/trashed${qs ? `?${qs}` : ''}`)
       .then((r) => {
@@ -58,6 +100,28 @@ export default function QuestionsTrashPage() {
       .catch((e) => setErr(e instanceof Error ? e.message : 'Failed to load trash'))
       .finally(() => setLoading(false));
   }
+
+  useEffect(() => {
+    apiFetch<{ data: Array<{ id: string; name: string; short_name?: string }> }>('/books')
+      .then((r) => setBooks(r.data))
+      .catch(() => setBooks([]));
+  }, []);
+
+  useEffect(() => {
+    if (!filterBookId || filterBookId === UNTAGGED) {
+      setFilterChapters([]);
+      setFilterChapterId('');
+      return;
+    }
+    apiFetch<{ data: Array<{ id: string; name: string; chapter_number?: string }> }>(
+      `/books/${filterBookId}/chapters`,
+    )
+      .then((r) => {
+        setFilterChapters(r.data);
+        setFilterChapterId('');
+      })
+      .catch(() => setFilterChapters([]));
+  }, [filterBookId]);
 
   useEffect(() => {
     fetchMe()
@@ -138,7 +202,7 @@ export default function QuestionsTrashPage() {
           : `Restored ${restored} question${restored === 1 ? '' : 's'}`,
       );
       if (failed > 0) setErr(`${failed} question(s) could not be restored`);
-      load(q);
+      load();
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Batch restore failed');
     } finally {
@@ -167,7 +231,7 @@ export default function QuestionsTrashPage() {
           : `Permanently deleted ${deleted} question${deleted === 1 ? '' : 's'}`,
       );
       if (failed > 0) setErr(`${failed} question(s) could not be deleted`);
-      load(q);
+      load();
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Batch permanent delete failed');
     } finally {
@@ -207,20 +271,72 @@ export default function QuestionsTrashPage() {
         <CardHeader className="border-b border-border pb-4">
           <CardTitle className="text-lg">Trashed questions</CardTitle>
           <form
-            className="mt-3 flex flex-wrap gap-3"
+            className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
             onSubmit={(e) => {
               e.preventDefault();
-              load(q);
+              load();
             }}
           >
-            <div className="min-w-[220px] flex-1 space-y-1.5">
+            <div className="space-y-1.5 sm:col-span-2">
               <Label htmlFor="trash-q">Search</Label>
               <Input id="trash-q" value={q} onChange={(e) => setQ(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="trash-filter-book">Book / Tool</Label>
+              <select
+                id="trash-filter-book"
+                value={filterBookId}
+                onChange={(e) => setFilterBookId(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">All books &amp; tools</option>
+                <option value={UNTAGGED}>Untagged (no book/chapter)</option>
+                {books.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="trash-filter-chapter">Chapter</Label>
+              <select
+                id="trash-filter-chapter"
+                value={filterChapterId}
+                disabled={!filterBookId || filterBookId === UNTAGGED || filterChapters.length === 0}
+                onChange={(e) => setFilterChapterId(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">
+                  {filterBookId && filterBookId !== UNTAGGED ? 'All chapters' : 'Select a book first'}
+                </option>
+                {filterChapters.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.chapter_number ? `${c.chapter_number}: ` : ''}
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="trash-sort">Sort by</Label>
+              <select
+                id="trash-sort"
+                value={sortOption}
+                onChange={(e) => setSortOption(e.target.value as QuestionSortOption)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                {QUESTION_SORT_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {SORT_LABEL[s]}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="flex items-end">
               <Button type="submit" size="sm" variant="outline">
                 <Search className="h-4 w-4" />
-                Search
+                Apply filters
               </Button>
             </div>
           </form>
@@ -302,6 +418,11 @@ export default function QuestionsTrashPage() {
                           </Badge>
                           <Badge variant="secondary">{item.difficulty}</Badge>
                           <Badge variant="outline">{item.marks} marks</Badge>
+                          {linkBadge(item) ? (
+                            <Badge variant="secondary">{linkBadge(item)}</Badge>
+                          ) : (
+                            <Badge variant="outline">Untagged</Badge>
+                          )}
                         </div>
                       </div>
                     </div>

@@ -60,5 +60,6 @@ export * from './evaluation.js';
 export * from './pension.js';
 export * from './pension-calculator.js';
 export * from './pension-gratuity-calculator.js';
+export * from './pension-prl-calculator.js';
 export * from './joining-period.js';
 export * from './joining-period-calculator.js';

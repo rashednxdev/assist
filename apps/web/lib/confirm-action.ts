@@ -32,3 +32,17 @@ export function confirmBatchRestore(count: number): boolean {
     `Restore ${count} selected question${count === 1 ? '' : 's'} to the question bank?`,
   );
 }
+
+export function confirmBatchUnpublish(count: number): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.confirm(
+    `Unpublish ${count} selected question${count === 1 ? '' : 's'}? They will move to (or stay in) quality check and stop showing to learners.`,
+  );
+}
+
+export function confirmBatchSubmitForQualityCheck(count: number): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.confirm(
+    `Submit ${count} selected question${count === 1 ? '' : 's'} for quality check? Only draft questions will be moved; others will be skipped.`,
+  );
+}

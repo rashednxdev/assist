@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, ChevronRight, HelpCircle, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, EyeOff, HelpCircle, ListChecks, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import {
   QUESTION_DIFFICULTIES,
   QUESTION_REVIEW_STATUSES,
@@ -10,7 +10,12 @@ import {
   type QuestionSortOption,
 } from '@ibas/shared-constants';
 import { apiFetch } from '@/lib/api-client';
-import { confirmDelete, confirmBatchTrash } from '@/lib/confirm-action';
+import {
+  confirmDelete,
+  confirmBatchTrash,
+  confirmBatchUnpublish,
+  confirmBatchSubmitForQualityCheck,
+} from '@/lib/confirm-action';
 import { fetchMe } from '@/lib/auth';
 import { isPlatformAdmin } from '@/lib/capabilities';
 import { RowActions } from '@/components/shared/row-actions';
@@ -365,6 +370,66 @@ export default function QuestionsPage() {
     }
   }
 
+  async function batchUnpublish() {
+    if (selectedIds.length === 0) return;
+    if (!confirmBatchUnpublish(selectedIds.length)) return;
+    setListErr('');
+    setListMsg('');
+    setBatchBusy(true);
+    try {
+      const res = await apiFetch<{ data: { unpublished: number; failed: number } }>(
+        '/questions/batch-unpublish',
+        {
+          method: 'POST',
+          body: JSON.stringify({ ids: selectedIds }),
+        },
+      );
+      const { unpublished, failed } = res.data;
+      setListMsg(
+        failed > 0
+          ? `Unpublished ${unpublished}; ${failed} skipped or failed`
+          : `Unpublished ${unpublished} question${unpublished === 1 ? '' : 's'}`,
+      );
+      if (failed > 0) setListErr(`${failed} question(s) could not be unpublished`);
+      setSelectedIds([]);
+      load();
+    } catch (err) {
+      setListErr(err instanceof Error ? err.message : 'Batch unpublish failed');
+    } finally {
+      setBatchBusy(false);
+    }
+  }
+
+  async function batchSubmitForQualityCheck() {
+    if (selectedIds.length === 0) return;
+    if (!confirmBatchSubmitForQualityCheck(selectedIds.length)) return;
+    setListErr('');
+    setListMsg('');
+    setBatchBusy(true);
+    try {
+      const res = await apiFetch<{ data: { submitted: number; failed: number } }>(
+        '/questions/batch-submit-for-quality-check',
+        {
+          method: 'POST',
+          body: JSON.stringify({ ids: selectedIds }),
+        },
+      );
+      const { submitted, failed } = res.data;
+      setListMsg(
+        failed > 0
+          ? `Submitted ${submitted} for quality check; ${failed} skipped or failed`
+          : `Submitted ${submitted} question${submitted === 1 ? '' : 's'} for quality check`,
+      );
+      if (failed > 0) setListErr(`${failed} question(s) could not be submitted (not currently draft?)`);
+      setSelectedIds([]);
+      load();
+    } catch (err) {
+      setListErr(err instanceof Error ? err.message : 'Batch submit for quality check failed');
+    } finally {
+      setBatchBusy(false);
+    }
+  }
+
   function goToPage(next: number) {
     const clamped = Math.max(1, Math.min(totalPages, next));
     if (clamped === page) return;
@@ -690,6 +755,26 @@ export default function QuestionsPage() {
                 />
                 Select all ({selectedIds.length}/{items.length})
               </label>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={selectedIds.length === 0 || batchBusy}
+                onClick={() => void batchSubmitForQualityCheck()}
+              >
+                <ListChecks className="h-4 w-4" />
+                Submit for quality check ({selectedIds.length})
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={selectedIds.length === 0 || batchBusy}
+                onClick={() => void batchUnpublish()}
+              >
+                <EyeOff className="h-4 w-4" />
+                Unpublish selected ({selectedIds.length})
+              </Button>
               <Button
                 type="button"
                 size="sm"

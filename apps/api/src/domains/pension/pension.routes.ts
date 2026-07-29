@@ -5,6 +5,7 @@ import { requireModuleAccess } from '../../middleware/requireModuleAccess.js';
 import { asyncHandler } from '../../shared/asyncHandler.js';
 import {
   calculatePensionHandler,
+  calculatePrlHandler,
   createLeaveTypeHandler,
   deleteLeaveTypeHandler,
   listLeaveTypesHandler,
@@ -17,6 +18,7 @@ pensionRouter.use(authenticate);
 
 pensionRouter.get('/leave-types', requireModuleAccess('PENSION'), asyncHandler(listLeaveTypesHandler));
 pensionRouter.post('/calculate', requireModuleAccess('PENSION'), asyncHandler(calculatePensionHandler));
+pensionRouter.post('/calculate-prl', requireModuleAccess('PENSION'), asyncHandler(calculatePrlHandler));
 
 pensionRouter.post('/leave-types', requireAdmin, asyncHandler(createLeaveTypeHandler));
 pensionRouter.patch('/leave-types/:id', requireAdmin, asyncHandler(updateLeaveTypeHandler));

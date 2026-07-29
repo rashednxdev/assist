@@ -26,6 +26,8 @@ import {
   batchTrashQuestionsHandler,
   batchRestoreQuestionsHandler,
   batchPermanentlyDeleteQuestionsHandler,
+  batchUnpublishQuestionsHandler,
+  batchSubmitForQualityCheckQuestionsHandler,
   submitQuestionForQualityCheckHandler,
   returnQuestionToDraftHandler,
   publishQuestionHandler,
@@ -76,6 +78,12 @@ questionsRouter.post(
   '/batch-permanent-delete',
   requireAdmin,
   asyncHandler(batchPermanentlyDeleteQuestionsHandler),
+);
+questionsRouter.post('/batch-unpublish', requireAdmin, asyncHandler(batchUnpublishQuestionsHandler));
+questionsRouter.post(
+  '/batch-submit-for-quality-check',
+  requireAdmin,
+  asyncHandler(batchSubmitForQualityCheckQuestionsHandler),
 );
 questionsRouter.post('/', requireAdmin, asyncHandler(createQuestionHandler));
 questionsRouter.patch('/:id', canEditQuestions, asyncHandler(updateQuestionHandler));

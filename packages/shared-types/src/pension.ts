@@ -39,7 +39,15 @@ export const pensionCalculateSchema = z.object({
   enjoyed_leaves: z.array(pensionEnjoyedLeaveSchema).default([]),
 });
 
+export const pensionPrlCalculateSchema = z.object({
+  dob: z.string().min(1),
+  total_leave_months: z.number().min(0),
+  last_basic_salary: z.number().positive(),
+  chosen_lump_sum_months: z.number().min(0).optional(),
+});
+
 export type PensionLeaveTypeDto = z.infer<typeof pensionLeaveTypeSchema>;
 export type CreatePensionLeaveTypeDto = z.infer<typeof createPensionLeaveTypeSchema>;
 export type UpdatePensionLeaveTypeDto = z.infer<typeof updatePensionLeaveTypeSchema>;
 export type PensionCalculateDto = z.infer<typeof pensionCalculateSchema>;
+export type PensionPrlCalculateDto = z.infer<typeof pensionPrlCalculateSchema>;

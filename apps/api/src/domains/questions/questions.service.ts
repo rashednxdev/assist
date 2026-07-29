@@ -919,6 +919,8 @@ export async function listQuestions(
     book_sub_topic_id?: string;
     regulation_id?: string;
     book_info_id?: string;
+    /** Not tagged to any book/chapter yet — overrides book_chapter_id/book_info_id when true. */
+    untagged?: boolean;
     sort?: string;
     limit: number;
     offset?: number;
@@ -959,15 +961,19 @@ export async function listQuestions(
       if (filters.question_type_code) {
         list = list.filter((q) => q.question_type_code === filters.question_type_code);
       }
-      if (filters.book_chapter_id) {
-        list = list.filter((q) => q.book_chapter_id === filters.book_chapter_id);
+      if (filters.untagged) {
+        list = list.filter((q) => !q.book_chapter_id);
+      } else {
+        if (filters.book_chapter_id) {
+          list = list.filter((q) => q.book_chapter_id === filters.book_chapter_id);
+        }
+        if (filters.book_topic_id) list = list.filter((q) => q.book_topic_id === filters.book_topic_id);
+        if (filters.book_sub_topic_id) {
+          list = list.filter((q) => q.book_sub_topic_id === filters.book_sub_topic_id);
+        }
+        if (filters.regulation_id) list = list.filter((q) => q.regulation_id === filters.regulation_id);
+        if (filters.book_info_id) list = list.filter((q) => q.book_id === filters.book_info_id);
       }
-      if (filters.book_topic_id) list = list.filter((q) => q.book_topic_id === filters.book_topic_id);
-      if (filters.book_sub_topic_id) {
-        list = list.filter((q) => q.book_sub_topic_id === filters.book_sub_topic_id);
-      }
-      if (filters.regulation_id) list = list.filter((q) => q.regulation_id === filters.regulation_id);
-      if (filters.book_info_id) list = list.filter((q) => q.book_id === filters.book_info_id);
       if (filters.q?.trim()) {
         const q = filters.q.trim().toLowerCase();
         list = list.filter(
@@ -989,21 +995,27 @@ export async function listQuestions(
   if (filters.question_type_code) query.question_type_code = filters.question_type_code;
   if (filters.is_published !== undefined) query.is_published = filters.is_published;
   if (filters.review_status) query.review_status = filters.review_status;
-  if (filters.book_chapter_id) query.book_chapter_id = filters.book_chapter_id;
-  if (filters.book_topic_id) query.book_topic_id = filters.book_topic_id;
-  if (filters.book_sub_topic_id) query.book_sub_topic_id = filters.book_sub_topic_id;
-  if (filters.regulation_id) query.regulation_id = filters.regulation_id;
 
-  if (filters.book_info_id) {
-    const chapters = await BookChapter.find({
-      book_info_id: filters.book_info_id,
-      is_active: true,
-    }).select('_id');
-    const chapterIds = chapters.map((c) => c._id);
-    if (chapterIds.length === 0) {
-      return { items: [], total: 0, limit, offset };
+  if (filters.untagged) {
+    // Not tagged to any book/chapter yet — book_chapter_id is kept unset in sync with book_links.
+    query.book_chapter_id = { $exists: false };
+  } else {
+    if (filters.book_chapter_id) query.book_chapter_id = filters.book_chapter_id;
+    if (filters.book_topic_id) query.book_topic_id = filters.book_topic_id;
+    if (filters.book_sub_topic_id) query.book_sub_topic_id = filters.book_sub_topic_id;
+    if (filters.regulation_id) query.regulation_id = filters.regulation_id;
+
+    if (filters.book_info_id) {
+      const chapters = await BookChapter.find({
+        book_info_id: filters.book_info_id,
+        is_active: true,
+      }).select('_id');
+      const chapterIds = chapters.map((c) => c._id);
+      if (chapterIds.length === 0) {
+        return { items: [], total: 0, limit, offset };
+      }
+      query.book_chapter_id = { $in: chapterIds };
     }
-    query.book_chapter_id = { $in: chapterIds };
   }
 
   if (filters.q?.trim()) {
@@ -1575,11 +1587,54 @@ export async function batchPermanentlyDeleteQuestions(ids: string[]) {
   return { deleted, failed, results };
 }
 
+/** Published -> quality_check for each id (skips/reports any that aren't currently published). */
+export async function batchUnpublishQuestions(ids: string[]) {
+  const results: Array<{ id: string; unpublished?: boolean; error?: string }> = [];
+  for (const id of ids) {
+    try {
+      await unpublishQuestion(id);
+      results.push({ id, unpublished: true });
+    } catch (err) {
+      results.push({ id, error: err instanceof Error ? err.message : 'Unpublish failed' });
+    }
+  }
+  const unpublished = results.filter((r) => r.unpublished).length;
+  const failed = results.filter((r) => r.error).length;
+  return { unpublished, failed, results };
+}
+
+/** Draft -> quality_check for each id (skips/reports any that aren't currently draft). */
+export async function batchSubmitForQualityCheckQuestions(ids: string[]) {
+  const results: Array<{ id: string; submitted?: boolean; error?: string }> = [];
+  for (const id of ids) {
+    try {
+      await submitQuestionForQualityCheck(id);
+      results.push({ id, submitted: true });
+    } catch (err) {
+      results.push({ id, error: err instanceof Error ? err.message : 'Submit for quality check failed' });
+    }
+  }
+  const submitted = results.filter((r) => r.submitted).length;
+  const failed = results.filter((r) => r.error).length;
+  return { submitted, failed, results };
+}
+
 /** List soft-deleted questions for the trash page. */
-export async function listTrashedQuestions(filters: { q?: string; limit?: number }) {
+export async function listTrashedQuestions(filters: {
+  q?: string;
+  book_chapter_id?: string;
+  book_info_id?: string;
+  untagged?: boolean;
+  sort?: string;
+  limit?: number;
+}) {
   const { items } = await listQuestions({
     q: filters.q,
     trashed: true,
+    book_chapter_id: filters.book_chapter_id,
+    book_info_id: filters.book_info_id,
+    untagged: filters.untagged,
+    sort: filters.sort,
     limit: filters.limit ?? 100,
     offset: 0,
   });

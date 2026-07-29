@@ -6,12 +6,14 @@ import {
   StyleSheet,
   Pressable,
   TextInput,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   breakdownFromDays,
   calculateBoyServiceDays,
   calculatePensionGratuity,
+  calculatePrl,
   calculateQualifyingPensionService,
   daysBetweenInclusive,
   formatPeriodLabel,
@@ -21,9 +23,10 @@ import {
   roundHalfUp,
   type PensionCalculateResult,
   type PensionGratuityResult,
+  type PrlCalculateResult,
   type QualifyingPensionServiceResult,
 } from '@ibas/shared-types';
-import { PENSION_LAMP_GRANT_MONTHS } from '@ibas/shared-constants';
+import { PENSION_GRATUITY_MULTIPLIER_TABLE, PENSION_LAMP_GRANT_MONTHS } from '@ibas/shared-constants';
 import { MathRow } from '@/components/calc/MathRow';
 import { PeriodCard } from '@/components/calc/PeriodCard';
 import { SectionCard } from '@/components/calc/SectionCard';
@@ -102,6 +105,53 @@ function fmtMoney(locale: CalcLocale, amount: number) {
   return `৳ ${locale === 'bn' ? toBanglaDigits(label) : label}`;
 }
 
+/** Band label for a row in a descending min-years table — "25+" for the top row, "20–24" otherwise. */
+function yearsBandLabel(locale: CalcLocale, table: readonly { min_years: number }[], index: number): string {
+  const row = table[index]!;
+  const label =
+    index === 0 ? `${row.min_years}+` : `${row.min_years}–${table[index - 1]!.min_years - 1}`;
+  return locale === 'bn' ? toBanglaDigits(label) : label;
+}
+
+function InfoModal({
+  title,
+  visible,
+  onClose,
+  children,
+}: {
+  title: string;
+  visible: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <View style={styles.modalRoot}>
+        <View style={styles.modalHeader}>
+          <Text style={styles.modalTitle}>{title}</Text>
+          <Pressable onPress={onClose} hitSlop={8}>
+            <Ionicons name="close" size={24} color={colors.text} />
+          </Pressable>
+        </View>
+        <ScrollView contentContainerStyle={styles.modalContent}>{children}</ScrollView>
+      </View>
+    </Modal>
+  );
+}
+
+function InfoSection({ title, items }: { title: string; items: string[] }) {
+  return (
+    <View style={styles.infoSection}>
+      <Text style={styles.infoSectionTitle}>{title}</Text>
+      {items.map((item, i) => (
+        <Text key={i} style={styles.infoBullet}>
+          {'•'} {item}
+        </Text>
+      ))}
+    </View>
+  );
+}
+
 export default function PensionMobileScreen() {
   const [locale, setLocale] = useState<CalcLocale>('en');
   const t = pensionCopy(locale);
@@ -111,12 +161,15 @@ export default function PensionMobileScreen() {
   const [lastBasic, setLastBasic] = useState('');
   const [dob, setDob] = useState('');
   const [contractualDays, setContractualDays] = useState('');
+  const [chosenLumpSumMonths, setChosenLumpSumMonths] = useState('');
   const [enjoyed, setEnjoyed] = useState<EnjoyedRow[]>([]);
   const [result, setResult] = useState<PensionCalculateResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [calculating, setCalculating] = useState(false);
   const [error, setError] = useState('');
   const [pickerFor, setPickerFor] = useState<string | null>(null);
+  const [showInstructions, setShowInstructions] = useState(false);
+  const [showRulesApplied, setShowRulesApplied] = useState(false);
 
   useEffect(() => {
     fetchPensionLeaveTypes()
@@ -179,15 +232,114 @@ export default function PensionMobileScreen() {
           contractual_part_time_days: Number(contractualDays) || 0,
         })
       : null;
+  const prlResult: PrlCalculateResult | null =
+    dob && result && Number(lastBasic) > 0
+      ? calculatePrl({
+          dob,
+          total_leave_months: result.average_salary_leave_months,
+          last_basic_salary: Number(lastBasic),
+          chosen_lump_sum_months: chosenLumpSumMonths ? Number(chosenLumpSumMonths) : undefined,
+        })
+      : null;
+  // Monthly pension + gratuity are computed on the PRL-adjusted (July-1, +5%) basic when it applies.
+  const pensionRateBasic = prlResult?.pension_basic_salary ?? Number(lastBasic);
   const gratuityResult: PensionGratuityResult | null =
-    qualifyingService && Number(lastBasic) > 0
+    qualifyingService && pensionRateBasic > 0
       ? calculatePensionGratuity({
           qualifying_years: qualifyingService.qualifying_service_years,
-          last_basic_salary: Number(lastBasic),
+          last_basic_salary: pensionRateBasic,
         })
       : null;
 
+  const ruleStages: { title: string; items: string[] }[] = [];
+
+  if (joinDate && endDate) {
+    const serviceDays = result?.service_period.total_days ?? daysBetweenInclusive(joinDate, endDate);
+    ruleStages.push({ title: t.ruleService, items: [fmtDays(locale, serviceDays)] });
+  }
+
+  const enjoyedRows = enjoyed
+    .map((r) => ({ type: leaveTypes.find((lt) => lt.id === r.leave_type_id), days: resolveDays(r, leaveTypes) }))
+    .filter((r): r is { type: PensionLeaveTypeRow; days: number } => Boolean(r.type) && r.days > 0);
+  if (enjoyedRows.length > 0) {
+    ruleStages.push({
+      title: t.ruleDeduction,
+      items: enjoyedRows.map((r) => `${typeName(locale, r.type)}: ${fmtDays(locale, r.days)}`),
+    });
+  } else if (joinDate && endDate) {
+    ruleStages.push({ title: t.ruleInput, items: [t.ruleInputNone] });
+  }
+
+  if (result) {
+    ruleStages.push({
+      title: t.ruleEarning,
+      items: [
+        `${t.ruleTotalAvgLeave}: ${fmtPeriod(locale, result.total_average_salary_leave)} (${
+          locale === 'bn'
+            ? toBanglaDigits(result.average_salary_leave_months.toFixed(2))
+            : result.average_salary_leave_months.toFixed(2)
+        } ${t.months})`,
+        `${t.ruleLampFormulaLabel}: ${fmtMoney(locale, Number(lastBasic) || 0)} × ${
+          locale === 'bn'
+            ? toBanglaDigits(result.lamp_grant_months_used.toFixed(2))
+            : result.lamp_grant_months_used.toFixed(2)
+        } ${t.months} = ${fmtMoney(locale, result.lamp_grant)}`,
+      ],
+    });
+  }
+
+  if (qualifyingService) {
+    ruleStages.push({
+      title: t.ruleQualifying,
+      items: [
+        `${fmtPeriod(locale, qualifyingService.breakdown)} (${
+          locale === 'bn'
+            ? toBanglaDigits(qualifyingService.total_exclusion_days)
+            : qualifyingService.total_exclusion_days
+        } ${t.days} ${t.ruleQualifyingExcluded})`,
+      ],
+    });
+  }
+
+  if (gratuityResult) {
+    if (!gratuityResult.eligible) {
+      ruleStages.push({ title: t.ruleGratuity, items: [t.ruleGratuityNotEligible] });
+    } else {
+      ruleStages.push({
+        title: t.ruleGratuity,
+        items: [
+          `${t.ruleMonthlyPensionFormulaLabel}: (${fmtMoney(locale, pensionRateBasic)} × ${
+            locale === 'bn'
+              ? toBanglaDigits(gratuityResult.pension_rate_percent ?? 0)
+              : gratuityResult.pension_rate_percent
+          }%) ÷ 2 = ${fmtMoney(locale, gratuityResult.half_pension_amount)}; + ${fmtMoney(
+            locale,
+            gratuityResult.medical_allowance,
+          )} = ${fmtMoney(locale, gratuityResult.monthly_net_pension)}`,
+          `${t.ruleGratuityFormulaLabel}: ${fmtMoney(locale, gratuityResult.half_pension_amount)} × ${
+            locale === 'bn'
+              ? toBanglaDigits(gratuityResult.gratuity_multiplier ?? 0)
+              : gratuityResult.gratuity_multiplier
+          } = ${fmtMoney(locale, gratuityResult.gratuity_amount)}`,
+        ],
+      });
+    }
+  }
+
+  if (prlResult) {
+    ruleStages.push({
+      title: t.rulePrl,
+      items: [
+        `${t.rulePrlPeriod}: ${prlResult.prl_start_date} → ${prlResult.prl_end_date}`,
+        `${t.rulePrlMonths}: ${
+          locale === 'bn' ? toBanglaDigits(prlResult.prl_salary_months) : prlResult.prl_salary_months
+        } + ${locale === 'bn' ? toBanglaDigits(prlResult.lump_sum_months) : prlResult.lump_sum_months}`,
+      ],
+    });
+  }
+
   return (
+    <>
     <ScrollView style={styles.root} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <View style={styles.topBar}>
         <View style={styles.topText}>
@@ -195,6 +347,17 @@ export default function PensionMobileScreen() {
           <Text style={styles.subheading}>{t.subtitle}</Text>
         </View>
         <LocaleToggle value={locale} onChange={setLocale} />
+      </View>
+
+      <View style={styles.linkRow}>
+        <Pressable style={styles.linkBtn} onPress={() => setShowInstructions(true)}>
+          <Ionicons name="book-outline" size={16} color={colors.primary} />
+          <Text style={styles.linkBtnText}>{t.instructions}</Text>
+        </Pressable>
+        <Pressable style={styles.linkBtn} onPress={() => setShowRulesApplied(true)}>
+          <Ionicons name="checkmark-done-outline" size={16} color={colors.primary} />
+          <Text style={styles.linkBtnText}>{t.rulesApplied}</Text>
+        </Pressable>
       </View>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -490,9 +653,7 @@ export default function PensionMobileScreen() {
                   )
                 : result.lamp_grant.toLocaleString('en-BD', { minimumFractionDigits: 2 })}
             </Text>
-            <Text style={styles.muted}>
-              {result.lamp_grant_uses_bonus_salary ? t.lampBonus : t.lampPlain}
-            </Text>
+            <Text style={styles.muted}>{t.lampRule}</Text>
           </SectionCard>
 
           <SectionCard title={t.gratuityTitle} subtitle={t.gratuityDescription}>
@@ -500,6 +661,9 @@ export default function PensionMobileScreen() {
               <Text style={styles.error}>{t.notEligible}</Text>
             ) : (
               <>
+                {prlResult?.july_first_falls_within_prl ? (
+                  <Text style={styles.muted}>{t.gratuityPrlBasicNote}</Text>
+                ) : null}
                 <View style={styles.periodRow}>
                   <PeriodCard title={t.gratuityAmount} value={fmtMoney(locale, gratuityResult.gratuity_amount)} />
                   <PeriodCard title={t.monthlyNet} value={fmtMoney(locale, gratuityResult.monthly_net_pension)} />
@@ -531,9 +695,100 @@ export default function PensionMobileScreen() {
               </>
             )}
           </SectionCard>
+
+          <SectionCard title={t.prlTitle} subtitle={t.prlDescription}>
+            {!prlResult ? (
+              <Text style={styles.muted}>{t.prlNoInput}</Text>
+            ) : (
+              <>
+                <View style={styles.periodRow}>
+                  <PeriodCard title={t.prlLumpSumGrant} value={fmtMoney(locale, prlResult.lump_sum_grant_amount)} />
+                  <PeriodCard title={t.prlPensionBasic} value={fmtMoney(locale, prlResult.pension_basic_salary)} />
+                </View>
+                <View style={styles.mathBlock}>
+                  <MathRow label={t.prlStartDate} value={prlResult.prl_start_date} />
+                  <MathRow label={t.prlEndDate} value={prlResult.prl_end_date} />
+                  <MathRow
+                    label={t.prlSalaryMonths}
+                    value={locale === 'bn' ? toBanglaDigits(prlResult.prl_salary_months) : String(prlResult.prl_salary_months)}
+                  />
+                  <MathRow
+                    label={t.prlLumpSumMonths}
+                    value={locale === 'bn' ? toBanglaDigits(prlResult.lump_sum_months) : String(prlResult.lump_sum_months)}
+                  />
+                </View>
+
+                {prlResult.is_fixed_split ? (
+                  <Text style={styles.muted}>{t.prlFixedSplitNote}</Text>
+                ) : (
+                  <TextField
+                    label={t.prlChosenLumpSumLabel}
+                    value={chosenLumpSumMonths}
+                    onChangeText={setChosenLumpSumMonths}
+                    keyboardType="numeric"
+                  />
+                )}
+                {!prlResult.is_fixed_split ? <Text style={styles.muted}>{t.prlChosenLumpSumHint}</Text> : null}
+
+                <Text style={styles.muted}>
+                  {prlResult.july_first_falls_within_prl ? t.prlJulyFirstYes : t.prlJulyFirstNo}
+                </Text>
+              </>
+            )}
+          </SectionCard>
         </View>
       ) : null}
     </ScrollView>
+
+    <InfoModal title={t.instructions} visible={showInstructions} onClose={() => setShowInstructions(false)}>
+      <Text style={styles.infoIntro}>{t.instructionsIntro}</Text>
+      <InfoSection
+        title={t.instrLeaveAccountTitle}
+        items={[
+          t.instrLeaveAccount1,
+          t.instrLeaveAccount2,
+          t.instrLeaveAccount3,
+          t.instrLeaveAccount4,
+          t.instrLeaveAccount5,
+        ]}
+      />
+      <InfoSection title={t.instrLampGrantTitle} items={[t.instrLampGrant1, t.instrLampGrant2]} />
+      <InfoSection
+        title={t.instrQualifyingTitle}
+        items={[t.instrQualifying1, t.instrQualifying2, t.instrQualifying3]}
+      />
+      <InfoSection
+        title={t.instrGratuityTitle}
+        items={[t.instrGratuity1, t.instrGratuity2, t.instrGratuity3, t.instrGratuity4]}
+      />
+      <View style={styles.multiplierTable}>
+        <Text style={styles.infoSectionTitle}>{t.instrMultiplierTitle}</Text>
+        <View style={styles.multiplierRow}>
+          <Text style={[styles.multiplierCell, styles.multiplierHeaderCell]}>{t.instrMultiplierYears}</Text>
+          <Text style={[styles.multiplierCell, styles.multiplierHeaderCell]}>{t.instrMultiplierValue}</Text>
+        </View>
+        {PENSION_GRATUITY_MULTIPLIER_TABLE.map((row, i) => (
+          <View key={row.min_years} style={styles.multiplierRow}>
+            <Text style={styles.multiplierCell}>
+              {yearsBandLabel(locale, PENSION_GRATUITY_MULTIPLIER_TABLE, i)}
+            </Text>
+            <Text style={styles.multiplierCell}>
+              {locale === 'bn' ? toBanglaDigits(row.multiplier) : row.multiplier}
+            </Text>
+          </View>
+        ))}
+      </View>
+      <InfoSection title={t.instrPrlTitle} items={[t.instrPrl1, t.instrPrl2, t.instrPrl3, t.instrPrl4]} />
+    </InfoModal>
+
+    <InfoModal title={t.rulesApplied} visible={showRulesApplied} onClose={() => setShowRulesApplied(false)}>
+      {ruleStages.length === 0 ? (
+        <Text style={styles.muted}>{!joinDate || !endDate ? t.rulesEmpty : t.rulePending}</Text>
+      ) : (
+        ruleStages.map((stage, i) => <InfoSection key={i} title={stage.title} items={stage.items} />)
+      )}
+    </InfoModal>
+    </>
   );
 }
 
@@ -551,6 +806,50 @@ const styles = StyleSheet.create({
   subheading: { fontSize: 13, color: colors.textMuted },
   error: { color: colors.error, fontSize: 14 },
   muted: { fontSize: 13, color: colors.textMuted },
+  linkRow: { flexDirection: 'row', gap: spacing.sm },
+  linkBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  linkBtnText: { fontSize: 13, fontWeight: '700', color: colors.primary },
+  modalRoot: { flex: 1, backgroundColor: colors.background },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: colors.text },
+  modalContent: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
+  infoIntro: { fontSize: 14, color: colors.text, fontWeight: '600' },
+  infoSection: { gap: 4 },
+  infoSectionTitle: { fontSize: 14, fontWeight: '700', color: colors.text },
+  infoBullet: { fontSize: 13, color: colors.textMuted, lineHeight: 19 },
+  multiplierTable: {
+    gap: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    padding: spacing.sm,
+  },
+  multiplierRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  multiplierCell: { flex: 1, fontSize: 13, color: colors.text },
+  multiplierHeaderCell: { fontWeight: '700' },
   addBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   addBtnText: { fontSize: 13, fontWeight: '700', color: colors.primary },
   leaveCard: {

@@ -121,6 +121,13 @@ export const PENSION_DAYS_PER_YEAR = 360;
 export const PENSION_LAMP_GRANT_MONTHS = 18;
 export const PENSION_BASIC_SALARY_BONUS_RATE = 0.05;
 
+/** PRL (Post-Retirement Leave) — starts on the 59th birthday under normal retirement. */
+export const PENSION_PRL_START_AGE_YEARS = 59;
+/** Standard PRL salary duration ("as if in service for 1 year"), in months. */
+export const PENSION_PRL_STANDARD_MONTHS = 12;
+/** At/above this total leave-credit (months), the split is fixed at 18 lump-sum + 12 PRL; below it, the employee chooses. */
+export const PENSION_PRL_FULL_SPLIT_TOTAL_MONTHS = 30;
+
 /** REST leave — auto-entitlement (15 days per 3 years of service). */
 export const PENSION_REST_LEAVE_CODE = 'REST';
 export const PENSION_REST_DAYS_PER_CYCLE = 15;

@@ -69,10 +69,21 @@ export async function listQuestionsHandler(req: AuthRequest, res: Response): Pro
 
 export async function listTrashedQuestionsHandler(req: AuthRequest, res: Response): Promise<void> {
   const q = typeof req.query.q === 'string' ? req.query.q : undefined;
+  const book_chapter_id = typeof req.query.book_chapter_id === 'string' ? req.query.book_chapter_id : undefined;
+  const book_info_id = typeof req.query.book_info_id === 'string' ? req.query.book_info_id : undefined;
+  const untagged = req.query.untagged === 'true';
+  const sort = typeof req.query.sort === 'string' ? req.query.sort : undefined;
   const limitRaw = typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined;
   const limit =
     limitRaw && Number.isFinite(limitRaw) ? Math.min(100, Math.max(1, Math.floor(limitRaw))) : 100;
-  const data = await questionsService.listTrashedQuestions({ q, limit });
+  const data = await questionsService.listTrashedQuestions({
+    q,
+    book_chapter_id,
+    book_info_id,
+    untagged,
+    sort,
+    limit,
+  });
   res.json({ data });
 }
 
@@ -178,6 +189,21 @@ export async function batchRestoreQuestionsHandler(req: AuthRequest, res: Respon
 export async function batchPermanentlyDeleteQuestionsHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = batchQuestionIdsSchema.parse(req.body);
   const data = await questionsService.batchPermanentlyDeleteQuestions(dto.ids);
+  res.json({ data });
+}
+
+export async function batchUnpublishQuestionsHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = batchQuestionIdsSchema.parse(req.body);
+  const data = await questionsService.batchUnpublishQuestions(dto.ids);
+  res.json({ data });
+}
+
+export async function batchSubmitForQualityCheckQuestionsHandler(
+  req: AuthRequest,
+  res: Response,
+): Promise<void> {
+  const dto = batchQuestionIdsSchema.parse(req.body);
+  const data = await questionsService.batchSubmitForQualityCheckQuestions(dto.ids);
   res.json({ data });
 }
 

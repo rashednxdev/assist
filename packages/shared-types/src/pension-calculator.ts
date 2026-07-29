@@ -1,5 +1,4 @@
 import {
-  PENSION_BASIC_SALARY_BONUS_RATE,
   PENSION_DAYS_PER_MONTH,
   PENSION_DAYS_PER_YEAR,
   PENSION_LAMP_GRANT_MONTHS,
@@ -76,7 +75,6 @@ export interface PensionCalculateResult {
   average_salary_leave_months: number;
   lamp_grant: number;
   lamp_grant_months_used: number;
-  lamp_grant_uses_bonus_salary: boolean;
   rest_leave: PensionRestSummary | null;
 }
 
@@ -209,6 +207,27 @@ function restEntitledDays(serviceDays: number, type: PensionLeaveTypeCalc): { cy
   return { cycles, days: cycles * daysPerCycle };
 }
 
+/**
+ * Days that count toward the REST/vacation-leave cycle clock: raw calendar days minus any
+ * enjoyed leave whose deduction_rule is 'both' (suspension, unauthorized absence,
+ * leave-without-pay) — a non-working stretch postpones cycle completion by that many days
+ * instead of silently counting toward the 3-year cycle.
+ */
+function cycleClockDays(
+  serviceDays: number,
+  enjoyedLeaves: PensionEnjoyedLeaveInput[],
+  typeMap: Map<string, PensionLeaveTypeCalc>,
+): number {
+  let days = serviceDays;
+  for (const row of enjoyedLeaves) {
+    if (!row.days || row.days <= 0) continue;
+    if (typeMap.get(row.leave_type_id)?.deduction_rule === 'both') {
+      days -= row.days;
+    }
+  }
+  return Math.max(0, days);
+}
+
 function buildEffectiveEnjoyedLeaves(
   input: PensionEnjoyedLeaveInput[],
   restType: PensionLeaveTypeCalc | undefined,
@@ -278,17 +297,19 @@ export function previewRestLeaveDeduction(
     return { days: 0, auto_applied: false, cycles: 0 };
   }
   const normalizedTypes = ensureSuspensionAndUnauthorizedLeaveTypes(ensureRestLeaveType(leaveTypes));
+  const typeMap = new Map(normalizedTypes.map((t) => [t.id, t]));
   const restType = normalizedTypes.find((t) => t.code === PENSION_REST_LEAVE_CODE);
   if (!restType) {
     return { days: 0, auto_applied: false, cycles: 0 };
   }
   const serviceDays = daysBetweenInclusive(joinDate, endDate);
+  const cycleDays = cycleClockDays(serviceDays, enjoyedLeaves, typeMap);
   const { restAutoApplied, restEnjoyedDays } = buildEffectiveEnjoyedLeaves(
     enjoyedLeaves,
     restType,
-    serviceDays,
+    cycleDays,
   );
-  const { cycles } = restEntitledDays(serviceDays, restType);
+  const { cycles } = restEntitledDays(cycleDays, restType);
   return { days: restEnjoyedDays, auto_applied: restAutoApplied, cycles };
 }
 
@@ -300,11 +321,12 @@ export function calculatePension(
   const typeMap = new Map(normalizedTypes.map((t) => [t.id, t]));
   const restType = normalizedTypes.find((t) => t.code === PENSION_REST_LEAVE_CODE);
   const serviceDays = daysBetweenInclusive(input.join_date, input.end_date);
+  const cycleDays = cycleClockDays(serviceDays, input.enjoyed_leaves, typeMap);
 
   const { rows: effectiveEnjoyed, restAutoApplied, restEnjoyedDays } = buildEffectiveEnjoyedLeaves(
     input.enjoyed_leaves,
     restType,
-    serviceDays,
+    cycleDays,
   );
 
   const state = {
@@ -334,16 +356,13 @@ export function calculatePension(
   const totalAvgEquivalentDays = remainingAvgDays + halfAsAverageDays;
   const averageSalaryLeaveMonths = daysToMonths(totalAvgEquivalentDays);
 
-  const usesBonus = averageSalaryLeaveMonths >= PENSION_LAMP_GRANT_MONTHS;
-  const lampMonthsUsed = usesBonus ? PENSION_LAMP_GRANT_MONTHS : averageSalaryLeaveMonths;
-  const basicForLamp = usesBonus
-    ? input.last_basic_salary * (1 + PENSION_BASIC_SALARY_BONUS_RATE)
-    : input.last_basic_salary;
-  const lampGrant = basicForLamp * lampMonthsUsed;
+  // Lamp grant is always paid at the current (PRL-time) basic — no increment, capped at 18 months.
+  const lampMonthsUsed = Math.min(averageSalaryLeaveMonths, PENSION_LAMP_GRANT_MONTHS);
+  const lampGrant = input.last_basic_salary * lampMonthsUsed;
 
   let restLeave: PensionRestSummary | null = null;
   if (restType) {
-    const { cycles, days: entitledDays } = restEntitledDays(serviceDays, restType);
+    const { cycles, days: entitledDays } = restEntitledDays(cycleDays, restType);
     const { allowance_basic_months: allowanceMonths } = autoEntitlementDefaults(restType);
     const allowancePerCycle = input.last_basic_salary * allowanceMonths;
     const enjoyedDays = restEnjoyedDays;
@@ -378,7 +397,6 @@ export function calculatePension(
     average_salary_leave_months: averageSalaryLeaveMonths,
     lamp_grant: Math.round(lampGrant * 100) / 100,
     lamp_grant_months_used: lampMonthsUsed,
-    lamp_grant_uses_bonus_salary: usesBonus,
     rest_leave: restLeave,
   };
 }

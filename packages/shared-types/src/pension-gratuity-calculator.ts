@@ -1,6 +1,5 @@
 import {
   PENSION_BAISHAKHI_ALLOWANCE_RATE,
-  PENSION_DAYS_PER_YEAR,
   PENSION_FESTIVAL_ALLOWANCES_PER_YEAR,
   PENSION_GRATUITY_MIN_QUALIFYING_YEARS,
   PENSION_GRATUITY_MULTIPLIER_TABLE,
@@ -51,13 +50,17 @@ export function calculateQualifyingPensionService(
     (exclusions.boy_service_days ?? 0) +
     (exclusions.contractual_part_time_days ?? 0);
   const qualifyingServiceDays = Math.max(0, rawServiceDays - totalExclusionDays);
+  const breakdown = breakdownFromDays(qualifyingServiceDays);
+  // A leftover of 6+ months counts as a full extra year for pension-rate purposes
+  // (e.g. 24y6m qualifies at the 25-year rate).
+  const qualifyingServiceYears = breakdown.months >= 6 ? breakdown.years + 1 : breakdown.years;
 
   return {
     raw_service_days: rawServiceDays,
     total_exclusion_days: totalExclusionDays,
     qualifying_service_days: qualifyingServiceDays,
-    qualifying_service_years: Math.floor(qualifyingServiceDays / PENSION_DAYS_PER_YEAR),
-    breakdown: breakdownFromDays(qualifyingServiceDays),
+    qualifying_service_years: qualifyingServiceYears,
+    breakdown,
   };
 }
 

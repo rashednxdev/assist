@@ -8,6 +8,7 @@ import {
   breakdownFromDays,
   calculateBoyServiceDays,
   calculatePensionGratuity,
+  calculatePrl,
   calculateQualifyingPensionService,
   daysBetweenInclusive,
   formatPeriodLabel,
@@ -21,9 +22,11 @@ import {
   type PensionEnjoyedLeaveInput,
   type PensionGratuityResult,
   type PensionLeaveTypeCalc,
+  type PrlCalculateResult,
   type QualifyingPensionServiceResult,
 } from '@ibas/shared-types';
 import {
+  PENSION_GRATUITY_MULTIPLIER_TABLE,
   PENSION_LAMP_GRANT_MONTHS,
   PENSION_MATERNITY_DAYS_BEFORE_RULE,
   PENSION_MATERNITY_DAYS_FROM_RULE,
@@ -253,6 +256,18 @@ function formatMoney(amount: number): string {
   return `৳ ${amount.toLocaleString('en-BD', { minimumFractionDigits: 2 })}`;
 }
 
+/** Band label for a row in a descending min-years table — "25+ years" for the top row, "20–24 years" otherwise. */
+function yearsBandLabel(
+  t: TranslateFn,
+  table: readonly { min_years: number }[],
+  index: number,
+): string {
+  const row = table[index]!;
+  if (index === 0) return t('multiplierTablePlus', { years: row.min_years });
+  const max = table[index - 1]!.min_years - 1;
+  return t('multiplierTableRange', { min: row.min_years, max });
+}
+
 interface AppliedRuleStage {
   title: string;
   rules: string[];
@@ -420,15 +435,10 @@ function buildAppliedRules(args: {
     if (lastBasic) {
       stages.push({
         title: t('stageLamp'),
-        rules: result.lamp_grant_uses_bonus_salary
-          ? [
-              t('stageLampBonus1', { months: result.average_salary_leave_months.toFixed(2) }),
-              t('stageLampBonus2'),
-            ]
-          : [
-              t('stageLampNoBonus1', { months: result.average_salary_leave_months.toFixed(2) }),
-              t('stageLampNoBonus2', { months: result.lamp_grant_months_used.toFixed(2) }),
-            ],
+        rules: [
+          t('stageLampRule1', { months: result.average_salary_leave_months.toFixed(2) }),
+          t('stageLampRule2', { months: result.lamp_grant_months_used.toFixed(2) }),
+        ],
       });
     }
   } else if (joinDate && endDate) {
@@ -489,6 +499,7 @@ function PensionCalculatorInner() {
   const [age, setAge] = useState('');
   const [dob, setDob] = useState('');
   const [contractualDays, setContractualDays] = useState('');
+  const [chosenLumpSumMonths, setChosenLumpSumMonths] = useState('');
   const [enjoyed, setEnjoyed] = useState<EnjoyedRow[]>([]);
   const [result, setResult] = useState<PensionCalculateResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -564,11 +575,22 @@ function PensionCalculatorInner() {
           contractual_part_time_days: Number(contractualDays) || 0,
         })
       : null;
+  const prlResult: PrlCalculateResult | null =
+    dob && result && Number(lastBasic) > 0
+      ? calculatePrl({
+          dob,
+          total_leave_months: result.average_salary_leave_months,
+          last_basic_salary: Number(lastBasic),
+          chosen_lump_sum_months: chosenLumpSumMonths ? Number(chosenLumpSumMonths) : undefined,
+        })
+      : null;
+  // Monthly pension + gratuity are computed on the PRL-adjusted (July-1, +5%) basic when it applies.
+  const pensionRateBasic = prlResult?.pension_basic_salary ?? Number(lastBasic);
   const gratuityResult: PensionGratuityResult | null =
-    qualifyingService && Number(lastBasic) > 0
+    qualifyingService && pensionRateBasic > 0
       ? calculatePensionGratuity({
           qualifying_years: qualifyingService.qualifying_service_years,
-          last_basic_salary: Number(lastBasic),
+          last_basic_salary: pensionRateBasic,
           age_years: age ? Number(age) : undefined,
         })
       : null;
@@ -697,6 +719,61 @@ function PensionCalculatorInner() {
               <ul className="mt-2 list-disc space-y-1 pl-5">
                 <li>{t('lampGrant1')}</li>
                 <li>{t('lampGrant2')}</li>
+              </ul>
+            </div>
+            <div>
+              <p className="font-semibold text-foreground">{t('qualifyingServiceRuleTitle')}</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5">
+                <li>{t('qualifyingServiceRule1')}</li>
+                <li>{t('qualifyingServiceRule2')}</li>
+                <li>{t('qualifyingServiceRule3')}</li>
+              </ul>
+            </div>
+            <div>
+              <p className="font-semibold text-foreground">{t('gratuityRuleTitle')}</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5">
+                <li>{t('gratuityRule1')}</li>
+                <li>{t('gratuityRule2')}</li>
+                <li>{t('gratuityRule3')}</li>
+                <li>{t('gratuityRule4')}</li>
+              </ul>
+              <div className="mt-3 overflow-x-auto rounded-lg border border-border">
+                <table className="min-w-full border-collapse text-sm">
+                  <caption className="caption-top pb-2 text-left text-xs font-semibold uppercase tracking-wide text-muted">
+                    {t('multiplierTableTitle')}
+                  </caption>
+                  <thead>
+                    <tr className="bg-slate-50">
+                      <th className="border-b border-border px-3 py-2 text-left font-semibold text-foreground">
+                        {t('multiplierTableYears')}
+                      </th>
+                      <th className="border-b border-l border-border px-3 py-2 text-left font-semibold text-foreground">
+                        {t('multiplierTableValue')}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {PENSION_GRATUITY_MULTIPLIER_TABLE.map((row, i) => (
+                      <tr key={row.min_years}>
+                        <td className="border-b border-border px-3 py-2 text-foreground">
+                          {yearsBandLabel(t, PENSION_GRATUITY_MULTIPLIER_TABLE, i)}
+                        </td>
+                        <td className="border-b border-l border-border px-3 py-2 font-medium text-foreground">
+                          {row.multiplier}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div>
+              <p className="font-semibold text-foreground">{t('prlRuleTitle')}</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5">
+                <li>{t('prlRule1')}</li>
+                <li>{t('prlRule2')}</li>
+                <li>{t('prlRule3')}</li>
+                <li>{t('prlRule4')}</li>
               </ul>
             </div>
           </div>
@@ -1211,12 +1288,42 @@ function PensionCalculatorInner() {
                 ৳ {result.lamp_grant.toLocaleString('en-BD', { minimumFractionDigits: 2 })}
               </div>
               <p className="text-sm text-muted">
-                {result.lamp_grant_uses_bonus_salary
-                  ? t('stageLampBonus2')
-                  : t('stageLampNoBonus2', {
-                      months: result.lamp_grant_months_used.toFixed(2),
-                    })}
+                {t('stageLampRule2', { months: result.lamp_grant_months_used.toFixed(2) })}
               </p>
+              <p className="text-xs text-muted">
+                {t('lampFormula', {
+                  basic: formatMoney(Number(lastBasic) || 0),
+                  months: result.lamp_grant_months_used.toFixed(2),
+                  total: formatMoney(result.lamp_grant),
+                })}
+              </p>
+              <div className="mt-3 space-y-1 border-t border-border/60 pt-3 text-xs">
+                <p className="font-medium text-foreground">{t('enjoyedByGroupTitle')}</p>
+                <div className="flex justify-between">
+                  <span className="text-muted">{payCategoryLabel(t, 'average_salary')}</span>
+                  <span>
+                    {result.enjoyed_average_salary_days} {tc('days')}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted">{payCategoryLabel(t, 'half_average_salary')}</span>
+                  <span>
+                    {result.enjoyed_half_average_days} {tc('days')}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted">{payCategoryLabel(t, 'without_pay')}</span>
+                  <span>
+                    {result.enjoyed_without_pay_days} {tc('days')}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted">{payCategoryLabel(t, 'regular_working_period')}</span>
+                  <span>
+                    {result.enjoyed_regular_working_days} {tc('days')}
+                  </span>
+                </div>
+              </div>
             </CardContent>
           </Card>
 
@@ -1232,10 +1339,24 @@ function PensionCalculatorInner() {
                 </Alert>
               ) : (
                 <>
+                  {prlResult?.july_first_falls_within_prl ? (
+                    <Alert variant="warning">
+                      {t('gratuityPrlBasicNote', { amount: formatMoney(pensionRateBasic) })}
+                    </Alert>
+                  ) : null}
                   <div className="grid gap-4 sm:grid-cols-2">
                     <StatTile label={t('gratuityLumpSum')} value={formatMoney(gratuityResult.gratuity_amount)} />
                     <StatTile label={t('gratuityMonthlyNet')} value={formatMoney(gratuityResult.monthly_net_pension)} />
                   </div>
+                  <p className="text-xs text-muted">
+                    {t('monthlyPensionFormula', {
+                      basic: formatMoney(pensionRateBasic),
+                      rate: gratuityResult.pension_rate_percent ?? 0,
+                      half: formatMoney(gratuityResult.half_pension_amount),
+                      medical: formatMoney(gratuityResult.medical_allowance),
+                      total: formatMoney(gratuityResult.monthly_net_pension),
+                    })}
+                  </p>
                   <div className="grid gap-x-6 sm:grid-cols-2">
                     <MathRow label={t('gratuityQualifyingYears')} value={String(gratuityResult.qualifying_years)} />
                     <MathRow label={t('gratuityRate')} value={`${gratuityResult.pension_rate_percent}%`} />
@@ -1252,6 +1373,54 @@ function PensionCalculatorInner() {
                       value={formatMoney(gratuityResult.leave_encashment_cap)}
                     />
                   </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('prlTitle')}</CardTitle>
+              <p className="mt-1 text-sm text-muted">{t('prlDescription')}</p>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {!prlResult ? (
+                <Alert variant="warning">{t('prlNoInput')}</Alert>
+              ) : (
+                <>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <StatTile label={t('prlLumpSumGrant')} value={formatMoney(prlResult.lump_sum_grant_amount)} />
+                    <StatTile label={t('prlPensionBasic')} value={formatMoney(prlResult.pension_basic_salary)} />
+                  </div>
+
+                  <div className="grid gap-x-6 sm:grid-cols-2">
+                    <MathRow label={t('prlStartDate')} value={prlResult.prl_start_date} />
+                    <MathRow label={t('prlEndDate')} value={prlResult.prl_end_date} />
+                    <MathRow label={t('prlSalaryMonths')} value={String(prlResult.prl_salary_months)} />
+                    <MathRow label={t('prlLumpSumMonths')} value={String(prlResult.lump_sum_months)} />
+                  </div>
+
+                  {prlResult.is_fixed_split ? (
+                    <p className="text-sm text-muted">{t('prlFixedSplitNote')}</p>
+                  ) : (
+                    <div className="max-w-xs space-y-1.5">
+                      <Label htmlFor="prl-chosen-lump">{t('prlChosenLumpSumLabel')}</Label>
+                      <Input
+                        id="prl-chosen-lump"
+                        type="number"
+                        min={0}
+                        value={chosenLumpSumMonths}
+                        onChange={(e) => setChosenLumpSumMonths(e.target.value)}
+                      />
+                      <p className="text-xs text-muted">{t('prlChosenLumpSumHint')}</p>
+                    </div>
+                  )}
+
+                  <Alert variant={prlResult.july_first_falls_within_prl ? 'warning' : 'success'}>
+                    {prlResult.july_first_falls_within_prl
+                      ? t('prlJulyFirstYes', { date: prlResult.july_first_date ?? '' })
+                      : t('prlJulyFirstNo')}
+                  </Alert>
                 </>
               )}
             </CardContent>

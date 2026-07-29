@@ -1,9 +1,11 @@
 import {
   calculatePension,
+  calculatePrl,
   createPensionLeaveTypeSchema,
   ensureRestLeaveType,
   ensureSuspensionAndUnauthorizedLeaveTypes,
   pensionCalculateSchema,
+  pensionPrlCalculateSchema,
   updatePensionLeaveTypeSchema,
   type PensionCalculateInput,
   type PensionLeaveTypeCalc,
@@ -112,4 +114,13 @@ export async function calculatePensionAccount(dto: ReturnType<typeof pensionCalc
   };
 
   return calculatePension(input, calcTypes);
+}
+
+export function calculatePrlAccount(dto: ReturnType<typeof pensionPrlCalculateSchema.parse>) {
+  return calculatePrl({
+    dob: dto.dob,
+    total_leave_months: dto.total_leave_months,
+    last_basic_salary: dto.last_basic_salary,
+    chosen_lump_sum_months: dto.chosen_lump_sum_months,
+  });
 }

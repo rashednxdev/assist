@@ -41,6 +41,7 @@ export const pensionCalculateSchema = z.object({
 
 export const pensionPrlCalculateSchema = z.object({
   dob: z.string().min(1),
+  prl_date: z.string().min(1).optional(),
   total_leave_months: z.number().min(0),
   last_basic_salary: z.number().positive(),
   chosen_lump_sum_months: z.number().min(0).optional(),

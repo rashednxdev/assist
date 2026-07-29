@@ -29,6 +29,7 @@ import { type CalcLocale, joiningCopy } from '@/lib/calc-i18n';
 import { toBanglaDigits } from '@/lib/bangla-format';
 import { formatDdMmYyyy } from '@/lib/date-format';
 import { calculateJoiningPeriodApi } from '@/lib/joining-api';
+import { KeyboardScrollProvider, useKeyboardScroll } from '@/lib/keyboard-scroll';
 import { colors, spacing } from '@/theme';
 
 interface JourneyRow {
@@ -65,6 +66,15 @@ function displayDate(locale: CalcLocale, iso: string) {
 }
 
 export default function JoiningPeriodMobileScreen() {
+  return (
+    <KeyboardScrollProvider>
+      <JoiningPeriodMobileScreenInner />
+    </KeyboardScrollProvider>
+  );
+}
+
+function JoiningPeriodMobileScreenInner() {
+  const keyboardScroll = useKeyboardScroll();
   const [locale, setLocale] = useState<CalcLocale>('en');
   const t = joiningCopy(locale);
   const [residenceChange, setResidenceChange] = useState(true);
@@ -121,7 +131,14 @@ export default function JoiningPeriodMobileScreen() {
   }
 
   return (
-    <ScrollView style={styles.root} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <ScrollView
+      ref={keyboardScroll?.scrollRef}
+      style={styles.root}
+      contentContainerStyle={[styles.content, { paddingBottom: spacing.xl + (keyboardScroll?.keyboardInset ?? 0) }]}
+      onScroll={keyboardScroll?.onScroll}
+      scrollEventThrottle={16}
+      keyboardShouldPersistTaps="handled"
+    >
       <View style={styles.topBar}>
         <View style={styles.topText}>
           <Text style={styles.heading}>{t.title}</Text>

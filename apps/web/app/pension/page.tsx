@@ -31,6 +31,7 @@ import {
   PENSION_MATERNITY_DAYS_BEFORE_RULE,
   PENSION_MATERNITY_DAYS_FROM_RULE,
   PENSION_MATERNITY_RULE_CHANGE_DATE,
+  PENSION_PRL_START_AGE_YEARS,
   PENSION_SUSPENSION_LEAVE_CODE,
   PENSION_UNAUTHORISED_LEAVE_CODE,
   type PensionLeavePayCategory,
@@ -254,6 +255,15 @@ function formatDaysLabel(t: TranslateFn, locale: AppLocale, days: number): strin
 
 function formatMoney(amount: number): string {
   return `৳ ${amount.toLocaleString('en-BD', { minimumFractionDigits: 2 })}`;
+}
+
+/** ISO date + N calendar years, as an ISO date string (empty if the input isn't a valid date). */
+function addYearsIso(iso: string, years: number): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  d.setFullYear(d.getFullYear() + years);
+  return d.toISOString().slice(0, 10);
 }
 
 /** Band label for a row in a descending min-years table — "25+ years" for the top row, "20–24 years" otherwise. */
@@ -498,8 +508,11 @@ function PensionCalculatorInner() {
   const [lastBasic, setLastBasic] = useState('');
   const [age, setAge] = useState('');
   const [dob, setDob] = useState('');
+  const [prlDate, setPrlDate] = useState('');
   const [contractualDays, setContractualDays] = useState('');
   const [chosenLumpSumMonths, setChosenLumpSumMonths] = useState('');
+  const [editingSplit, setEditingSplit] = useState(false);
+  const [appliedLumpSumMonths, setAppliedLumpSumMonths] = useState<number | undefined>(undefined);
   const [enjoyed, setEnjoyed] = useState<EnjoyedRow[]>([]);
   const [result, setResult] = useState<PensionCalculateResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -575,13 +588,15 @@ function PensionCalculatorInner() {
           contractual_part_time_days: Number(contractualDays) || 0,
         })
       : null;
+  const suggestedPrlDate = dob ? addYearsIso(dob, PENSION_PRL_START_AGE_YEARS) : '';
   const prlResult: PrlCalculateResult | null =
     dob && result && Number(lastBasic) > 0
       ? calculatePrl({
           dob,
+          prl_date: prlDate || undefined,
           total_leave_months: result.average_salary_leave_months,
           last_basic_salary: Number(lastBasic),
-          chosen_lump_sum_months: chosenLumpSumMonths ? Number(chosenLumpSumMonths) : undefined,
+          chosen_lump_sum_months: appliedLumpSumMonths,
         })
       : null;
   // Monthly pension + gratuity are computed on the PRL-adjusted (July-1, +5%) basic when it applies.
@@ -1035,6 +1050,23 @@ function PensionCalculatorInner() {
                 )}
               </div>
               <div className="space-y-1">
+                <Label htmlFor="prl_date">{t('prlDateLabel')}</Label>
+                <Input
+                  id="prl_date"
+                  type="date"
+                  value={prlDate || suggestedPrlDate}
+                  onChange={(e) => setPrlDate(e.target.value)}
+                  max={suggestedPrlDate || undefined}
+                  disabled={!dob}
+                />
+                <p className="text-xs text-muted">{t('prlDateHint')}</p>
+                {prlResult?.prl_date_capped ? (
+                  <p className="text-xs text-amber-600">
+                    {t('prlDateCappedNote', { date: prlResult.prl_start_date })}
+                  </p>
+                ) : null}
+              </div>
+              <div className="space-y-1">
                 <Label htmlFor="contractual_days">{t('contractualLabel')}</Label>
                 <Input
                   id="contractual_days"
@@ -1333,17 +1365,114 @@ function PensionCalculatorInner() {
               <p className="mt-1 text-sm text-muted">{t('gratuityDescription')}</p>
             </CardHeader>
             <CardContent className="space-y-6">
+              {!prlResult ? (
+                <Alert variant="warning">{t('prlNoInput')}</Alert>
+              ) : (
+                <>
+                  <div className="grid gap-x-6 sm:grid-cols-2">
+                    <MathRow label={t('finalRetirementDate')} value={prlResult.final_retirement_date} />
+                    <MathRow label={t('finalRetirementBasic')} value={formatMoney(prlResult.pension_basic_salary)} />
+                    <MathRow label={t('postRetirementLeaveMonths')} value={String(prlResult.prl_salary_months)} />
+                  </div>
+
+                  <Alert variant={prlResult.july_first_falls_within_prl ? 'warning' : 'success'}>
+                    {prlResult.july_first_falls_within_prl
+                      ? t('prlJulyFirstYes', { date: prlResult.july_first_date ?? '' })
+                      : t('prlJulyFirstNo')}
+                  </Alert>
+
+                  {!prlResult.is_fixed_split ? (
+                    <div className="space-y-2 rounded-lg border border-border p-3">
+                      {!editingSplit ? (
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm text-muted">
+                            {appliedLumpSumMonths === undefined
+                              ? t('prlSplitSuggested', {
+                                  prlMonths: prlResult.prl_salary_months,
+                                  lumpMonths: prlResult.lump_sum_months,
+                                })
+                              : t('prlSplitCustom', {
+                                  prlMonths: prlResult.prl_salary_months,
+                                  lumpMonths: prlResult.lump_sum_months,
+                                })}
+                          </p>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setChosenLumpSumMonths(String(prlResult.lump_sum_months));
+                              setEditingSplit(true);
+                            }}
+                          >
+                            {t('prlChangeSplitBtn')}
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <Label htmlFor="prl-chosen-lump">{t('prlChosenLumpSumLabel')}</Label>
+                          <Input
+                            id="prl-chosen-lump"
+                            type="number"
+                            min={0}
+                            value={chosenLumpSumMonths}
+                            onChange={(e) => setChosenLumpSumMonths(e.target.value)}
+                          />
+                          <p className="text-xs text-muted">{t('prlChosenLumpSumHint')}</p>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => {
+                                setAppliedLumpSumMonths(Number(chosenLumpSumMonths) || 0);
+                                setEditingSplit(false);
+                              }}
+                            >
+                              {t('prlApplySplitBtn')}
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                setEditingSplit(false);
+                                setChosenLumpSumMonths('');
+                              }}
+                            >
+                              {t('prlCancelBtn')}
+                            </Button>
+                            {appliedLumpSumMonths !== undefined ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  setAppliedLumpSumMonths(undefined);
+                                  setChosenLumpSumMonths('');
+                                  setEditingSplit(false);
+                                }}
+                              >
+                                {t('prlResetSplitBtn')}
+                              </Button>
+                            ) : null}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted">{t('prlFixedSplitNote')}</p>
+                  )}
+
+                  <StatTile label={t('prlLumpSumGrant')} value={formatMoney(prlResult.lump_sum_grant_amount)} />
+                </>
+              )}
+
               {!gratuityResult?.eligible ? (
                 <Alert variant="error">
                   {t('gratuityNotEligible', { years: qualifyingService?.qualifying_service_years ?? 0 })}
                 </Alert>
               ) : (
                 <>
-                  {prlResult?.july_first_falls_within_prl ? (
-                    <Alert variant="warning">
-                      {t('gratuityPrlBasicNote', { amount: formatMoney(pensionRateBasic) })}
-                    </Alert>
-                  ) : null}
                   <div className="grid gap-4 sm:grid-cols-2">
                     <StatTile label={t('gratuityLumpSum')} value={formatMoney(gratuityResult.gratuity_amount)} />
                     <StatTile label={t('gratuityMonthlyNet')} value={formatMoney(gratuityResult.monthly_net_pension)} />
@@ -1373,54 +1502,6 @@ function PensionCalculatorInner() {
                       value={formatMoney(gratuityResult.leave_encashment_cap)}
                     />
                   </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('prlTitle')}</CardTitle>
-              <p className="mt-1 text-sm text-muted">{t('prlDescription')}</p>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {!prlResult ? (
-                <Alert variant="warning">{t('prlNoInput')}</Alert>
-              ) : (
-                <>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <StatTile label={t('prlLumpSumGrant')} value={formatMoney(prlResult.lump_sum_grant_amount)} />
-                    <StatTile label={t('prlPensionBasic')} value={formatMoney(prlResult.pension_basic_salary)} />
-                  </div>
-
-                  <div className="grid gap-x-6 sm:grid-cols-2">
-                    <MathRow label={t('prlStartDate')} value={prlResult.prl_start_date} />
-                    <MathRow label={t('prlEndDate')} value={prlResult.prl_end_date} />
-                    <MathRow label={t('prlSalaryMonths')} value={String(prlResult.prl_salary_months)} />
-                    <MathRow label={t('prlLumpSumMonths')} value={String(prlResult.lump_sum_months)} />
-                  </div>
-
-                  {prlResult.is_fixed_split ? (
-                    <p className="text-sm text-muted">{t('prlFixedSplitNote')}</p>
-                  ) : (
-                    <div className="max-w-xs space-y-1.5">
-                      <Label htmlFor="prl-chosen-lump">{t('prlChosenLumpSumLabel')}</Label>
-                      <Input
-                        id="prl-chosen-lump"
-                        type="number"
-                        min={0}
-                        value={chosenLumpSumMonths}
-                        onChange={(e) => setChosenLumpSumMonths(e.target.value)}
-                      />
-                      <p className="text-xs text-muted">{t('prlChosenLumpSumHint')}</p>
-                    </div>
-                  )}
-
-                  <Alert variant={prlResult.july_first_falls_within_prl ? 'warning' : 'success'}>
-                    {prlResult.july_first_falls_within_prl
-                      ? t('prlJulyFirstYes', { date: prlResult.july_first_date ?? '' })
-                      : t('prlJulyFirstNo')}
-                  </Alert>
                 </>
               )}
             </CardContent>

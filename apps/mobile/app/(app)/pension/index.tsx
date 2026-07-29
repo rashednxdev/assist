@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ScrollView,
   View,
@@ -26,7 +26,12 @@ import {
   type PrlCalculateResult,
   type QualifyingPensionServiceResult,
 } from '@ibas/shared-types';
-import { PENSION_GRATUITY_MULTIPLIER_TABLE, PENSION_LAMP_GRANT_MONTHS } from '@ibas/shared-constants';
+import {
+  PENSION_GRATUITY_MULTIPLIER_TABLE,
+  PENSION_LAMP_GRANT_MONTHS,
+  PENSION_PRL_START_AGE_YEARS,
+  PENSION_REST_LEAVE_CODE,
+} from '@ibas/shared-constants';
 import { MathRow } from '@/components/calc/MathRow';
 import { PeriodCard } from '@/components/calc/PeriodCard';
 import { SectionCard } from '@/components/calc/SectionCard';
@@ -37,6 +42,7 @@ import { DateField } from '@/components/ui/DateField';
 import { TextField } from '@/components/ui/TextField';
 import { type CalcLocale, pensionCopy } from '@/lib/calc-i18n';
 import { toBanglaDigits } from '@/lib/bangla-format';
+import { KeyboardScrollProvider, useKeyboardScroll } from '@/lib/keyboard-scroll';
 import {
   calculatePensionApi,
   fetchPensionLeaveTypes,
@@ -100,9 +106,43 @@ function fmtPeriod(locale: CalcLocale, p: { years: number; months: number; days:
   return locale === 'bn' ? toBanglaDigits(label) : label;
 }
 
+/** One-line summary for a leave card: resolved days, plus the date(s) that produced it, if any. */
+function rowSummary(
+  locale: CalcLocale,
+  t: ReturnType<typeof pensionCopy>,
+  row: EnjoyedRow,
+  type: PensionLeaveTypeRow | undefined,
+  leaveTypes: PensionLeaveTypeRow[],
+): string {
+  const days = fmtDays(locale, resolveDays(row, leaveTypes));
+  if (!type) return days;
+  if (isMaternityLeaveCode(type.code)) {
+    return row.from_date ? `${row.from_date} · ${days}` : days;
+  }
+  if (type.code === PENSION_REST_LEAVE_CODE) {
+    return row.from_date ? `${row.from_date} · ${days}` : days;
+  }
+  if (row.input_mode === 'dates' && row.from_date && row.to_date) {
+    return `${row.from_date} → ${row.to_date} · ${days}`;
+  }
+  if (isSuspensionLeaveCode(type.code) && row.regularized) {
+    return t.regularizedYes;
+  }
+  return days;
+}
+
 function fmtMoney(locale: CalcLocale, amount: number) {
   const label = amount.toLocaleString('en-BD', { minimumFractionDigits: 2 });
   return `৳ ${locale === 'bn' ? toBanglaDigits(label) : label}`;
+}
+
+/** ISO date + N calendar years, as an ISO date string (empty if the input isn't a valid date). */
+function addYearsIso(iso: string, years: number): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  d.setFullYear(d.getFullYear() + years);
+  return d.toISOString().slice(0, 10);
 }
 
 /** Band label for a row in a descending min-years table — "25+" for the top row, "20–24" otherwise. */
@@ -153,6 +193,15 @@ function InfoSection({ title, items }: { title: string; items: string[] }) {
 }
 
 export default function PensionMobileScreen() {
+  return (
+    <KeyboardScrollProvider>
+      <PensionMobileScreenInner />
+    </KeyboardScrollProvider>
+  );
+}
+
+function PensionMobileScreenInner() {
+  const keyboardScroll = useKeyboardScroll();
   const [locale, setLocale] = useState<CalcLocale>('en');
   const t = pensionCopy(locale);
   const [leaveTypes, setLeaveTypes] = useState<PensionLeaveTypeRow[]>([]);
@@ -160,30 +209,76 @@ export default function PensionMobileScreen() {
   const [endDate, setEndDate] = useState('');
   const [lastBasic, setLastBasic] = useState('');
   const [dob, setDob] = useState('');
+  const [prlDate, setPrlDate] = useState('');
   const [contractualDays, setContractualDays] = useState('');
   const [chosenLumpSumMonths, setChosenLumpSumMonths] = useState('');
+  const [editingSplit, setEditingSplit] = useState(false);
+  const [appliedLumpSumMonths, setAppliedLumpSumMonths] = useState<number | undefined>(undefined);
   const [enjoyed, setEnjoyed] = useState<EnjoyedRow[]>([]);
   const [result, setResult] = useState<PensionCalculateResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [calculating, setCalculating] = useState(false);
   const [error, setError] = useState('');
-  const [pickerFor, setPickerFor] = useState<string | null>(null);
   const [showInstructions, setShowInstructions] = useState(false);
   const [showRulesApplied, setShowRulesApplied] = useState(false);
+  const [serviceLocked, setServiceLocked] = useState(false);
+  const [enjoyedLocked, setEnjoyedLocked] = useState(false);
+  const [contractualEnabled, setContractualEnabled] = useState(false);
+  const [typePickerOpen, setTypePickerOpen] = useState(false);
+  const [editingRowKey, setEditingRowKey] = useState<string | null>(null);
+  const [isNewRow, setIsNewRow] = useState(false);
+  const [rowDraft, setRowDraft] = useState<EnjoyedRow | null>(null);
+  const [rowEditError, setRowEditError] = useState('');
 
   useEffect(() => {
     fetchPensionLeaveTypes()
-      .then((data) => {
-        setLeaveTypes(data);
-        if (data[0]) setEnjoyed([emptyRow(data[0].id)]);
-      })
+      .then((data) => setLeaveTypes(data))
       .catch(() => setError(t.errorLoad))
       .finally(() => setLoading(false));
   }, []);
 
-  const updateRow = useCallback((key: string, patch: Partial<EnjoyedRow>) => {
-    setEnjoyed((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
-  }, []);
+  function openRowEditor(row: EnjoyedRow, isNew: boolean) {
+    setRowDraft({ ...row });
+    setEditingRowKey(row.key);
+    setIsNewRow(isNew);
+    setTypePickerOpen(false);
+    setRowEditError('');
+  }
+
+  function addNewRowAndEdit() {
+    openRowEditor(emptyRow(leaveTypes[0]?.id ?? ''), true);
+  }
+
+  function closeRowEditor() {
+    setEditingRowKey(null);
+    setRowDraft(null);
+    setRowEditError('');
+    setTypePickerOpen(false);
+  }
+
+  function saveRowEditor() {
+    if (!rowDraft) return;
+    const type = leaveTypes.find((lt) => lt.id === rowDraft.leave_type_id);
+    if (!isNewRow && type?.code === PENSION_REST_LEAVE_CODE) {
+      const original = enjoyed.find((r) => r.key === rowDraft.key);
+      if (original?.from_date && rowDraft.from_date && rowDraft.from_date <= original.from_date) {
+        setRowEditError(`${t.restDateForwardOnly} ${original.from_date}`);
+        return;
+      }
+    }
+    setEnjoyed((rows) =>
+      isNewRow ? [...rows, rowDraft] : rows.map((r) => (r.key === rowDraft.key ? rowDraft : r)),
+    );
+    closeRowEditor();
+  }
+
+  function deleteRow(key: string) {
+    setEnjoyed((rows) => rows.filter((r) => r.key !== key));
+  }
+
+  function updateDraft(patch: Partial<EnjoyedRow>) {
+    setRowDraft((d) => (d ? { ...d, ...patch } : d));
+  }
 
   async function handleCalculate() {
     setError('');
@@ -205,6 +300,8 @@ export default function PensionMobileScreen() {
         enjoyed_leaves,
       });
       setResult(data);
+      setServiceLocked(true);
+      setEnjoyedLocked(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : t.errorCalc);
     } finally {
@@ -232,13 +329,15 @@ export default function PensionMobileScreen() {
           contractual_part_time_days: Number(contractualDays) || 0,
         })
       : null;
+  const suggestedPrlDate = dob ? addYearsIso(dob, PENSION_PRL_START_AGE_YEARS) : '';
   const prlResult: PrlCalculateResult | null =
     dob && result && Number(lastBasic) > 0
       ? calculatePrl({
           dob,
+          prl_date: prlDate || undefined,
           total_leave_months: result.average_salary_leave_months,
           last_basic_salary: Number(lastBasic),
-          chosen_lump_sum_months: chosenLumpSumMonths ? Number(chosenLumpSumMonths) : undefined,
+          chosen_lump_sum_months: appliedLumpSumMonths,
         })
       : null;
   // Monthly pension + gratuity are computed on the PRL-adjusted (July-1, +5%) basic when it applies.
@@ -250,6 +349,11 @@ export default function PensionMobileScreen() {
           last_basic_salary: pensionRateBasic,
         })
       : null;
+
+  const editingSelectedType = rowDraft ? leaveTypes.find((lt) => lt.id === rowDraft.leave_type_id) : undefined;
+  const editingIsRest = editingSelectedType?.code === PENSION_REST_LEAVE_CODE;
+  const editingOriginalRow =
+    rowDraft && !isNewRow ? enjoyed.find((r) => r.key === rowDraft.key) : undefined;
 
   const ruleStages: { title: string; items: string[] }[] = [];
 
@@ -330,7 +434,7 @@ export default function PensionMobileScreen() {
     ruleStages.push({
       title: t.rulePrl,
       items: [
-        `${t.rulePrlPeriod}: ${prlResult.prl_start_date} → ${prlResult.prl_end_date}`,
+        `${t.rulePrlPeriod}: ${prlResult.prl_start_date} → ${prlResult.final_retirement_date}`,
         `${t.rulePrlMonths}: ${
           locale === 'bn' ? toBanglaDigits(prlResult.prl_salary_months) : prlResult.prl_salary_months
         } + ${locale === 'bn' ? toBanglaDigits(prlResult.lump_sum_months) : prlResult.lump_sum_months}`,
@@ -340,7 +444,14 @@ export default function PensionMobileScreen() {
 
   return (
     <>
-    <ScrollView style={styles.root} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <ScrollView
+      ref={keyboardScroll?.scrollRef}
+      style={styles.root}
+      contentContainerStyle={[styles.content, { paddingBottom: spacing.xl + (keyboardScroll?.keyboardInset ?? 0) }]}
+      onScroll={keyboardScroll?.onScroll}
+      scrollEventThrottle={16}
+      keyboardShouldPersistTaps="handled"
+    >
       <View style={styles.topBar}>
         <View style={styles.topText}>
           <Text style={styles.heading}>{t.title}</Text>
@@ -362,155 +473,132 @@ export default function PensionMobileScreen() {
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <SectionCard title={t.service}>
-        <DateField label={t.dob} value={dob} onChange={setDob} />
-        {dob && joinDate ? (
-          <Text style={styles.muted}>
-            {t.boyServiceAuto}: {locale === 'bn' ? toBanglaDigits(boyServiceDays) : boyServiceDays} {t.days}
-          </Text>
+      <SectionCard
+        title={t.service}
+        headerRight={
+          serviceLocked ? (
+            <Pressable style={styles.iconBtn} onPress={() => setServiceLocked(false)} hitSlop={8}>
+              <Ionicons name="pencil-outline" size={18} color={colors.primary} />
+            </Pressable>
+          ) : undefined
+        }
+      >
+        {serviceLocked ? (
+          <View style={styles.mathBlock}>
+            <MathRow label={t.dob} value={dob || '—'} />
+            <MathRow label={t.prlDateLabel} value={prlDate || suggestedPrlDate || '—'} />
+            <MathRow label={t.joinDate} value={joinDate || '—'} />
+            <MathRow label={t.endDate} value={endDate || '—'} />
+            <MathRow label={t.lastBasic} value={fmtMoney(locale, Number(lastBasic) || 0)} />
+            {contractualEnabled && contractualDays ? (
+              <MathRow label={t.contractual} value={locale === 'bn' ? toBanglaDigits(contractualDays) : contractualDays} />
+            ) : null}
+          </View>
         ) : (
-          <Text style={styles.muted}>{t.dobHint}</Text>
+          <>
+            <DateField label={t.dob} value={dob} onChange={setDob} />
+            {dob && joinDate ? (
+              <Text style={styles.muted}>
+                {t.boyServiceAuto}: {locale === 'bn' ? toBanglaDigits(boyServiceDays) : boyServiceDays} {t.days}
+              </Text>
+            ) : (
+              <Text style={styles.muted}>{t.dobHint}</Text>
+            )}
+            {dob ? (
+              <>
+                <DateField
+                  label={t.prlDateLabel}
+                  value={prlDate || suggestedPrlDate}
+                  onChange={setPrlDate}
+                  maximumDate={suggestedPrlDate ? new Date(suggestedPrlDate) : undefined}
+                />
+                <Text style={styles.muted}>{t.prlDateHint}</Text>
+                {prlResult?.prl_date_capped ? (
+                  <Text style={styles.error}>
+                    {t.prlDateCappedNote}: {prlResult.prl_start_date}
+                  </Text>
+                ) : null}
+              </>
+            ) : null}
+            <DateField label={t.joinDate} value={joinDate} onChange={setJoinDate} />
+            <DateField label={t.endDate} value={endDate} onChange={setEndDate} />
+            <TextField
+              label={t.lastBasic}
+              value={lastBasic}
+              onChangeText={setLastBasic}
+              keyboardType="numeric"
+              placeholder="45000"
+            />
+            <View style={styles.contractualRow}>
+              <View style={styles.contractualField}>
+                <TextField
+                  label={t.contractual}
+                  value={contractualDays}
+                  onChangeText={setContractualDays}
+                  keyboardType="numeric"
+                  editable={contractualEnabled}
+                />
+              </View>
+              <Pressable
+                style={styles.iconBtn}
+                onPress={() => setContractualEnabled((v) => !v)}
+                hitSlop={8}
+              >
+                <Ionicons
+                  name={contractualEnabled ? 'lock-open-outline' : 'lock-closed-outline'}
+                  size={20}
+                  color={contractualEnabled ? colors.primary : colors.textMuted}
+                />
+              </Pressable>
+            </View>
+          </>
         )}
-        <DateField label={t.joinDate} value={joinDate} onChange={setJoinDate} />
-        <DateField label={t.endDate} value={endDate} onChange={setEndDate} />
-        <TextField
-          label={t.lastBasic}
-          value={lastBasic}
-          onChangeText={setLastBasic}
-          keyboardType="numeric"
-          placeholder="45000"
-        />
-        <TextField
-          label={t.contractual}
-          value={contractualDays}
-          onChangeText={setContractualDays}
-          keyboardType="numeric"
-        />
       </SectionCard>
 
       <SectionCard
         title={t.enjoyed}
         subtitle={t.enjoyedHint}
         headerRight={
-          <Pressable
-            style={styles.addBtn}
-            onPress={() => setEnjoyed((rows) => [...rows, emptyRow(leaveTypes[0]?.id ?? '')])}
-            disabled={!leaveTypes.length}
-          >
-            <Ionicons name="add" size={18} color={colors.primary} />
-            <Text style={styles.addBtnText}>{t.addRow}</Text>
-          </Pressable>
+          enjoyedLocked ? (
+            <Pressable style={styles.iconBtn} onPress={() => setEnjoyedLocked(false)} hitSlop={8}>
+              <Ionicons name="pencil-outline" size={18} color={colors.primary} />
+            </Pressable>
+          ) : (
+            <Pressable style={styles.addBtn} onPress={addNewRowAndEdit} disabled={!leaveTypes.length}>
+              <Ionicons name="add" size={18} color={colors.primary} />
+              <Text style={styles.addBtnText}>{t.addRow}</Text>
+            </Pressable>
+          )
         }
       >
         {loading ? <Text style={styles.muted}>{t.calculating}</Text> : null}
         {!loading && leaveTypes.length === 0 ? <Text style={styles.muted}>{t.emptyTypes}</Text> : null}
+        {!loading && leaveTypes.length > 0 && enjoyed.length === 0 ? (
+          <Text style={styles.muted}>{t.noEnjoyedRows}</Text>
+        ) : null}
 
         {enjoyed.map((row) => {
           const selected = leaveTypes.find((lt) => lt.id === row.leave_type_id);
-          const maternity = isMaternityLeaveCode(selected?.code);
-          const suspension = isSuspensionLeaveCode(selected?.code);
-          const resolved = resolveDays(row, leaveTypes);
           return (
-            <View key={row.key} style={styles.leaveCard}>
-              <Pressable
-                style={styles.typeBtn}
-                onPress={() => setPickerFor(pickerFor === row.key ? null : row.key)}
-              >
-                <Text style={styles.typeBtnLabel}>{t.leaveType}</Text>
-                <Text style={styles.typeBtnValue}>
+            <View key={row.key} style={styles.leaveSummaryCard}>
+              <View style={styles.leaveSummaryText}>
+                <Text style={styles.leaveSummaryName}>
                   {selected ? typeName(locale, selected) : t.selectType}
                 </Text>
-                <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
-              </Pressable>
-
-              {pickerFor === row.key ? (
-                <ScrollView
-                  style={styles.picker}
-                  nestedScrollEnabled
-                  keyboardShouldPersistTaps="handled"
-                  showsVerticalScrollIndicator
-                >
-                  {leaveTypes.map((lt) => (
-                    <Pressable
-                      key={lt.id}
-                      style={styles.pickerItem}
-                      onPress={() => {
-                        updateRow(row.key, {
-                          leave_type_id: lt.id,
-                          input_mode: isMaternityLeaveCode(lt.code) ? 'dates' : row.input_mode,
-                        });
-                        setPickerFor(null);
-                      }}
-                    >
-                      <Text style={styles.pickerText}>{typeName(locale, lt)}</Text>
-                    </Pressable>
-                  ))}
-                </ScrollView>
-              ) : null}
-
-              {!maternity ? (
-                <ChipGroup
-                  value={row.input_mode}
-                  onChange={(v) => updateRow(row.key, { input_mode: v })}
-                  options={[
-                    { value: 'days', label: t.modeDays },
-                    { value: 'dates', label: t.modeDates },
-                  ]}
-                />
-              ) : null}
-
-              {maternity || row.input_mode === 'dates' ? (
-                <View style={styles.dateRow}>
-                  <View style={styles.dateField}>
-                    <DateField
-                      label={t.from}
-                      value={row.from_date}
-                      onChange={(v) => updateRow(row.key, { from_date: v })}
-                    />
-                  </View>
-                  {!maternity ? (
-                    <View style={styles.dateField}>
-                      <DateField
-                        label={t.to}
-                        value={row.to_date}
-                        onChange={(v) => updateRow(row.key, { to_date: v })}
-                      />
-                    </View>
-                  ) : null}
-                </View>
-              ) : (
-                <View style={styles.dateField}>
-                  <Text style={styles.fieldLabel}>{t.days}</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={row.days}
-                    onChangeText={(v) => updateRow(row.key, { days: v })}
-                    keyboardType="numeric"
-                    placeholder="0"
-                    placeholderTextColor={colors.textMuted}
-                  />
-                </View>
-              )}
-
-              {suspension ? (
-                <ChipGroup
-                  value={row.regularized ? 'yes' : 'no'}
-                  onChange={(v) => updateRow(row.key, { regularized: v === 'yes' })}
-                  options={[
-                    { value: 'no', label: t.regularizedNo },
-                    { value: 'yes', label: t.regularizedYes },
-                  ]}
-                />
-              ) : null}
-
-              <View style={styles.rowFooter}>
-                <Text style={styles.resolved}>
-                  {t.days}: {locale === 'bn' ? toBanglaDigits(resolved) : resolved}
+                <Text style={styles.leaveSummaryDetail}>
+                  {rowSummary(locale, t, row, selected, leaveTypes)}
                 </Text>
-                <Pressable onPress={() => setEnjoyed((rows) => rows.filter((r) => r.key !== row.key))}>
-                  <Ionicons name="trash-outline" size={18} color={colors.error} />
-                </Pressable>
               </View>
+              {!enjoyedLocked ? (
+                <View style={styles.leaveSummaryActions}>
+                  <Pressable onPress={() => openRowEditor(row, false)} hitSlop={8}>
+                    <Ionicons name="pencil-outline" size={18} color={colors.primary} />
+                  </Pressable>
+                  <Pressable onPress={() => deleteRow(row.key)} hitSlop={8}>
+                    <Ionicons name="trash-outline" size={18} color={colors.error} />
+                  </Pressable>
+                </View>
+              ) : null}
             </View>
           );
         })}
@@ -657,13 +745,105 @@ export default function PensionMobileScreen() {
           </SectionCard>
 
           <SectionCard title={t.gratuityTitle} subtitle={t.gratuityDescription}>
+            {!prlResult ? (
+              <Text style={styles.muted}>{t.prlNoInput}</Text>
+            ) : (
+              <>
+                <View style={styles.mathBlock}>
+                  <MathRow label={t.finalRetirementDate} value={prlResult.final_retirement_date} />
+                  <MathRow label={t.finalRetirementBasic} value={fmtMoney(locale, prlResult.pension_basic_salary)} />
+                  <MathRow
+                    label={t.postRetirementLeaveMonths}
+                    value={
+                      locale === 'bn' ? toBanglaDigits(prlResult.prl_salary_months) : String(prlResult.prl_salary_months)
+                    }
+                  />
+                </View>
+
+                <Text style={styles.muted}>
+                  {prlResult.july_first_falls_within_prl ? t.prlJulyFirstYes : t.prlJulyFirstNo}
+                </Text>
+
+                {!prlResult.is_fixed_split ? (
+                  <View style={styles.splitBox}>
+                    {!editingSplit ? (
+                      <View style={styles.splitRow}>
+                        <Text style={[styles.muted, styles.splitText]}>
+                          {(appliedLumpSumMonths === undefined
+                            ? `${t.prlSplitSuggested}: `
+                            : `${t.prlSplitCustom}: `) +
+                            (locale === 'bn' ? toBanglaDigits(prlResult.prl_salary_months) : prlResult.prl_salary_months) +
+                            ` + ` +
+                            (locale === 'bn' ? toBanglaDigits(prlResult.lump_sum_months) : prlResult.lump_sum_months)}
+                        </Text>
+                        <Pressable
+                          style={styles.linkBtn}
+                          onPress={() => {
+                            setChosenLumpSumMonths(String(prlResult.lump_sum_months));
+                            setEditingSplit(true);
+                          }}
+                        >
+                          <Text style={styles.linkBtnText}>{t.prlChangeSplitBtn}</Text>
+                        </Pressable>
+                      </View>
+                    ) : (
+                      <>
+                        <TextField
+                          label={t.prlChosenLumpSumLabel}
+                          value={chosenLumpSumMonths}
+                          onChangeText={setChosenLumpSumMonths}
+                          keyboardType="numeric"
+                        />
+                        <Text style={styles.muted}>{t.prlChosenLumpSumHint}</Text>
+                        <View style={styles.splitRow}>
+                          <Pressable
+                            style={styles.linkBtn}
+                            onPress={() => {
+                              setAppliedLumpSumMonths(Number(chosenLumpSumMonths) || 0);
+                              setEditingSplit(false);
+                            }}
+                          >
+                            <Text style={styles.linkBtnText}>{t.prlApplySplitBtn}</Text>
+                          </Pressable>
+                          <Pressable
+                            style={styles.linkBtn}
+                            onPress={() => {
+                              setEditingSplit(false);
+                              setChosenLumpSumMonths('');
+                            }}
+                          >
+                            <Text style={styles.linkBtnText}>{t.prlCancelBtn}</Text>
+                          </Pressable>
+                          {appliedLumpSumMonths !== undefined ? (
+                            <Pressable
+                              style={styles.linkBtn}
+                              onPress={() => {
+                                setAppliedLumpSumMonths(undefined);
+                                setChosenLumpSumMonths('');
+                                setEditingSplit(false);
+                              }}
+                            >
+                              <Text style={styles.linkBtnText}>{t.prlResetSplitBtn}</Text>
+                            </Pressable>
+                          ) : null}
+                        </View>
+                      </>
+                    )}
+                  </View>
+                ) : (
+                  <Text style={styles.muted}>{t.prlFixedSplitNote}</Text>
+                )}
+
+                <View style={styles.periodRow}>
+                  <PeriodCard title={t.prlLumpSumGrant} value={fmtMoney(locale, prlResult.lump_sum_grant_amount)} />
+                </View>
+              </>
+            )}
+
             {!gratuityResult?.eligible ? (
               <Text style={styles.error}>{t.notEligible}</Text>
             ) : (
               <>
-                {prlResult?.july_first_falls_within_prl ? (
-                  <Text style={styles.muted}>{t.gratuityPrlBasicNote}</Text>
-                ) : null}
                 <View style={styles.periodRow}>
                   <PeriodCard title={t.gratuityAmount} value={fmtMoney(locale, gratuityResult.gratuity_amount)} />
                   <PeriodCard title={t.monthlyNet} value={fmtMoney(locale, gratuityResult.monthly_net_pension)} />
@@ -695,50 +875,131 @@ export default function PensionMobileScreen() {
               </>
             )}
           </SectionCard>
-
-          <SectionCard title={t.prlTitle} subtitle={t.prlDescription}>
-            {!prlResult ? (
-              <Text style={styles.muted}>{t.prlNoInput}</Text>
-            ) : (
-              <>
-                <View style={styles.periodRow}>
-                  <PeriodCard title={t.prlLumpSumGrant} value={fmtMoney(locale, prlResult.lump_sum_grant_amount)} />
-                  <PeriodCard title={t.prlPensionBasic} value={fmtMoney(locale, prlResult.pension_basic_salary)} />
-                </View>
-                <View style={styles.mathBlock}>
-                  <MathRow label={t.prlStartDate} value={prlResult.prl_start_date} />
-                  <MathRow label={t.prlEndDate} value={prlResult.prl_end_date} />
-                  <MathRow
-                    label={t.prlSalaryMonths}
-                    value={locale === 'bn' ? toBanglaDigits(prlResult.prl_salary_months) : String(prlResult.prl_salary_months)}
-                  />
-                  <MathRow
-                    label={t.prlLumpSumMonths}
-                    value={locale === 'bn' ? toBanglaDigits(prlResult.lump_sum_months) : String(prlResult.lump_sum_months)}
-                  />
-                </View>
-
-                {prlResult.is_fixed_split ? (
-                  <Text style={styles.muted}>{t.prlFixedSplitNote}</Text>
-                ) : (
-                  <TextField
-                    label={t.prlChosenLumpSumLabel}
-                    value={chosenLumpSumMonths}
-                    onChangeText={setChosenLumpSumMonths}
-                    keyboardType="numeric"
-                  />
-                )}
-                {!prlResult.is_fixed_split ? <Text style={styles.muted}>{t.prlChosenLumpSumHint}</Text> : null}
-
-                <Text style={styles.muted}>
-                  {prlResult.july_first_falls_within_prl ? t.prlJulyFirstYes : t.prlJulyFirstNo}
-                </Text>
-              </>
-            )}
-          </SectionCard>
         </View>
       ) : null}
     </ScrollView>
+
+    <InfoModal
+      title={isNewRow ? t.addRow : t.editLeaveTitle}
+      visible={editingRowKey !== null}
+      onClose={closeRowEditor}
+    >
+      {rowDraft ? (
+        <>
+          <Pressable style={styles.typeBtn} onPress={() => setTypePickerOpen((v) => !v)}>
+            <Text style={styles.typeBtnLabel}>{t.leaveType}</Text>
+            <Text style={styles.typeBtnValue}>
+              {editingSelectedType ? typeName(locale, editingSelectedType) : t.selectType}
+            </Text>
+            <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
+          </Pressable>
+
+          {typePickerOpen ? (
+            <View style={styles.picker}>
+              {leaveTypes.map((lt) => (
+                <Pressable
+                  key={lt.id}
+                  style={styles.pickerItem}
+                  onPress={() => {
+                    updateDraft({
+                      leave_type_id: lt.id,
+                      input_mode: isMaternityLeaveCode(lt.code)
+                        ? 'dates'
+                        : lt.code === PENSION_REST_LEAVE_CODE
+                          ? 'days'
+                          : rowDraft.input_mode,
+                    });
+                    setTypePickerOpen(false);
+                  }}
+                >
+                  <Text style={styles.pickerText}>{typeName(locale, lt)}</Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+
+          {editingIsRest ? (
+            <View style={styles.dateField}>
+              <DateField
+                label={t.restDateLabel}
+                value={rowDraft.from_date}
+                onChange={(v) => updateDraft({ from_date: v })}
+                minimumDate={editingOriginalRow?.from_date ? new Date(editingOriginalRow.from_date) : undefined}
+              />
+            </View>
+          ) : null}
+
+          {!isMaternityLeaveCode(editingSelectedType?.code) && !editingIsRest ? (
+            <ChipGroup
+              value={rowDraft.input_mode}
+              onChange={(v) => updateDraft({ input_mode: v })}
+              options={[
+                { value: 'days', label: t.modeDays },
+                { value: 'dates', label: t.modeDates },
+              ]}
+            />
+          ) : null}
+
+          {isMaternityLeaveCode(editingSelectedType?.code) || (!editingIsRest && rowDraft.input_mode === 'dates') ? (
+            <View style={styles.dateRow}>
+              <View style={styles.dateField}>
+                <DateField label={t.from} value={rowDraft.from_date} onChange={(v) => updateDraft({ from_date: v })} />
+              </View>
+              {!isMaternityLeaveCode(editingSelectedType?.code) ? (
+                <View style={styles.dateField}>
+                  <DateField label={t.to} value={rowDraft.to_date} onChange={(v) => updateDraft({ to_date: v })} />
+                </View>
+              ) : null}
+            </View>
+          ) : (
+            <View style={styles.dateField}>
+              <Text style={styles.fieldLabel}>{t.days}</Text>
+              <TextInput
+                style={styles.input}
+                value={rowDraft.days}
+                onChangeText={(v) => updateDraft({ days: v })}
+                keyboardType="numeric"
+                placeholder="0"
+                placeholderTextColor={colors.textMuted}
+              />
+            </View>
+          )}
+
+          {editingIsRest && editingOriginalRow?.from_date ? (
+            <Text style={styles.muted}>
+              {t.restDateForwardOnlyHint} {editingOriginalRow.from_date}
+            </Text>
+          ) : null}
+
+          {isSuspensionLeaveCode(editingSelectedType?.code) ? (
+            <ChipGroup
+              value={rowDraft.regularized ? 'yes' : 'no'}
+              onChange={(v) => updateDraft({ regularized: v === 'yes' })}
+              options={[
+                { value: 'no', label: t.regularizedNo },
+                { value: 'yes', label: t.regularizedYes },
+              ]}
+            />
+          ) : null}
+
+          <Text style={styles.resolved}>
+            {t.days}:{' '}
+            {locale === 'bn' ? toBanglaDigits(resolveDays(rowDraft, leaveTypes)) : resolveDays(rowDraft, leaveTypes)}
+          </Text>
+
+          {rowEditError ? <Text style={styles.error}>{rowEditError}</Text> : null}
+
+          <View style={styles.splitRow}>
+            <Pressable style={styles.linkBtn} onPress={saveRowEditor}>
+              <Text style={styles.linkBtnText}>{t.saveRowBtn}</Text>
+            </Pressable>
+            <Pressable style={styles.linkBtn} onPress={closeRowEditor}>
+              <Text style={styles.linkBtnText}>{t.prlCancelBtn}</Text>
+            </Pressable>
+          </View>
+        </>
+      ) : null}
+    </InfoModal>
 
     <InfoModal title={t.instructions} visible={showInstructions} onClose={() => setShowInstructions(false)}>
       <Text style={styles.infoIntro}>{t.instructionsIntro}</Text>
@@ -818,6 +1079,21 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   linkBtnText: { fontSize: 13, fontWeight: '700', color: colors.primary },
+  splitBox: {
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: spacing.sm,
+  },
+  splitRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  splitText: { flex: 1 },
   modalRoot: { flex: 1, backgroundColor: colors.background },
   modalHeader: {
     flexDirection: 'row',
@@ -852,13 +1128,35 @@ const styles = StyleSheet.create({
   multiplierHeaderCell: { fontWeight: '700' },
   addBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   addBtnText: { fontSize: 13, fontWeight: '700', color: colors.primary },
-  leaveCard: {
+  iconBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  contractualRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: spacing.sm,
+  },
+  contractualField: { flex: 1 },
+  leaveSummaryCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 12,
     padding: spacing.sm,
-    gap: spacing.sm,
     backgroundColor: colors.background,
+  },
+  leaveSummaryText: { flex: 1, gap: 2 },
+  leaveSummaryName: { fontSize: 14, fontWeight: '700', color: colors.text },
+  leaveSummaryDetail: { fontSize: 13, color: colors.textMuted },
+  leaveSummaryActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
   },
   typeBtn: {
     flexDirection: 'row',

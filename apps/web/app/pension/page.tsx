@@ -509,10 +509,8 @@ function PensionCalculatorInner() {
   const [age, setAge] = useState('');
   const [dob, setDob] = useState('');
   const [prlDate, setPrlDate] = useState('');
+  const [isLastGradeStep, setIsLastGradeStep] = useState(false);
   const [contractualDays, setContractualDays] = useState('');
-  const [chosenLumpSumMonths, setChosenLumpSumMonths] = useState('');
-  const [editingSplit, setEditingSplit] = useState(false);
-  const [appliedLumpSumMonths, setAppliedLumpSumMonths] = useState<number | undefined>(undefined);
   const [enjoyed, setEnjoyed] = useState<EnjoyedRow[]>([]);
   const [result, setResult] = useState<PensionCalculateResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -596,7 +594,7 @@ function PensionCalculatorInner() {
           prl_date: prlDate || undefined,
           total_leave_months: result.average_salary_leave_months,
           last_basic_salary: Number(lastBasic),
-          chosen_lump_sum_months: appliedLumpSumMonths,
+          is_last_grade_step: isLastGradeStep,
         })
       : null;
   // Monthly pension + gratuity are computed on the PRL-adjusted (July-1, +5%) basic when it applies.
@@ -838,6 +836,18 @@ function PensionCalculatorInner() {
               value={lastBasic}
               onChange={(e) => setLastBasic(e.target.value)}
             />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="last_grade_step">{t('lastGradeStep')}</Label>
+            <select
+              id="last_grade_step"
+              className="ibas-select"
+              value={isLastGradeStep ? 'yes' : 'no'}
+              onChange={(e) => setIsLastGradeStep(e.target.value === 'yes')}
+            >
+              <option value="no">{t('lastGradeStepNo')}</option>
+              <option value="yes">{t('lastGradeStepYes')}</option>
+            </select>
           </div>
           <div className="space-y-2">
             <Label htmlFor="pension_age">{t('gratuityAgeLabel')}</Label>
@@ -1373,95 +1383,16 @@ function PensionCalculatorInner() {
                     <MathRow label={t('finalRetirementDate')} value={prlResult.final_retirement_date} />
                     <MathRow label={t('finalRetirementBasic')} value={formatMoney(prlResult.pension_basic_salary)} />
                     <MathRow label={t('postRetirementLeaveMonths')} value={String(prlResult.prl_salary_months)} />
+                    <MathRow label={t('prlLumpSumMonths')} value={String(prlResult.lump_sum_months)} />
                   </div>
 
-                  <Alert variant={prlResult.july_first_falls_within_prl ? 'warning' : 'success'}>
-                    {prlResult.july_first_falls_within_prl
-                      ? t('prlJulyFirstYes', { date: prlResult.july_first_date ?? '' })
-                      : t('prlJulyFirstNo')}
+                  <Alert variant={prlResult.july_first_bonus_applied ? 'warning' : 'success'}>
+                    {!prlResult.july_first_falls_within_prl
+                      ? t('prlJulyFirstNo')
+                      : prlResult.july_first_bonus_applied
+                        ? t('prlJulyFirstYes', { date: prlResult.july_first_date ?? '' })
+                        : t('prlJulyFirstLastStep', { date: prlResult.july_first_date ?? '' })}
                   </Alert>
-
-                  {!prlResult.is_fixed_split ? (
-                    <div className="space-y-2 rounded-lg border border-border p-3">
-                      {!editingSplit ? (
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-sm text-muted">
-                            {appliedLumpSumMonths === undefined
-                              ? t('prlSplitSuggested', {
-                                  prlMonths: prlResult.prl_salary_months,
-                                  lumpMonths: prlResult.lump_sum_months,
-                                })
-                              : t('prlSplitCustom', {
-                                  prlMonths: prlResult.prl_salary_months,
-                                  lumpMonths: prlResult.lump_sum_months,
-                                })}
-                          </p>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setChosenLumpSumMonths(String(prlResult.lump_sum_months));
-                              setEditingSplit(true);
-                            }}
-                          >
-                            {t('prlChangeSplitBtn')}
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          <Label htmlFor="prl-chosen-lump">{t('prlChosenLumpSumLabel')}</Label>
-                          <Input
-                            id="prl-chosen-lump"
-                            type="number"
-                            min={0}
-                            value={chosenLumpSumMonths}
-                            onChange={(e) => setChosenLumpSumMonths(e.target.value)}
-                          />
-                          <p className="text-xs text-muted">{t('prlChosenLumpSumHint')}</p>
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              type="button"
-                              size="sm"
-                              onClick={() => {
-                                setAppliedLumpSumMonths(Number(chosenLumpSumMonths) || 0);
-                                setEditingSplit(false);
-                              }}
-                            >
-                              {t('prlApplySplitBtn')}
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => {
-                                setEditingSplit(false);
-                                setChosenLumpSumMonths('');
-                              }}
-                            >
-                              {t('prlCancelBtn')}
-                            </Button>
-                            {appliedLumpSumMonths !== undefined ? (
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => {
-                                  setAppliedLumpSumMonths(undefined);
-                                  setChosenLumpSumMonths('');
-                                  setEditingSplit(false);
-                                }}
-                              >
-                                {t('prlResetSplitBtn')}
-                              </Button>
-                            ) : null}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted">{t('prlFixedSplitNote')}</p>
-                  )}
 
                   <StatTile label={t('prlLumpSumGrant')} value={formatMoney(prlResult.lump_sum_grant_amount)} />
                 </>

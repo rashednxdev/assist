@@ -2,7 +2,6 @@ import {
   PENSION_BASIC_SALARY_BONUS_RATE,
   PENSION_DAYS_PER_MONTH,
   PENSION_LAMP_GRANT_MONTHS,
-  PENSION_PRL_FULL_SPLIT_TOTAL_MONTHS,
   PENSION_PRL_STANDARD_MONTHS,
   PENSION_PRL_START_AGE_YEARS,
 } from '@ibas/shared-constants';
@@ -17,10 +16,10 @@ export interface PrlCalculateInput {
   /** Basic salary as of the retirement date (the "original basic"). */
   last_basic_salary: number;
   /**
-   * Employee's chosen lump-sum months, only meaningful when total_leave_months is below the
-   * fixed-split threshold (30) — at/above it, the split is fixed at 18 lump-sum + 12 PRL.
+   * True when the employee is already at the last step of their pay grade, so no further annual
+   * increment is due — the July-1 5% bump is skipped even if July 1 falls within the PRL period.
    */
-  chosen_lump_sum_months?: number;
+  is_last_grade_step?: boolean;
 }
 
 export interface PrlCalculateResult {
@@ -35,13 +34,13 @@ export interface PrlCalculateResult {
   final_retirement_date: string;
   prl_salary_months: number;
   lump_sum_months: number;
-  /** True when total_leave_months >= 30, so the 18+12 split is fixed rather than employee-chosen. */
-  is_fixed_split: boolean;
   /** True if a July 1 (the annual increment date) falls within [prl_start_date, final_retirement_date]. */
   july_first_falls_within_prl: boolean;
   /** ISO date of the July 1 that falls within the PRL window, if any. */
   july_first_date: string | null;
-  /** last_basic_salary, +5% when july_first_falls_within_prl — the basic salary on the final retirement date. */
+  /** True when the July-1 5% bump was actually applied (falls within PRL window AND not the last grade step). */
+  july_first_bonus_applied: boolean;
+  /** last_basic_salary, +5% when july_first_bonus_applied — the basic salary on the final retirement date. */
   pension_basic_salary: number;
   /** Lump-sum grant amount, at the ORIGINAL (non-bumped) basic rate: last_basic_salary * lump_sum_months. */
   lump_sum_grant_amount: number;
@@ -67,29 +66,14 @@ function addDays(d: Date, days: number): Date {
   return next;
 }
 
-/** Clamp to [min, max], treating NaN/undefined as 0. */
-function clamp(value: number | undefined, min: number, max: number): number {
-  const v = Number.isFinite(value) ? (value as number) : 0;
-  return Math.min(max, Math.max(min, v));
-}
-
 export function calculatePrl(input: PrlCalculateInput): PrlCalculateResult {
   const total = Math.max(0, input.total_leave_months || 0);
-  const isFixedSplit = total >= PENSION_PRL_FULL_SPLIT_TOTAL_MONTHS;
 
-  // Default split: fill the standard 12-month PRL first, remainder (capped at 18) as lump sum —
-  // this naturally produces the fixed 12+18 split once total reaches 30.
-  const defaultPrlMonths = Math.min(PENSION_PRL_STANDARD_MONTHS, total);
-  const defaultLumpMonths = Math.min(PENSION_LAMP_GRANT_MONTHS, Math.max(0, total - defaultPrlMonths));
-
-  let prlSalaryMonths = defaultPrlMonths;
-  let lumpSumMonths = defaultLumpMonths;
-
-  // Below the fixed-split threshold, the employee may choose how to split their own total.
-  if (!isFixedSplit && input.chosen_lump_sum_months !== undefined) {
-    lumpSumMonths = clamp(input.chosen_lump_sum_months, 0, Math.min(PENSION_LAMP_GRANT_MONTHS, total));
-    prlSalaryMonths = clamp(total - lumpSumMonths, 0, PENSION_PRL_STANDARD_MONTHS);
-  }
+  // Fill the standard 12-month PRL first, remainder (capped at 18) as lump sum. Below 12 months
+  // total, PRL takes all of it and there's no lump sum; at/above 30, this naturally settles at
+  // the fixed 12 PRL + 18 lump-sum split. Not a choice — the employee has no say in the split.
+  const prlSalaryMonths = Math.min(PENSION_PRL_STANDARD_MONTHS, total);
+  const lumpSumMonths = Math.min(PENSION_LAMP_GRANT_MONTHS, Math.max(0, total - prlSalaryMonths));
 
   // The PRL date can never fall after the 59th birthday — cap it there if entered later.
   const fiftyNinthBirthday = addCalendarYears(input.dob, PENSION_PRL_START_AGE_YEARS);
@@ -111,7 +95,8 @@ export function calculatePrl(input: PrlCalculateInput): PrlCalculateResult {
   }
 
   const julyFirstFallsWithinPrl = julyFirstDate !== null;
-  const pensionBasicSalary = julyFirstFallsWithinPrl
+  const julyFirstBonusApplied = julyFirstFallsWithinPrl && !input.is_last_grade_step;
+  const pensionBasicSalary = julyFirstBonusApplied
     ? round2(input.last_basic_salary * (1 + PENSION_BASIC_SALARY_BONUS_RATE))
     : round2(input.last_basic_salary);
 
@@ -121,9 +106,9 @@ export function calculatePrl(input: PrlCalculateInput): PrlCalculateResult {
     final_retirement_date: toIso(finalRetirementDate),
     prl_salary_months: prlSalaryMonths,
     lump_sum_months: lumpSumMonths,
-    is_fixed_split: isFixedSplit,
     july_first_falls_within_prl: julyFirstFallsWithinPrl,
     july_first_date: julyFirstDate ? toIso(julyFirstDate) : null,
+    july_first_bonus_applied: julyFirstBonusApplied,
     pension_basic_salary: pensionBasicSalary,
     lump_sum_grant_amount: round2(input.last_basic_salary * lumpSumMonths),
   };

@@ -30,6 +30,7 @@ import {
   PENSION_DAYS_PER_YEAR,
   PENSION_GRATUITY_MULTIPLIER_TABLE,
   PENSION_LAMP_GRANT_MONTHS,
+  PENSION_PRL_START_AGE_YEARS,
   PENSION_REST_CYCLE_YEARS,
   PENSION_REST_DAYS_PER_CYCLE,
   PENSION_REST_LEAVE_CODE,
@@ -82,6 +83,14 @@ function addYearsIso(iso: string, years: number): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   d.setFullYear(d.getFullYear() + years);
+  return d.toISOString().slice(0, 10);
+}
+
+/** ISO date + N calendar days, as an ISO date string (empty if the input isn't a valid date). */
+function addDaysIso(iso: string, days: number): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  d.setDate(d.getDate() + days);
   return d.toISOString().slice(0, 10);
 }
 
@@ -231,10 +240,8 @@ function PensionMobileScreenInner() {
   const [endDate, setEndDate] = useState('');
   const [lastBasic, setLastBasic] = useState('');
   const [dob, setDob] = useState('');
+  const [isLastGradeStep, setIsLastGradeStep] = useState(false);
   const [contractualDays, setContractualDays] = useState('');
-  const [chosenLumpSumMonths, setChosenLumpSumMonths] = useState('');
-  const [editingSplit, setEditingSplit] = useState(false);
-  const [appliedLumpSumMonths, setAppliedLumpSumMonths] = useState<number | undefined>(undefined);
   const [enjoyed, setEnjoyed] = useState<EnjoyedRow[]>([]);
   const [result, setResult] = useState<PensionCalculateResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -257,6 +264,13 @@ function PensionMobileScreenInner() {
       .catch(() => setError(t.errorLoad))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!dob) return;
+    const auto = addYearsIso(dob, PENSION_PRL_START_AGE_YEARS);
+    if (auto) setEndDate(auto);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- recompute only when dob changes; endDate stays user-editable afterward
+  }, [dob]);
 
   useEffect(() => {
     if (!joinDate || !endDate || !leaveTypes.length) return;
@@ -307,6 +321,17 @@ function PensionMobileScreenInner() {
     const original = isNewRow ? undefined : enjoyed.find((r) => r.key === rowDraft.key);
     if (isRest && original?.from_date && rowDraft.from_date && rowDraft.from_date <= original.from_date) {
       setRowEditError(`${t.restDateForwardOnly} ${original.from_date}`);
+      return;
+    }
+    if (
+      !isRest &&
+      !isMaternityLeaveCode(type?.code) &&
+      rowDraft.input_mode === 'dates' &&
+      rowDraft.from_date &&
+      rowDraft.to_date &&
+      rowDraft.to_date <= rowDraft.from_date
+    ) {
+      setRowEditError(t.toDateAfterFromDate);
       return;
     }
     setEnjoyed((rows) => {
@@ -384,7 +409,7 @@ function PensionMobileScreenInner() {
           dob,
           total_leave_months: result.average_salary_leave_months,
           last_basic_salary: Number(lastBasic),
-          chosen_lump_sum_months: appliedLumpSumMonths,
+          is_last_grade_step: isLastGradeStep,
         })
       : null;
   // Monthly pension + gratuity are computed on the PRL-adjusted (July-1, +5%) basic when it applies.
@@ -557,7 +582,12 @@ function PensionMobileScreenInner() {
             </View>
             {!isMaternityLeaveCode(editingSelectedType?.code) ? (
               <View style={styles.dateField}>
-                <DateField label={t.to} value={rowDraft.to_date} onChange={(v) => updateDraft({ to_date: v })} />
+                <DateField
+                  label={t.to}
+                  value={rowDraft.to_date}
+                  onChange={(v) => updateDraft({ to_date: v })}
+                  minimumDate={rowDraft.from_date ? new Date(addDaysIso(rowDraft.from_date, 1)) : undefined}
+                />
               </View>
             ) : null}
           </View>
@@ -659,6 +689,7 @@ function PensionMobileScreenInner() {
             <MathRow label={t.joinDate} value={joinDate || '—'} />
             <MathRow label={t.endDate} value={endDate || '—'} />
             <MathRow label={t.lastBasic} value={fmtMoney(locale, Number(lastBasic) || 0)} />
+            <MathRow label={t.lastGradeStep} value={isLastGradeStep ? t.lastGradeStepYes : t.lastGradeStepNo} />
             {contractualEnabled && contractualDays ? (
               <MathRow label={t.contractual} value={locale === 'bn' ? toBanglaDigits(contractualDays) : contractualDays} />
             ) : null}
@@ -682,6 +713,17 @@ function PensionMobileScreenInner() {
               keyboardType="numeric"
               placeholder="00000"
             />
+            <View style={styles.dateField}>
+              <Text style={styles.fieldLabel}>{t.lastGradeStep}</Text>
+              <ChipGroup
+                value={isLastGradeStep ? 'yes' : 'no'}
+                onChange={(v) => setIsLastGradeStep(v === 'yes')}
+                options={[
+                  { value: 'no', label: t.lastGradeStepNo },
+                  { value: 'yes', label: t.lastGradeStepYes },
+                ]}
+              />
+            </View>
             {!contractualEnabled ? (
               <Pressable style={styles.collapsedRow} onPress={() => setContractualEnabled(true)}>
                 <Ionicons name="lock-closed-outline" size={18} color={colors.textMuted} />
@@ -931,81 +973,19 @@ function PensionMobileScreenInner() {
                       locale === 'bn' ? toBanglaDigits(prlResult.prl_salary_months) : String(prlResult.prl_salary_months)
                     }
                   />
+                  <MathRow
+                    label={t.prlLumpSumMonths}
+                    value={locale === 'bn' ? toBanglaDigits(prlResult.lump_sum_months) : String(prlResult.lump_sum_months)}
+                  />
                 </View>
 
                 <Text style={styles.muted}>
-                  {prlResult.july_first_falls_within_prl ? t.prlJulyFirstYes : t.prlJulyFirstNo}
+                  {!prlResult.july_first_falls_within_prl
+                    ? t.prlJulyFirstNo
+                    : prlResult.july_first_bonus_applied
+                      ? t.prlJulyFirstYes
+                      : t.prlJulyFirstLastStep}
                 </Text>
-
-                {!prlResult.is_fixed_split ? (
-                  <View style={styles.splitBox}>
-                    {!editingSplit ? (
-                      <View style={styles.splitRow}>
-                        <Text style={[styles.muted, styles.splitText]}>
-                          {(appliedLumpSumMonths === undefined
-                            ? `${t.prlSplitSuggested}: `
-                            : `${t.prlSplitCustom}: `) +
-                            (locale === 'bn' ? toBanglaDigits(prlResult.prl_salary_months) : prlResult.prl_salary_months) +
-                            ` + ` +
-                            (locale === 'bn' ? toBanglaDigits(prlResult.lump_sum_months) : prlResult.lump_sum_months)}
-                        </Text>
-                        <Pressable
-                          style={styles.linkBtn}
-                          onPress={() => {
-                            setChosenLumpSumMonths(String(prlResult.lump_sum_months));
-                            setEditingSplit(true);
-                          }}
-                        >
-                          <Text style={styles.linkBtnText}>{t.prlChangeSplitBtn}</Text>
-                        </Pressable>
-                      </View>
-                    ) : (
-                      <>
-                        <TextField
-                          label={t.prlChosenLumpSumLabel}
-                          value={chosenLumpSumMonths}
-                          onChangeText={setChosenLumpSumMonths}
-                          keyboardType="numeric"
-                        />
-                        <Text style={styles.muted}>{t.prlChosenLumpSumHint}</Text>
-                        <View style={styles.splitRow}>
-                          <Pressable
-                            style={styles.linkBtn}
-                            onPress={() => {
-                              setAppliedLumpSumMonths(Number(chosenLumpSumMonths) || 0);
-                              setEditingSplit(false);
-                            }}
-                          >
-                            <Text style={styles.linkBtnText}>{t.prlApplySplitBtn}</Text>
-                          </Pressable>
-                          <Pressable
-                            style={styles.linkBtn}
-                            onPress={() => {
-                              setEditingSplit(false);
-                              setChosenLumpSumMonths('');
-                            }}
-                          >
-                            <Text style={styles.linkBtnText}>{t.prlCancelBtn}</Text>
-                          </Pressable>
-                          {appliedLumpSumMonths !== undefined ? (
-                            <Pressable
-                              style={styles.linkBtn}
-                              onPress={() => {
-                                setAppliedLumpSumMonths(undefined);
-                                setChosenLumpSumMonths('');
-                                setEditingSplit(false);
-                              }}
-                            >
-                              <Text style={styles.linkBtnText}>{t.prlResetSplitBtn}</Text>
-                            </Pressable>
-                          ) : null}
-                        </View>
-                      </>
-                    )}
-                  </View>
-                ) : (
-                  <Text style={styles.muted}>{t.prlFixedSplitNote}</Text>
-                )}
 
                 <View style={styles.periodRow}>
                   <PeriodCard title={t.prlLumpSumGrant} value={fmtMoney(locale, prlResult.lump_sum_grant_amount)} />
@@ -1171,13 +1151,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   saveBtnText: { fontSize: 13, fontWeight: '700', color: colors.white },
-  splitBox: {
-    gap: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    padding: spacing.sm,
-  },
   splitRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1185,7 +1158,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.sm,
   },
-  splitText: { flex: 1 },
   modalRoot: { flex: 1, backgroundColor: colors.background },
   modalHeader: {
     flexDirection: 'row',

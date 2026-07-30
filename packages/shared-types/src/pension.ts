@@ -44,7 +44,7 @@ export const pensionPrlCalculateSchema = z.object({
   prl_date: z.string().min(1).optional(),
   total_leave_months: z.number().min(0),
   last_basic_salary: z.number().positive(),
-  chosen_lump_sum_months: z.number().min(0).optional(),
+  is_last_grade_step: z.boolean().optional(),
 });
 
 export type PensionLeaveTypeDto = z.infer<typeof pensionLeaveTypeSchema>;

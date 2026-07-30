@@ -122,6 +122,6 @@ export function calculatePrlAccount(dto: ReturnType<typeof pensionPrlCalculateSc
     prl_date: dto.prl_date,
     total_leave_months: dto.total_leave_months,
     last_basic_salary: dto.last_basic_salary,
-    chosen_lump_sum_months: dto.chosen_lump_sum_months,
+    is_last_grade_step: dto.is_last_grade_step,
   });
 }

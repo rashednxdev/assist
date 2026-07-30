@@ -27,9 +27,11 @@ import {
   type QualifyingPensionServiceResult,
 } from '@ibas/shared-types';
 import {
+  PENSION_DAYS_PER_YEAR,
   PENSION_GRATUITY_MULTIPLIER_TABLE,
   PENSION_LAMP_GRANT_MONTHS,
-  PENSION_PRL_START_AGE_YEARS,
+  PENSION_REST_CYCLE_YEARS,
+  PENSION_REST_DAYS_PER_CYCLE,
   PENSION_REST_LEAVE_CODE,
 } from '@ibas/shared-constants';
 import { MathRow } from '@/components/calc/MathRow';
@@ -73,6 +75,35 @@ function emptyRow(leaveTypeId = ''): EnjoyedRow {
     to_date: '',
     regularized: false,
   };
+}
+
+/** ISO date + N calendar years, as an ISO date string (empty if the input isn't a valid date). */
+function addYearsIso(iso: string, years: number): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  d.setFullYear(d.getFullYear() + years);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * When one REST row's date is pushed forward, every later cycle (by array order, since REST
+ * rows are only ever appended in cycle order by the auto-generator) shifts to keep the same
+ * 3-year spacing, cascading from the edited row onward.
+ */
+function cascadeRestDates(rows: EnjoyedRow[], editedKey: string, restTypeId: string): EnjoyedRow[] {
+  const restKeysInOrder = rows.filter((r) => r.leave_type_id === restTypeId).map((r) => r.key);
+  const editedIndex = restKeysInOrder.indexOf(editedKey);
+  const editedRow = rows.find((r) => r.key === editedKey);
+  if (editedIndex === -1 || !editedRow) return rows;
+
+  const updates = new Map<string, string>();
+  let cursorDate = editedRow.from_date;
+  for (let i = editedIndex + 1; i < restKeysInOrder.length; i++) {
+    cursorDate = addYearsIso(cursorDate, PENSION_REST_CYCLE_YEARS);
+    updates.set(restKeysInOrder[i]!, cursorDate);
+  }
+  if (updates.size === 0) return rows;
+  return rows.map((r) => (updates.has(r.key) ? { ...r, from_date: updates.get(r.key)! } : r));
 }
 
 function resolveDays(row: EnjoyedRow, types: PensionLeaveTypeRow[]): number {
@@ -134,15 +165,6 @@ function rowSummary(
 function fmtMoney(locale: CalcLocale, amount: number) {
   const label = amount.toLocaleString('en-BD', { minimumFractionDigits: 2 });
   return `৳ ${locale === 'bn' ? toBanglaDigits(label) : label}`;
-}
-
-/** ISO date + N calendar years, as an ISO date string (empty if the input isn't a valid date). */
-function addYearsIso(iso: string, years: number): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  d.setFullYear(d.getFullYear() + years);
-  return d.toISOString().slice(0, 10);
 }
 
 /** Band label for a row in a descending min-years table — "25+" for the top row, "20–24" otherwise. */
@@ -209,7 +231,6 @@ function PensionMobileScreenInner() {
   const [endDate, setEndDate] = useState('');
   const [lastBasic, setLastBasic] = useState('');
   const [dob, setDob] = useState('');
-  const [prlDate, setPrlDate] = useState('');
   const [contractualDays, setContractualDays] = useState('');
   const [chosenLumpSumMonths, setChosenLumpSumMonths] = useState('');
   const [editingSplit, setEditingSplit] = useState(false);
@@ -224,11 +245,11 @@ function PensionMobileScreenInner() {
   const [serviceLocked, setServiceLocked] = useState(false);
   const [enjoyedLocked, setEnjoyedLocked] = useState(false);
   const [contractualEnabled, setContractualEnabled] = useState(false);
-  const [typePickerOpen, setTypePickerOpen] = useState(false);
   const [editingRowKey, setEditingRowKey] = useState<string | null>(null);
   const [isNewRow, setIsNewRow] = useState(false);
   const [rowDraft, setRowDraft] = useState<EnjoyedRow | null>(null);
   const [rowEditError, setRowEditError] = useState('');
+  const [showRestList, setShowRestList] = useState(false);
 
   useEffect(() => {
     fetchPensionLeaveTypes()
@@ -237,38 +258,66 @@ function PensionMobileScreenInner() {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    if (!joinDate || !endDate || !leaveTypes.length) return;
+    const restType = leaveTypes.find((lt) => lt.code === PENSION_REST_LEAVE_CODE);
+    if (!restType) return;
+    const serviceDays = daysBetweenInclusive(joinDate, endDate);
+    const cycles = Math.floor(serviceDays / PENSION_DAYS_PER_YEAR / PENSION_REST_CYCLE_YEARS);
+    if (cycles <= 0) return;
+    setEnjoyed((rows) => {
+      const existingRest = rows.filter((r) => r.leave_type_id === restType.id).length;
+      if (existingRest >= cycles) return rows;
+      const additions: EnjoyedRow[] = [];
+      for (let i = existingRest; i < cycles; i++) {
+        additions.push({
+          ...emptyRow(restType.id),
+          input_mode: 'days',
+          days: String(PENSION_REST_DAYS_PER_CYCLE),
+          from_date: addYearsIso(joinDate, (i + 1) * PENSION_REST_CYCLE_YEARS),
+        });
+      }
+      return [...rows, ...additions];
+    });
+  }, [joinDate, endDate, leaveTypes]);
+
   function openRowEditor(row: EnjoyedRow, isNew: boolean) {
     setRowDraft({ ...row });
     setEditingRowKey(row.key);
     setIsNewRow(isNew);
-    setTypePickerOpen(false);
     setRowEditError('');
   }
 
   function addNewRowAndEdit() {
-    openRowEditor(emptyRow(leaveTypes[0]?.id ?? ''), true);
+    const firstSelectable = leaveTypes.find((lt) => lt.code !== PENSION_REST_LEAVE_CODE);
+    openRowEditor(emptyRow(firstSelectable?.id ?? ''), true);
   }
 
   function closeRowEditor() {
     setEditingRowKey(null);
+    setIsNewRow(false);
     setRowDraft(null);
     setRowEditError('');
-    setTypePickerOpen(false);
   }
 
   function saveRowEditor() {
     if (!rowDraft) return;
     const type = leaveTypes.find((lt) => lt.id === rowDraft.leave_type_id);
-    if (!isNewRow && type?.code === PENSION_REST_LEAVE_CODE) {
-      const original = enjoyed.find((r) => r.key === rowDraft.key);
-      if (original?.from_date && rowDraft.from_date && rowDraft.from_date <= original.from_date) {
-        setRowEditError(`${t.restDateForwardOnly} ${original.from_date}`);
-        return;
-      }
+    const isRest = type?.code === PENSION_REST_LEAVE_CODE;
+    const original = isNewRow ? undefined : enjoyed.find((r) => r.key === rowDraft.key);
+    if (isRest && original?.from_date && rowDraft.from_date && rowDraft.from_date <= original.from_date) {
+      setRowEditError(`${t.restDateForwardOnly} ${original.from_date}`);
+      return;
     }
-    setEnjoyed((rows) =>
-      isNewRow ? [...rows, rowDraft] : rows.map((r) => (r.key === rowDraft.key ? rowDraft : r)),
-    );
+    setEnjoyed((rows) => {
+      const updatedRows = isNewRow
+        ? [...rows, rowDraft]
+        : rows.map((r) => (r.key === rowDraft.key ? rowDraft : r));
+      if (isRest && original && original.from_date !== rowDraft.from_date) {
+        return cascadeRestDates(updatedRows, rowDraft.key, type!.id);
+      }
+      return updatedRows;
+    });
     closeRowEditor();
   }
 
@@ -286,7 +335,7 @@ function PensionMobileScreenInner() {
     setResult(null);
     try {
       const basic = Number(lastBasic);
-      if (!joinDate || !endDate || !Number.isFinite(basic) || basic <= 0) {
+      if (!dob || !joinDate || !endDate || !Number.isFinite(basic) || basic <= 0) {
         throw new Error(t.errorCalc);
       }
       const enjoyed_leaves = enjoyed
@@ -309,7 +358,7 @@ function PensionMobileScreenInner() {
     }
   }
 
-  const canCalculate = Boolean(joinDate && endDate && lastBasic) && !calculating;
+  const canCalculate = Boolean(dob && joinDate && endDate && lastBasic) && !calculating;
 
   const halfConverted = useMemo(() => {
     if (!result) return 0;
@@ -329,12 +378,10 @@ function PensionMobileScreenInner() {
           contractual_part_time_days: Number(contractualDays) || 0,
         })
       : null;
-  const suggestedPrlDate = dob ? addYearsIso(dob, PENSION_PRL_START_AGE_YEARS) : '';
   const prlResult: PrlCalculateResult | null =
     dob && result && Number(lastBasic) > 0
       ? calculatePrl({
           dob,
-          prl_date: prlDate || undefined,
           total_leave_months: result.average_salary_leave_months,
           last_basic_salary: Number(lastBasic),
           chosen_lump_sum_months: appliedLumpSumMonths,
@@ -354,6 +401,13 @@ function PensionMobileScreenInner() {
   const editingIsRest = editingSelectedType?.code === PENSION_REST_LEAVE_CODE;
   const editingOriginalRow =
     rowDraft && !isNewRow ? enjoyed.find((r) => r.key === rowDraft.key) : undefined;
+
+  const selectableLeaveTypes = leaveTypes.filter((lt) => lt.code !== PENSION_REST_LEAVE_CODE);
+
+  const restType = leaveTypes.find((lt) => lt.code === PENSION_REST_LEAVE_CODE);
+  const restRows = enjoyed.filter((r) => r.leave_type_id === restType?.id);
+  const nonRestRows = enjoyed.filter((r) => r.leave_type_id !== restType?.id);
+  const restTotalDays = restRows.reduce((sum, r) => sum + resolveDays(r, leaveTypes), 0);
 
   const ruleStages: { title: string; items: string[] }[] = [];
 
@@ -442,6 +496,122 @@ function PensionMobileScreenInner() {
     });
   }
 
+  function renderRowEditorFields() {
+    if (!rowDraft) return null;
+    return (
+      <>
+        {!editingIsRest ? (
+          <View style={styles.typeListWrap}>
+            <Text style={styles.fieldLabel}>{t.leaveType}</Text>
+            <View style={styles.typeList}>
+              {selectableLeaveTypes.map((lt) => {
+                const isSelected = rowDraft.leave_type_id === lt.id;
+                return (
+                  <Pressable
+                    key={lt.id}
+                    style={[styles.typeListItem, isSelected && styles.typeListItemSelected]}
+                    onPress={() =>
+                      updateDraft({
+                        leave_type_id: lt.id,
+                        input_mode: isMaternityLeaveCode(lt.code) ? 'dates' : rowDraft.input_mode,
+                      })
+                    }
+                  >
+                    <Text style={[styles.typeListItemText, isSelected && styles.typeListItemTextSelected]}>
+                      {typeName(locale, lt)}
+                    </Text>
+                    {isSelected ? <Ionicons name="checkmark" size={16} color={colors.primary} /> : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
+
+        {editingIsRest ? (
+          <View style={styles.dateField}>
+            <DateField
+              label={t.restDateLabel}
+              value={rowDraft.from_date}
+              onChange={(v) => updateDraft({ from_date: v })}
+              minimumDate={editingOriginalRow?.from_date ? new Date(editingOriginalRow.from_date) : undefined}
+            />
+          </View>
+        ) : null}
+
+        {!isMaternityLeaveCode(editingSelectedType?.code) && !editingIsRest ? (
+          <ChipGroup
+            value={rowDraft.input_mode}
+            onChange={(v) => updateDraft({ input_mode: v })}
+            options={[
+              { value: 'days', label: t.modeDays },
+              { value: 'dates', label: t.modeDates },
+            ]}
+          />
+        ) : null}
+
+        {isMaternityLeaveCode(editingSelectedType?.code) || (!editingIsRest && rowDraft.input_mode === 'dates') ? (
+          <View style={styles.dateRow}>
+            <View style={styles.dateField}>
+              <DateField label={t.from} value={rowDraft.from_date} onChange={(v) => updateDraft({ from_date: v })} />
+            </View>
+            {!isMaternityLeaveCode(editingSelectedType?.code) ? (
+              <View style={styles.dateField}>
+                <DateField label={t.to} value={rowDraft.to_date} onChange={(v) => updateDraft({ to_date: v })} />
+              </View>
+            ) : null}
+          </View>
+        ) : (
+          <View style={styles.dateField}>
+            <Text style={styles.fieldLabel}>{t.days}</Text>
+            <TextInput
+              style={styles.input}
+              value={rowDraft.days}
+              onChangeText={(v) => updateDraft({ days: v })}
+              keyboardType="numeric"
+              placeholder="0"
+              placeholderTextColor={colors.textMuted}
+              editable={!editingIsRest}
+            />
+          </View>
+        )}
+
+        {editingIsRest && editingOriginalRow?.from_date ? (
+          <Text style={styles.muted}>
+            {t.restDateForwardOnlyHint} {editingOriginalRow.from_date}
+          </Text>
+        ) : null}
+
+        {isSuspensionLeaveCode(editingSelectedType?.code) ? (
+          <ChipGroup
+            value={rowDraft.regularized ? 'yes' : 'no'}
+            onChange={(v) => updateDraft({ regularized: v === 'yes' })}
+            options={[
+              { value: 'no', label: t.regularizedNo },
+              { value: 'yes', label: t.regularizedYes },
+            ]}
+          />
+        ) : null}
+
+        <Text style={styles.resolved}>
+          {t.days}:{' '}
+          {locale === 'bn' ? toBanglaDigits(resolveDays(rowDraft, leaveTypes)) : resolveDays(rowDraft, leaveTypes)}
+        </Text>
+
+        {rowEditError ? <Text style={styles.error}>{rowEditError}</Text> : null}
+
+        <View style={styles.splitRow}>
+          <Pressable style={styles.saveBtn} onPress={saveRowEditor}>
+            <Text style={styles.saveBtnText}>{t.saveRowBtn}</Text>
+          </Pressable>
+          <Pressable style={styles.linkBtn} onPress={closeRowEditor}>
+            <Text style={styles.linkBtnText}>{t.prlCancelBtn}</Text>
+          </Pressable>
+        </View>
+      </>
+    );
+  }
+
   return (
     <>
     <ScrollView
@@ -486,7 +656,6 @@ function PensionMobileScreenInner() {
         {serviceLocked ? (
           <View style={styles.mathBlock}>
             <MathRow label={t.dob} value={dob || '—'} />
-            <MathRow label={t.prlDateLabel} value={prlDate || suggestedPrlDate || '—'} />
             <MathRow label={t.joinDate} value={joinDate || '—'} />
             <MathRow label={t.endDate} value={endDate || '—'} />
             <MathRow label={t.lastBasic} value={fmtMoney(locale, Number(lastBasic) || 0)} />
@@ -504,22 +673,6 @@ function PensionMobileScreenInner() {
             ) : (
               <Text style={styles.muted}>{t.dobHint}</Text>
             )}
-            {dob ? (
-              <>
-                <DateField
-                  label={t.prlDateLabel}
-                  value={prlDate || suggestedPrlDate}
-                  onChange={setPrlDate}
-                  maximumDate={suggestedPrlDate ? new Date(suggestedPrlDate) : undefined}
-                />
-                <Text style={styles.muted}>{t.prlDateHint}</Text>
-                {prlResult?.prl_date_capped ? (
-                  <Text style={styles.error}>
-                    {t.prlDateCappedNote}: {prlResult.prl_start_date}
-                  </Text>
-                ) : null}
-              </>
-            ) : null}
             <DateField label={t.joinDate} value={joinDate} onChange={setJoinDate} />
             <DateField label={t.endDate} value={endDate} onChange={setEndDate} />
             <TextField
@@ -527,30 +680,34 @@ function PensionMobileScreenInner() {
               value={lastBasic}
               onChangeText={setLastBasic}
               keyboardType="numeric"
-              placeholder="45000"
+              placeholder="00000"
             />
-            <View style={styles.contractualRow}>
-              <View style={styles.contractualField}>
-                <TextField
-                  label={t.contractual}
-                  value={contractualDays}
-                  onChangeText={setContractualDays}
-                  keyboardType="numeric"
-                  editable={contractualEnabled}
-                />
-              </View>
-              <Pressable
-                style={styles.iconBtn}
-                onPress={() => setContractualEnabled((v) => !v)}
-                hitSlop={8}
-              >
-                <Ionicons
-                  name={contractualEnabled ? 'lock-open-outline' : 'lock-closed-outline'}
-                  size={20}
-                  color={contractualEnabled ? colors.primary : colors.textMuted}
-                />
+            {!contractualEnabled ? (
+              <Pressable style={styles.collapsedRow} onPress={() => setContractualEnabled(true)}>
+                <Ionicons name="lock-closed-outline" size={18} color={colors.textMuted} />
+                <Text style={styles.collapsedRowText}>
+                  {t.contractual}
+                  {contractualDays
+                    ? `: ${locale === 'bn' ? toBanglaDigits(contractualDays) : contractualDays}`
+                    : ''}
+                </Text>
+                <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
               </Pressable>
-            </View>
+            ) : (
+              <View style={styles.contractualRow}>
+                <View style={styles.contractualField}>
+                  <TextField
+                    label={t.contractual}
+                    value={contractualDays}
+                    onChangeText={setContractualDays}
+                    keyboardType="numeric"
+                  />
+                </View>
+                <Pressable style={styles.iconBtn} onPress={() => setContractualEnabled(false)} hitSlop={8}>
+                  <Ionicons name="lock-open-outline" size={20} color={colors.primary} />
+                </Pressable>
+              </View>
+            )}
           </>
         )}
       </SectionCard>
@@ -563,12 +720,12 @@ function PensionMobileScreenInner() {
             <Pressable style={styles.iconBtn} onPress={() => setEnjoyedLocked(false)} hitSlop={8}>
               <Ionicons name="pencil-outline" size={18} color={colors.primary} />
             </Pressable>
-          ) : (
-            <Pressable style={styles.addBtn} onPress={addNewRowAndEdit} disabled={!leaveTypes.length}>
+          ) : !isNewRow ? (
+            <Pressable style={styles.addBtn} onPress={addNewRowAndEdit} disabled={!selectableLeaveTypes.length}>
               <Ionicons name="add" size={18} color={colors.primary} />
               <Text style={styles.addBtnText}>{t.addRow}</Text>
             </Pressable>
-          )
+          ) : undefined
         }
       >
         {loading ? <Text style={styles.muted}>{t.calculating}</Text> : null}
@@ -577,7 +734,7 @@ function PensionMobileScreenInner() {
           <Text style={styles.muted}>{t.noEnjoyedRows}</Text>
         ) : null}
 
-        {enjoyed.map((row) => {
+        {nonRestRows.map((row) => {
           const selected = leaveTypes.find((lt) => lt.id === row.leave_type_id);
           return (
             <View key={row.key} style={styles.leaveSummaryCard}>
@@ -602,6 +759,22 @@ function PensionMobileScreenInner() {
             </View>
           );
         })}
+
+        {restType && restRows.length > 0 ? (
+          <Pressable style={styles.leaveSummaryCard} onPress={() => setShowRestList(true)}>
+            <View style={styles.leaveSummaryText}>
+              <Text style={styles.leaveSummaryName}>{typeName(locale, restType)}</Text>
+              <Text style={styles.leaveSummaryDetail}>
+                {`${locale === 'bn' ? toBanglaDigits(restRows.length) : restRows.length} ${t.restEntriesLabel} · ${fmtDays(locale, restTotalDays)}`}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </Pressable>
+        ) : null}
+
+        {!enjoyedLocked && isNewRow && rowDraft ? (
+          <View style={styles.inlineEditor}>{renderRowEditorFields()}</View>
+        ) : null}
       </SectionCard>
 
       <Button
@@ -879,126 +1052,35 @@ function PensionMobileScreenInner() {
       ) : null}
     </ScrollView>
 
+    <InfoModal title={t.editLeaveTitle} visible={!isNewRow && editingRowKey !== null} onClose={closeRowEditor}>
+      {renderRowEditorFields()}
+    </InfoModal>
+
     <InfoModal
-      title={isNewRow ? t.addRow : t.editLeaveTitle}
-      visible={editingRowKey !== null}
-      onClose={closeRowEditor}
+      title={restType ? typeName(locale, restType) : t.enjoyed}
+      visible={showRestList}
+      onClose={() => setShowRestList(false)}
     >
-      {rowDraft ? (
-        <>
-          <Pressable style={styles.typeBtn} onPress={() => setTypePickerOpen((v) => !v)}>
-            <Text style={styles.typeBtnLabel}>{t.leaveType}</Text>
-            <Text style={styles.typeBtnValue}>
-              {editingSelectedType ? typeName(locale, editingSelectedType) : t.selectType}
-            </Text>
-            <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
-          </Pressable>
+      {restRows.length === 0 ? <Text style={styles.muted}>{t.noEnjoyedRows}</Text> : null}
 
-          {typePickerOpen ? (
-            <View style={styles.picker}>
-              {leaveTypes.map((lt) => (
-                <Pressable
-                  key={lt.id}
-                  style={styles.pickerItem}
-                  onPress={() => {
-                    updateDraft({
-                      leave_type_id: lt.id,
-                      input_mode: isMaternityLeaveCode(lt.code)
-                        ? 'dates'
-                        : lt.code === PENSION_REST_LEAVE_CODE
-                          ? 'days'
-                          : rowDraft.input_mode,
-                    });
-                    setTypePickerOpen(false);
-                  }}
-                >
-                  <Text style={styles.pickerText}>{typeName(locale, lt)}</Text>
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
-
-          {editingIsRest ? (
-            <View style={styles.dateField}>
-              <DateField
-                label={t.restDateLabel}
-                value={rowDraft.from_date}
-                onChange={(v) => updateDraft({ from_date: v })}
-                minimumDate={editingOriginalRow?.from_date ? new Date(editingOriginalRow.from_date) : undefined}
-              />
-            </View>
-          ) : null}
-
-          {!isMaternityLeaveCode(editingSelectedType?.code) && !editingIsRest ? (
-            <ChipGroup
-              value={rowDraft.input_mode}
-              onChange={(v) => updateDraft({ input_mode: v })}
-              options={[
-                { value: 'days', label: t.modeDays },
-                { value: 'dates', label: t.modeDates },
-              ]}
-            />
-          ) : null}
-
-          {isMaternityLeaveCode(editingSelectedType?.code) || (!editingIsRest && rowDraft.input_mode === 'dates') ? (
-            <View style={styles.dateRow}>
-              <View style={styles.dateField}>
-                <DateField label={t.from} value={rowDraft.from_date} onChange={(v) => updateDraft({ from_date: v })} />
-              </View>
-              {!isMaternityLeaveCode(editingSelectedType?.code) ? (
-                <View style={styles.dateField}>
-                  <DateField label={t.to} value={rowDraft.to_date} onChange={(v) => updateDraft({ to_date: v })} />
-                </View>
-              ) : null}
-            </View>
-          ) : (
-            <View style={styles.dateField}>
-              <Text style={styles.fieldLabel}>{t.days}</Text>
-              <TextInput
-                style={styles.input}
-                value={rowDraft.days}
-                onChangeText={(v) => updateDraft({ days: v })}
-                keyboardType="numeric"
-                placeholder="0"
-                placeholderTextColor={colors.textMuted}
-              />
-            </View>
-          )}
-
-          {editingIsRest && editingOriginalRow?.from_date ? (
-            <Text style={styles.muted}>
-              {t.restDateForwardOnlyHint} {editingOriginalRow.from_date}
-            </Text>
-          ) : null}
-
-          {isSuspensionLeaveCode(editingSelectedType?.code) ? (
-            <ChipGroup
-              value={rowDraft.regularized ? 'yes' : 'no'}
-              onChange={(v) => updateDraft({ regularized: v === 'yes' })}
-              options={[
-                { value: 'no', label: t.regularizedNo },
-                { value: 'yes', label: t.regularizedYes },
-              ]}
-            />
-          ) : null}
-
-          <Text style={styles.resolved}>
-            {t.days}:{' '}
-            {locale === 'bn' ? toBanglaDigits(resolveDays(rowDraft, leaveTypes)) : resolveDays(rowDraft, leaveTypes)}
-          </Text>
-
-          {rowEditError ? <Text style={styles.error}>{rowEditError}</Text> : null}
-
-          <View style={styles.splitRow}>
-            <Pressable style={styles.linkBtn} onPress={saveRowEditor}>
-              <Text style={styles.linkBtnText}>{t.saveRowBtn}</Text>
-            </Pressable>
-            <Pressable style={styles.linkBtn} onPress={closeRowEditor}>
-              <Text style={styles.linkBtnText}>{t.prlCancelBtn}</Text>
-            </Pressable>
+      {restRows.map((row) => (
+        <View key={row.key} style={styles.leaveSummaryCard}>
+          <View style={styles.leaveSummaryText}>
+            <Text style={styles.leaveSummaryName}>{row.from_date || '—'}</Text>
+            <Text style={styles.leaveSummaryDetail}>{fmtDays(locale, resolveDays(row, leaveTypes))}</Text>
           </View>
-        </>
-      ) : null}
+          {!enjoyedLocked ? (
+            <View style={styles.leaveSummaryActions}>
+              <Pressable onPress={() => openRowEditor(row, false)} hitSlop={8}>
+                <Ionicons name="pencil-outline" size={18} color={colors.primary} />
+              </Pressable>
+              <Pressable onPress={() => deleteRow(row.key)} hitSlop={8}>
+                <Ionicons name="trash-outline" size={18} color={colors.error} />
+              </Pressable>
+            </View>
+          ) : null}
+        </View>
+      ))}
     </InfoModal>
 
     <InfoModal title={t.instructions} visible={showInstructions} onClose={() => setShowInstructions(false)}>
@@ -1079,6 +1161,16 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   linkBtnText: { fontSize: 13, fontWeight: '700', color: colors.primary },
+  saveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.primary,
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  saveBtnText: { fontSize: 13, fontWeight: '700', color: colors.white },
   splitBox: {
     gap: spacing.sm,
     borderWidth: 1,
@@ -1140,6 +1232,17 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   contractualField: { flex: 1 },
+  collapsedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  collapsedRowText: { flex: 1, fontSize: 14, color: colors.textMuted },
   leaveSummaryCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1158,34 +1261,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 14,
   },
-  typeBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: colors.surface,
-    borderRadius: 10,
+  inlineEditor: {
+    gap: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderRadius: 12,
+    padding: spacing.sm,
+    backgroundColor: colors.surface,
   },
-  typeBtnLabel: { fontSize: 11, color: colors.textMuted, fontWeight: '600' },
-  typeBtnValue: { flex: 1, fontSize: 14, fontWeight: '600', color: colors.text },
-  picker: {
+  typeListWrap: { gap: 6 },
+  typeList: {
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 10,
     backgroundColor: colors.surface,
-    maxHeight: 240,
     overflow: 'hidden',
   },
-  pickerItem: {
+  typeListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-  pickerText: { fontSize: 14, color: colors.text },
+  typeListItemSelected: { backgroundColor: '#e6f1f8' },
+  typeListItemText: { fontSize: 14, color: colors.text },
+  typeListItemTextSelected: { fontWeight: '700', color: colors.primary },
   dateRow: { flexDirection: 'row', gap: spacing.sm },
   dateField: { flex: 1, gap: 4 },
   fieldLabel: { fontSize: 12, fontWeight: '600', color: colors.text },

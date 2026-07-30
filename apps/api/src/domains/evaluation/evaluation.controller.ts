@@ -2,6 +2,7 @@ import type { Response } from 'express';
 import {
   upsertQuestionEvaluationSchema,
   batchQuestionEvaluationQuerySchema,
+  submitPaperAttemptSchema,
 } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
 import * as evaluationService from './evaluation.service.js';
@@ -51,4 +52,17 @@ export async function getPaperEvaluationHandler(req: AuthRequest, res: Response)
 export async function getProgressDashboardHandler(req: AuthRequest, res: Response): Promise<void> {
   const userId = req.user!.id;
   res.json({ data: await evaluationService.getProgressDashboard(userId) });
+}
+
+export async function submitPaperAttemptHandler(req: AuthRequest, res: Response): Promise<void> {
+  const userId = req.user!.id;
+  const dto = submitPaperAttemptSchema.parse(req.body);
+  res.status(201).json({
+    data: await evaluationService.submitPaperAttempt(userId, String(req.params.paperId), dto),
+  });
+}
+
+export async function listPaperAttemptsHandler(req: AuthRequest, res: Response): Promise<void> {
+  const userId = req.user!.id;
+  res.json({ data: await evaluationService.listPaperAttempts(userId, String(req.params.paperId)) });
 }

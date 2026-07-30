@@ -226,6 +226,84 @@ export default function ProgressDashboardScreen() {
               </View>
             )}
           </View>
+
+          <View style={styles.section}>
+            <View style={styles.sectionHead}>
+              <View style={[styles.sectionIcon, { backgroundColor: '#dcfce7' }]}>
+                <Ionicons name="trophy" size={20} color="#16a34a" />
+              </View>
+              <View style={styles.sectionHeadText}>
+                <Text style={styles.sectionTitle}>MCQ exam attempts</Text>
+                <Text style={styles.sectionSub}>Timed exams submitted from Practice Papers</Text>
+              </View>
+            </View>
+
+            <View style={styles.paperSummaryRow}>
+              <View style={styles.paperSummaryCell}>
+                <Text style={styles.paperSummaryValue}>{data.exam_attempts.total_attempts}</Text>
+                <Text style={styles.paperSummaryLabel}>Total attempts</Text>
+              </View>
+              <View style={styles.paperSummaryCell}>
+                <Text style={styles.paperSummaryValue}>
+                  {data.exam_attempts.papers_passed}/{data.exam_attempts.papers_attempted}
+                </Text>
+                <Text style={styles.paperSummaryLabel}>Papers passed</Text>
+              </View>
+            </View>
+
+            {data.exam_attempts.items.length === 0 ? (
+              <View style={styles.emptyBox}>
+                <Text style={styles.emptyTitle}>No exam attempts yet</Text>
+                <Text style={styles.emptyHint}>
+                  Open an MCQ practice paper and tap Start exam.
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.paperList}>
+                {data.exam_attempts.items.map((item) => (
+                  <Pressable
+                    key={item.paper_id}
+                    style={({ pressed }) => [styles.paperCard, pressed && styles.paperCardPressed]}
+                    onPress={() => router.push(`/(app)/papers/${item.paper_id}`)}
+                  >
+                    <View style={styles.paperCardTop}>
+                      <View style={styles.paperCardBody}>
+                        <Text style={styles.paperName} numberOfLines={2}>
+                          {item.paper_name}
+                        </Text>
+                        <Text style={styles.paperMeta}>
+                          {item.attempts_count} attempt{item.attempts_count === 1 ? '' : 's'}
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.percentBadge,
+                          item.is_pass ? styles.percentBadgePass : styles.percentBadgeFail,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.percentBadgeText,
+                            item.is_pass && styles.percentBadgeTextPass,
+                          ]}
+                        >
+                          {item.best_percent}%
+                        </Text>
+                      </View>
+                    </View>
+                    <ProgressBar
+                      percent={item.best_percent}
+                      color={item.is_pass ? colors.success : colors.error}
+                    />
+                    <Text style={styles.paperMeta}>
+                      Best: {item.best_scored_marks}/{item.best_total_marks} ·{' '}
+                      {item.is_pass ? 'Pass' : 'Fail'}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+          </View>
         </ScrollView>
       ) : null}
     </View>
@@ -450,6 +528,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     color: '#c2410c',
+  },
+  percentBadgePass: {
+    backgroundColor: '#dcfce7',
+  },
+  percentBadgeFail: {
+    backgroundColor: '#fee2e2',
+  },
+  percentBadgeTextPass: {
+    color: colors.success,
   },
   emptyBox: {
     backgroundColor: colors.background,

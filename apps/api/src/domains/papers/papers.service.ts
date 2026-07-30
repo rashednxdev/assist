@@ -9,6 +9,7 @@ import type {
   UpdatePaperGroupDto,
   CreatePaperQuestionDto,
   UpdatePaperQuestionDto,
+  BatchAddPaperQuestionsDto,
   CreateChildQuestionDto,
   UpdateChildQuestionDto,
 } from '@ibas/shared-types';
@@ -621,6 +622,68 @@ export async function createPaperQuestion(paperId: string, dto: CreatePaperQuest
     question: q ? await enrichQuestion(q) : undefined,
     parts: [],
   };
+}
+
+/**
+ * Bulk-add published MCQ questions to an MCQ-type paper — the batch composer flow. Only papers
+ * whose paper_type is coded 'MCQ' support this; question_number is auto-assigned continuing from
+ * the paper's current max, and marks default to 1 unless overridden. Questions already on the
+ * paper, or that aren't published MCQ questions, are silently skipped rather than failing the
+ * whole batch.
+ */
+export async function batchAddPaperQuestions(paperId: string, dto: BatchAddPaperQuestionsDto) {
+  const paper = await getPaperOrThrow(paperId, true);
+  const type = await PaperType.findById(paper.paper_type_id);
+  if (type?.code !== 'MCQ') {
+    throw badRequest('Batch-adding questions is only available for MCQ papers');
+  }
+
+  const marksEach = dto.marks_per_question && dto.marks_per_question > 0 ? dto.marks_per_question : 1;
+
+  const existingLinked = await PaperQuestion.find({ paper_id: paperId, is_active: true });
+  const linkedQuestionIds = new Set(existingLinked.map((pq) => String(pq.question_id)));
+  let nextNumber = existingLinked.reduce((max, pq) => Math.max(max, pq.question_number), 0) + 1;
+
+  const added: Array<{
+    id: string;
+    question_id: string;
+    question_number: number;
+    marks: number;
+    question: Awaited<ReturnType<typeof enrichQuestion>>;
+  }> = [];
+  const skipped: string[] = [];
+
+  for (const questionId of dto.question_ids) {
+    if (linkedQuestionIds.has(questionId)) {
+      skipped.push(questionId);
+      continue;
+    }
+    const q = await Question.findById(questionId);
+    if (!q || !q.is_active || !q.is_published || q.question_type_code !== 'MCQ') {
+      skipped.push(questionId);
+      continue;
+    }
+    const pq = await PaperQuestion.create({
+      paper_id: paperId,
+      from_question_bank: true,
+      question_id: q._id,
+      question_number: nextNumber,
+      marks: marksEach,
+      is_compulsory: true,
+      is_active: true,
+    });
+    linkedQuestionIds.add(questionId);
+    nextNumber += 1;
+    added.push({
+      id: String(pq._id),
+      question_id: questionId,
+      question_number: pq.question_number,
+      marks: pq.marks,
+      question: await enrichQuestion(q),
+    });
+  }
+
+  return { added, added_count: added.length, skipped_count: skipped.length, skipped_question_ids: skipped };
 }
 
 export async function updatePaperQuestion(pqId: string, dto: UpdatePaperQuestionDto) {

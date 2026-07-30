@@ -9,6 +9,7 @@ import {
   updatePaperGroupSchema,
   createPaperQuestionSchema,
   updatePaperQuestionSchema,
+  batchAddPaperQuestionsSchema,
   createChildQuestionSchema,
   updateChildQuestionSchema,
 } from '@ibas/shared-types';
@@ -88,6 +89,11 @@ export async function deletePaperGroupHandler(req: AuthRequest, res: Response): 
 export async function createPaperQuestionHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = createPaperQuestionSchema.parse(req.body);
   res.status(201).json({ data: await papersService.createPaperQuestion(String(req.params.id), dto) });
+}
+
+export async function batchAddPaperQuestionsHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = batchAddPaperQuestionsSchema.parse(req.body);
+  res.status(201).json({ data: await papersService.batchAddPaperQuestions(String(req.params.id), dto) });
 }
 
 export async function updatePaperQuestionHandler(req: AuthRequest, res: Response): Promise<void> {

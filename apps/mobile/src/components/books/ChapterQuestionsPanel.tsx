@@ -25,7 +25,7 @@ import {
   type QuestionEvaluationRecord,
 } from '@/lib/evaluation-api';
 import { fetchQuestionDetail } from '@/lib/questions-api';
-import { getCachedChapterQuestions, getCachedMcqDetail } from '@/lib/questions-db';
+import { getCachedBookQuestions, getCachedChapterQuestions, getCachedMcqDetail } from '@/lib/questions-db';
 import { subscribeQuestionsSync } from '@/lib/questions-sync';
 import { stripHtml } from '@/lib/book-display';
 import { bilingualQuestionText } from '@/lib/question-display';
@@ -97,12 +97,15 @@ export function ChapterQuestionsButton({
 
 export function ChapterQuestionsPanel({
   chapterId,
+  bookId,
   chapterTitle,
   bookName,
   open,
   onClose,
 }: {
-  chapterId: string;
+  /** Provide exactly one of chapterId (single chapter) or bookId (every chapter of the book). */
+  chapterId?: string;
+  bookId?: string;
   chapterTitle?: string;
   bookName?: string;
   open: boolean;
@@ -196,7 +199,7 @@ export function ChapterQuestionsPanel({
     const loadFromCache = () => {
       setListError('');
       try {
-        setQuestions(getCachedChapterQuestions(chapterId));
+        setQuestions(bookId ? getCachedBookQuestions(bookId) : getCachedChapterQuestions(chapterId!));
       } catch (err) {
         setListError(err instanceof Error ? err.message : 'Failed to load questions');
         setQuestions([]);
@@ -208,7 +211,7 @@ export function ChapterQuestionsPanel({
     setLoadingList(true);
     loadFromCache();
     return subscribeQuestionsSync(loadFromCache);
-  }, [open, chapterId]);
+  }, [open, chapterId, bookId]);
 
   useEffect(() => {
     if (questions.length === 0) {
@@ -486,9 +489,7 @@ export function ChapterQuestionsPanel({
                         </View>
                       ) : null}
                     </View>
-                  ) : (
-                    <ChapterQuestionEvaluator questionId={question.id} onUpdated={handleEvalUpdated} />
-                  )}
+                  ) : null}
 
                   {showAnswer ? (
                     <View style={styles.answerWrap}>
@@ -551,10 +552,12 @@ export function ChapterQuestionsPanel({
                     </Pressable>
                   </View>
 
-                  <ChapterQuestionEvaluator
-                    questionId={question.id}
-                    onUpdated={handleEvalUpdated}
-                  />
+                  {!question.has_options ? (
+                    <ChapterQuestionEvaluator
+                      questionId={question.id}
+                      onUpdated={handleEvalUpdated}
+                    />
+                  ) : null}
                 </View>
               )
             ) : loadingList ? (
@@ -563,7 +566,9 @@ export function ChapterQuestionsPanel({
               <Text style={styles.error}>{listError}</Text>
             ) : questions.length === 0 ? (
               <Text style={styles.muted}>
-                No published questions are tagged to this chapter yet.
+                {bookId
+                  ? 'No published questions are tagged to this book yet.'
+                  : 'No published questions are tagged to this chapter yet.'}
               </Text>
             ) : (
               <>

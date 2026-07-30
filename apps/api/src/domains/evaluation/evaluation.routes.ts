@@ -9,6 +9,8 @@ import {
   getBookEvaluationHandler,
   getPaperEvaluationHandler,
   getProgressDashboardHandler,
+  submitPaperAttemptHandler,
+  listPaperAttemptsHandler,
 } from './evaluation.controller.js';
 
 export const evaluationRouter = Router();
@@ -23,3 +25,5 @@ evaluationRouter.put('/questions/:questionId', asyncHandler(upsertQuestionEvalua
 
 evaluationRouter.get('/books/:bookId', asyncHandler(getBookEvaluationHandler));
 evaluationRouter.get('/papers/:paperId', asyncHandler(getPaperEvaluationHandler));
+evaluationRouter.get('/papers/:paperId/attempts', asyncHandler(listPaperAttemptsHandler));
+evaluationRouter.post('/papers/:paperId/attempts', asyncHandler(submitPaperAttemptHandler));

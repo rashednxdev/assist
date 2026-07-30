@@ -21,6 +21,7 @@ import { userDisplayName } from '@/lib/display-text';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import type { ProgressDashboardData } from '@/app/dashboard/page';
 
 interface WorkflowSummary {
   inbox_count: number;
@@ -92,9 +93,11 @@ const learnLinks = [
 export function UserDashboard({
   user,
   summary,
+  progress,
 }: {
   user: MeUser;
   summary: Summary | null;
+  progress: ProgressDashboardData | null;
 }) {
   const complete = summary?.profile_complete_percent ?? 0;
   const workflow = summary?.workflow;
@@ -184,6 +187,79 @@ export function UserDashboard({
           </CardContent>
         </Card>
       </div>
+
+      {progress &&
+        (progress.mcq.submitted > 0 ||
+          progress.papers.attempted > 0 ||
+          progress.exam_attempts.total_attempts > 0) && (
+          <div>
+            <h2 className="mb-4 text-lg font-semibold">Your progress</h2>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted">MCQ accuracy</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-3xl font-bold">{progress.mcq.accuracy_percent}%</p>
+                  <p className="mt-1 text-sm text-muted">
+                    {progress.mcq.correct} correct of {progress.mcq.submitted}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted">Papers started</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-3xl font-bold">{progress.papers.attempted}</p>
+                  <p className="mt-1 text-sm text-muted">
+                    {progress.papers.average_progress_percent}% avg progress
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted">MCQ exam attempts</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-3xl font-bold">{progress.exam_attempts.total_attempts}</p>
+                  <p className="mt-1 text-sm text-muted">
+                    {progress.exam_attempts.papers_passed}/{progress.exam_attempts.papers_attempted} papers
+                    passed
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {progress.exam_attempts.items.length > 0 && (
+              <Card className="mt-4">
+                <CardHeader>
+                  <CardTitle className="text-base">Recent MCQ exam results</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {progress.exam_attempts.items.slice(0, 5).map((item) => (
+                    <Link
+                      key={item.paper_id}
+                      href={`/papers/${item.paper_id}`}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-border p-3 text-sm transition-colors hover:border-primary/30"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium">{item.paper_name}</p>
+                        <p className="text-muted">
+                          Best: {item.best_scored_marks}/{item.best_total_marks} · {item.attempts_count}{' '}
+                          attempt{item.attempts_count === 1 ? '' : 's'}
+                        </p>
+                      </div>
+                      <Badge variant={item.is_pass ? 'success' : 'warning'}>
+                        {item.best_percent}% · {item.is_pass ? 'Pass' : 'Fail'}
+                      </Badge>
+                    </Link>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
 
       {showWorkflow && (
       <div>

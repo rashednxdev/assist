@@ -13,6 +13,7 @@ const PAPER_TYPES = [
   { name: 'Practice', code: 'PRACTICE', description: 'Practice / model test paper' },
   { name: 'Regular', code: 'REGULAR', description: 'Official examination paper' },
   { name: 'Mock', code: 'MOCK', description: 'Mock test for preparation' },
+  { name: 'MCQ', code: 'MCQ', description: 'MCQ-only paper, composed by batch-adding from the question bank' },
 ] as const;
 
 export async function seedPapersData() {

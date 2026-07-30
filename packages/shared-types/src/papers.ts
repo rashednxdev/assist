@@ -93,6 +93,11 @@ export const updatePaperQuestionSchema = z
     }
   });
 
+export const batchAddPaperQuestionsSchema = z.object({
+  question_ids: z.array(mongoId).min(1),
+  marks_per_question: z.number().positive().optional(),
+});
+
 export const createChildQuestionSchema = z.object({
   question_id: mongoId,
   part_label: z.string().min(1),
@@ -113,5 +118,6 @@ export type CreatePaperGroupDto = z.infer<typeof createPaperGroupSchema>;
 export type UpdatePaperGroupDto = z.infer<typeof updatePaperGroupSchema>;
 export type CreatePaperQuestionDto = z.infer<typeof createPaperQuestionSchema>;
 export type UpdatePaperQuestionDto = z.infer<typeof updatePaperQuestionSchema>;
+export type BatchAddPaperQuestionsDto = z.infer<typeof batchAddPaperQuestionsSchema>;
 export type CreateChildQuestionDto = z.infer<typeof createChildQuestionSchema>;
 export type UpdateChildQuestionDto = z.infer<typeof updateChildQuestionSchema>;

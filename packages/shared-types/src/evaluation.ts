@@ -24,7 +24,34 @@ export const batchQuestionEvaluationQuerySchema = z.object({
   ids: z.string().min(1),
 });
 
+export const submitPaperAttemptSchema = z.object({
+  answers: z
+    .array(
+      z.object({
+        question_id: mongoId,
+        selected_option_id: mongoId,
+      }),
+    )
+    .default([]),
+  duration_seconds: z.number().min(0).optional(),
+});
+
 export type UpsertQuestionEvaluationDto = z.infer<typeof upsertQuestionEvaluationSchema>;
+export type SubmitPaperAttemptDto = z.infer<typeof submitPaperAttemptSchema>;
+
+export interface PaperAttemptRecord {
+  id: string;
+  paper_id: string;
+  total_questions: number;
+  answered_count: number;
+  correct_count: number;
+  total_marks: number;
+  scored_marks: number;
+  pass_marks: number;
+  is_pass: boolean;
+  duration_seconds?: number;
+  submitted_at: string;
+}
 
 export interface QuestionEvaluationRecord {
   question_id: string;

@@ -214,13 +214,14 @@ function toQuestionListItem(row: QuestionRow): QuestionListItem {
 }
 
 /**
- * Published, active questions of every type — what the mobile Question Bank shows. Ordered by
- * book/chapter/text (not recency) so the screen can group them the same way Marathon Review does;
- * questions with no book link sort last.
+ * Published, active questions of every type EXCEPT MCQ — what the mobile Question Bank shows.
+ * MCQ has its own dedicated Marathon Review screen, so it's excluded here to avoid showing the
+ * same questions in both places. Ordered by book/chapter/text (not recency) so the screen can
+ * group them the same way Marathon Review does; questions with no book link sort last.
  */
 export function getCachedQuestionListItems(): QuestionListItem[] {
   const rows = getDb().getAllSync<QuestionRow>(
-    `SELECT * FROM questions WHERE is_published = 1 AND is_active = 1
+    `SELECT * FROM questions WHERE is_published = 1 AND is_active = 1 AND question_type_code != 'MCQ'
      ORDER BY
        CASE WHEN book_name IS NULL THEN 1 ELSE 0 END,
        book_name COLLATE NOCASE ASC,
@@ -422,6 +423,28 @@ export function getCachedChapterQuestions(chapterId: string): ChapterQuestionBri
      WHERE book_chapter_id = ? AND is_published = 1 AND is_active = 1
      ORDER BY question_type_code ASC, updated_at DESC`,
     [chapterId],
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    question_type_code: row.question_type_code,
+    body_en: row.body_en,
+    body_bn: row.body_bn ?? '',
+    marks: row.marks,
+    difficulty: row.difficulty,
+  }));
+}
+
+/**
+ * Published questions tagged to any chapter of a book, for the single book-level "Questions"
+ * button on the Books & Tools detail screen — same shape/ordering as getCachedChapterQuestions,
+ * just matched on book_id instead of one chapter.
+ */
+export function getCachedBookQuestions(bookId: string): ChapterQuestionBrief[] {
+  const rows = getDb().getAllSync<QuestionRow>(
+    `SELECT * FROM questions
+     WHERE book_id = ? AND is_published = 1 AND is_active = 1
+     ORDER BY question_type_code ASC, updated_at DESC`,
+    [bookId],
   );
   return rows.map((row) => ({
     id: row.id,

@@ -13,8 +13,9 @@ import { OutlinedInput, OutlinedSelect, OutlinedTextarea } from '@/components/sh
 import { Badge } from '@/components/ui/badge';
 import { Alert } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
+import { McqQuestionsPanel } from './McqQuestionsPanel';
 
-interface QuestionBrief {
+export interface QuestionBrief {
   id: string;
   question_type_code: string;
   body_en: string;
@@ -30,7 +31,7 @@ interface PaperPart {
   question?: QuestionBrief;
 }
 
-interface PaperQuestionRow {
+export interface PaperQuestionRow {
   id: string;
   from_question_bank: boolean;
   question_id?: string;
@@ -53,7 +54,7 @@ interface PaperGroupRow {
   questions: PaperQuestionRow[];
 }
 
-interface ComposeData {
+export interface ComposeData {
   paper: {
     id: string;
     name: string;
@@ -67,6 +68,7 @@ interface ComposeData {
     exam_subject_name?: string;
     exam_short_name?: string;
     paper_type_name?: string;
+    paper_type_code?: string;
   };
   groups: PaperGroupRow[];
   ungrouped_questions: PaperQuestionRow[];
@@ -583,6 +585,65 @@ export default function PaperComposerPage() {
   const allocated = paper.allocated_marks ?? 0;
 
   const allQuestions = getAllQuestions(data);
+
+  if (paper.paper_type_code === 'MCQ') {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title={paper.name}
+          description={`${paper.exam_short_name ?? ''} ${paper.exam_subject_name ?? ''}${paper.session_year ? ` · ${paper.session_year}` : ''} · MCQ paper`.trim()}
+          action={
+            <div className="flex flex-wrap gap-2">
+              <Button asChild variant="outline" size="sm">
+                <Link href="/papers">
+                  <ArrowLeft className="h-4 w-4" />
+                  Papers
+                </Link>
+              </Button>
+              {isAdmin && !paper.is_published && (
+                <Button size="sm" onClick={publish} disabled={allQuestions.length === 0}>
+                  <Upload className="h-4 w-4" />
+                  Publish
+                </Button>
+              )}
+              {isAdmin && paper.is_published && (
+                <Button size="sm" variant="outline" onClick={unpublish}>
+                  Unpublish
+                </Button>
+              )}
+            </div>
+          }
+        />
+
+        {message && <Alert variant="success">{message}</Alert>}
+        {error && <Alert variant="error">{error}</Alert>}
+
+        <Card>
+          <CardContent className="flex flex-wrap gap-3 pt-6 text-sm">
+            <Badge variant={paper.is_published ? 'default' : 'outline'}>
+              {paper.is_published ? 'Published' : 'Draft'}
+            </Badge>
+            <span>{paper.total_marks} total marks</span>
+            <span>Pass: {paper.pass_marks}</span>
+            <span>{paper.duration_minutes} minutes</span>
+            <span className="text-muted">
+              Allocated: {allocated} / {paper.total_marks}
+            </span>
+          </CardContent>
+        </Card>
+
+        <McqQuestionsPanel
+          paperId={paperId}
+          questions={allQuestions}
+          readOnly={Boolean(readOnly)}
+          onReload={reload}
+          onError={setError}
+          onMessage={setMessage}
+        />
+      </div>
+    );
+  }
+
   const editingQuestion = editQuestionId
     ? allQuestions.find((q) => q.id === editQuestionId)
     : undefined;

@@ -23,10 +23,41 @@ interface Summary {
   };
 }
 
+export interface ProgressDashboardData {
+  mcq: {
+    submitted: number;
+    correct: number;
+    incorrect: number;
+    accuracy_percent: number;
+  };
+  papers: {
+    attempted: number;
+    rated_questions: number;
+    total_questions: number;
+    average_progress_percent: number;
+  };
+  exam_attempts: {
+    total_attempts: number;
+    papers_attempted: number;
+    papers_passed: number;
+    items: Array<{
+      paper_id: string;
+      paper_name: string;
+      attempts_count: number;
+      best_scored_marks: number;
+      best_total_marks: number;
+      best_percent: number;
+      is_pass: boolean;
+      last_submitted_at: string;
+    }>;
+  };
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<MeUser | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [progress, setProgress] = useState<ProgressDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -34,8 +65,12 @@ export default function DashboardPage() {
       router.replace('/login');
       return;
     }
-    Promise.all([fetchMe(), apiFetch<{ data: Summary }>('/account/summary').catch(() => null)])
-      .then(([meRes, sumRes]) => {
+    Promise.all([
+      fetchMe(),
+      apiFetch<{ data: Summary }>('/account/summary').catch(() => null),
+      apiFetch<{ data: ProgressDashboardData }>('/evaluation/dashboard').catch(() => null),
+    ])
+      .then(([meRes, sumRes, progressRes]) => {
         const me = meRes.data;
         if (me.status === 'pending_verify' || !me.is_verified) {
           router.replace('/register/verify');
@@ -43,6 +78,7 @@ export default function DashboardPage() {
         }
         setUser(me);
         if (sumRes) setSummary(sumRes.data);
+        if (progressRes) setProgress(progressRes.data);
       })
       .catch(() => router.replace('/login'))
       .finally(() => setLoading(false));
@@ -71,7 +107,7 @@ export default function DashboardPage() {
       {isPlatformAdmin(user) ? (
         <AdminDashboard user={user} />
       ) : (
-        <UserDashboard user={user} summary={summary} />
+        <UserDashboard user={user} summary={summary} progress={progress} />
       )}
     </AppShell>
   );

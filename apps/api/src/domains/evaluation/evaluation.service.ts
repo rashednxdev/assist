@@ -4,7 +4,7 @@ import {
   SELF_RATING_PROGRESS,
   type SelfRatingLevel,
 } from '@ibas/shared-constants';
-import type { UpsertQuestionEvaluationDto } from '@ibas/shared-types';
+import type { UpsertQuestionEvaluationDto, SubmitPaperAttemptDto } from '@ibas/shared-types';
 import { Question } from '../questions/models/Question.model.js';
 import { QuestionOption } from '../questions/models/QuestionOption.model.js';
 import { QuestionAnswer } from '../questions/models/QuestionAnswer.model.js';
@@ -14,10 +14,12 @@ import { BookChapter } from '../books/models/BookChapter.model.js';
 import { BookTopic } from '../books/models/BookTopic.model.js';
 import { BookSubTopic } from '../books/models/BookSubTopic.model.js';
 import { PaperDetail } from '../papers/models/PaperDetail.model.js';
+import { PaperType } from '../papers/models/PaperType.model.js';
 import { PaperGroup } from '../papers/models/PaperGroup.model.js';
 import { PaperQuestion } from '../papers/models/PaperQuestion.model.js';
 import { ChildQuestion } from '../papers/models/ChildQuestion.model.js';
 import { UserQuestionEvaluation } from './models/UserQuestionEvaluation.model.js';
+import { PaperAttempt } from './models/PaperAttempt.model.js';
 import { notFound, badRequest, forbidden } from '../../shared/errors/AppError.js';
 
 function idStr(v: mongoose.Types.ObjectId | string | undefined) {
@@ -534,6 +536,43 @@ export async function getProgressDashboard(userId: string) {
     { total_questions: 0, rated_questions: 0, progress_sum: 0 },
   );
 
+  // MCQ paper exam attempts (mobile "real MCQ exam" flow) — a history log, separate from the
+  // per-question progress rollup above, since the same question rated outside an exam attempt
+  // shouldn't count toward a paper's exam score.
+  const attempts = await PaperAttempt.find({ user_id: userId }).sort({ submitted_at: -1 });
+  const attemptPaperIds = [...new Set(attempts.map((a) => String(a.paper_id)))];
+  const attemptPapers =
+    attemptPaperIds.length > 0
+      ? await PaperDetail.find({ _id: { $in: attemptPaperIds } }).select('_id name')
+      : [];
+  const paperNameById = new Map(attemptPapers.map((p) => [String(p._id), p.name]));
+
+  const bestByPaper = new Map<string, InstanceType<typeof PaperAttempt>>();
+  for (const a of attempts) {
+    const key = String(a.paper_id);
+    const existing = bestByPaper.get(key);
+    if (!existing || a.scored_marks > existing.scored_marks) bestByPaper.set(key, a);
+  }
+
+  const examAttemptItems = attemptPaperIds
+    .map((paperId) => {
+      const best = bestByPaper.get(paperId)!;
+      const paperAttempts = attempts.filter((a) => String(a.paper_id) === paperId);
+      const latest = paperAttempts[0]!;
+      return {
+        paper_id: paperId,
+        paper_name: paperNameById.get(paperId) ?? 'Paper',
+        attempts_count: paperAttempts.length,
+        best_scored_marks: best.scored_marks,
+        best_total_marks: best.total_marks,
+        best_percent:
+          best.total_marks > 0 ? Math.round((best.scored_marks / best.total_marks) * 100) : 0,
+        is_pass: paperAttempts.some((a) => a.is_pass),
+        last_submitted_at: latest.submitted_at.toISOString(),
+      };
+    })
+    .sort((a, b) => new Date(b.last_submitted_at).getTime() - new Date(a.last_submitted_at).getTime());
+
   return {
     mcq: {
       submitted: mcqSubmitted,
@@ -550,6 +589,12 @@ export async function getProgressDashboard(userId: string) {
           ? Math.round(paperTotals.progress_sum / paperItems.length)
           : 0,
       items: paperItems,
+    },
+    exam_attempts: {
+      total_attempts: attempts.length,
+      papers_attempted: attemptPaperIds.length,
+      papers_passed: examAttemptItems.filter((p) => p.is_pass).length,
+      items: examAttemptItems,
     },
   };
 }
@@ -621,4 +666,90 @@ export async function getPaperEvaluation(userId: string, paperId: string) {
       ],
     },
   };
+}
+
+function serializePaperAttempt(row: InstanceType<typeof PaperAttempt>) {
+  return {
+    id: String(row._id),
+    paper_id: String(row.paper_id),
+    total_questions: row.total_questions,
+    answered_count: row.answered_count,
+    correct_count: row.correct_count,
+    total_marks: row.total_marks,
+    scored_marks: row.scored_marks,
+    pass_marks: row.pass_marks,
+    is_pass: row.is_pass,
+    duration_seconds: row.duration_seconds,
+    submitted_at: row.submitted_at.toISOString(),
+  };
+}
+
+/**
+ * Submit one MCQ paper exam attempt (mobile "real MCQ exam" flow, MCQ-type papers only). Each
+ * answer is upserted through the same per-question evaluation path used elsewhere (so
+ * is_correct is always server-computed from the stored answer key, never trusted from the
+ * client), then tallied into a single attempt record — a history row, not a current-state
+ * upsert, so retakes are all preserved.
+ */
+export async function submitPaperAttempt(
+  userId: string,
+  paperId: string,
+  dto: SubmitPaperAttemptDto,
+) {
+  const paper = await PaperDetail.findById(paperId);
+  if (!paper || !paper.is_active) throw notFound('Paper not found');
+  if (!paper.is_published) throw forbidden('Paper is not published');
+
+  const paperType = await PaperType.findById(paper.paper_type_id);
+  if (paperType?.code !== 'MCQ') {
+    throw badRequest('Only MCQ papers support exam attempts');
+  }
+
+  const paperQuestions = await PaperQuestion.find({
+    paper_id: paperId,
+    is_active: true,
+    from_question_bank: true,
+  });
+  const marksByQuestionId = new Map(
+    paperQuestions
+      .filter((pq) => pq.question_id)
+      .map((pq) => [String(pq.question_id), pq.marks] as const),
+  );
+
+  const answers = dto.answers.filter((a) => marksByQuestionId.has(a.question_id));
+
+  let correctCount = 0;
+  let scoredMarks = 0;
+  for (const answer of answers) {
+    const result = await upsertQuestionEvaluation(userId, answer.question_id, {
+      selected_option_id: answer.selected_option_id,
+    });
+    if (result.is_correct) {
+      correctCount += 1;
+      scoredMarks += marksByQuestionId.get(answer.question_id) ?? 0;
+    }
+  }
+
+  const attempt = await PaperAttempt.create({
+    user_id: userId,
+    paper_id: paperId,
+    total_questions: marksByQuestionId.size,
+    answered_count: answers.length,
+    correct_count: correctCount,
+    total_marks: paper.total_marks,
+    scored_marks: scoredMarks,
+    pass_marks: paper.pass_marks,
+    is_pass: scoredMarks >= paper.pass_marks,
+    duration_seconds: dto.duration_seconds,
+    submitted_at: new Date(),
+  });
+
+  return serializePaperAttempt(attempt);
+}
+
+export async function listPaperAttempts(userId: string, paperId: string) {
+  const rows = await PaperAttempt.find({ user_id: userId, paper_id: paperId }).sort({
+    submitted_at: -1,
+  });
+  return rows.map(serializePaperAttempt);
 }

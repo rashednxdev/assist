@@ -29,7 +29,7 @@ import { setQuestionBankSessionOrder } from '@/lib/question-bank-order';
 import { useAuth } from '@/lib/auth-context';
 import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
 import { SaveButton } from '@/components/ui/SaveButton';
-import { LineLoader } from '@/components/ui/LineLoader';
+import { BlockingLoader } from '@/components/ui/BlockingLoader';
 import { cleanBookLabel, stripHtml } from '@/lib/book-display';
 import type { QuestionListItem, QuestionType } from '@/types/questions';
 import { colors, spacing } from '@/theme';
@@ -348,7 +348,7 @@ export default function QuestionsScreen() {
 
   return (
     <View style={styles.root}>
-      {resuming ? <LineLoader /> : null}
+      {resuming ? <BlockingLoader label="Loading Question Bank…" /> : null}
       <View style={styles.toolbar}>
         <View style={styles.searchRow}>
           <Ionicons name="search" size={18} color={colors.textMuted} />
@@ -465,7 +465,7 @@ export default function QuestionsScreen() {
           horizontal
           data={[
             { id: '', label: 'All Types' },
-            ...types.map((t) => ({ id: t.code, label: t.name })),
+            ...types.filter((t) => t.code !== 'MCQ').map((t) => ({ id: t.code, label: t.name })),
           ]}
           keyExtractor={(item) => `type-${item.id || 'all'}`}
           showsHorizontalScrollIndicator={false}

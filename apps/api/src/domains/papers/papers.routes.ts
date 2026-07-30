@@ -20,6 +20,7 @@ import {
   updatePaperGroupHandler,
   deletePaperGroupHandler,
   createPaperQuestionHandler,
+  batchAddPaperQuestionsHandler,
   updatePaperQuestionHandler,
   deletePaperQuestionHandler,
   createChildQuestionHandler,
@@ -50,6 +51,7 @@ papersRouter.patch('/groups/:id', requireAdmin, asyncHandler(updatePaperGroupHan
 papersRouter.delete('/groups/:id', requireAdmin, asyncHandler(deletePaperGroupHandler));
 
 papersRouter.post('/:id/questions', requireAdmin, asyncHandler(createPaperQuestionHandler));
+papersRouter.post('/:id/questions/batch', requireAdmin, asyncHandler(batchAddPaperQuestionsHandler));
 papersRouter.patch('/questions/:id', requireAdmin, asyncHandler(updatePaperQuestionHandler));
 papersRouter.delete('/questions/:id', requireAdmin, asyncHandler(deletePaperQuestionHandler));
 

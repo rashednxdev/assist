@@ -106,9 +106,9 @@ export default function BookDetailScreen() {
   const bookName = outline?.book.name || outline?.book.short_name;
   const [detailsExpanded, setDetailsExpanded] = useState(false);
   const [viewMode, setViewMode] = useState<BookContentsViewMode>(
-    () => viewModeByBook.get(bookId) ?? 'short',
+    () => viewModeByBook.get(bookId) ?? 'full',
   );
-  const [questionsChapter, setQuestionsChapter] = useState<ReaderChapter | null>(null);
+  const [showBookQuestions, setShowBookQuestions] = useState(false);
   const [searchDraft, setSearchDraft] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -135,8 +135,8 @@ export default function BookDetailScreen() {
 
   useEffect(() => {
     setDetailsExpanded(false);
-    setViewMode(viewModeByBook.get(bookId) ?? 'short');
-    setQuestionsChapter(null);
+    setViewMode(viewModeByBook.get(bookId) ?? 'full');
+    setShowBookQuestions(false);
     setSearchDraft('');
     setSearchQuery('');
     setSearchOpen(false);
@@ -263,6 +263,8 @@ export default function BookDetailScreen() {
             {book.book_type_name ? <BookBadge label={book.book_type_name} variant="muted" /> : null}
           </View>
 
+          <ChapterQuestionsButton onPress={() => setShowBookQuestions(true)} />
+
           {hasDescription ? (
             <View style={styles.panel}>
               {detailsExpanded ? (
@@ -295,11 +297,7 @@ export default function BookDetailScreen() {
           {activeViewMode === 'full' ? (
             <>
               {fullError ? <Text style={styles.errorText}>{fullError}</Text> : null}
-              <BookContentsFull
-                chapters={filteredFullChapters}
-                loading={showFullLoading}
-                onOpenQuestions={setQuestionsChapter}
-              />
+              <BookContentsFull chapters={filteredFullChapters} loading={showFullLoading} />
             </>
           ) : (
             <>
@@ -324,7 +322,6 @@ export default function BookDetailScreen() {
                           ) : null}
                         </View>
                       </Pressable>
-                      <ChapterQuestionsButton onPress={() => setQuestionsChapter(chapter)} />
                     </View>
 
                     {chapter.topics.length > 0 ? (
@@ -351,15 +348,12 @@ export default function BookDetailScreen() {
         </ScrollView>
       </View>
 
-      {questionsChapter ? (
-        <ChapterQuestionsPanel
-          chapterId={questionsChapter.id}
-          chapterTitle={chapterHeading(questionsChapter)}
-          bookName={bookName}
-          open={!!questionsChapter}
-          onClose={() => setQuestionsChapter(null)}
-        />
-      ) : null}
+      <ChapterQuestionsPanel
+        bookId={bookId}
+        bookName={bookName}
+        open={showBookQuestions}
+        onClose={() => setShowBookQuestions(false)}
+      />
     </>
   );
 }

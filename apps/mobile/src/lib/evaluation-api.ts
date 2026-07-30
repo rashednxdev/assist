@@ -87,6 +87,36 @@ export async function fetchPaperEvaluation(paperId: string) {
   return res.data;
 }
 
+export interface PaperAttemptRecord {
+  id: string;
+  paper_id: string;
+  total_questions: number;
+  answered_count: number;
+  correct_count: number;
+  total_marks: number;
+  scored_marks: number;
+  pass_marks: number;
+  is_pass: boolean;
+  duration_seconds?: number;
+  submitted_at: string;
+}
+
+export async function submitPaperAttempt(
+  paperId: string,
+  payload: { answers: { question_id: string; selected_option_id: string }[]; duration_seconds?: number },
+) {
+  const res = await apiFetch<{ data: PaperAttemptRecord }>(`/evaluation/papers/${paperId}/attempts`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  return res.data;
+}
+
+export async function fetchPaperAttempts(paperId: string) {
+  const res = await apiFetch<{ data: PaperAttemptRecord[] }>(`/evaluation/papers/${paperId}/attempts`);
+  return res.data;
+}
+
 export interface ProgressDashboardData {
   mcq: {
     submitted: number;
@@ -108,6 +138,21 @@ export interface ProgressDashboardData {
       total_questions: number;
       rated_questions: number;
       progress_percent: number;
+    }>;
+  };
+  exam_attempts: {
+    total_attempts: number;
+    papers_attempted: number;
+    papers_passed: number;
+    items: Array<{
+      paper_id: string;
+      paper_name: string;
+      attempts_count: number;
+      best_scored_marks: number;
+      best_total_marks: number;
+      best_percent: number;
+      is_pass: boolean;
+      last_submitted_at: string;
     }>;
   };
 }

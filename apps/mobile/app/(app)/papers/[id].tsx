@@ -5,13 +5,16 @@ import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates
 import { ProgressSummary } from '@/components/evaluation/ProgressSummary';
 import { RatingIndicator } from '@/components/evaluation/RatingIndicator';
 import { PaperSheetHeader } from '@/components/papers/PaperSheetHeader';
+import { PaperMcqExam } from '@/components/papers/PaperMcqExam';
 import {
   collectPaperQuestionIds,
   type QuestionEvalBrief,
 } from '@/lib/evaluation-display';
 import {
   fetchPaperEvaluation,
+  fetchPaperAttempts,
   fetchQuestionEvaluationsBatch,
+  type PaperAttemptRecord,
   type PaperEvaluationData,
 } from '@/lib/evaluation-api';
 import { bookNavTitle } from '@/lib/book-display';
@@ -42,6 +45,9 @@ export default function PaperDetailScreen() {
   const [evalMap, setEvalMap] = useState<Map<string, QuestionEvalBrief>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [examOpen, setExamOpen] = useState(false);
+  const [attempts, setAttempts] = useState<PaperAttemptRecord[]>([]);
+  const [attemptsLoading, setAttemptsLoading] = useState(false);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -81,6 +87,24 @@ export default function PaperDetailScreen() {
     if (!data) return [];
     return [...data.groups.flatMap((group) => group.questions), ...data.ungrouped_questions];
   }, [data]);
+
+  const isMcqPaper = data?.paper.paper_type_code === 'MCQ';
+
+  const loadAttempts = useCallback(async () => {
+    if (!id) return;
+    setAttemptsLoading(true);
+    try {
+      setAttempts(await fetchPaperAttempts(id));
+    } catch {
+      setAttempts([]);
+    } finally {
+      setAttemptsLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    if (isMcqPaper) void loadAttempts();
+  }, [isMcqPaper, loadAttempts]);
 
   const loadEvaluations = useCallback(async () => {
     const ids = collectPaperQuestionIds(allQuestionRows);
@@ -123,6 +147,72 @@ export default function PaperDetailScreen() {
   const paper = data.paper;
   const totalQuestions =
     data.ungrouped_questions.length + data.groups.reduce((sum, group) => sum + group.questions.length, 0);
+
+  if (paper.paper_type_code === 'MCQ') {
+    if (examOpen) {
+      return (
+        <View style={styles.examRoot}>
+          <PaperMcqExam
+            paperId={paper.id}
+            durationMinutes={paper.duration_minutes}
+            questions={allQuestionRows}
+            onBack={() => {
+              setExamOpen(false);
+              void loadAttempts();
+            }}
+            onSubmitted={() => void loadAttempts()}
+          />
+        </View>
+      );
+    }
+
+    const bestAttempt =
+      attempts.length > 0
+        ? attempts.reduce((best, a) => (a.scored_marks > best.scored_marks ? a : best))
+        : null;
+
+    return (
+      <ScrollView style={styles.root} contentContainerStyle={styles.content}>
+        <View style={styles.paperSheet}>
+          <PaperSheetHeader paper={paper} />
+
+          {paper.instructions?.trim() ? (
+            <View style={styles.instructionsBlock}>
+              <Text style={styles.instructions}>{toBanglaDigits(paper.instructions)}</Text>
+            </View>
+          ) : null}
+
+          <View style={styles.mcqStartBlock}>
+            <Text style={styles.mcqStartTitle}>
+              {toBanglaDigits(String(totalQuestions))} MCQ questions · {toBanglaDigits(String(paper.duration_minutes))} minutes
+            </Text>
+            {attemptsLoading ? (
+              <Text style={styles.muted}>Loading past attempts…</Text>
+            ) : bestAttempt ? (
+              <Text style={styles.muted}>
+                Best: {bestAttempt.scored_marks}/{bestAttempt.total_marks} (
+                {bestAttempt.is_pass ? 'Pass' : 'Fail'}) · {attempts.length} attempt
+                {attempts.length === 1 ? '' : 's'}
+              </Text>
+            ) : (
+              <Text style={styles.muted}>No attempts yet.</Text>
+            )}
+            <Pressable
+              style={[styles.startBtn, totalQuestions === 0 && styles.startBtnDisabled]}
+              disabled={totalQuestions === 0}
+              onPress={() => setExamOpen(true)}
+            >
+              <Text style={styles.startBtnText}>{attempts.length > 0 ? 'Retake exam' : 'Start exam'}</Text>
+            </Pressable>
+          </View>
+
+          {totalQuestions === 0 ? (
+            <BookEmpty title="No questions added yet" subtitle="This paper has no configured questions." />
+          ) : null}
+        </View>
+      </ScrollView>
+    );
+  }
 
   function renderPart(part: PaperQuestionPart) {
     const title = part.question?.body_en?.trim() || 'Open question detail';
@@ -269,6 +359,38 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.md,
     paddingBottom: spacing.xl,
+  },
+  examRoot: {
+    flex: 1,
+    backgroundColor: colors.background,
+    padding: spacing.md,
+  },
+  mcqStartBlock: {
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+  },
+  mcqStartTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'center',
+  },
+  startBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: 14,
+    alignSelf: 'stretch',
+    alignItems: 'center',
+  },
+  startBtnDisabled: {
+    opacity: 0.5,
+  },
+  startBtnText: {
+    color: colors.white,
+    fontSize: 15,
+    fontWeight: '700',
   },
   evalPanel: {
     backgroundColor: colors.surface,

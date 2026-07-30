@@ -1,21 +1,18 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { BookBadge } from '@/components/books/BookBadge';
 import { BookRichText } from '@/components/books/BookRichText';
-import { ChapterQuestionsButton } from '@/components/books/ChapterQuestionsPanel';
 import { RuleContentLinkButton } from '@/components/books/RuleContentLinkButton';
 import { BookEmpty, BookLoading } from '@/components/books/BookStates';
 import { cleanBookLabel, ruleHeading, subRuleHeading } from '@/lib/book-display';
-import type { ReaderChapter, ReaderChapterFull } from '@/types/books';
+import type { ReaderChapterFull } from '@/types/books';
 import { colors, spacing } from '@/theme';
 
 export function BookContentsFull({
   chapters,
   loading,
-  onOpenQuestions,
 }: {
   chapters: ReaderChapterFull[];
   loading: boolean;
-  onOpenQuestions: (chapter: ReaderChapter) => void;
 }) {
   if (loading) return <BookLoading />;
 
@@ -47,7 +44,6 @@ export function BookContentsFull({
                 <Text style={styles.chapterSubName}>{chapter.sub_name}</Text>
               ) : null}
             </View>
-            <ChapterQuestionsButton onPress={() => onOpenQuestions(chapter)} />
           </View>
 
           {(chapter.topics ?? []).map((topic) => (

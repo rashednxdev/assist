@@ -1083,8 +1083,10 @@ export default function ExamsAdminPage() {
                         required
                         value={selectedExam}
                         onChange={(e) => {
-                          setSelectedExam(e.target.value);
-                          loadTypes(e.target.value);
+                          const examId = e.target.value;
+                          setSelectedExam(examId);
+                          resetStepForm('type');
+                          loadTypes(examId);
                         }}
                         className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                       >
@@ -1132,6 +1134,7 @@ export default function ExamsAdminPage() {
                           const examId = e.target.value;
                           setSelectedExam(examId);
                           setSelectedPart('');
+                          resetStepForm('subject');
                           loadParts(examId);
                           loadTypes(examId);
                         }}

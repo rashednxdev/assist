@@ -14,8 +14,6 @@
       "fallbackToCacheTimeout": 0
     },
     "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
     "ios": {
@@ -33,6 +31,7 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      "expo-notifications",
       "@react-native-community/datetimepicker",
       [
         "expo-screen-orientation",

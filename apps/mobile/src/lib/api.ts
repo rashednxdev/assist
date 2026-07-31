@@ -78,6 +78,8 @@ export const LEARNING_MODULE_CODES = [
   'OCR',
   'PENSION',
   'QUESTION_EDIT',
+  'QOTD',
+  'EXAM_ROUTINE',
 ] as const;
 
 export type LearningModuleCode = (typeof LEARNING_MODULE_CODES)[number];

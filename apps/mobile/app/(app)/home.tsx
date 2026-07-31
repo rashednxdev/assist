@@ -22,11 +22,13 @@ import {
   fetchProgressDashboard,
   type ProgressDashboardData,
 } from '@/lib/evaluation-api';
+import { fetchMyNotifications } from '@/lib/notifications-api';
+import { qotdColors } from '@/lib/qotd-theme';
 import { colors, spacing } from '@/theme';
 
 const MODULES: Array<{
   id: string;
-  code: 'BOOKS' | 'QUESTIONS' | 'EXAM' | 'PAPER' | 'PENSION' | 'QUESTION_EDIT';
+  code: 'BOOKS' | 'QUESTIONS' | 'EXAM' | 'PAPER' | 'PENSION' | 'QUESTION_EDIT' | 'QOTD' | 'EXAM_ROUTINE';
   title: string;
   subtitle: string;
   icon:
@@ -35,7 +37,9 @@ const MODULES: Array<{
     | 'school-outline'
     | 'document-text-outline'
     | 'calculator-outline'
-    | 'create-outline';
+    | 'create-outline'
+    | 'calendar-outline'
+    | 'time-outline';
   color: string;
   href: Href;
 }> = [
@@ -102,6 +106,24 @@ const MODULES: Array<{
     color: '#B45309',
     href: '/(app)/question-update' as Href,
   },
+  {
+    id: 'qotd',
+    code: 'QOTD' as const,
+    title: 'Question of the Day',
+    subtitle: 'Daily subject-wise questions',
+    icon: 'calendar-outline' as const,
+    color: qotdColors.accent,
+    href: '/(app)/qotd' as Href,
+  },
+  {
+    id: 'exam-routine',
+    code: 'EXAM_ROUTINE' as const,
+    title: 'Exam Routine',
+    subtitle: 'Schedules, countdown & instructions',
+    icon: 'time-outline' as const,
+    color: '#7c2d12',
+    href: '/(app)/exam-routine' as Href,
+  },
 ];
 
 export default function HomeScreen() {
@@ -112,6 +134,7 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [checkingModuleId, setCheckingModuleId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const moduleAllowed = useCallback(
     (grants: Parameters<typeof hasLearningModule>[0], code: LearningModuleCode) => {
@@ -155,6 +178,11 @@ export default function HomeScreen() {
     setProgress(dash);
   }, []);
 
+  const loadUnreadCount = useCallback(async () => {
+    const res = await fetchMyNotifications(true).catch(() => null);
+    setUnreadCount(res?.meta.unread_count ?? 0);
+  }, []);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -173,7 +201,8 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       void refreshUser().catch(() => {});
-    }, [refreshUser]),
+      void loadUnreadCount();
+    }, [refreshUser, loadUnreadCount]),
   );
 
   function confirmSignOut() {
@@ -193,14 +222,29 @@ export default function HomeScreen() {
               <Text style={styles.greet}>ProAssist</Text>
               <Text style={styles.heroSub}>Preparation Dashboard</Text>
             </View>
-            <Pressable
-              onPress={() => setMenuOpen(true)}
-              style={styles.menuBtn}
-              accessibilityLabel="Open menu"
-              hitSlop={8}
-            >
-              <Ionicons name="ellipsis-vertical" size={20} color={colors.white} />
-            </Pressable>
+            <View style={styles.heroActions}>
+              <Pressable
+                onPress={() => router.push('/(app)/notifications' as Href)}
+                style={styles.menuBtn}
+                accessibilityLabel="Notifications"
+                hitSlop={8}
+              >
+                <Ionicons name="notifications-outline" size={20} color={colors.white} />
+                {unreadCount > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                  </View>
+                )}
+              </Pressable>
+              <Pressable
+                onPress={() => setMenuOpen(true)}
+                style={styles.menuBtn}
+                accessibilityLabel="Open menu"
+                hitSlop={8}
+              >
+                <Ionicons name="ellipsis-vertical" size={20} color={colors.white} />
+              </Pressable>
+            </View>
           </View>
         </SafeAreaView>
       </LinearGradient>
@@ -340,6 +384,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 2,
   },
+  heroActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
   menuBtn: {
     width: 40,
     height: 40,
@@ -347,6 +395,25 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  badge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    backgroundColor: colors.error,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: colors.primaryDark,
+  },
+  badgeText: {
+    color: colors.white,
+    fontSize: 10,
+    fontWeight: '800',
   },
   menuBackdrop: {
     flex: 1,

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'reac
 import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
+import { BookRichText } from '@/components/books/BookRichText';
 import { ProgressSummary } from '@/components/evaluation/ProgressSummary';
 import { RatingIndicator } from '@/components/evaluation/RatingIndicator';
 import { PaperSheetHeader } from '@/components/papers/PaperSheetHeader';
@@ -14,12 +15,15 @@ import {
   fetchPaperEvaluation,
   fetchPaperAttempts,
   fetchQuestionEvaluationsBatch,
+  fetchQuestionPracticeStem,
   type PaperAttemptRecord,
   type PaperEvaluationData,
+  type QuestionPracticeStem,
 } from '@/lib/evaluation-api';
 import { bookNavTitle } from '@/lib/book-display';
 import { toBanglaDigits } from '@/lib/bangla-format';
 import { fetchPaperCompose } from '@/lib/papers-api';
+import { getCachedPracticeStem } from '@/lib/questions-db';
 import {
   displayQuestionLabel,
   mainRowMarks,
@@ -47,7 +51,8 @@ export default function PaperDetailScreen() {
   const [error, setError] = useState('');
   const [examOpen, setExamOpen] = useState(false);
   const [attempts, setAttempts] = useState<PaperAttemptRecord[]>([]);
-  const [attemptsLoading, setAttemptsLoading] = useState(false);
+  const [previewStems, setPreviewStems] = useState<QuestionPracticeStem[]>([]);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -92,19 +97,47 @@ export default function PaperDetailScreen() {
 
   const loadAttempts = useCallback(async () => {
     if (!id) return;
-    setAttemptsLoading(true);
     try {
       setAttempts(await fetchPaperAttempts(id));
     } catch {
       setAttempts([]);
-    } finally {
-      setAttemptsLoading(false);
     }
   }, [id]);
 
   useEffect(() => {
     if (isMcqPaper) void loadAttempts();
   }, [isMcqPaper, loadAttempts]);
+
+  useEffect(() => {
+    if (!isMcqPaper) return;
+    const ids = allQuestionRows
+      .map((r) => r.question_id)
+      .filter((qid): qid is string => Boolean(qid));
+    if (ids.length === 0) {
+      setPreviewStems([]);
+      return;
+    }
+    let cancelled = false;
+    setPreviewLoading(true);
+    Promise.all(
+      ids.map((qid) => {
+        const cached = getCachedPracticeStem(qid);
+        return cached ? Promise.resolve(cached) : fetchQuestionPracticeStem(qid);
+      }),
+    )
+      .then((stems) => {
+        if (!cancelled) setPreviewStems(stems);
+      })
+      .catch(() => {
+        if (!cancelled) setPreviewStems([]);
+      })
+      .finally(() => {
+        if (!cancelled) setPreviewLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isMcqPaper, allQuestionRows]);
 
   const loadEvaluations = useCallback(async () => {
     const ids = collectPaperQuestionIds(allQuestionRows);
@@ -166,11 +199,6 @@ export default function PaperDetailScreen() {
       );
     }
 
-    const bestAttempt =
-      attempts.length > 0
-        ? attempts.reduce((best, a) => (a.scored_marks > best.scored_marks ? a : best))
-        : null;
-
     return (
       <ScrollView style={styles.root} contentContainerStyle={styles.content}>
         <View style={styles.paperSheet}>
@@ -182,29 +210,44 @@ export default function PaperDetailScreen() {
             </View>
           ) : null}
 
-          <View style={styles.mcqStartBlock}>
-            <Text style={styles.mcqStartTitle}>
-              {toBanglaDigits(String(totalQuestions))} MCQ questions · {toBanglaDigits(String(paper.duration_minutes))} minutes
-            </Text>
-            {attemptsLoading ? (
-              <Text style={styles.muted}>Loading past attempts…</Text>
-            ) : bestAttempt ? (
-              <Text style={styles.muted}>
-                Best: {bestAttempt.scored_marks}/{bestAttempt.total_marks} (
-                {bestAttempt.is_pass ? 'Pass' : 'Fail'}) · {attempts.length} attempt
-                {attempts.length === 1 ? '' : 's'}
-              </Text>
-            ) : (
-              <Text style={styles.muted}>No attempts yet.</Text>
-            )}
-            <Pressable
-              style={[styles.startBtn, totalQuestions === 0 && styles.startBtnDisabled]}
-              disabled={totalQuestions === 0}
-              onPress={() => setExamOpen(true)}
-            >
-              <Text style={styles.startBtnText}>{attempts.length > 0 ? 'Retake exam' : 'Start exam'}</Text>
-            </Pressable>
-          </View>
+          {previewLoading ? (
+            <Text style={styles.muted}>Loading questions…</Text>
+          ) : (
+            <View style={styles.previewList}>
+              {previewStems.map((stem, i) => (
+                <View key={stem.id} style={styles.previewQuestion}>
+                  <View style={styles.previewQRow}>
+                    <Text style={styles.previewQNum}>
+                      {toBanglaDigits(String(i + 1))}.
+                    </Text>
+                    <BookRichText
+                      html={stem.body_en || stem.body_bn || ''}
+                      style={styles.previewQText}
+                    />
+                  </View>
+                  <View style={styles.previewOptionsGrid}>
+                    {stem.options.map((opt) => (
+                      <View key={opt.id} style={styles.previewOptionCell}>
+                        <Text style={styles.previewOptionKey}>{opt.option_key.toUpperCase()}.</Text>
+                        <BookRichText
+                          html={opt.option_text_en?.trim() || opt.option_text_bn?.trim() || ''}
+                          style={styles.previewOptionText}
+                        />
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+
+          <Pressable
+            style={[styles.startBtn, totalQuestions === 0 && styles.startBtnDisabled]}
+            disabled={totalQuestions === 0}
+            onPress={() => setExamOpen(true)}
+          >
+            <Text style={styles.startBtnText}>{attempts.length > 0 ? 'Retake exam' : 'Start exam'}</Text>
+          </Pressable>
 
           {totalQuestions === 0 ? (
             <BookEmpty title="No questions added yet" subtitle="This paper has no configured questions." />
@@ -365,16 +408,54 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     padding: spacing.md,
   },
-  mcqStartBlock: {
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
+  previewList: {
+    gap: 10,
   },
-  mcqStartTitle: {
-    fontSize: 15,
+  previewQuestion: {
+    gap: 4,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(120, 53, 15, 0.08)',
+  },
+  previewQRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 4,
+  },
+  previewQNum: {
+    fontSize: 11,
     fontWeight: '700',
     color: colors.text,
-    textAlign: 'center',
+    width: 16,
+  },
+  previewQText: {
+    flex: 1,
+    fontSize: 11,
+    lineHeight: 15,
+    color: colors.text,
+  },
+  previewOptionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingLeft: 16,
+    gap: 4,
+  },
+  previewOptionCell: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 3,
+    width: '48%',
+  },
+  previewOptionKey: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.textMuted,
+  },
+  previewOptionText: {
+    flex: 1,
+    fontSize: 10,
+    lineHeight: 13,
+    color: colors.textMuted,
   },
   startBtn: {
     backgroundColor: colors.primary,

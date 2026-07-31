@@ -15,6 +15,7 @@ import {
   logout as logoutApi,
   type MeUser,
 } from './auth-api';
+import { unregisterPushNotifications } from './push-notifications';
 
 interface AuthState {
   user: MeUser | null;
@@ -40,6 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    await unregisterPushNotifications();
     await logoutApi();
     setUser(null);
   }, []);

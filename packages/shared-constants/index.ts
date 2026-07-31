@@ -24,6 +24,9 @@ export const MODULE_CODES = [
   'AUDIT',
   'OCR',
   'PENSION',
+  'NOTICE',
+  'QOTD',
+  'EXAM_ROUTINE',
 ] as const;
 export type ModuleCode = (typeof MODULE_CODES)[number];
 

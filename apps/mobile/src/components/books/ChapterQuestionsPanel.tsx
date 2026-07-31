@@ -73,14 +73,18 @@ function renderSection(section: ExplanationSection, index: number) {
 
 export function ChapterQuestionsButton({
   active,
+  fullWidth,
   onPress,
 }: {
   active?: boolean;
+  /** Book detail screen's single aggregate button: full-width and always highlighted. */
+  fullWidth?: boolean;
   onPress: () => void;
 }) {
+  const highlighted = active || fullWidth;
   return (
     <Pressable
-      style={[styles.tagBtn, active && styles.tagBtnActive]}
+      style={[styles.tagBtn, fullWidth && styles.tagBtnFullWidth, highlighted && styles.tagBtnActive]}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel="View tagged questions"
@@ -88,9 +92,9 @@ export function ChapterQuestionsButton({
       <Ionicons
         name="help-circle-outline"
         size={16}
-        color={active ? colors.white : colors.primary}
+        color={highlighted ? colors.white : colors.primary}
       />
-      <Text style={[styles.tagBtnText, active && styles.tagBtnTextActive]}>Questions</Text>
+      <Text style={[styles.tagBtnText, highlighted && styles.tagBtnTextActive]}>Questions</Text>
     </Pressable>
   );
 }
@@ -656,6 +660,11 @@ const styles = StyleSheet.create({
   tagBtnActive: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
+  },
+  tagBtnFullWidth: {
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+    paddingVertical: 12,
   },
   tagBtnText: {
     fontSize: 13,

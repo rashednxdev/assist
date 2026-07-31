@@ -263,7 +263,7 @@ export default function BookDetailScreen() {
             {book.book_type_name ? <BookBadge label={book.book_type_name} variant="muted" /> : null}
           </View>
 
-          <ChapterQuestionsButton onPress={() => setShowBookQuestions(true)} />
+          <ChapterQuestionsButton fullWidth onPress={() => setShowBookQuestions(true)} />
 
           {hasDescription ? (
             <View style={styles.panel}>

@@ -63,3 +63,6 @@ export * from './pension-gratuity-calculator.js';
 export * from './pension-prl-calculator.js';
 export * from './joining-period.js';
 export * from './joining-period-calculator.js';
+export * from './notifications.js';
+export * from './qotd.js';
+export * from './exam-routine.js';

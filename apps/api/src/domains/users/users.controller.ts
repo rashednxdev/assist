@@ -18,6 +18,7 @@ export async function listUsersHandler(req: AuthRequest, res: Response): Promise
   const { items, total } = await usersService.listUsers({
     user_type: req.query.user_type as string | undefined,
     status: req.query.status as string | undefined,
+    q: req.query.q as string | undefined,
     skip,
     limit,
   });

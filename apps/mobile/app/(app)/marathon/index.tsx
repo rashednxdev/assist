@@ -7,6 +7,7 @@ import {
   Pressable,
   TextInput,
   RefreshControl,
+  ActivityIndicator,
   type NativeSyntheticEvent,
   type NativeScrollEvent,
 } from 'react-native';
@@ -136,6 +137,7 @@ export default function MarathonReviewScreen() {
   const [appliedQuery, setAppliedQuery] = useState('');
   const [mode, setMode] = useState<ShowMode>('questions');
   const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set());
+  const [pendingRevealId, setPendingRevealId] = useState<string | null>(null);
   const [bookMenuOpen, setBookMenuOpen] = useState(false);
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
   const [resumeTarget, setResumeTarget] = useState<MarathonLastQuestion | null>(null);
@@ -316,6 +318,20 @@ export default function MarathonReviewScreen() {
       else next.add(item.id);
       return next;
     });
+  }
+
+  /**
+   * With hundreds of questions mounted in one non-virtualized ScrollView, toggling reveal
+   * re-renders the whole list — on a big loaded set that can take a beat. Show a spinner on the
+   * tapped row immediately, then defer the actual (expensive) toggle a tick so the spinner has a
+   * chance to paint first — otherwise the tap looks unresponsive and users tap repeatedly.
+   */
+  function handleQuestionPress(item: MarathonReviewItem) {
+    setPendingRevealId(item.id);
+    setTimeout(() => {
+      toggleReveal(item);
+      setPendingRevealId(null);
+    }, 0);
   }
 
   function setShowMode(next: ShowMode) {
@@ -546,21 +562,23 @@ export default function MarathonReviewScreen() {
                           ]}
                           onPress={() => {
                             if (questionsOnly) {
-                              toggleReveal(item);
+                              handleQuestionPress(item);
                             } else {
                               rememberQuestion(item);
                             }
                           }}
                           onLongPress={
                             questionsOnly
-                              ? () => {
-                                  toggleReveal(item);
-                                }
+                              ? () => handleQuestionPress(item)
                               : () => rememberQuestion(item)
                           }
                           delayLongPress={350}
                         >
-                          <Text style={styles.number}>{item.number}.</Text>
+                          {pendingRevealId === item.id ? (
+                            <ActivityIndicator size="small" color={colors.primary} style={styles.numberSpinner} />
+                          ) : (
+                            <Text style={styles.number}>{item.number}.</Text>
+                          )}
                           <View style={styles.questionBody}>
                             <BookRichText html={text} style={styles.questionText} />
                             {showAnswer ? (
@@ -908,6 +926,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: colors.primary,
+    paddingTop: 1,
+  },
+  numberSpinner: {
+    width: 28,
     paddingTop: 1,
   },
   questionBody: {

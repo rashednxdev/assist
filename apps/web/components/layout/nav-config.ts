@@ -22,6 +22,7 @@ import {
   Bookmark,
   Database,
   Trash2,
+  CalendarClock,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -135,6 +136,8 @@ export const navGroups: NavGroup[] = [
       { href: '/questions/trash', label: 'Question trash', icon: Trash2, moduleCode: 'QUESTIONS', requireCreate: true },
       { href: '/exams/admin', label: 'Exam setup', icon: GraduationCap, moduleCode: 'EXAM', requireCreate: true },
       { href: '/papers/new', label: 'New paper', icon: FileText, moduleCode: 'PAPER', requireCreate: true },
+      { href: '/qotd/admin', label: 'Question of the Day', icon: HelpCircle, moduleCode: 'QOTD', requireCreate: true },
+      { href: '/exam-routine/admin', label: 'Exam Routine', icon: CalendarClock, moduleCode: 'EXAM_ROUTINE', requireCreate: true },
       { href: '/admin/setup/pension-leaves', label: 'Pension leave types', icon: Calculator, moduleCode: 'SETUP', requireCreate: true },
     ],
   },
@@ -147,6 +150,7 @@ export const navGroups: NavGroup[] = [
       { href: '/admin/setup/geography', label: 'Geography', icon: MapPin, moduleCode: 'SETUP', requireCreate: true },
       { href: '/admin/cache', label: 'Content cache', icon: Database, moduleCode: 'SETUP', requireCreate: true },
       { href: '/admin/audit', label: 'Audit log', icon: ScrollText, moduleCode: 'AUDIT', requireCreate: true },
+      { href: '/notifications/admin', label: 'Notifications', icon: Bell, moduleCode: 'NOTICE', requireCreate: true },
     ],
   },
 ];

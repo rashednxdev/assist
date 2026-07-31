@@ -35,12 +35,22 @@ async function serializeUser(user: InstanceType<typeof User>) {
 export async function listUsers(filters: {
   user_type?: string;
   status?: string;
+  q?: string;
   skip: number;
   limit: number;
 }) {
-  const query: Record<string, string> = {};
+  const query: Record<string, unknown> = {};
   if (filters.user_type) query.user_type = filters.user_type;
   if (filters.status) query.status = filters.status;
+  if (filters.q?.trim()) {
+    const q = filters.q.trim();
+    query.$or = [
+      { full_name_en: { $regex: q, $options: 'i' } },
+      { full_name_bn: { $regex: q, $options: 'i' } },
+      { email: { $regex: q, $options: 'i' } },
+      { phone: { $regex: q, $options: 'i' } },
+    ];
+  }
 
   const [items, total] = await Promise.all([
     User.find(query).sort({ created_at: -1 }).skip(filters.skip).limit(filters.limit),

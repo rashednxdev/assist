@@ -3,6 +3,7 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { Redirect, Stack } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
 import { syncQuestions } from '@/lib/questions-sync';
+import { registerForPushNotifications } from '@/lib/push-notifications';
 import { colors } from '@/theme';
 
 export default function AppLayout() {
@@ -13,6 +14,11 @@ export default function AppLayout() {
   useEffect(() => {
     if (!user) return;
     void syncQuestions();
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user) return;
+    void registerForPushNotifications();
   }, [user?.id]);
 
   if (loading) {
@@ -54,6 +60,7 @@ export default function AppLayout() {
         }}
       />
       <Stack.Screen name="saved" />
+      <Stack.Screen name="notifications" />
       <Stack.Screen name="books" />
       <Stack.Screen name="questions" />
       <Stack.Screen name="marathon" />
@@ -61,6 +68,8 @@ export default function AppLayout() {
       <Stack.Screen name="papers" />
       <Stack.Screen name="pension" />
       <Stack.Screen name="joining-period" />
+      <Stack.Screen name="qotd" />
+      <Stack.Screen name="exam-routine" />
     </Stack>
   );
 }

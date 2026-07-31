@@ -44,8 +44,8 @@ export default function LoginScreen() {
         <View style={styles.footer}>
           <Text style={styles.footerText}>New to ProAssist?</Text>
           <Link href="/(auth)/register" asChild>
-            <Pressable>
-              <Text style={styles.footerLink}>Create free account</Text>
+            <Pressable style={styles.footerLinkBtn}>
+              <Text style={styles.footerLink}>Create new account</Text>
             </Pressable>
           </Link>
         </View>
@@ -92,17 +92,25 @@ const styles = StyleSheet.create({
   },
   footer: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 8,
     marginTop: spacing.lg,
   },
   footerText: {
     color: 'rgba(255,255,255,0.55)',
     fontSize: 14,
   },
+  footerLinkBtn: {
+    borderWidth: 1.5,
+    borderColor: colors.goldLight,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
   footerLink: {
     color: colors.goldLight,
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '800',
   },
 });

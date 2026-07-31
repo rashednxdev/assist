@@ -23,6 +23,9 @@ import { evaluationRouter } from './domains/evaluation/evaluation.routes.js';
 import { pensionRouter } from './domains/pension/pension.routes.js';
 import { joiningPeriodRouter } from './domains/joining-period/joining-period.routes.js';
 import { contentCacheRouter } from './domains/content-cache/content-cache.routes.js';
+import { adminNotificationsRouter } from './domains/notifications/notifications.routes.js';
+import { qotdRouter } from './domains/qotd/qotd.routes.js';
+import { examRoutineRouter } from './domains/exam-routine/exam-routine.routes.js';
 
 export function createApp(): Application {
   const app = express();
@@ -71,6 +74,9 @@ export function createApp(): Application {
   app.use('/api/v1/pension', pensionRouter);
   app.use('/api/v1/joining-period', joiningPeriodRouter);
   app.use('/api/v1/admin/cache', contentCacheRouter);
+  app.use('/api/v1/admin-notifications', adminNotificationsRouter);
+  app.use('/api/v1/qotd', qotdRouter);
+  app.use('/api/v1/exam-routine', examRoutineRouter);
 
   app.use(errorHandler);
   return app;

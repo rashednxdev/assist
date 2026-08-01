@@ -67,3 +67,4 @@ export * from './notifications.js';
 export * from './qotd.js';
 export * from './exam-routine.js';
 export * from './user-questions.js';
+export * from './terms.js';

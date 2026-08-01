@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FormField } from '@/components/shared/form-field';
 import { Alert } from '@/components/ui/alert';
 import { AuthBrandPanel } from '@/components/auth/auth-brand-panel';
+import { TermsViewerModal } from '@/components/auth/terms-viewer-modal';
 import { registerRequest, setAccessToken } from '@/lib/auth';
 
 export default function RegisterPage() {
@@ -20,6 +21,8 @@ export default function RegisterPage() {
     password: '',
     confirm_password: '',
   });
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [termsOpen, setTermsOpen] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -30,6 +33,10 @@ export default function RegisterPage() {
       setError('Passwords do not match');
       return;
     }
+    if (!acceptedTerms) {
+      setError('You must accept the Terms & Conditions to register');
+      return;
+    }
     setLoading(true);
     try {
       const res = await registerRequest({
@@ -38,7 +45,7 @@ export default function RegisterPage() {
         password: form.password,
         confirm_password: form.confirm_password,
         user_type: 'applicant',
-        accept_terms: true,
+        accept_terms: acceptedTerms,
       });
       setAccessToken(res.data.tokens.accessToken);
       router.push('/');
@@ -110,8 +117,26 @@ export default function RegisterPage() {
                   />
                 </FormField>
               </div>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={acceptedTerms}
+                  onChange={(e) => setAcceptedTerms(e.target.checked)}
+                />
+                <span>
+                  I agree to the{' '}
+                  <button
+                    type="button"
+                    onClick={() => setTermsOpen(true)}
+                    className="font-medium text-primary hover:underline"
+                  >
+                    Terms &amp; Conditions
+                  </button>
+                </span>
+              </label>
               {error && <Alert variant="error">{error}</Alert>}
-              <Button type="submit" className="h-11 w-full" disabled={loading}>
+              <Button type="submit" className="h-11 w-full" disabled={loading || !acceptedTerms}>
                 {loading ? 'Creating account…' : 'Create account'}
               </Button>
               <p className="text-center text-sm text-muted">
@@ -124,6 +149,7 @@ export default function RegisterPage() {
           </CardContent>
         </Card>
       </div>
+      <TermsViewerModal open={termsOpen} onClose={() => setTermsOpen(false)} />
     </div>
   );
 }

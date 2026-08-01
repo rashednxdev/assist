@@ -88,7 +88,7 @@ function SectionBlock({ section }: { section: ExplanationSection }) {
   );
 }
 
-function StructuredSectionsPanel({
+export function StructuredSectionsPanel({
   heading,
   sections,
   variant = 'muted',

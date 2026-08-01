@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Link, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { AuthScreenShell } from '@/components/auth/AuthScreenShell';
 import { TextField } from '@/components/ui/TextField';
 import { Button } from '@/components/ui/Button';
+import { TermsViewerModal } from '@/components/auth/TermsViewerModal';
 import { register } from '@/lib/auth-api';
 import { useAuth } from '@/lib/auth-context';
 import { ApiError } from '@/lib/api';
@@ -20,6 +22,8 @@ export default function RegisterScreen() {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [termsVisible, setTermsVisible] = useState(false);
 
   function setField<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -43,6 +47,10 @@ export default function RegisterScreen() {
       setError('Passwords do not match.');
       return;
     }
+    if (!acceptedTerms) {
+      setError('You must accept the Terms & Conditions to register.');
+      return;
+    }
     setLoading(true);
     try {
       await register({
@@ -51,7 +59,7 @@ export default function RegisterScreen() {
         password: form.password,
         confirm_password: form.confirm_password,
         user_type: 'applicant',
-        accept_terms: true,
+        accept_terms: acceptedTerms,
       });
       await refreshUser();
       router.replace('/(app)/home');
@@ -108,13 +116,54 @@ export default function RegisterScreen() {
         placeholder="Repeat password"
       />
 
+      <Pressable
+        style={styles.termsRow}
+        onPress={() => setAcceptedTerms((v) => !v)}
+        hitSlop={6}
+      >
+        <Ionicons
+          name={acceptedTerms ? 'checkbox' : 'square-outline'}
+          size={22}
+          color={acceptedTerms ? colors.primary : colors.textMuted}
+        />
+        <Text style={styles.termsText}>
+          I agree to the{' '}
+          <Text style={styles.termsLink} onPress={() => setTermsVisible(true)}>
+            Terms &amp; Conditions
+          </Text>
+        </Text>
+      </Pressable>
+
       {error ? <Text style={styles.error}>{error}</Text> : null}
-      <Button title="Create account" onPress={handleRegister} loading={loading} />
+      <Button
+        title="Create account"
+        onPress={handleRegister}
+        loading={loading}
+        disabled={!acceptedTerms}
+      />
+
+      <TermsViewerModal visible={termsVisible} onClose={() => setTermsVisible(false)} />
     </AuthScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
+  termsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: spacing.xs,
+  },
+  termsText: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.text,
+    lineHeight: 19,
+  },
+  termsLink: {
+    color: colors.primary,
+    fontWeight: '700',
+  },
   error: {
     color: colors.error,
     fontSize: 14,

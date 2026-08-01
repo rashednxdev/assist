@@ -24,6 +24,7 @@ import {
   Trash2,
   CalendarClock,
   MessageSquarePlus,
+  FileCheck,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -153,6 +154,7 @@ export const navGroups: NavGroup[] = [
       { href: '/admin/cache', label: 'Content cache', icon: Database, moduleCode: 'SETUP', requireCreate: true },
       { href: '/admin/audit', label: 'Audit log', icon: ScrollText, moduleCode: 'AUDIT', requireCreate: true },
       { href: '/notifications/admin', label: 'Notifications', icon: Bell, moduleCode: 'NOTICE', requireCreate: true },
+      { href: '/admin/terms', label: 'Terms & Conditions', icon: FileCheck, moduleCode: 'SETUP', requireCreate: true },
     ],
   },
 ];

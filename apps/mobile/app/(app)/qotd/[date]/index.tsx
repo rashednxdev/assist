@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { BookLoading, BookError } from '@/components/books/BookStates';
-import { fetchQotdEntryDetail, type QotdEntryDetail } from '@/lib/qotd-api';
+import { BookLoading, BookEmpty, BookError } from '@/components/books/BookStates';
+import { fetchQotdDateDetail, type QotdDateDetail } from '@/lib/qotd-api';
 import { formatDateWithDay } from '@/lib/date-format';
 import { questionDetailHref } from '@/lib/question-routes';
 import { qotdColors } from '@/lib/qotd-theme';
@@ -13,49 +13,54 @@ function truncate(text: string, len = 140) {
   return text.length > len ? `${text.slice(0, len)}…` : text;
 }
 
-export default function QotdEntryDetailScreen() {
-  const { entryId } = useLocalSearchParams<{ entryId: string }>();
+export default function QotdDateDetailScreen() {
+  const { date } = useLocalSearchParams<{ date: string }>();
   const router = useRouter();
-  const [entry, setEntry] = useState<QotdEntryDetail | null>(null);
+  const [detail, setDetail] = useState<QotdDateDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!entryId) return;
+    if (!date) return;
     setLoading(true);
-    fetchQotdEntryDetail(entryId)
-      .then((res) => setEntry(res.data))
+    fetchQotdDateDetail(date)
+      .then((res) => setDetail(res.data))
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'))
       .finally(() => setLoading(false));
-  }, [entryId]);
+  }, [date]);
 
   if (loading) return <BookLoading />;
   if (error) return <BookError message={error} />;
-  if (!entry) return <BookError message="Entry not found" />;
+  if (!detail || detail.groups.length === 0) return <BookEmpty title="No questions for this date" />;
 
   return (
     <ScrollView contentContainerStyle={styles.list}>
-      <Text style={styles.subjectName}>{entry.subject_name}</Text>
-      <Text style={styles.dateLabel}>{formatDateWithDay(entry.date)}</Text>
-      {entry.questions.map((q, i) => (
-        <Pressable
-          key={q.id}
-          style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-          onPress={() => router.push(questionDetailHref(q.id))}
-        >
-          <View style={styles.numberWrap}>
-            <Text style={styles.numberText}>{i + 1}</Text>
-          </View>
-          <View style={styles.cardBody}>
-            <Text style={styles.title} numberOfLines={3}>
-              {truncate(q.body_en || q.body_bn || '')}
-            </Text>
-            <Text style={styles.sub}>
-              {q.question_type_code} · {q.marks}m{q.book_name ? ` · ${q.book_name}` : ''}
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={qotdColors.accent} />
-        </Pressable>
+      <Text style={styles.dateLabel}>{formatDateWithDay(detail.date)}</Text>
+
+      {detail.groups.map((group) => (
+        <View key={group.entry_id} style={styles.subjectBlock}>
+          <Text style={styles.subjectName}>{group.subject_name}</Text>
+          {group.questions.map((q, i) => (
+            <Pressable
+              key={q.id}
+              style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+              onPress={() => router.push(questionDetailHref(q.id))}
+            >
+              <View style={styles.numberWrap}>
+                <Text style={styles.numberText}>{i + 1}</Text>
+              </View>
+              <View style={styles.cardBody}>
+                <Text style={styles.title} numberOfLines={3}>
+                  {truncate(q.body_en || q.body_bn || '')}
+                </Text>
+                <Text style={styles.sub}>
+                  {q.question_type_code} · {q.marks}m{q.book_name ? ` · ${q.book_name}` : ''}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={qotdColors.accent} />
+            </Pressable>
+          ))}
+        </View>
       ))}
     </ScrollView>
   );
@@ -64,18 +69,23 @@ export default function QotdEntryDetailScreen() {
 const styles = StyleSheet.create({
   list: {
     padding: spacing.md,
-    gap: spacing.sm,
+    gap: spacing.lg,
     paddingBottom: spacing.xl,
   },
-  subjectName: {
+  dateLabel: {
     fontSize: 18,
     fontWeight: '800',
     color: qotdColors.accentDark,
   },
-  dateLabel: {
-    fontSize: 13,
-    color: colors.textMuted,
-    marginBottom: spacing.xs,
+  subjectBlock: {
+    gap: spacing.sm,
+  },
+  subjectName: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.text,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
   card: {
     flexDirection: 'row',

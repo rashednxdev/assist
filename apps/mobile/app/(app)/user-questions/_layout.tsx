@@ -1,7 +1,7 @@
 import { Stack } from 'expo-router';
 import { colors } from '@/theme';
 
-export default function QotdLayout() {
+export default function UserQuestionsLayout() {
   return (
     <Stack
       screenOptions={{
@@ -11,8 +11,8 @@ export default function QotdLayout() {
         headerBackTitle: '',
       }}
     >
-      <Stack.Screen name="index" options={{ title: 'Questions of the Day', headerBackTitle: 'Home' }} />
-      <Stack.Screen name="[date]/index" options={{ title: 'Questions', headerBackTitle: 'Dates' }} />
+      <Stack.Screen name="index" options={{ title: 'My Submitted Questions', headerBackTitle: 'Home' }} />
+      <Stack.Screen name="new" options={{ title: 'Submit a Question', headerBackTitle: 'Back' }} />
     </Stack>
   );
 }

@@ -20,8 +20,9 @@ const PLATFORM_MODULES = [
   { code: 'PENSION', name_en: 'Pension calculator', description_en: 'Government pension leave account and lamp grant', color: '#0e7490', sort_order: 21 },
   { code: 'QUESTION_EDIT', name_en: 'Question update (mobile)', description_en: 'Update existing questions/answers and move them between draft, quality check, and published from the mobile app — cannot create new questions', color: '#B45309', sort_order: 22 },
   { code: 'NOTICE', name_en: 'Notifications', description_en: 'Send broadcast or targeted push/in-app notifications to users', color: '#DC2626', sort_order: 23 },
-  { code: 'QOTD', name_en: 'Question of the Day', description_en: 'Daily subject-wise questions picked from the syllabus', color: '#0891B2', sort_order: 24 },
+  { code: 'QOTD', name_en: 'Questions of the Day', description_en: 'Daily subject-wise questions picked from the syllabus', color: '#0891B2', sort_order: 24 },
   { code: 'EXAM_ROUTINE', name_en: 'Exam Routine', description_en: 'Exam schedules with countdown and per-subject instructions', color: '#7C2D12', sort_order: 25 },
+  { code: 'USER_QUESTIONS', name_en: 'Submitted Questions', description_en: 'Questions submitted by users for admin review and answer', color: '#4D7C0F', sort_order: 26 },
 ];
 
 const MODULES = [

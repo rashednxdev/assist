@@ -23,6 +23,7 @@ import {
   Database,
   Trash2,
   CalendarClock,
+  MessageSquarePlus,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -136,8 +137,9 @@ export const navGroups: NavGroup[] = [
       { href: '/questions/trash', label: 'Question trash', icon: Trash2, moduleCode: 'QUESTIONS', requireCreate: true },
       { href: '/exams/admin', label: 'Exam setup', icon: GraduationCap, moduleCode: 'EXAM', requireCreate: true },
       { href: '/papers/new', label: 'New paper', icon: FileText, moduleCode: 'PAPER', requireCreate: true },
-      { href: '/qotd/admin', label: 'Question of the Day', icon: HelpCircle, moduleCode: 'QOTD', requireCreate: true },
+      { href: '/qotd/admin', label: 'Questions of the Day', icon: HelpCircle, moduleCode: 'QOTD', requireCreate: true },
       { href: '/exam-routine/admin', label: 'Exam Routine', icon: CalendarClock, moduleCode: 'EXAM_ROUTINE', requireCreate: true },
+      { href: '/user-questions/admin', label: 'Submitted Questions', icon: MessageSquarePlus, moduleCode: 'USER_QUESTIONS', requireCreate: true },
       { href: '/admin/setup/pension-leaves', label: 'Pension leave types', icon: Calculator, moduleCode: 'SETUP', requireCreate: true },
     ],
   },

@@ -15,9 +15,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { PerformanceCard } from '@/components/home/PerformanceCard';
 import { ModuleTile } from '@/components/home/ModuleTile';
+import { ExamCountdownCard } from '@/components/home/ExamCountdownCard';
 import { useAuth } from '@/lib/auth-context';
 import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
-import { hasLearningModule, type LearningModuleCode } from '@/lib/api';
+import { hasLearningModule } from '@/lib/api';
 import {
   fetchProgressDashboard,
   type ProgressDashboardData,
@@ -109,7 +110,7 @@ const MODULES: Array<{
   {
     id: 'qotd',
     code: 'QOTD' as const,
-    title: 'Question of the Day',
+    title: 'Questions of the Day',
     subtitle: 'Daily subject-wise questions',
     icon: 'calendar-outline' as const,
     color: qotdColors.accent,
@@ -136,19 +137,9 @@ export default function HomeScreen() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  const moduleAllowed = useCallback(
-    (grants: Parameters<typeof hasLearningModule>[0], code: LearningModuleCode) => {
-      if (code === 'BOOKS') {
-        return hasLearningModule(grants, 'BOOKS') || hasLearningModule(grants, 'OCR');
-      }
-      return hasLearningModule(grants, code);
-    },
-    [],
-  );
-
   const openModule = useCallback(
     async (module: (typeof MODULES)[number]) => {
-      if (moduleAllowed(user?.module_access ?? [], module.code)) {
+      if (hasLearningModule(user?.module_access ?? [], module.code)) {
         router.push(module.href);
         return;
       }
@@ -156,7 +147,7 @@ export default function HomeScreen() {
       setCheckingModuleId(module.id);
       try {
         const me = await refreshUser();
-        if (moduleAllowed(me.module_access ?? [], module.code)) {
+        if (hasLearningModule(me.module_access ?? [], module.code)) {
           router.push(module.href);
           return;
         }
@@ -170,7 +161,7 @@ export default function HomeScreen() {
         setCheckingModuleId(null);
       }
     },
-    [moduleAllowed, refreshUser, router, user?.module_access],
+    [refreshUser, router, user?.module_access],
   );
 
   const loadData = useCallback(async () => {
@@ -310,11 +301,12 @@ export default function HomeScreen() {
           onProgressPress={() => router.push('/(app)/progress' as Href)}
         />
 
+        <ExamCountdownCard />
+
         <Text style={styles.sectionTitle}>Learning modules</Text>
         <View style={styles.grid}>
           {MODULES.map((m) => {
-            const enabled =
-              m.code === 'BOOKS' ? canAccess('BOOKS') || canAccess('OCR') : canAccess(m.code);
+            const enabled = canAccess(m.code);
             // Question Update is an admin-approved facility, not a default learning module —
             // stay hidden entirely (not just disabled) until access is actually granted.
             if (m.code === 'QUESTION_EDIT' && !enabled) return null;
@@ -349,6 +341,27 @@ export default function HomeScreen() {
           </View>
           <Text style={styles.marathonChevron}>›</Text>
         </Pressable>
+
+        {canAccess('USER_QUESTIONS') && (
+          <>
+            <Text style={styles.sectionTitle}>Submit a Question</Text>
+            <Pressable
+              style={({ pressed }) => [styles.submitQCard, pressed && styles.marathonCardPressed]}
+              onPress={() => router.push('/(app)/user-questions' as Href)}
+            >
+              <View style={styles.submitQIcon}>
+                <Ionicons name="add-circle-outline" size={22} color={colors.white} />
+              </View>
+              <View style={styles.marathonText}>
+                <Text style={styles.marathonTitle}>Can&apos;t find a question?</Text>
+                <Text style={styles.marathonSub}>
+                  Submit it for a subject — an admin will review and answer it
+                </Text>
+              </View>
+              <Text style={styles.marathonChevron}>›</Text>
+            </Pressable>
+          </>
+        )}
 
         <Text style={styles.note}>
           This app includes User account features and Learning modules only. More screens will be
@@ -491,6 +504,24 @@ const styles = StyleSheet.create({
   },
   marathonCardPressed: {
     opacity: 0.92,
+  },
+  submitQCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+  },
+  submitQIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#4d7c0f',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   marathonIcon: {
     width: 44,

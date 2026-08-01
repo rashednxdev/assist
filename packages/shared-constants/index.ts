@@ -27,6 +27,7 @@ export const MODULE_CODES = [
   'NOTICE',
   'QOTD',
   'EXAM_ROUTINE',
+  'USER_QUESTIONS',
 ] as const;
 export type ModuleCode = (typeof MODULE_CODES)[number];
 

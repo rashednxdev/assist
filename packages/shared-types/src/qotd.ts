@@ -32,18 +32,10 @@ export type CreateQotdEntryDto = z.infer<typeof createQotdEntrySchema>;
 export type UpdateQotdEntryDto = z.infer<typeof updateQotdEntrySchema>;
 export type QotdSettingsDto = z.infer<typeof qotdSettingsSchema>;
 
-export interface QotdSubjectSummary {
-  exam_subject_id: string;
-  subject_name: string;
-  latest_date: string;
-}
-
-export interface QotdEntrySummary {
-  id: string;
-  exam_subject_id: string;
-  subject_name: string;
+/** One row in the date-first browse list — a single calendar day's worth of QOTD content. */
+export interface QotdDateSummary {
   date: string;
-  publish_time: string;
+  subject_count: number;
   question_count: number;
 }
 
@@ -56,11 +48,25 @@ export interface QotdQuestionItem {
   book_name?: string;
 }
 
-export interface QotdEntryDetail {
-  id: string;
+/** One subject's question set within a date — a date can have several of these. */
+export interface QotdSubjectGroup {
+  entry_id: string;
   exam_subject_id: string;
   subject_name: string;
-  date: string;
   publish_time: string;
   questions: QotdQuestionItem[];
+}
+
+export interface QotdDateDetail {
+  date: string;
+  groups: QotdSubjectGroup[];
+}
+
+/** Response shape for creating/updating a single subject's entry within a date. */
+export interface QotdEntryRecord {
+  id: string;
+  exam_subject_id: string;
+  date: string;
+  publish_time: string;
+  question_count: number;
 }

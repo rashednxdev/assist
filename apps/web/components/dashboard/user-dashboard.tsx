@@ -21,6 +21,7 @@ import { userDisplayName } from '@/lib/display-text';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { ExamRoutineCountdown } from '@/components/dashboard/exam-routine-countdown';
 import type { ProgressDashboardData } from '@/app/dashboard/page';
 
 interface WorkflowSummary {
@@ -187,6 +188,8 @@ export function UserDashboard({
           </CardContent>
         </Card>
       </div>
+
+      <ExamRoutineCountdown />
 
       {progress &&
         (progress.mcq.submitted > 0 ||

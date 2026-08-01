@@ -4,11 +4,11 @@ import { requireAdmin } from '../../middleware/requireAdmin.js';
 import { requireModuleAccess } from '../../middleware/requireModuleAccess.js';
 import { asyncHandler } from '../../shared/asyncHandler.js';
 import {
-  listSubjectsHandler,
-  listDatesForSubjectHandler,
-  getEntryDetailHandler,
+  listDatesHandler,
+  getDateDetailHandler,
+  listAdminDatesHandler,
+  getAdminDateDetailHandler,
   listSyllabusQuestionsHandler,
-  listAdminEntriesHandler,
   createEntryHandler,
   updateEntryHandler,
   deleteEntryHandler,
@@ -22,13 +22,13 @@ qotdRouter.use(authenticate);
 
 const readAccess = requireModuleAccess('QOTD');
 
-qotdRouter.get('/subjects', readAccess, asyncHandler(listSubjectsHandler));
-qotdRouter.get('/subjects/:subjectId/dates', readAccess, asyncHandler(listDatesForSubjectHandler));
-qotdRouter.get('/entries/:id', readAccess, asyncHandler(getEntryDetailHandler));
+qotdRouter.get('/dates', readAccess, asyncHandler(listDatesHandler));
+qotdRouter.get('/dates/:date', readAccess, asyncHandler(getDateDetailHandler));
 qotdRouter.get('/settings', readAccess, asyncHandler(getSettingsHandler));
 
+qotdRouter.get('/admin/dates', requireAdmin, asyncHandler(listAdminDatesHandler));
+qotdRouter.get('/admin/dates/:date', requireAdmin, asyncHandler(getAdminDateDetailHandler));
 qotdRouter.get('/subjects/:subjectId/questions', requireAdmin, asyncHandler(listSyllabusQuestionsHandler));
-qotdRouter.get('/admin/entries', requireAdmin, asyncHandler(listAdminEntriesHandler));
 qotdRouter.post('/entries', requireAdmin, asyncHandler(createEntryHandler));
 qotdRouter.patch('/entries/:id', requireAdmin, asyncHandler(updateEntryHandler));
 qotdRouter.delete('/entries/:id', requireAdmin, asyncHandler(deleteEntryHandler));

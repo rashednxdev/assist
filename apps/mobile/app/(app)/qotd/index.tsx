@@ -3,25 +3,25 @@ import { View, Text, StyleSheet, Pressable, ScrollView, RefreshControl } from 'r
 import { useRouter, useFocusEffect, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BookLoading, BookEmpty, BookError } from '@/components/books/BookStates';
-import { fetchQotdSubjects, type QotdSubjectSummary } from '@/lib/qotd-api';
+import { fetchQotdDates, type QotdDateSummary } from '@/lib/qotd-api';
 import { formatDateWithDay } from '@/lib/date-format';
 import { qotdColors } from '@/lib/qotd-theme';
 import { colors, spacing } from '@/theme';
 
-export default function QotdSubjectsScreen() {
+export default function QotdDatesScreen() {
   const router = useRouter();
-  const [subjects, setSubjects] = useState<QotdSubjectSummary[]>([]);
+  const [dates, setDates] = useState<QotdDateSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
     try {
-      const res = await fetchQotdSubjects();
-      setSubjects(res.data);
+      const res = await fetchQotdDates();
+      setDates(res.data);
       setError('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load subjects');
+      setError(err instanceof Error ? err.message : 'Failed to load dates');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -38,10 +38,10 @@ export default function QotdSubjectsScreen() {
 
   if (error) return <BookError message={error} />;
 
-  if (subjects.length === 0) {
+  if (dates.length === 0) {
     return (
       <BookEmpty
-        title="No Question of the Day content yet"
+        title="No Questions of the Day yet"
         subtitle="Check back once an admin publishes daily questions."
       />
     );
@@ -60,18 +60,21 @@ export default function QotdSubjectsScreen() {
         />
       }
     >
-      {subjects.map((s) => (
+      {dates.map((d) => (
         <Pressable
-          key={s.exam_subject_id}
+          key={d.date}
           style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-          onPress={() => router.push(`/(app)/qotd/${s.exam_subject_id}` as Href)}
+          onPress={() => router.push(`/(app)/qotd/${d.date}` as Href)}
         >
           <View style={styles.iconWrap}>
             <Ionicons name="calendar-outline" size={22} color={qotdColors.accent} />
           </View>
           <View style={styles.cardBody}>
-            <Text style={styles.title}>{s.subject_name}</Text>
-            <Text style={styles.sub}>Latest: {formatDateWithDay(s.latest_date)}</Text>
+            <Text style={styles.title}>{formatDateWithDay(d.date)}</Text>
+            <Text style={styles.sub}>
+              {d.subject_count} subject{d.subject_count === 1 ? '' : 's'} · {d.question_count} question
+              {d.question_count === 1 ? '' : 's'}
+            </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={qotdColors.accent} />
         </Pressable>

@@ -1,9 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { Plus, Trash2 } from 'lucide-react';
-import type { QotdEntrySummary } from '@ibas/shared-types';
+import { useRouter } from 'next/navigation';
+import type { QotdDateSummary } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,14 +11,17 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert } from '@/components/ui/alert';
 
-/** Question of the Day gets its own cool teal accent, distinct from the app's default blue. */
-const qotdButton = 'bg-teal-600 text-white hover:bg-teal-700';
-const qotdCard = 'border-teal-100';
+/** Questions of the Day gets its own cool emerald accent, distinct from the app's default blue. */
+const qotdButton = 'bg-emerald-600 text-white hover:bg-emerald-700';
+const qotdCard = 'border-emerald-100';
 
 export default function QotdAdminPage() {
-  const [entries, setEntries] = useState<QotdEntrySummary[]>([]);
+  const router = useRouter();
+  const [dates, setDates] = useState<QotdDateSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  const [newDate, setNewDate] = useState('');
 
   const [showPastDays, setShowPastDays] = useState(7);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -28,11 +30,11 @@ export default function QotdAdminPage() {
   async function load() {
     setLoading(true);
     try {
-      const [entriesRes, settingsRes] = await Promise.all([
-        apiFetch<{ data: QotdEntrySummary[] }>('/qotd/admin/entries?limit=100'),
+      const [datesRes, settingsRes] = await Promise.all([
+        apiFetch<{ data: QotdDateSummary[] }>('/qotd/admin/dates'),
         apiFetch<{ data: { show_past_days: number } }>('/qotd/settings'),
       ]);
-      setEntries(entriesRes.data);
+      setDates(datesRes.data);
       setShowPastDays(settingsRes.data.show_past_days);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
@@ -61,42 +63,16 @@ export default function QotdAdminPage() {
     }
   }
 
-  async function removeEntry(id: string) {
-    if (!confirm('Remove this Question of the Day entry?')) return;
-    try {
-      await apiFetch(`/qotd/entries/${id}`, { method: 'DELETE' });
-      setEntries((prev) => prev.filter((e) => e.id !== id));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Delete failed');
-    }
-  }
-
-  async function updatePublishTime(id: string, publishTime: string) {
-    setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, publish_time: publishTime } : e)));
-    try {
-      await apiFetch(`/qotd/entries/${id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ publish_time: publishTime }),
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update publish time');
-      await load();
-    }
+  function openDate(date: string) {
+    if (!date) return;
+    router.push(`/qotd/admin/${date}`);
   }
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Question of the Day"
-        description="Pick syllabus-linked questions for a subject and date; users browse them from that date backward."
-        action={
-          <Link href="/qotd/admin/new">
-            <Button type="button" size="sm" className={qotdButton}>
-              <Plus className="h-4 w-4" />
-              New entry
-            </Button>
-          </Link>
-        }
+        title="Questions of the Day"
+        description="Pick a date, then add one or more subjects' questions to it. Users browse by date first, seeing every subject's questions for that day."
       />
 
       {error && <Alert variant="error">{error}</Alert>}
@@ -104,7 +80,25 @@ export default function QotdAdminPage() {
       <Card className={qotdCard}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <span className="h-2.5 w-2.5 rounded-full bg-teal-500" />
+            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+            Open or start a date
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-end gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="new-date">Date</Label>
+            <Input id="new-date" type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
+          </div>
+          <Button type="button" className={qotdButton} disabled={!newDate} onClick={() => openDate(newDate)}>
+            Open date
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className={qotdCard}>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
             Visibility window
           </CardTitle>
         </CardHeader>
@@ -137,53 +131,30 @@ export default function QotdAdminPage() {
       <Card className={qotdCard}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <span className="h-2.5 w-2.5 rounded-full bg-teal-500" />
-            Entries
+            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+            Dates
           </CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
             <p className="text-sm text-muted">Loading...</p>
-          ) : entries.length === 0 ? (
-            <p className="text-sm text-muted">No entries yet.</p>
+          ) : dates.length === 0 ? (
+            <p className="text-sm text-muted">No dates yet — pick a date above to get started.</p>
           ) : (
             <div className="space-y-2">
-              {entries.map((e) => (
-                <div
-                  key={e.id}
-                  className="flex items-center justify-between gap-2 rounded-md border border-teal-100 bg-teal-50/40 p-3 text-sm"
+              {dates.map((d) => (
+                <button
+                  key={d.date}
+                  type="button"
+                  onClick={() => openDate(d.date)}
+                  className="flex w-full items-center justify-between gap-2 rounded-md border border-emerald-100 bg-emerald-50/40 p-3 text-left text-sm hover:bg-emerald-50"
                 >
-                  <div>
-                    <span className="font-medium text-teal-900">{e.date}</span>
-                    <span className="mx-2 text-muted">·</span>
-                    <span>{e.subject_name}</span>
-                    <span className="ml-2 text-xs text-muted">
-                      ({e.question_count} question{e.question_count === 1 ? '' : 's'})
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-1.5">
-                      <Label htmlFor={`publish-time-${e.id}`} className="text-xs text-muted">
-                        Publish
-                      </Label>
-                      <Input
-                        id={`publish-time-${e.id}`}
-                        type="time"
-                        value={e.publish_time}
-                        onChange={(ev) => void updatePublishTime(e.id, ev.target.value)}
-                        className="h-8 w-28 text-xs"
-                      />
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 shrink-0 px-2"
-                      onClick={() => void removeEntry(e.id)}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </div>
+                  <span className="font-medium text-emerald-900">{d.date}</span>
+                  <span className="text-xs text-muted">
+                    {d.subject_count} subject{d.subject_count === 1 ? '' : 's'} · {d.question_count} question
+                    {d.question_count === 1 ? '' : 's'}
+                  </span>
+                </button>
               ))}
             </div>
           )}

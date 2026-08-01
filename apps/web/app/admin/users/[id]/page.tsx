@@ -73,6 +73,21 @@ interface ActivityItem {
   created_at: string;
 }
 
+/** Mirrors LEARNING_MODULE_CODES in apps/mobile/src/lib/api.ts — the modules that actually gate
+ * mobile app screens, grouped first so an admin granting a regular user mobile access doesn't
+ * have to scan past office/admin-only modules to find them. */
+const MOBILE_MODULE_CODES = [
+  'BOOKS',
+  'QUESTIONS',
+  'EXAM',
+  'PAPER',
+  'OCR',
+  'PENSION',
+  'QUESTION_EDIT',
+  'QOTD',
+  'EXAM_ROUTINE',
+];
+
 const tabs: { id: Tab; label: string }[] = [
   { id: 'profile', label: 'Profile' },
   { id: 'roles', label: 'Workflow roles' },
@@ -472,63 +487,100 @@ export default function EditUserPage() {
         </Card>
       )}
 
-      {tab === 'access' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Module access</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {modules.map((mod) => {
-              const existing = moduleAccess.find((a) => a.module_id === mod._id);
-              const draft = accessDraft[mod._id] ?? existing ?? {
-                can_read: true,
-                can_create: false,
-                can_update: false,
-                can_delete: false,
-                can_grade: false,
-                can_publish: false,
-              };
-              const flags = ['can_read', 'can_create', 'can_update', 'can_delete', 'can_grade', 'can_publish'] as const;
+      {tab === 'access' &&
+        (() => {
+          const mobileModules = modules.filter((m) => MOBILE_MODULE_CODES.includes(m.code));
+          const otherModules = modules.filter((m) => !MOBILE_MODULE_CODES.includes(m.code));
 
-              return (
-                <div key={mod._id} className="rounded-lg border border-border p-4">
-                  <div className="mb-2 flex items-center justify-between">
-                    <div>
-                      <div className="font-medium">{mod.name_en}</div>
-                      <div className="text-xs text-muted">{mod.code}</div>
-                    </div>
-                    {existing && (
-                      <Button type="button" variant="outline" size="sm" onClick={() => revokeAccess(mod._id)}>
-                        Revoke
-                      </Button>
-                    )}
+          const renderModuleCard = (mod: ModuleItem) => {
+            const existing = moduleAccess.find((a) => a.module_id === mod._id);
+            const draft = accessDraft[mod._id] ?? existing ?? {
+              can_read: true,
+              can_create: false,
+              can_update: false,
+              can_delete: false,
+              can_grade: false,
+              can_publish: false,
+            };
+            const flags = ['can_read', 'can_create', 'can_update', 'can_delete', 'can_grade', 'can_publish'] as const;
+
+            return (
+              <div key={mod._id} className="rounded-lg border border-border p-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <div>
+                    <div className="font-medium">{mod.name_en}</div>
+                    <div className="text-xs text-muted">{mod.code}</div>
                   </div>
-                  <div className="mb-3 flex flex-wrap gap-3">
-                    {flags.map((flag) => (
-                      <label key={flag} className="flex items-center gap-1 text-xs capitalize">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(draft[flag])}
-                          onChange={(e) =>
-                            setAccessDraft((prev) => ({
-                              ...prev,
-                              [mod._id]: { ...draft, [flag]: e.target.checked },
-                            }))
-                          }
-                        />
-                        {flag.replace('can_', '')}
-                      </label>
-                    ))}
-                  </div>
-                  <Button type="button" size="sm" onClick={() => saveModuleAccess(mod._id)}>
-                    {existing ? 'Update access' : 'Grant access'}
-                  </Button>
+                  {existing && (
+                    <Button type="button" variant="outline" size="sm" onClick={() => revokeAccess(mod._id)}>
+                      Revoke
+                    </Button>
+                  )}
                 </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-      )}
+                <div className="mb-3 flex flex-wrap gap-3">
+                  {flags.map((flag) => (
+                    <label key={flag} className="flex items-center gap-1 text-xs capitalize">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(draft[flag])}
+                        onChange={(e) =>
+                          setAccessDraft((prev) => ({
+                            ...prev,
+                            [mod._id]: { ...draft, [flag]: e.target.checked },
+                          }))
+                        }
+                      />
+                      {flag.replace('can_', '')}
+                    </label>
+                  ))}
+                </div>
+                <Button type="button" size="sm" onClick={() => saveModuleAccess(mod._id)}>
+                  {existing ? 'Update access' : 'Grant access'}
+                </Button>
+              </div>
+            );
+          };
+
+          return (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    Mobile app access
+                    <span className="rounded-full bg-primary-muted px-2 py-0.5 text-xs font-medium text-primary-dark">
+                      {mobileModules.length}
+                    </span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {mobileModules.length === 0 ? (
+                    <p className="text-sm text-muted">No mobile modules found.</p>
+                  ) : (
+                    mobileModules.map(renderModuleCard)
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    Other modules
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+                      {otherModules.length}
+                    </span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {otherModules.length === 0 ? (
+                    <p className="text-sm text-muted">No other modules found.</p>
+                  ) : (
+                    otherModules.map(renderModuleCard)
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          );
+        })()}
 
       {tab === 'addresses' && (
         <Card>

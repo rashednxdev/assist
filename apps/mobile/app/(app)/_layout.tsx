@@ -70,6 +70,7 @@ export default function AppLayout() {
       <Stack.Screen name="joining-period" />
       <Stack.Screen name="qotd" />
       <Stack.Screen name="exam-routine" />
+      <Stack.Screen name="user-questions" />
     </Stack>
   );
 }

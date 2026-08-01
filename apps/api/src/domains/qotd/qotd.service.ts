@@ -50,6 +50,20 @@ export async function updateQotdSettings(showPastDays: number, updatedBy: string
   return { show_past_days: showPastDays };
 }
 
+/** Admins see every entry; regular users only see past days (within the window) and today's
+ * entries once their publish_time has arrived — future-dated entries are excluded by date alone. */
+async function visibilityFilter(isAdmin: boolean): Promise<Record<string, unknown>> {
+  if (isAdmin) return {};
+  const settings = await getQotdSettings();
+  const today = todayStr();
+  return {
+    $or: [
+      { date: { $gte: cutoffStr(settings.show_past_days), $lt: today } },
+      { date: today, publish_time: { $lte: nowTimeStr() } },
+    ],
+  };
+}
+
 /**
  * Walks a subject's syllabus tree and returns a Mongo match condition selecting every question
  * linked at or below the most specific level each reference points to (rule > chapter > book) —
@@ -138,11 +152,6 @@ export async function listSyllabusQuestions(
   };
 }
 
-async function subjectName(examSubjectId: string): Promise<string> {
-  const subject = await ExamSubject.findById(examSubjectId);
-  return subject?.name ?? 'Unknown subject';
-}
-
 export async function createQotdEntry(dto: CreateQotdEntryDto, createdBy: string) {
   const subject = await ExamSubject.findById(dto.exam_subject_id);
   if (!subject || !subject.is_active) throw notFound('Exam subject not found');
@@ -174,7 +183,7 @@ export async function createQotdEntry(dto: CreateQotdEntryDto, createdBy: string
     };
   } catch (err) {
     if (err instanceof mongoose.mongo.MongoServerError && err.code === 11000) {
-      throw badRequest('An entry already exists for this subject and date');
+      throw badRequest('This subject already has questions set for this date');
     }
     throw err;
   }
@@ -182,7 +191,7 @@ export async function createQotdEntry(dto: CreateQotdEntryDto, createdBy: string
 
 export async function updateQotdEntry(id: string, dto: UpdateQotdEntryDto) {
   const entry = await QotdEntry.findById(id);
-  if (!entry) throw notFound('Question of the Day entry not found');
+  if (!entry) throw notFound('Question entry not found');
 
   if (dto.question_ids) {
     const validCount = await Question.countDocuments({
@@ -210,87 +219,30 @@ export async function updateQotdEntry(id: string, dto: UpdateQotdEntryDto) {
 
 export async function deleteQotdEntry(id: string) {
   const entry = await QotdEntry.findById(id);
-  if (!entry) throw notFound('Question of the Day entry not found');
+  if (!entry) throw notFound('Question entry not found');
   entry.is_active = false;
   await entry.save();
   return { deleted: true };
 }
 
-export async function listAdminQotdEntries(limit: number, offset: number) {
-  const [entries, total] = await Promise.all([
-    QotdEntry.find({ is_active: true }).sort({ date: -1 }).skip(offset).limit(limit),
-    QotdEntry.countDocuments({ is_active: true }),
+export async function listQotdDates(isAdmin: boolean) {
+  const visibility = await visibilityFilter(isAdmin);
+  const rows = await QotdEntry.aggregate<{ _id: string; subject_count: number; question_count: number }>([
+    { $match: { is_active: true, ...visibility } },
+    {
+      $group: {
+        _id: '$date',
+        subject_count: { $sum: 1 },
+        question_count: { $sum: { $size: '$question_ids' } },
+      },
+    },
+    { $sort: { _id: -1 } },
   ]);
-  const items = await Promise.all(
-    entries.map(async (e) => ({
-      id: String(e._id),
-      exam_subject_id: String(e.exam_subject_id),
-      subject_name: await subjectName(String(e.exam_subject_id)),
-      date: e.date,
-      publish_time: e.publish_time,
-      question_count: e.question_ids.length,
-    })),
-  );
-  return { items, total };
+  return rows.map((r) => ({ date: r._id, subject_count: r.subject_count, question_count: r.question_count }));
 }
 
-export async function listDatesForSubject(examSubjectId: string, isAdmin: boolean) {
-  const subject = await ExamSubject.findById(examSubjectId);
-  if (!subject || !subject.is_active) throw notFound('Exam subject not found');
-
-  const query: Record<string, unknown> = { exam_subject_id: examSubjectId, is_active: true };
-  if (!isAdmin) {
-    const settings = await getQotdSettings();
-    const today = todayStr();
-    // Past days are fully visible once elapsed; today's entry additionally needs its
-    // publish_time to have arrived — future-dated entries are excluded by date alone.
-    query.$or = [
-      { date: { $gte: cutoffStr(settings.show_past_days), $lt: today } },
-      { date: today, publish_time: { $lte: nowTimeStr() } },
-    ];
-  }
-
-  const entries = await QotdEntry.find(query).sort({ date: -1 });
-  return entries.map((e) => ({
-    id: String(e._id),
-    exam_subject_id: String(e.exam_subject_id),
-    subject_name: subject.name,
-    date: e.date,
-    publish_time: e.publish_time,
-    question_count: e.question_ids.length,
-  }));
-}
-
-export async function listSubjectsWithEntries() {
-  const rows = await QotdEntry.aggregate<{ _id: mongoose.Types.ObjectId; latest_date: string }>([
-    { $match: { is_active: true } },
-    { $group: { _id: '$exam_subject_id', latest_date: { $max: '$date' } } },
-  ]);
-  const subjectIds = rows.map((r) => r._id);
-  const subjects = subjectIds.length > 0 ? await ExamSubject.find({ _id: { $in: subjectIds } }) : [];
-  const nameById = new Map(subjects.map((s) => [String(s._id), s.name]));
-  return rows
-    .map((r) => ({
-      exam_subject_id: String(r._id),
-      subject_name: nameById.get(String(r._id)) ?? 'Unknown subject',
-      latest_date: r.latest_date,
-    }))
-    .sort((a, b) => b.latest_date.localeCompare(a.latest_date));
-}
-
-export async function getQotdEntryDetail(id: string, isAdmin: boolean) {
-  const entry = await QotdEntry.findById(id);
-  if (!entry || !entry.is_active) throw notFound('Question of the Day entry not found');
-
-  if (!isAdmin) {
-    const today = todayStr();
-    const notYetPublished = entry.date === today && entry.publish_time > nowTimeStr();
-    if (entry.date > today || notYetPublished) {
-      throw notFound('Question of the Day entry not found');
-    }
-  }
-
-  const questions = await Question.find({ _id: { $in: entry.question_ids } });
+async function resolveQuestionItems(questionIds: (mongoose.Types.ObjectId | string)[]) {
+  const questions = await Question.find({ _id: { $in: questionIds } });
   const chapterIds = [...new Set(questions.map((q) => q.book_chapter_id).filter(Boolean))].map(String);
   const chapters = chapterIds.length > 0 ? await BookChapter.find({ _id: { $in: chapterIds } }) : [];
   const bookIds = [...new Set(chapters.map((c) => String(c.book_info_id)))];
@@ -299,24 +251,45 @@ export async function getQotdEntryDetail(id: string, isAdmin: boolean) {
   const bookNameByChapter = new Map(
     chapters.map((c) => [String(c._id), books.find((b) => String(b._id) === String(c.book_info_id))?.name]),
   );
-  const questionById = new Map(questions.map((q) => [String(q._id), q]));
+  const byId = new Map(questions.map((q) => [String(q._id), q]));
+  return { byId, bookNameByChapter };
+}
 
-  return {
-    id: String(entry._id),
-    exam_subject_id: String(entry.exam_subject_id),
-    subject_name: await subjectName(String(entry.exam_subject_id)),
-    date: entry.date,
-    publish_time: entry.publish_time,
-    questions: entry.question_ids
-      .map((qid) => questionById.get(String(qid)))
-      .filter((q): q is NonNullable<typeof q> => Boolean(q))
-      .map((q) => ({
-        id: String(q._id),
-        body_en: q.body_en,
-        body_bn: q.body_bn,
-        question_type_code: q.question_type_code,
-        marks: q.marks,
-        book_name: q.book_chapter_id ? bookNameByChapter.get(String(q.book_chapter_id)) : undefined,
-      })),
-  };
+export async function getEntriesForDate(date: string, isAdmin: boolean) {
+  const visibility = await visibilityFilter(isAdmin);
+  const entries = await QotdEntry.find({ is_active: true, date, ...visibility });
+
+  if (entries.length === 0) {
+    if (isAdmin) return { date, groups: [] };
+    throw notFound('No questions found for this date');
+  }
+
+  const subjectIds = [...new Set(entries.map((e) => String(e.exam_subject_id)))];
+  const subjects = await ExamSubject.find({ _id: { $in: subjectIds } });
+  const nameById = new Map(subjects.map((s) => [String(s._id), s.name]));
+
+  const allQuestionIds = entries.flatMap((e) => e.question_ids);
+  const { byId, bookNameByChapter } = await resolveQuestionItems(allQuestionIds);
+
+  const groups = entries
+    .map((e) => ({
+      entry_id: String(e._id),
+      exam_subject_id: String(e.exam_subject_id),
+      subject_name: nameById.get(String(e.exam_subject_id)) ?? 'Unknown subject',
+      publish_time: e.publish_time,
+      questions: e.question_ids
+        .map((qid) => byId.get(String(qid)))
+        .filter((q): q is NonNullable<typeof q> => Boolean(q))
+        .map((q) => ({
+          id: String(q._id),
+          body_en: q.body_en,
+          body_bn: q.body_bn,
+          question_type_code: q.question_type_code,
+          marks: q.marks,
+          book_name: q.book_chapter_id ? bookNameByChapter.get(String(q.book_chapter_id)) : undefined,
+        })),
+    }))
+    .sort((a, b) => a.subject_name.localeCompare(b.subject_name));
+
+  return { date, groups };
 }

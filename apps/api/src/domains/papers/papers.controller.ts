@@ -12,9 +12,14 @@ import {
   batchAddPaperQuestionsSchema,
   createChildQuestionSchema,
   updateChildQuestionSchema,
+  publishExamWeekSchema,
 } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
 import * as papersService from './papers.service.js';
+
+function isAdminUser(user: AuthRequest['user']): boolean {
+  return !!user && (user.is_super_admin || user.user_type === 'system_admin' || user.user_type === 'admin');
+}
 
 export async function listPaperTypesHandler(_req: AuthRequest, res: Response): Promise<void> {
   res.json({ data: await papersService.listPaperTypes() });
@@ -70,6 +75,29 @@ export async function publishPaperHandler(req: AuthRequest, res: Response): Prom
 
 export async function unpublishPaperHandler(req: AuthRequest, res: Response): Promise<void> {
   res.json({ data: await papersService.unpublishPaper(String(req.params.id)) });
+}
+
+export async function publishPaperExamWeekHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = publishExamWeekSchema.parse(req.body);
+  const data = await papersService.publishPaperExamWeek(
+    String(req.params.id),
+    dto.exam_week_date,
+    dto.exam_week_publish_time,
+  );
+  res.json({ data });
+}
+
+export async function unpublishPaperExamWeekHandler(req: AuthRequest, res: Response): Promise<void> {
+  res.json({ data: await papersService.unpublishPaperExamWeek(String(req.params.id)) });
+}
+
+export async function listExamWeeksHandler(req: AuthRequest, res: Response): Promise<void> {
+  res.json({ data: await papersService.listExamWeeks(isAdminUser(req.user)) });
+}
+
+export async function getExamWeekPapersHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await papersService.listExamWeekPapersInWeek(String(req.params.weekStart), isAdminUser(req.user));
+  res.json({ data });
 }
 
 export async function createPaperGroupHandler(req: AuthRequest, res: Response): Promise<void> {

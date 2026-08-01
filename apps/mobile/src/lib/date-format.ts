@@ -45,18 +45,6 @@ export function normalizeToIsoDate(value: string): IsoDate | null {
   return `${m[3]}-${m[2]}-${m[1]}`;
 }
 
-/** e.g. "Mon, 12 Aug 2026" — for a YYYY-MM-DD calendar date. */
-export function formatDateWithDay(iso: string): string {
-  const date = parseIsoDate(iso);
-  if (!date) return iso;
-  return date.toLocaleDateString(undefined, {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-}
-
 /** e.g. "Monday" — for a YYYY-MM-DD calendar date. */
 export function formatDayName(iso: string): string {
   const date = parseIsoDate(iso);

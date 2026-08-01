@@ -27,6 +27,7 @@ interface PaperItem {
   duration_minutes: number;
   instructions?: string;
   is_published: boolean;
+  is_exam_of_week: boolean;
   exam_subject_name?: string;
   exam_short_name?: string;
   exam_name_id?: string;
@@ -556,6 +557,7 @@ export default function PapersPage() {
                   <Badge variant={p.is_published ? 'default' : 'outline'}>
                     {p.is_published ? 'Published' : 'Draft'}
                   </Badge>
+                  {p.is_exam_of_week && <Badge className="bg-red-600 text-white">Exam of the Week</Badge>}
                   {isAdmin && (
                     <div className="flex items-center gap-1">
                       <Button type="button" size="sm" variant="ghost" className="h-7 px-2" onClick={() => openEdit(p)}>

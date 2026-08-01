@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { Plus, Trash2 } from 'lucide-react';
 import type { QotdDateDetail, QotdQuestionItem } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
+import { formatDdMmYyyy } from '@/lib/date-display';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -220,7 +221,11 @@ export default function QotdDatePage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title={date} description="Questions of the Day for this date" backHref="/qotd/admin" />
+      <PageHeader
+        title={formatDdMmYyyy(date)}
+        description="Questions of the Day for this date"
+        backHref="/qotd/admin"
+      />
 
       {error && <Alert variant="error">{error}</Alert>}
 
@@ -344,7 +349,7 @@ export default function QotdDatePage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-            Subjects for {date} ({detail.groups.length})
+            Subjects for {formatDdMmYyyy(date)} ({detail.groups.length})
           </CardTitle>
         </CardHeader>
         <CardContent>

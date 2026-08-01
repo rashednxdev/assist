@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { BookLoading, BookError } from '@/components/books/BookStates';
 import { BookRichText } from '@/components/books/BookRichText';
 import { fetchExamRoutineByExamName, type ExamRoutineDetail } from '@/lib/exam-routine-api';
-import { formatDateWithDay, formatDayName, parseIsoDate } from '@/lib/date-format';
+import { formatDdMmYyyy, formatDayName, parseIsoDate } from '@/lib/date-format';
 import { colors, spacing } from '@/theme';
 
 function daysUntil(iso: string): number {
@@ -43,7 +43,7 @@ export default function ExamRoutineDetailScreen() {
     <ScrollView contentContainerStyle={styles.list}>
       <View style={styles.header}>
         <Text style={styles.examName}>{routine.exam_name}</Text>
-        <Text style={styles.startLabel}>Starts {formatDateWithDay(routine.start_date)}</Text>
+        <Text style={styles.startLabel}>Starts {formatDdMmYyyy(routine.start_date)}</Text>
         <View style={styles.countdownWrap}>
           <Text style={styles.countdownNumber}>{Math.abs(days)}</Text>
           <Text style={styles.countdownUnit}>
@@ -68,7 +68,7 @@ export default function ExamRoutineDetailScreen() {
                 <View style={styles.cardBody}>
                   <Text style={styles.subjectName}>{e.subject_name}</Text>
                   <Text style={styles.subjectMeta}>
-                    {formatDayName(e.date)}, {e.date} · {e.time}
+                    {formatDayName(e.date)}, {formatDdMmYyyy(e.date)} · {e.time}
                   </Text>
                 </View>
                 {e.instruction && (

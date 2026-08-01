@@ -9,6 +9,8 @@ interface ModuleTileProps {
   color: string;
   enabled: boolean;
   checking?: boolean;
+  /** Short inspirational message shown as a speech bubble just right of the icon. */
+  badgeText?: string;
   onPress: () => void;
 }
 
@@ -19,6 +21,7 @@ export function ModuleTile({
   color,
   enabled,
   checking = false,
+  badgeText,
   onPress,
 }: ModuleTileProps) {
   return (
@@ -27,12 +30,22 @@ export function ModuleTile({
       onPress={onPress}
       disabled={checking}
     >
-      <View style={[styles.iconWrap, { backgroundColor: `${color}22` }]}>
-        {checking ? (
-          <ActivityIndicator size="small" color={color} />
-        ) : (
-          <Ionicons name={icon} size={26} color={color} />
-        )}
+      <View style={styles.topRow}>
+        <View style={[styles.iconWrap, { backgroundColor: `${color}22` }]}>
+          {checking ? (
+            <ActivityIndicator size="small" color={color} />
+          ) : (
+            <Ionicons name={icon} size={26} color={color} />
+          )}
+        </View>
+        {badgeText ? (
+          <View style={styles.speechBubble}>
+            <View style={styles.speechTail} />
+            <Text style={styles.speechText} numberOfLines={2}>
+              {badgeText}
+            </Text>
+          </View>
+        ) : null}
       </View>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.subtitle}>{subtitle}</Text>
@@ -59,12 +72,47 @@ const styles = StyleSheet.create({
     opacity: 0.9,
     transform: [{ scale: 0.98 }],
   },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   iconWrap: {
     width: 44,
     height: 44,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  speechBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 1,
+    marginLeft: 10,
+    backgroundColor: '#fffbeb',
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  speechTail: {
+    position: 'absolute',
+    left: -4,
+    top: '50%',
+    marginTop: -4,
+    width: 8,
+    height: 8,
+    backgroundColor: '#fffbeb',
+    borderLeftWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#fde68a',
+    transform: [{ rotate: '45deg' }],
+  },
+  speechText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#92400e',
+    flexShrink: 1,
   },
   title: {
     fontSize: 15,

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { QotdDateSummary } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
+import { formatDdMmYyyy } from '@/lib/date-display';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -149,7 +150,7 @@ export default function QotdAdminPage() {
                   onClick={() => openDate(d.date)}
                   className="flex w-full items-center justify-between gap-2 rounded-md border border-emerald-100 bg-emerald-50/40 p-3 text-left text-sm hover:bg-emerald-50"
                 >
-                  <span className="font-medium text-emerald-900">{d.date}</span>
+                  <span className="font-medium text-emerald-900">{formatDdMmYyyy(d.date)}</span>
                   <span className="text-xs text-muted">
                     {d.subject_count} subject{d.subject_count === 1 ? '' : 's'} · {d.question_count} question
                     {d.question_count === 1 ? '' : 's'}

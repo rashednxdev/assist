@@ -25,11 +25,22 @@ import {
 } from '@/lib/evaluation-api';
 import { fetchMyNotifications } from '@/lib/notifications-api';
 import { qotdColors } from '@/lib/qotd-theme';
+import { examWeekColors } from '@/lib/exam-week-theme';
+import { getInspirationMessage } from '@/lib/inspiration-message';
 import { colors, spacing } from '@/theme';
 
 const MODULES: Array<{
   id: string;
-  code: 'BOOKS' | 'QUESTIONS' | 'EXAM' | 'PAPER' | 'PENSION' | 'QUESTION_EDIT' | 'QOTD' | 'EXAM_ROUTINE';
+  code:
+    | 'BOOKS'
+    | 'QUESTIONS'
+    | 'EXAM'
+    | 'PAPER'
+    | 'PENSION'
+    | 'QUESTION_EDIT'
+    | 'QOTD'
+    | 'EXAM_ROUTINE'
+    | 'EXAM_WEEK';
   title: string;
   subtitle: string;
   icon:
@@ -40,27 +51,28 @@ const MODULES: Array<{
     | 'calculator-outline'
     | 'create-outline'
     | 'calendar-outline'
-    | 'time-outline';
+    | 'time-outline'
+    | 'trophy-outline';
   color: string;
   href: Href;
 }> = [
   {
     id: 'books',
     code: 'BOOKS' as const,
-    title: 'Books and Tools',
+    title: 'Books & Tools',
     subtitle: 'Books & regulatory tools',
     icon: 'library-outline' as const,
     color: '#0f5c8c',
     href: '/(app)/books',
   },
   {
-    id: 'questions',
-    code: 'QUESTIONS' as const,
-    title: 'Question Bank',
-    subtitle: 'Browse & practice questions',
-    icon: 'help-circle-outline' as const,
-    color: '#7c3aed',
-    href: '/(app)/questions',
+    id: 'paper',
+    code: 'PAPER' as const,
+    title: 'Practice Papers',
+    subtitle: 'Session-wise model papers',
+    icon: 'document-text-outline' as const,
+    color: '#d97706',
+    href: '/(app)/papers',
   },
   {
     id: 'exam',
@@ -72,13 +84,31 @@ const MODULES: Array<{
     href: '/(app)/exams',
   },
   {
-    id: 'paper',
-    code: 'PAPER' as const,
-    title: 'Practice Papers',
-    subtitle: 'Session-wise model papers',
-    icon: 'document-text-outline' as const,
-    color: '#d97706',
-    href: '/(app)/papers',
+    id: 'questions',
+    code: 'QUESTIONS' as const,
+    title: 'Question Bank',
+    subtitle: 'Browse & practice questions',
+    icon: 'help-circle-outline' as const,
+    color: '#7c3aed',
+    href: '/(app)/questions',
+  },
+  {
+    id: 'qotd',
+    code: 'QOTD' as const,
+    title: 'Questions of the Day',
+    subtitle: 'Daily subject-wise questions',
+    icon: 'calendar-outline' as const,
+    color: qotdColors.accent,
+    href: '/(app)/qotd' as Href,
+  },
+  {
+    id: 'exam-week',
+    code: 'EXAM_WEEK' as const,
+    title: 'Exams of the Week',
+    subtitle: 'Featured practice papers, by week',
+    icon: 'trophy-outline' as const,
+    color: examWeekColors.accent,
+    href: '/(app)/exam-week' as Href,
   },
   {
     id: 'pension',
@@ -99,24 +129,6 @@ const MODULES: Array<{
     href: '/(app)/joining-period' as Href,
   },
   {
-    id: 'question-update',
-    code: 'QUESTION_EDIT' as const,
-    title: 'Question Update',
-    subtitle: 'Review & edit questions and answers',
-    icon: 'create-outline' as const,
-    color: '#B45309',
-    href: '/(app)/question-update' as Href,
-  },
-  {
-    id: 'qotd',
-    code: 'QOTD' as const,
-    title: 'Questions of the Day',
-    subtitle: 'Daily subject-wise questions',
-    icon: 'calendar-outline' as const,
-    color: qotdColors.accent,
-    href: '/(app)/qotd' as Href,
-  },
-  {
     id: 'exam-routine',
     code: 'EXAM_ROUTINE' as const,
     title: 'Exam Routine',
@@ -124,6 +136,15 @@ const MODULES: Array<{
     icon: 'time-outline' as const,
     color: '#7c2d12',
     href: '/(app)/exam-routine' as Href,
+  },
+  {
+    id: 'question-update',
+    code: 'QUESTION_EDIT' as const,
+    title: 'Question Update',
+    subtitle: 'Review & edit questions and answers',
+    icon: 'create-outline' as const,
+    color: '#B45309',
+    href: '/(app)/question-update' as Href,
   },
 ];
 
@@ -310,6 +331,7 @@ export default function HomeScreen() {
             // Question Update is an admin-approved facility, not a default learning module —
             // stay hidden entirely (not just disabled) until access is actually granted.
             if (m.code === 'QUESTION_EDIT' && !enabled) return null;
+            const showInspiration = m.code === 'QOTD' || m.code === 'EXAM_WEEK';
             return (
               <ModuleTile
                 key={m.id}
@@ -319,6 +341,7 @@ export default function HomeScreen() {
                 color={m.color}
                 enabled={enabled}
                 checking={checkingModuleId === m.id}
+                badgeText={showInspiration ? getInspirationMessage(m.id) : undefined}
                 onPress={() => void openModule(m)}
               />
             );

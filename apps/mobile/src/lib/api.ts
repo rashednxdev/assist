@@ -80,6 +80,7 @@ export const LEARNING_MODULE_CODES = [
   'QOTD',
   'EXAM_ROUTINE',
   'USER_QUESTIONS',
+  'EXAM_WEEK',
 ] as const;
 
 export type LearningModuleCode = (typeof LEARNING_MODULE_CODES)[number];

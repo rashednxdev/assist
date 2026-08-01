@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { Plus, Trash2 } from 'lucide-react';
 import type { ExamRoutineDetail } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
+import { formatDdMmYyyy } from '@/lib/date-display';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -207,7 +208,7 @@ export default function ExamRoutineDetailPage() {
                     <div>
                       <span className="font-medium">{e.subject_name}</span>
                       <span className="ml-2 text-xs text-muted">
-                        {e.date} · {e.time}
+                        {formatDdMmYyyy(e.date)} · {e.time}
                       </span>
                     </div>
                     <Button

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ExternalLink } from 'lucide-react';
 import type { AdminSubmittedQuestionRecord } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
+import { formatDateTimeDdMmYyyy } from '@/lib/date-display';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -183,7 +184,7 @@ export default function UserQuestionsAdminPage() {
                     <p className="mt-1 text-xs text-muted">Note: {row.admin_note}</p>
                   )}
                   <p className="mt-1 text-xs text-muted">
-                    {new Date(row.created_at).toLocaleString()}
+                    {formatDateTimeDdMmYyyy(row.created_at)}
                   </p>
 
                   {row.status === 'pending' && (

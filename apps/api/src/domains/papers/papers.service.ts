@@ -12,9 +12,10 @@ import type {
   BatchAddPaperQuestionsDto,
   CreateChildQuestionDto,
   UpdateChildQuestionDto,
+  ExamWeekSummary,
 } from '@ibas/shared-types';
 import { PaperType } from './models/PaperType.model.js';
-import { PaperDetail } from './models/PaperDetail.model.js';
+import { PaperDetail, type IPaperDetail } from './models/PaperDetail.model.js';
 import { PaperGroup } from './models/PaperGroup.model.js';
 import { PaperQuestion } from './models/PaperQuestion.model.js';
 import { ChildQuestion } from './models/ChildQuestion.model.js';
@@ -31,6 +32,53 @@ function idStr(v: mongoose.Types.ObjectId | string | undefined) {
   return v ? String(v) : undefined;
 }
 
+// Server-local wall clock throughout (not UTC) — matches the convention already established for
+// Question of the Day and Exam Routine's own publish_time gating.
+function pad(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+function dateToStr(d: Date): string {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function todayStr(): string {
+  return dateToStr(new Date());
+}
+
+function nowTimeStr(): string {
+  const d = new Date();
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function parseDateStr(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y!, (m ?? 1) - 1, d ?? 1);
+}
+
+/** Monday on/before the given date — the start of its ISO-style calendar week. */
+function weekStartFor(dateStr: string): string {
+  const date = parseDateStr(dateStr);
+  const day = date.getDay(); // 0=Sun..6=Sat
+  const diff = day === 0 ? -6 : 1 - day;
+  date.setDate(date.getDate() + diff);
+  return dateToStr(date);
+}
+
+function weekEndFor(weekStart: string): string {
+  const date = parseDateStr(weekStart);
+  date.setDate(date.getDate() + 6);
+  return dateToStr(date);
+}
+
+function isExamWeekVisibleNow(paper: Pick<IPaperDetail, 'is_exam_of_week' | 'exam_week_date' | 'exam_week_publish_time'>): boolean {
+  if (!paper.is_exam_of_week || !paper.exam_week_date) return false;
+  const today = todayStr();
+  if (paper.exam_week_date < today) return true;
+  if (paper.exam_week_date === today) return (paper.exam_week_publish_time ?? '00:00') <= nowTimeStr();
+  return false;
+}
+
 async function assertPublishedQuestion(questionId: string) {
   const q = await Question.findById(questionId);
   if (!q || !q.is_active) throw notFound('Question not found');
@@ -43,9 +91,10 @@ function isPlatformAdmin(user?: Pick<AuthUser, 'is_super_admin' | 'user_type'>) 
 }
 
 function assertPaperReadable(paper: InstanceType<typeof PaperDetail>, user?: AuthUser) {
-  if (!paper.is_published && !isPlatformAdmin(user)) {
-    throw forbidden('Only published papers are available');
-  }
+  if (paper.is_published) return;
+  if (isExamWeekVisibleNow(paper)) return;
+  if (isPlatformAdmin(user)) return;
+  throw forbidden('Only published papers are available');
 }
 
 async function assertPaperComboUnique(
@@ -74,7 +123,7 @@ async function assertPaperComboUnique(
 async function getPaperOrThrow(id: string, requireUnpublished = false) {
   const paper = await PaperDetail.findById(id);
   if (!paper || !paper.is_active) throw notFound('Paper not found');
-  if (requireUnpublished && paper.is_published) {
+  if (requireUnpublished && (paper.is_published || paper.is_exam_of_week)) {
     throw badRequest('Published papers cannot be modified');
   }
   return paper;
@@ -145,6 +194,9 @@ function serializePaper(
     duration_minutes: p.duration_minutes,
     instructions: p.instructions,
     is_published: p.is_published,
+    is_exam_of_week: p.is_exam_of_week,
+    exam_week_date: p.exam_week_date,
+    exam_week_publish_time: p.exam_week_publish_time,
     is_active: p.is_active,
     created_by: String(p.created_by),
     created_at: p.created_at,
@@ -511,6 +563,81 @@ export async function unpublishPaper(id: string) {
   paper.is_published = false;
   await paper.save();
   return getPaperById(id);
+}
+
+export async function publishPaperExamWeek(id: string, examWeekDate: string, examWeekPublishTime?: string) {
+  const paper = await getPaperOrThrow(id);
+  await validatePaperForPublish(paper);
+  paper.is_exam_of_week = true;
+  paper.exam_week_date = examWeekDate;
+  paper.exam_week_publish_time = examWeekPublishTime ?? '00:00';
+  await paper.save();
+  return getPaperById(id);
+}
+
+export async function unpublishPaperExamWeek(id: string) {
+  const paper = await getPaperOrThrow(id);
+  paper.is_exam_of_week = false;
+  await paper.save();
+  return getPaperById(id);
+}
+
+async function listVisibleExamWeekPapers(isAdmin: boolean) {
+  const query: Record<string, unknown> = { is_exam_of_week: true, is_active: true };
+  if (!isAdmin) {
+    const today = todayStr();
+    query.$or = [
+      { exam_week_date: { $lt: today } },
+      { exam_week_date: today, exam_week_publish_time: { $lte: nowTimeStr() } },
+    ];
+  }
+  return PaperDetail.find(query).sort({ exam_week_date: -1 });
+}
+
+export async function listExamWeeks(isAdmin: boolean): Promise<ExamWeekSummary[]> {
+  const papers = await listVisibleExamWeekPapers(isAdmin);
+  const buckets = new Map<string, ExamWeekSummary>();
+  for (const p of papers) {
+    if (!p.exam_week_date) continue;
+    const week_start = weekStartFor(p.exam_week_date);
+    const existing = buckets.get(week_start);
+    if (existing) existing.paper_count += 1;
+    else buckets.set(week_start, { week_start, week_end: weekEndFor(week_start), paper_count: 1 });
+  }
+  return [...buckets.values()].sort((a, b) => b.week_start.localeCompare(a.week_start));
+}
+
+export async function listExamWeekPapersInWeek(weekStart: string, isAdmin: boolean) {
+  const weekEnd = weekEndFor(weekStart);
+  const papers = (await listVisibleExamWeekPapers(isAdmin)).filter(
+    (p) => p.exam_week_date && p.exam_week_date >= weekStart && p.exam_week_date <= weekEnd,
+  );
+
+  const typeIds = [...new Set(papers.map((p) => String(p.paper_type_id)))];
+  const sessionIds = [...new Set(papers.map((p) => String(p.exam_session_id)).filter((id) => id !== 'undefined'))];
+  const [types, sessions] = await Promise.all([
+    PaperType.find({ _id: { $in: typeIds } }),
+    ExamSession.find({ _id: { $in: sessionIds } }),
+  ]);
+  const typeMap = new Map(types.map((t) => [String(t._id), t]));
+  const sessionMap = new Map(sessions.map((s) => [String(s._id), s]));
+
+  return Promise.all(
+    papers.map(async (p) => {
+      const subjectInfo = await enrichSubject(p.exam_subject_id);
+      const type = typeMap.get(String(p.paper_type_id));
+      const session = p.exam_session_id ? sessionMap.get(String(p.exam_session_id)) : null;
+      const questionCount = await PaperQuestion.countDocuments({ paper_id: p._id, is_active: true });
+      return serializePaper(p, {
+        ...subjectInfo,
+        session_label_en: session?.label_en,
+        session_label_bn: session?.label_bn,
+        paper_type_name: type?.name,
+        paper_type_code: type?.code,
+        question_count: questionCount,
+      });
+    }),
+  );
 }
 
 // --- Paper groups ---

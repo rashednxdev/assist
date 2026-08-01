@@ -23,6 +23,7 @@ const PLATFORM_MODULES = [
   { code: 'QOTD', name_en: 'Questions of the Day', description_en: 'Daily subject-wise questions picked from the syllabus', color: '#0891B2', sort_order: 24 },
   { code: 'EXAM_ROUTINE', name_en: 'Exam Routine', description_en: 'Exam schedules with countdown and per-subject instructions', color: '#7C2D12', sort_order: 25 },
   { code: 'USER_QUESTIONS', name_en: 'Submitted Questions', description_en: 'Questions submitted by users for admin review and answer', color: '#4D7C0F', sort_order: 26 },
+  { code: 'EXAM_WEEK', name_en: 'Exams of the Week', description_en: 'Practice papers featured weekly, published on a schedule', color: '#B91C1C', sort_order: 27 },
 ];
 
 const MODULES = [

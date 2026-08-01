@@ -4,7 +4,7 @@ import { useRouter, useFocusEffect, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BookLoading, BookEmpty, BookError } from '@/components/books/BookStates';
 import { fetchExamRoutineList, type ExamRoutineListItem } from '@/lib/exam-routine-api';
-import { formatDateWithDay, parseIsoDate } from '@/lib/date-format';
+import { formatDdMmYyyy, parseIsoDate } from '@/lib/date-format';
 import { colors, spacing } from '@/theme';
 
 function daysUntil(iso: string): number {
@@ -85,7 +85,7 @@ export default function ExamRoutineListScreen() {
             </View>
             <View style={styles.cardBody}>
               <Text style={styles.title}>{r.exam_name}</Text>
-              <Text style={styles.sub}>{formatDateWithDay(r.start_date)}</Text>
+              <Text style={styles.sub}>{formatDdMmYyyy(r.start_date)}</Text>
             </View>
             <View style={styles.countdownWrap}>
               <Text style={styles.countdownText}>{countdownLabel(days)}</Text>

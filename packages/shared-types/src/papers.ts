@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 const mongoId = z.string().regex(/^[a-f\d]{24}$/i);
+const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD');
+const timeStr = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Time must be HH:mm');
 
 export const createPaperTypeSchema = z.object({
   name: z.string().min(1),
@@ -32,6 +34,18 @@ export const listPapersQuerySchema = z.object({
   exam_session_id: mongoId.optional(),
   is_published: z.enum(['true', 'false']).optional(),
 });
+
+export const publishExamWeekSchema = z.object({
+  exam_week_date: dateStr,
+  /** Hidden from regular users until this time on exam_week_date — defaults to visible all day. */
+  exam_week_publish_time: timeStr.optional(),
+});
+
+export interface ExamWeekSummary {
+  week_start: string;
+  week_end: string;
+  paper_count: number;
+}
 
 export const createPaperGroupSchema = z.object({
   name: z.string().min(1),
@@ -108,6 +122,8 @@ export const createChildQuestionSchema = z.object({
 export const updateChildQuestionSchema = createChildQuestionSchema.partial().extend({
   is_active: z.boolean().optional(),
 });
+
+export type PublishExamWeekDto = z.infer<typeof publishExamWeekSchema>;
 
 export type CreatePaperTypeDto = z.infer<typeof createPaperTypeSchema>;
 export type UpdatePaperTypeDto = z.infer<typeof updatePaperTypeSchema>;

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { fetchExamRoutineList, type ExamRoutineListItem } from '@/lib/exam-routine-api';
-import { parseIsoDate } from '@/lib/date-format';
+import { parseIsoDate, formatDdMmYyyy } from '@/lib/date-format';
 import { colors, spacing } from '@/theme';
 
 function daysUntil(iso: string): number {
@@ -45,7 +45,7 @@ export function ExamCountdownCard() {
       </View>
       <View style={styles.body}>
         <Text style={styles.title}>{nearest.exam_name}</Text>
-        <Text style={styles.sub}>Starts {nearest.start_date}</Text>
+        <Text style={styles.sub}>Starts {formatDdMmYyyy(nearest.start_date)}</Text>
       </View>
       <View style={styles.countdownWrap}>
         <Text style={styles.countdownNumber}>{nearest.days}</Text>

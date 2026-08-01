@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Timer } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
+import { formatDdMmYyyy } from '@/lib/date-display';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface ExamRoutineListItem {
@@ -60,7 +61,7 @@ export function ExamRoutineCountdown() {
             </CardHeader>
             <CardContent>
               <p className="text-3xl font-bold text-amber-700">{countdownLabel(r.days)}</p>
-              <p className="mt-1 text-sm text-muted">Starts {r.start_date}</p>
+              <p className="mt-1 text-sm text-muted">Starts {formatDdMmYyyy(r.start_date)}</p>
             </CardContent>
           </Card>
         ))}

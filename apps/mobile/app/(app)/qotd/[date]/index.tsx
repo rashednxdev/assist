@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BookLoading, BookEmpty, BookError } from '@/components/books/BookStates';
 import { fetchQotdDateDetail, type QotdDateDetail } from '@/lib/qotd-api';
-import { formatDateWithDay } from '@/lib/date-format';
+import { formatDdMmYyyy } from '@/lib/date-format';
 import { questionDetailHref } from '@/lib/question-routes';
 import { qotdColors } from '@/lib/qotd-theme';
 import { colors, spacing } from '@/theme';
@@ -35,7 +35,7 @@ export default function QotdDateDetailScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.list}>
-      <Text style={styles.dateLabel}>{formatDateWithDay(detail.date)}</Text>
+      <Text style={styles.dateLabel}>{formatDdMmYyyy(detail.date)}</Text>
 
       {detail.groups.map((group) => (
         <View key={group.entry_id} style={styles.subjectBlock}>

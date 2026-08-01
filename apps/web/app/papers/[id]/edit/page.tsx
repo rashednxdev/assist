@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { ArrowLeft, Pencil, Plus, Trash2, Upload, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { fetchMe } from '@/lib/auth';
+import { formatDdMmYyyy } from '@/lib/date-display';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -64,6 +65,9 @@ export interface ComposeData {
     duration_minutes: number;
     instructions?: string;
     is_published: boolean;
+    is_exam_of_week: boolean;
+    exam_week_date?: string;
+    exam_week_publish_time?: string;
     allocated_marks?: number;
     exam_subject_name?: string;
     exam_short_name?: string;
@@ -204,6 +208,9 @@ export default function PaperComposerPage() {
   const [editPartId, setEditPartId] = useState('');
   const [partEditForm, setPartEditForm] = useState(emptyPartEdit);
 
+  const [examWeekDate, setExamWeekDate] = useState('');
+  const [examWeekTime, setExamWeekTime] = useState('00:00');
+
   const reload = useCallback(() => {
     return Promise.all([
       apiFetch<{ data: ComposeData }>(`/papers/${paperId}/compose`),
@@ -228,6 +235,12 @@ export default function PaperComposerPage() {
       })
       .catch(() => {});
   }, [reload]);
+
+  useEffect(() => {
+    if (!data?.paper) return;
+    setExamWeekDate(data.paper.exam_week_date ?? '');
+    setExamWeekTime(data.paper.exam_week_publish_time ?? '00:00');
+  }, [data?.paper.exam_week_date, data?.paper.exam_week_publish_time]);
 
   useEffect(() => {
     if (panel !== 'question') return;
@@ -257,7 +270,7 @@ export default function PaperComposerPage() {
     setPartDrafts([]);
   }
 
-  const readOnly = !isAdmin || data?.paper.is_published;
+  const readOnly = !isAdmin || data?.paper.is_published || data?.paper.is_exam_of_week;
 
   async function saveSection(e: React.FormEvent) {
     e.preventDefault();
@@ -469,6 +482,35 @@ export default function PaperComposerPage() {
     }
   }
 
+  async function publishExamWeek() {
+    setError('');
+    if (!examWeekDate) {
+      setError('Select a date for Exams of the Week');
+      return;
+    }
+    try {
+      await apiFetch(`/papers/${paperId}/publish-exam-week`, {
+        method: 'POST',
+        body: JSON.stringify({ exam_week_date: examWeekDate, exam_week_publish_time: examWeekTime }),
+      });
+      setMessage('Published as Exam of the Week');
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Publish failed');
+    }
+  }
+
+  async function unpublishExamWeek() {
+    setError('');
+    try {
+      await apiFetch(`/papers/${paperId}/unpublish-exam-week`, { method: 'POST' });
+      setMessage('Removed from Exams of the Week');
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unpublish failed');
+    }
+  }
+
   function renderQuestionRow(pq: PaperQuestionRow, groupId?: string) {
     const displayNo = displayQuestionLabel(pq);
     const inline = questionInlineText(pq);
@@ -632,6 +674,57 @@ export default function PaperComposerPage() {
           </CardContent>
         </Card>
 
+        {isAdmin && (
+          <Card className="border-red-100">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
+                Exams of the Week
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <Badge variant={paper.is_exam_of_week ? 'default' : 'outline'}>
+                  {paper.is_exam_of_week ? 'Published as Exam of the Week' : 'Not featured this week'}
+                </Badge>
+                {paper.is_exam_of_week && paper.exam_week_date && (
+                  <span className="text-sm text-muted">
+                    from {formatDdMmYyyy(paper.exam_week_date)} {paper.exam_week_publish_time}
+                  </span>
+                )}
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <OutlinedInput
+                  label="Publish date"
+                  type="date"
+                  value={examWeekDate}
+                  onChange={(e) => setExamWeekDate(e.target.value)}
+                  disabled={allQuestions.length === 0}
+                />
+                <OutlinedInput
+                  label="Publish time"
+                  type="time"
+                  value={examWeekTime}
+                  onChange={(e) => setExamWeekTime(e.target.value)}
+                  disabled={allQuestions.length === 0}
+                />
+                <div className="flex items-center gap-2">
+                  {!paper.is_exam_of_week ? (
+                    <Button size="sm" onClick={publishExamWeek} disabled={allQuestions.length === 0}>
+                      <Upload className="h-4 w-4" />
+                      Publish
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="outline" onClick={unpublishExamWeek}>
+                      Unpublish
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <McqQuestionsPanel
           paperId={paperId}
           questions={allQuestions}
@@ -741,7 +834,58 @@ export default function PaperComposerPage() {
         </CardContent>
       </Card>
 
-      {isAdmin && !paper.is_published && (
+      {isAdmin && (
+        <Card className="border-red-100">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
+              Exams of the Week
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <Badge variant={paper.is_exam_of_week ? 'default' : 'outline'}>
+                {paper.is_exam_of_week ? 'Published as Exam of the Week' : 'Not featured this week'}
+              </Badge>
+              {paper.is_exam_of_week && paper.exam_week_date && (
+                <span className="text-sm text-muted">
+                  from {formatDdMmYyyy(paper.exam_week_date)} {paper.exam_week_publish_time}
+                </span>
+              )}
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <OutlinedInput
+                label="Publish date"
+                type="date"
+                value={examWeekDate}
+                onChange={(e) => setExamWeekDate(e.target.value)}
+                disabled={allQuestions.length === 0}
+              />
+              <OutlinedInput
+                label="Publish time"
+                type="time"
+                value={examWeekTime}
+                onChange={(e) => setExamWeekTime(e.target.value)}
+                disabled={allQuestions.length === 0}
+              />
+              <div className="flex items-center gap-2">
+                {!paper.is_exam_of_week ? (
+                  <Button size="sm" onClick={publishExamWeek} disabled={allQuestions.length === 0}>
+                    <Upload className="h-4 w-4" />
+                    Publish
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="outline" onClick={unpublishExamWeek}>
+                    Unpublish
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {isAdmin && !paper.is_published && !paper.is_exam_of_week && (
         <Card>
           <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
             <CardTitle className="text-base">Composer</CardTitle>

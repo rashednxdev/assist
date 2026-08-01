@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Plus } from 'lucide-react';
 import type { ExamRoutineListItem } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
+import { formatDdMmYyyy } from '@/lib/date-display';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -136,7 +137,8 @@ export default function ExamRoutineAdminPage() {
                   <div>
                     <span className="font-medium">{r.exam_name}</span>
                     <span className="ml-2 text-xs text-muted">
-                      Starts {r.start_date} · {r.entry_count} subject{r.entry_count === 1 ? '' : 's'}
+                      Starts {formatDdMmYyyy(r.start_date)} · {r.entry_count} subject
+                      {r.entry_count === 1 ? '' : 's'}
                     </span>
                   </div>
                 </Link>

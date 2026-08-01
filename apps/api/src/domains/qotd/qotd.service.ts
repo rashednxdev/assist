@@ -7,34 +7,9 @@ import { Question } from '../questions/models/Question.model.js';
 import { BookChapter } from '../books/models/BookChapter.model.js';
 import { getSyllabusTree } from '../syllabus/syllabus.service.js';
 import { notFound, badRequest } from '../../shared/errors/AppError.js';
+import { bdToday as todayStr, bdCutoff as cutoffStr, bdNowTime as nowTimeStr } from '../../shared/bd-time.js';
 
 const DEFAULT_SHOW_PAST_DAYS = 7;
-
-// Server-local wall clock throughout (not UTC) — so a publish_time an admin enters as their own
-// local time (e.g. "08:00") lines up with `now` without a timezone conversion at either end.
-function pad(n: number): string {
-  return String(n).padStart(2, '0');
-}
-
-function dateToStr(d: Date): string {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-function todayStr(): string {
-  return dateToStr(new Date());
-}
-
-function cutoffStr(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return dateToStr(d);
-}
-
-/** Current time as HH:mm (local) — used to gate today's not-yet-published entries. */
-function nowTimeStr(): string {
-  const d = new Date();
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 
 export async function getQotdSettings() {
   const doc = await QotdSettings.findOne({ key: 'global' });

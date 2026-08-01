@@ -26,29 +26,19 @@ import { ExamSession } from '../exams/models/ExamSession.model.js';
 import { Question } from '../questions/models/Question.model.js';
 import { QuestionType } from '../questions/models/QuestionType.model.js';
 import { notFound, badRequest, forbidden } from '../../shared/errors/AppError.js';
+import { bdToday as todayStr, bdNowTime as nowTimeStr } from '../../shared/bd-time.js';
 import type { AuthUser } from '../../middleware/auth.js';
 
 function idStr(v: mongoose.Types.ObjectId | string | undefined) {
   return v ? String(v) : undefined;
 }
 
-// Server-local wall clock throughout (not UTC) — matches the convention already established for
-// Question of the Day and Exam Routine's own publish_time gating.
 function pad(n: number): string {
   return String(n).padStart(2, '0');
 }
 
 function dateToStr(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-function todayStr(): string {
-  return dateToStr(new Date());
-}
-
-function nowTimeStr(): string {
-  const d = new Date();
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function parseDateStr(dateStr: string): Date {

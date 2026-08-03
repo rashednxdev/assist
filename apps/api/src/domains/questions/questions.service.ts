@@ -135,6 +135,7 @@ function comparisonFromUnknown(value: unknown): ComparisonTable | undefined {
   if (!value || typeof value !== 'object') return undefined;
   const raw = value as ComparisonTable;
   return serializeComparisonTable({
+    title: raw.title,
     feature_header: raw.feature_header,
     columns: Array.isArray(raw.columns) ? raw.columns.map(String) : [],
     rows: Array.isArray(raw.rows)

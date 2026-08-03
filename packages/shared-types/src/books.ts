@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { BOOK_LANGUAGES, REGULATION_TYPES } from '@ibas/shared-constants';
+import { comparisonTableSchema } from './comparison-table.js';
 
 export const createBookTypeSchema = z.object({
   name: z.string().min(1),
@@ -55,10 +56,10 @@ export const updateBookChapterSchema = createBookChapterSchema.partial().extend(
   is_active: z.boolean().optional(),
 });
 
-export const createBookTopicSchema = z.object({
+const bookTopicFieldsSchema = z.object({
   name: z.string().optional(),
   sub_name: z.string().optional(),
-  rule_number: z.string().min(1),
+  rule_number: z.string().optional(),
   description: z.string().optional(),
   note: z.string().optional(),
   /** Site path (/static-ref/...) or http(s) URL to show like full-book embedded page. Empty clears. */
@@ -76,12 +77,21 @@ export const createBookTopicSchema = z.object({
     ),
   effective_date: z.coerce.date().optional(),
   sort_order: z.number().int().positive().optional(),
+  /** Optional comparison table for this rule/topic, same structure as a question's model answer table. */
+  table: comparisonTableSchema.optional(),
 });
 
-export const updateBookTopicSchema = createBookTopicSchema.partial().extend({
+export const createBookTopicSchema = bookTopicFieldsSchema.refine(
+  (data) => Boolean(data.name?.trim() || data.rule_number?.trim() || data.description?.trim()),
+  { message: 'Rule number, title, or details is required' },
+);
+
+export const updateBookTopicSchema = bookTopicFieldsSchema.partial().extend({
   is_active: z.boolean().optional(),
   /** Move rule to another chapter in the same book. */
   book_chapter_id: z.string().regex(/^[a-f\d]{24}$/i).optional(),
+  /** Explicit null clears an existing table; omitted leaves it untouched. */
+  table: z.union([comparisonTableSchema, z.null()]).optional(),
 });
 
 const bookSubTopicFieldsSchema = z.object({
@@ -93,8 +103,8 @@ const bookSubTopicFieldsSchema = z.object({
 });
 
 export const createBookSubTopicSchema = bookSubTopicFieldsSchema.refine(
-  (data) => Boolean(data.name?.trim() || data.rule_number?.trim()),
-  { message: 'Sub-rule number or title is required' },
+  (data) => Boolean(data.name?.trim() || data.rule_number?.trim() || data.description?.trim()),
+  { message: 'Sub-rule number, title, or details is required' },
 );
 
 export const updateBookSubTopicSchema = bookSubTopicFieldsSchema.partial().extend({

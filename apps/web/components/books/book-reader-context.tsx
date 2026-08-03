@@ -21,7 +21,7 @@ export interface ReaderBook {
 
 export interface ReaderChapterTopic {
   id: string;
-  rule_number: string;
+  rule_number?: string;
   name?: string;
   sub_name?: string;
   is_amended: boolean;
@@ -40,7 +40,7 @@ export interface ReaderChapter {
 
 export interface ReaderRuleNav {
   id: string;
-  rule_number: string;
+  rule_number?: string;
   name?: string;
   sub_name?: string;
   is_amended: boolean;

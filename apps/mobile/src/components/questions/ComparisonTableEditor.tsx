@@ -70,6 +70,14 @@ export function ComparisonTableEditor({ value, onChange, disabled }: ComparisonT
   return (
     <View style={styles.wrap}>
       <TextField
+        label="Table title (optional)"
+        value={table.title ?? ''}
+        onChangeText={(v) => patch({ title: v })}
+        placeholder="Shown centered above the columns"
+        editable={!disabled}
+      />
+
+      <TextField
         label="Feature column header"
         value={table.feature_header}
         onChangeText={(v) => patch({ feature_header: v })}

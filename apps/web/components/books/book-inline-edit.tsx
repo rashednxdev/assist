@@ -149,7 +149,7 @@ export function TopicInlineEdit({
   currentChapterId: string;
   chapters: ChapterOption[];
   initial: {
-    rule_number: string;
+    rule_number?: string;
     name?: string;
     sub_name?: string;
     description?: string;
@@ -162,7 +162,7 @@ export function TopicInlineEdit({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [form, setForm] = useState({
-    rule_number: initial.rule_number,
+    rule_number: initial.rule_number ?? '',
     name: initial.name ?? '',
     sub_name: initial.sub_name ?? '',
     description: stripHtml(initial.description),
@@ -172,15 +172,11 @@ export function TopicInlineEdit({
   });
 
   async function save() {
-    if (!form.rule_number.trim()) {
-      setError('Rule number is required');
-      return;
-    }
     setBusy(true);
     setError('');
     try {
       const body: Record<string, string | undefined> = {
-        rule_number: form.rule_number.trim(),
+        rule_number: form.rule_number.trim() || undefined,
         name: form.name.trim() || undefined,
         sub_name: form.sub_name.trim() || undefined,
         description: form.description.trim() ? wrapHtml(form.description) : '',
@@ -205,7 +201,7 @@ export function TopicInlineEdit({
   return (
     <InlineFormShell title="Edit rule" error={error} busy={busy} onCancel={onCancel} onSave={save}>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Rule no.">
+        <Field label="Rule no. (optional)">
           <Input
             disabled={busy}
             value={form.rule_number}
@@ -324,10 +320,6 @@ export function SubTopicInlineEdit({
   });
 
   async function save() {
-    if (!form.rule_number.trim() && !form.name.trim()) {
-      setError('Sub-rule number or title is required');
-      return;
-    }
     setBusy(true);
     setError('');
     try {
@@ -351,7 +343,7 @@ export function SubTopicInlineEdit({
   return (
     <InlineFormShell title="Edit sub-rule" error={error} busy={busy} onCancel={onCancel} onSave={save}>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Sub-rule no.">
+        <Field label="Sub-rule no. (optional)">
           <Input
             disabled={busy}
             value={form.rule_number}

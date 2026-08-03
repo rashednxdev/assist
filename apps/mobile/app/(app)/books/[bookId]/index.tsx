@@ -37,7 +37,7 @@ function matchesQuery(text: string | undefined | null, q: string) {
 }
 
 function topicMatchesShort(
-  topic: { rule_number: string; name?: string; sub_name?: string },
+  topic: { rule_number?: string; name?: string; sub_name?: string },
   q: string,
 ) {
   return (

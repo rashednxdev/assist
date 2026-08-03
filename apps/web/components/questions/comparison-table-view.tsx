@@ -19,6 +19,16 @@ export function ComparisonTableView({
       <div className="overflow-x-auto rounded-lg border border-border bg-white">
         <table className="min-w-full border-collapse text-sm">
           <thead>
+            {table.title?.trim() && (
+              <tr className="bg-slate-100">
+                <th
+                  colSpan={table.columns.length + 1}
+                  className="border-b border-border px-3 py-2.5 text-center font-semibold text-foreground"
+                >
+                  {table.title}
+                </th>
+              </tr>
+            )}
             <tr className="bg-slate-50">
               <th className="border-b border-border px-3 py-2.5 text-left font-semibold text-foreground">
                 {table.feature_header || 'Feature'}

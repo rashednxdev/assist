@@ -72,6 +72,16 @@ export function ComparisonTableEditor({
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
+        <Label>Table title (optional)</Label>
+        <Input
+          disabled={disabled}
+          value={table.title ?? ''}
+          onChange={(e) => patch({ title: e.target.value })}
+          placeholder="Shown centered above the columns, spanning the full table width"
+        />
+      </div>
+
+      <div className="space-y-1.5">
         <Label>Feature column header</Label>
         <Input
           disabled={disabled}
@@ -84,6 +94,16 @@ export function ComparisonTableEditor({
       <div className="overflow-x-auto rounded-lg border border-border">
         <table className="min-w-full border-collapse text-sm">
           <thead>
+            {table.title?.trim() && (
+              <tr className="bg-slate-100">
+                <th
+                  colSpan={table.columns.length + 1}
+                  className="border-b border-border px-2 py-2 text-center font-semibold"
+                >
+                  {table.title}
+                </th>
+              </tr>
+            )}
             <tr className="bg-slate-50">
               <th className="border-b border-border px-2 py-2 text-left font-semibold">
                 {table.feature_header || 'Feature'}

@@ -36,6 +36,11 @@ export function ComparisonTableAnswer({
         contentContainerStyle={styles.hScrollContent}
       >
         <View style={[styles.table, { width: tableWidth }]}>
+          {table.title?.trim() ? (
+            <View style={[styles.titleRow, { width: tableWidth }]}>
+              <Text style={styles.titleText}>{table.title.trim()}</Text>
+            </View>
+          ) : null}
           <View style={[styles.row, styles.headerRow]}>
             <View style={[styles.cell, { width: FEATURE_COL_WIDTH }, styles.headerCell]}>
               <Text style={styles.headerText}>{featureHeader}</Text>
@@ -94,6 +99,21 @@ const styles = StyleSheet.create({
   },
   headerRow: {
     backgroundColor: '#eef4f8',
+  },
+  titleRow: {
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+    backgroundColor: '#e2ecf2',
+    borderTopLeftRadius: 10,
+    borderTopRightRadius: 10,
+  },
+  titleText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'center',
   },
   altRow: {
     backgroundColor: '#fafbfc',

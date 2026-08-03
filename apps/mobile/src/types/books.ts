@@ -1,3 +1,5 @@
+import type { ComparisonTable } from './questions';
+
 export interface BookListItem {
   id: string;
   book_type_id: string;
@@ -16,7 +18,7 @@ export interface BookListItem {
 
 export interface ReaderChapterTopic {
   id: string;
-  rule_number: string;
+  rule_number?: string;
   name?: string;
   sub_name?: string;
   is_amended: boolean;
@@ -35,7 +37,7 @@ export interface ReaderChapter {
 
 export interface ReaderTopicFull {
   id: string;
-  rule_number: string;
+  rule_number?: string;
   name?: string;
   sub_name?: string;
   is_amended: boolean;
@@ -44,6 +46,8 @@ export interface ReaderTopicFull {
   note?: string;
   /** Optional linked static page path or URL (e.g. /static-ref/jsi-2016-p). */
   content_link?: string;
+  /** Optional comparison table for this rule/topic. */
+  table?: ComparisonTable;
   details: Array<{ id: string; detail_text: string }>;
   sub_topics: Array<{
     id: string;
@@ -60,7 +64,7 @@ export interface ReaderChapterFull extends Omit<ReaderChapter, 'topics'> {
 
 export interface ReaderRuleNav {
   id: string;
-  rule_number: string;
+  rule_number?: string;
   name?: string;
   sub_name?: string;
   is_amended: boolean;
@@ -79,11 +83,13 @@ export interface TopicDetail {
   id: string;
   name?: string;
   sub_name?: string;
-  rule_number: string;
+  rule_number?: string;
   description?: string;
   note?: string;
   /** Optional linked static page path or URL (e.g. /static-ref/jsi-2016-p). */
   content_link?: string;
+  /** Optional comparison table for this rule/topic. */
+  table?: ComparisonTable;
   is_amended: boolean;
   chapter?: { id: string; name: string; chapter_number?: string } | null;
   details: Array<{ id: string; detail_text: string }>;

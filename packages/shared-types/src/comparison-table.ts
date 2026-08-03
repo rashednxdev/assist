@@ -6,6 +6,8 @@ export const comparisonTableRowSchema = z.object({
 });
 
 export const comparisonTableSchema = z.object({
+  /** Optional title spanning the full table width, shown centered above the column headers. */
+  title: z.string().optional(),
   /** Left header cell, default "Feature". */
   feature_header: z.string().default('Feature'),
   /** Compared entities, e.g. ["Data", "Information"]. */
@@ -27,6 +29,7 @@ export function emptyComparisonTable(columnCount = 2): ComparisonTable {
 
 export function cleanComparisonTable(table: ComparisonTable | null | undefined): ComparisonTable | undefined {
   if (!table) return undefined;
+  const title = (table.title ?? '').trim();
   const featureHeader = (table.feature_header ?? 'Feature').trim() || 'Feature';
   const columns = (table.columns ?? []).map((c) => c.trim()).filter(Boolean);
   if (columns.length < 2) return undefined;
@@ -42,6 +45,7 @@ export function cleanComparisonTable(table: ComparisonTable | null | undefined):
   if (rows.length === 0) return undefined;
 
   return {
+    ...(title ? { title } : {}),
     feature_header: featureHeader,
     columns,
     rows: rows.map((row) => ({

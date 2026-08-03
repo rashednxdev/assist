@@ -58,6 +58,8 @@ export interface ExplanationSection {
 }
 
 export interface ComparisonTable {
+  /** Optional title spanning the full table width, shown centered above the column headers. */
+  title?: string;
   feature_header?: string;
   columns: string[];
   rows: Array<{ feature: string; values: string[] }>;

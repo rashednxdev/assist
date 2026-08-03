@@ -2,6 +2,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { BookBadge } from '@/components/books/BookBadge';
 import { BookRichText } from '@/components/books/BookRichText';
 import { RuleContentLinkButton } from '@/components/books/RuleContentLinkButton';
+import { TopicComparisonTable } from '@/components/books/TopicComparisonTable';
 import { BookEmpty, BookLoading } from '@/components/books/BookStates';
 import { cleanBookLabel, ruleHeading, subRuleHeading } from '@/lib/book-display';
 import type { ReaderChapterFull } from '@/types/books';
@@ -62,6 +63,8 @@ export function BookContentsFull({
               {topic.note?.trim() ? <BookRichText html={topic.note} /> : null}
 
               <RuleContentLinkButton contentLink={topic.content_link} title={ruleHeading(topic)} />
+
+              <TopicComparisonTable table={topic.table} title={ruleHeading(topic)} />
 
               {(topic.details ?? []).map((d) => (
                 <View key={d.id} style={styles.detailBlock}>

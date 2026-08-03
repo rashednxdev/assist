@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { REGULATION_TYPES, BOOK_LANGUAGES } from '@ibas/shared-constants';
+import type { ComparisonTable } from '@ibas/shared-types';
+import { emptyComparisonTable, hasComparisonTableContent } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,6 +13,12 @@ import { Label } from '@/components/ui/label';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { STATIC_REF_PAGE_OPTIONS } from '@/lib/static-ref-pages';
+import { ComparisonTableModal } from '@/components/questions/comparison-table-modal';
+
+// Stable reference used only as a fallback seed for the table modal — re-creating this inline on
+// every render would make the modal's initialValue prop change identity each render, which resets
+// its in-progress draft (see ComparisonTableModal's effect keyed on [open, initialValue]).
+const EMPTY_COMPARISON_TABLE = emptyComparisonTable(2);
 
 interface BookDetail {
   id: string;
@@ -39,10 +47,11 @@ interface TopicRow {
   id: string;
   name?: string;
   sub_name?: string;
-  rule_number: string;
+  rule_number?: string;
   description?: string;
   note?: string;
   content_link?: string;
+  table?: ComparisonTable;
   sort_order: number;
   is_amended: boolean;
 }
@@ -69,9 +78,11 @@ function wrapHtml(text: string) {
   return t.startsWith('<') ? t : `<p>${t}</p>`;
 }
 
-function topicLabel(t: { rule_number: string; name?: string }) {
+function topicLabel(t: { rule_number?: string; name?: string }) {
+  const no = t.rule_number?.trim();
   const title = t.name?.trim();
-  return title ? `${t.rule_number} — ${title}` : t.rule_number;
+  if (no && title) return `${no} — ${title}`;
+  return no || title || 'Rule';
 }
 
 function subTopicLabel(st: { rule_number?: string; name?: string }) {
@@ -127,8 +138,12 @@ export function BookContentEditor({
     note: '',
     content_link: '',
   });
+  const [topicTable, setTopicTable] = useState<ComparisonTable | undefined>(undefined);
   const [editTopicId, setEditTopicId] = useState<string | null>(null);
   const [editTopicForm, setEditTopicForm] = useState(topicForm);
+
+  const [addTableModalOpen, setAddTableModalOpen] = useState(false);
+  const [listTableTopicId, setListTableTopicId] = useState<string | null>(null);
 
   const [subForm, setSubForm] = useState({ name: '', rule_number: '', description: '', note: '' });
   const [editSubId, setEditSubId] = useState<string | null>(null);
@@ -318,21 +333,26 @@ export function BookContentEditor({
   }
 
   async function addTopic() {
-    if (!selectedChapterId || !topicForm.rule_number.trim()) return;
+    if (
+      !selectedChapterId ||
+      (!topicForm.rule_number.trim() && !topicForm.name.trim() && !topicForm.description.trim())
+    )
+      return;
     clearFeedback();
     setBusy(true);
     try {
       const res = await apiFetch<{
-        data: { id: string; name: string; rule_number: string; sort_order: number };
+        data: { id: string; name: string; rule_number?: string; sort_order: number; table?: ComparisonTable };
       }>(`/books/chapters/${selectedChapterId}/topics`, {
         method: 'POST',
         body: JSON.stringify({
           name: topicForm.name.trim() || undefined,
-          rule_number: topicForm.rule_number.trim(),
+          rule_number: topicForm.rule_number.trim() || undefined,
           sub_name: topicForm.sub_name.trim() || undefined,
           description: topicForm.description.trim() ? wrapHtml(topicForm.description) : undefined,
           note: topicForm.note.trim() || undefined,
           content_link: topicForm.content_link.trim() || undefined,
+          table: topicTable,
         }),
       });
       const created: TopicRow = {
@@ -343,6 +363,7 @@ export function BookContentEditor({
         description: topicForm.description.trim() ? wrapHtml(topicForm.description) : undefined,
         note: topicForm.note.trim() || undefined,
         content_link: topicForm.content_link.trim() || undefined,
+        table: res.data.table,
         sort_order: res.data.sort_order,
         is_amended: false,
       };
@@ -355,6 +376,7 @@ export function BookContentEditor({
         prev.map((c) => (c.id === selectedChapterId ? { ...c, topic_count: c.topic_count + 1 } : c)),
       );
       setTopicForm({ name: '', rule_number: '', sub_name: '', description: '', note: '', content_link: '' });
+      setTopicTable(undefined);
       setMessage('Rule / topic added');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add topic');
@@ -369,12 +391,12 @@ export function BookContentEditor({
     setBusy(true);
     try {
       const res = await apiFetch<{
-        data: { id: string; name: string; rule_number: string; sort_order: number };
+        data: { id: string; name: string; rule_number?: string; sort_order: number; table?: ComparisonTable };
       }>(`/books/topics/${editTopicId}`, {
         method: 'PATCH',
         body: JSON.stringify({
           name: editTopicForm.name.trim(),
-          rule_number: editTopicForm.rule_number.trim(),
+          rule_number: editTopicForm.rule_number.trim() || undefined,
           sub_name: editTopicForm.sub_name.trim() || undefined,
           description: editTopicForm.description.trim() ? wrapHtml(editTopicForm.description) : undefined,
           note: editTopicForm.note.trim() || undefined,
@@ -393,6 +415,7 @@ export function BookContentEditor({
                 description: editTopicForm.description.trim() ? wrapHtml(editTopicForm.description) : undefined,
                 note: editTopicForm.note.trim() || undefined,
                 content_link: editTopicForm.content_link.trim() || undefined,
+                table: res.data.table,
                 sort_order: res.data.sort_order,
               }
             : t,
@@ -402,6 +425,54 @@ export function BookContentEditor({
       setMessage('Rule updated');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update topic');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveListTopicTable(topicId: string, table: ComparisonTable) {
+    if (!selectedChapterId) return;
+    clearFeedback();
+    setBusy(true);
+    try {
+      const res = await apiFetch<{ data: { table?: ComparisonTable } }>(`/books/topics/${topicId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ table }),
+      });
+      setTopicsByChapter((prev) => ({
+        ...prev,
+        [selectedChapterId]: (prev[selectedChapterId] ?? []).map((t) =>
+          t.id === topicId ? { ...t, table: res.data.table } : t,
+        ),
+      }));
+      setListTableTopicId(null);
+      setMessage('Table saved');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save table');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeListTopicTable(topicId: string) {
+    if (!selectedChapterId) return;
+    if (!confirm('Remove this table?')) return;
+    clearFeedback();
+    setBusy(true);
+    try {
+      await apiFetch(`/books/topics/${topicId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ table: null }),
+      });
+      setTopicsByChapter((prev) => ({
+        ...prev,
+        [selectedChapterId]: (prev[selectedChapterId] ?? []).map((t) =>
+          t.id === topicId ? { ...t, table: undefined } : t,
+        ),
+      }));
+      setMessage('Table removed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove table');
     } finally {
       setBusy(false);
     }
@@ -440,7 +511,11 @@ export function BookContentEditor({
   }
 
   async function addSubTopic() {
-    if (!selectedTopicId || (!subForm.name.trim() && !subForm.rule_number.trim())) return;
+    if (
+      !selectedTopicId ||
+      (!subForm.name.trim() && !subForm.rule_number.trim() && !subForm.description.trim())
+    )
+      return;
     clearFeedback();
     setBusy(true);
     try {
@@ -686,19 +761,44 @@ export function BookContentEditor({
                       }}>
                         <span className="font-medium">{topicLabel(t)}</span>
                         {t.is_amended && <Badge variant="warning" className="ml-1">Amended</Badge>}
+                        {hasComparisonTableContent(t.table) && (
+                          <Badge variant="secondary" className="ml-1">
+                            Table: {t.table?.rows.length} × {t.table?.columns.length}
+                          </Badge>
+                        )}
                       </button>
-                      <div className="mt-1 flex gap-1">
+                      <div className="mt-1 flex flex-wrap gap-1">
                         <Button size="sm" variant="ghost" className="h-7 text-xs" disabled={busy} onClick={() => {
                           setEditTopicId(t.id);
                           setEditTopicForm({
                             name: t.name ?? '',
-                            rule_number: t.rule_number,
+                            rule_number: t.rule_number ?? '',
                             sub_name: t.sub_name ?? '',
                             description: t.description?.replace(/<[^>]+>/g, ' ').trim() ?? '',
                             note: t.note ?? '',
                             content_link: t.content_link ?? '',
                           });
                         }}>Edit</Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 text-xs"
+                          disabled={busy}
+                          onClick={() => setListTableTopicId(t.id)}
+                        >
+                          {hasComparisonTableContent(t.table) ? 'View/edit table' : 'Add table'}
+                        </Button>
+                        {hasComparisonTableContent(t.table) && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs text-destructive"
+                            disabled={busy}
+                            onClick={() => removeListTopicTable(t.id)}
+                          >
+                            Remove table
+                          </Button>
+                        )}
                         <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive" disabled={busy} onClick={() => removeTopic(t.id)}>Remove</Button>
                       </div>
                     </li>
@@ -707,7 +807,7 @@ export function BookContentEditor({
                 {editTopicId && (
                   <div className="rounded-lg border border-dashed p-3 space-y-2">
                     <p className="text-xs font-semibold text-muted">Edit rule</p>
-                    <Input disabled={busy} value={editTopicForm.rule_number} onChange={(e) => setEditTopicForm({ ...editTopicForm, rule_number: e.target.value })} />
+                    <Input disabled={busy} value={editTopicForm.rule_number} placeholder="Rule no. (optional)" onChange={(e) => setEditTopicForm({ ...editTopicForm, rule_number: e.target.value })} />
                     <Input disabled={busy} value={editTopicForm.name} placeholder="Title (optional)" onChange={(e) => setEditTopicForm({ ...editTopicForm, name: e.target.value })} />
                     <textarea className="ibas-textarea text-sm" disabled={busy} value={editTopicForm.description} placeholder="Details (optional)" onChange={(e) => setEditTopicForm({ ...editTopicForm, description: e.target.value })} />
                     <Input disabled={busy} value={editTopicForm.note} placeholder="Note / cross-ref" onChange={(e) => setEditTopicForm({ ...editTopicForm, note: e.target.value })} />
@@ -739,6 +839,10 @@ export function BookContentEditor({
                       placeholder="Page link e.g. /static-ref/jsi-2016-p"
                       onChange={(e) => setEditTopicForm({ ...editTopicForm, content_link: e.target.value })}
                     />
+                    <p className="border-t border-border pt-3 text-xs text-muted">
+                      Comparison table is saved separately — use the &quot;View/edit table&quot; button on
+                      this rule above, which saves immediately on its own.
+                    </p>
                     <div className="flex gap-2">
                       <Button size="sm" disabled={busy} onClick={saveTopicEdit}>Save</Button>
                       <Button size="sm" variant="ghost" onClick={() => setEditTopicId(null)}>Cancel</Button>
@@ -747,9 +851,9 @@ export function BookContentEditor({
                 )}
                 <div className="rounded-lg border border-dashed p-3 space-y-2">
                   <p className="text-xs font-semibold text-muted">Add rule</p>
-                  <Input disabled={busy} value={topicForm.rule_number} placeholder="Rule no. e.g. 45" onChange={(e) => setTopicForm({ ...topicForm, rule_number: e.target.value })} />
+                  <Input disabled={busy} value={topicForm.rule_number} placeholder="Rule no. e.g. 45 (optional)" onChange={(e) => setTopicForm({ ...topicForm, rule_number: e.target.value })} />
                   <Input disabled={busy} value={topicForm.name} placeholder="Title (optional)" onChange={(e) => setTopicForm({ ...topicForm, name: e.target.value })} />
-                  <textarea className="ibas-textarea text-sm" disabled={busy} value={topicForm.description} placeholder="Details (optional)" onChange={(e) => setTopicForm({ ...topicForm, description: e.target.value })} />
+                  <textarea className="ibas-textarea text-sm" disabled={busy} value={topicForm.description} placeholder="Details (fill rule no., title, or details)" onChange={(e) => setTopicForm({ ...topicForm, description: e.target.value })} />
                   <select
                     className="ibas-select text-sm"
                     disabled={busy}
@@ -773,7 +877,65 @@ export function BookContentEditor({
                     placeholder="Or custom path /static-ref/…"
                     onChange={(e) => setTopicForm({ ...topicForm, content_link: e.target.value })}
                   />
-                  <Button size="sm" disabled={busy || !topicForm.rule_number.trim()} onClick={addTopic}>Add rule</Button>
+                  <div className="space-y-1.5 border-t border-border pt-3">
+                    <Label className="text-xs">Comparison table (optional)</Label>
+                    {topicTable ? (
+                      <div className="flex items-center justify-between gap-2 rounded-lg border border-border px-2.5 py-2 text-xs">
+                        <span className="text-muted">
+                          {topicTable.rows.length} row{topicTable.rows.length === 1 ? '' : 's'} ·{' '}
+                          {topicTable.columns.length} column{topicTable.columns.length === 1 ? '' : 's'}
+                        </span>
+                        <div className="flex gap-1">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            disabled={busy}
+                            onClick={() => setAddTableModalOpen(true)}
+                          >
+                            Edit table
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs text-destructive"
+                            disabled={busy}
+                            onClick={() => setTopicTable(undefined)}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs"
+                        disabled={busy}
+                        onClick={() => {
+                          setTopicTable(emptyComparisonTable(2));
+                          setAddTableModalOpen(true);
+                        }}
+                      >
+                        Add table
+                      </Button>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    disabled={
+                      busy ||
+                      (!topicForm.rule_number.trim() &&
+                        !topicForm.name.trim() &&
+                        !topicForm.description.trim())
+                    }
+                    onClick={addTopic}
+                  >
+                    Add rule
+                  </Button>
                 </div>
               </>
             )}
@@ -820,10 +982,19 @@ export function BookContentEditor({
                   </div>
                 )}
                 <div className="rounded-lg border border-dashed p-3 space-y-2">
-                  <Input disabled={busy} value={subForm.rule_number} placeholder="Sub-rule no. e.g. 45(1)" onChange={(e) => setSubForm({ ...subForm, rule_number: e.target.value })} />
+                  <Input disabled={busy} value={subForm.rule_number} placeholder="Sub-rule no. e.g. 45(1) (optional)" onChange={(e) => setSubForm({ ...subForm, rule_number: e.target.value })} />
                   <Input disabled={busy} value={subForm.name} placeholder="Title (optional)" onChange={(e) => setSubForm({ ...subForm, name: e.target.value })} />
-                  <textarea className="ibas-textarea text-sm" disabled={busy} value={subForm.description} placeholder="Details (optional)" onChange={(e) => setSubForm({ ...subForm, description: e.target.value })} />
-                  <Button size="sm" disabled={busy || (!subForm.name.trim() && !subForm.rule_number.trim())} onClick={addSubTopic}>Add sub-rule</Button>
+                  <textarea className="ibas-textarea text-sm" disabled={busy} value={subForm.description} placeholder="Details (fill sub-rule no., title, or details)" onChange={(e) => setSubForm({ ...subForm, description: e.target.value })} />
+                  <Button
+                    size="sm"
+                    disabled={
+                      busy ||
+                      (!subForm.name.trim() && !subForm.rule_number.trim() && !subForm.description.trim())
+                    }
+                    onClick={addSubTopic}
+                  >
+                    Add sub-rule
+                  </Button>
                 </div>
               </>
             )}
@@ -925,6 +1096,26 @@ export function BookContentEditor({
           </div>
         </CardContent>
       </Card>
+
+      <ComparisonTableModal
+        open={addTableModalOpen}
+        initialValue={topicTable ?? EMPTY_COMPARISON_TABLE}
+        title="Comparison table for new rule"
+        onCancel={() => setAddTableModalOpen(false)}
+        onSave={(table) => {
+          setTopicTable(table);
+          setAddTableModalOpen(false);
+        }}
+      />
+      <ComparisonTableModal
+        open={Boolean(listTableTopicId)}
+        initialValue={topics.find((t) => t.id === listTableTopicId)?.table ?? EMPTY_COMPARISON_TABLE}
+        title={topicLabel(topics.find((t) => t.id === listTableTopicId) ?? { rule_number: '', name: '' })}
+        onCancel={() => setListTableTopicId(null)}
+        onSave={(table) => {
+          if (listTableTopicId) void saveListTopicTable(listTableTopicId, table);
+        }}
+      />
     </div>
   );
 }

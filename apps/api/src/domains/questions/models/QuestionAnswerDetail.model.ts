@@ -21,6 +21,8 @@ export interface IComparisonTableRow {
 }
 
 export interface IComparisonTable {
+  /** Optional title spanning the full table width, shown centered above the column headers. */
+  title?: string;
   feature_header: string;
   columns: string[];
   rows: IComparisonTableRow[];
@@ -59,6 +61,7 @@ const comparisonRowSchema = new Schema<IComparisonTableRow>(
 
 const comparisonTableMongooseSchema = new Schema<IComparisonTable>(
   {
+    title: { type: String },
     feature_header: { type: String, default: 'Feature' },
     columns: { type: [String], default: [] },
     rows: { type: [comparisonRowSchema], default: [] },

@@ -3,9 +3,11 @@ export function chapterHeading(chapter: { chapter_number?: string; name: string 
   return no ? `Chapter ${no}: ${chapter.name}` : chapter.name;
 }
 
-export function ruleHeading(rule: { rule_number: string; name?: string }) {
+export function ruleHeading(rule: { rule_number?: string; name?: string }) {
+  const no = rule.rule_number?.trim();
   const title = rule.name?.trim();
-  return title ? `${rule.rule_number} — ${title}` : rule.rule_number;
+  if (no && title) return `${no} — ${title}`;
+  return no || title || 'Rule';
 }
 
 export function subRuleHeading(st: { rule_number?: string; name?: string }) {

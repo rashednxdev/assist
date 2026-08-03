@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { BookDetailsBlock } from '@/components/books/book-details-block';
 import { RichTextView } from '@/components/books/rich-text-view';
 import { RuleContentLinkEmbed } from '@/components/books/rule-content-link-embed';
+import { ComparisonTableView } from '@/components/questions/comparison-table-view';
 import {
   ChapterInlineEdit,
   InlineEditTrigger,
@@ -18,10 +19,12 @@ import {
 import type { ReaderChapter } from '@/components/books/book-reader-context';
 import { chapterHeading, ruleHeading, subRuleHeading } from '@/lib/book-display';
 import { bookTheme } from '@/lib/book-theme';
+import type { ComparisonTable } from '@ibas/shared-types';
+import { hasComparisonTableContent } from '@ibas/shared-types';
 
 export interface ReaderTopicFull {
   id: string;
-  rule_number: string;
+  rule_number?: string;
   name?: string;
   sub_name?: string;
   is_amended: boolean;
@@ -29,6 +32,8 @@ export interface ReaderTopicFull {
   description?: string;
   note?: string;
   content_link?: string;
+  /** Optional comparison table for this rule/topic. */
+  table?: ComparisonTable;
   details: Array<{ id: string; detail_text: string }>;
   sub_topics: Array<{
     id: string;
@@ -207,6 +212,12 @@ export function BookContentsFull({
                           contentLink={topic.content_link}
                           title={ruleHeading(topic)}
                         />
+                      )}
+
+                      {!editingTopic && hasComparisonTableContent(topic.table) && (
+                        <div className="mt-4">
+                          <ComparisonTableView table={topic.table} label="Comparison table" />
+                        </div>
                       )}
 
                       {topic.details.length > 0 && (

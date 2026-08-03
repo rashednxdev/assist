@@ -268,13 +268,15 @@ export default function QuestionDetailScreen() {
   const showNextQuestion = Boolean(showAnswer && nextId && nextStem && nextText?.primary);
 
   return (
-    <>
-      <ScrollView style={styles.root} contentContainerStyle={styles.content}>
-      <View style={styles.panel}>
+    <View style={styles.root}>
+      {/* Fixed under the nav header so the user always sees which question they're reading,
+          however far they scroll into a long model answer / explanation below. */}
+      <View style={[styles.panel, styles.stickyQuestionPanel]}>
         <BookRichText html={stem.primary} style={styles.questionText} />
         {stem.secondary ? <BookRichText html={stem.secondary} style={styles.questionBn} /> : null}
       </View>
 
+      <ScrollView style={styles.scrollArea} contentContainerStyle={styles.content}>
       {item.has_options ? (
         <View style={styles.panel}>
           <Text style={[styles.sectionTitle, styles.selfEvalTitle]}>Evaluate</Text>
@@ -454,7 +456,7 @@ export default function QuestionDetailScreen() {
       ) : null}
       </ScrollView>
       <EvaluationCelebrate visible={showCelebrate} onClose={() => setShowCelebrate(false)} />
-    </>
+    </View>
   );
 }
 
@@ -551,6 +553,18 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  scrollArea: {
+    flex: 1,
+  },
+  stickyQuestionPanel: {
+    margin: spacing.md,
+    marginBottom: 0,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   content: {
     padding: spacing.md,

@@ -26,7 +26,7 @@ interface TreeNode {
 interface TopicDetail {
   id: string;
   name?: string;
-  rule_number: string;
+  rule_number?: string;
   description?: string;
   note?: string;
   is_amended: boolean;
@@ -71,9 +71,12 @@ function nodeIcon(type: TreeNode['type']) {
   return FileText;
 }
 
-function topicHeading(ruleNumber: string, name?: string) {
+function topicHeading(ruleNumber?: string, name?: string) {
+  const no = ruleNumber?.trim();
   const title = name?.trim();
-  return title ? `Rule ${ruleNumber}: ${title}` : `Rule ${ruleNumber}`;
+  if (no && title) return `Rule ${no}: ${title}`;
+  if (no) return `Rule ${no}`;
+  return title || 'Rule';
 }
 
 function subTopicHeading(st: { rule_number?: string; name?: string }) {

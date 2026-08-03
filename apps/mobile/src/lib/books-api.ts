@@ -64,6 +64,7 @@ function toReaderTopicFull(topic: ReaderChapter['topics'][number], detail?: Topi
     description: detail?.description,
     note: detail?.note,
     content_link: detail?.content_link,
+    table: detail?.table,
     details: detail?.details ?? [],
     sub_topics: detail?.sub_topics ?? [],
   };

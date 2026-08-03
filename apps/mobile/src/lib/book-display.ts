@@ -11,10 +11,11 @@ export function chapterHeading(chapter: { chapter_number?: string; name: string 
   return no ? `${no}: ${name}` : name;
 }
 
-export function ruleHeading(rule: { rule_number: string; name?: string }) {
-  const no = cleanBookLabel(rule.rule_number) || rule.rule_number.trim();
+export function ruleHeading(rule: { rule_number?: string; name?: string }) {
+  const no = cleanBookLabel(rule.rule_number);
   const title = cleanBookLabel(rule.name);
-  return title ? `${no} — ${title}` : no;
+  if (no && title) return `${no} — ${title}`;
+  return no || title || 'Rule';
 }
 
 export function subRuleHeading(st: { rule_number?: string; name?: string }) {

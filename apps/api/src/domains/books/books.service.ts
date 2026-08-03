@@ -29,6 +29,7 @@ import { QuestionBookLink } from '../questions/models/QuestionBookLink.model.js'
 import { QuestionType } from '../questions/models/QuestionType.model.js';
 import { cachedBooksList } from '../content-cache/content-cache.service.js';
 import { notFound, badRequest } from '../../shared/errors/AppError.js';
+import { cleanComparisonTable } from '@ibas/shared-types';
 
 function idStr(v: mongoose.Types.ObjectId | string | undefined) {
   return v ? String(v) : undefined;
@@ -119,6 +120,7 @@ async function loadTopicsForChapter(chapterId: string, depth: number) {
         rule_number: t.rule_number,
         description: t.description,
         note: t.note,
+        table: t.table,
         is_amended: t.is_amended,
         details: details.map((d) => ({ id: String(d._id), detail_text: d.detail_text, sort_order: d.sort_order })),
         children: subTopics.map((st) => ({
@@ -375,6 +377,7 @@ export async function getTopicDetail(topicId: string) {
     description: topic.description,
     note: topic.note,
     content_link: topic.content_link,
+    table: topic.table,
     is_amended: topic.is_amended,
     chapter: chapter ? { id: String(chapter._id), name: chapter.name, chapter_number: chapter.chapter_number } : null,
     details: details.map((d) => ({ id: String(d._id), detail_text: d.detail_text })),
@@ -589,6 +592,7 @@ export async function getBookReaderFull(bookId: string) {
         description: row?.description,
         note: row?.note,
         content_link: row?.content_link,
+        table: row?.table,
         details: detailsByTopic.get(topic.id) ?? [],
         sub_topics: subTopicsByTopic.get(topic.id) ?? [],
       };
@@ -827,6 +831,7 @@ export async function createTopic(chapterId: string, dto: CreateBookTopicDto) {
     description: dto.description,
     note: dto.note,
     content_link: dto.content_link?.trim() || undefined,
+    table: cleanComparisonTable(dto.table),
     effective_date: dto.effective_date,
     sort_order: sortOrder,
     is_amended: false,
@@ -837,6 +842,7 @@ export async function createTopic(chapterId: string, dto: CreateBookTopicDto) {
     name: topic.name,
     rule_number: topic.rule_number,
     content_link: topic.content_link,
+    table: topic.table,
     sort_order: topic.sort_order,
   };
 }
@@ -878,6 +884,11 @@ export async function updateTopic(topicId: string, dto: UpdateBookTopicDto) {
     topic.content_link = link || undefined;
     if (!link) topic.set('content_link', undefined);
   }
+  if (dto.table !== undefined) {
+    const cleaned = dto.table === null ? undefined : cleanComparisonTable(dto.table);
+    topic.table = cleaned;
+    if (!cleaned) topic.set('table', undefined);
+  }
   if (dto.effective_date !== undefined) topic.effective_date = dto.effective_date;
   if (dto.sort_order !== undefined) topic.sort_order = dto.sort_order;
   if (dto.is_active !== undefined) topic.is_active = dto.is_active;
@@ -888,6 +899,7 @@ export async function updateTopic(topicId: string, dto: UpdateBookTopicDto) {
     rule_number: topic.rule_number,
     book_chapter_id: String(topic.book_chapter_id),
     content_link: topic.content_link,
+    table: topic.table,
     sort_order: topic.sort_order,
   };
 }

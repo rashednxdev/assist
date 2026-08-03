@@ -556,8 +556,8 @@ export function ChapterQuestionsManageModal({
                       <option value="">— Select rule —</option>
                       {chapter.topics.map((t) => (
                         <option key={t.id} value={t.id}>
-                          {t.rule_number}
-                          {t.name ? ` — ${t.name}` : ''}
+                          {t.rule_number || t.name || 'Rule'}
+                          {t.rule_number && t.name ? ` — ${t.name}` : ''}
                         </option>
                       ))}
                     </select>

@@ -12,16 +12,21 @@ import { BookReaderGate, useBookReader } from '@/components/books/book-reader-co
 import { BookDetailsBlock } from '@/components/books/book-details-block';
 import { RichTextView } from '@/components/books/rich-text-view';
 import { RuleContentLinkEmbed } from '@/components/books/rule-content-link-embed';
+import { ComparisonTableView } from '@/components/questions/comparison-table-view';
 import { chapterHeading, ruleHeading, subRuleHeading } from '@/lib/book-display';
 import { bookTheme } from '@/lib/book-theme';
+import type { ComparisonTable } from '@ibas/shared-types';
+import { hasComparisonTableContent } from '@ibas/shared-types';
 
 interface TopicDetail {
   id: string;
   name?: string;
-  rule_number: string;
+  rule_number?: string;
   description?: string;
   note?: string;
   content_link?: string;
+  /** Optional comparison table for this rule/topic. */
+  table?: ComparisonTable;
   is_amended: boolean;
   chapter?: { id: string; name: string; chapter_number?: string } | null;
   details: Array<{ id: string; detail_text: string }>;
@@ -93,6 +98,11 @@ export default function BookRuleReadPage() {
               title={ruleHeading(topic)}
               heightClassName="h-[min(80vh,720px)]"
             />
+            {hasComparisonTableContent(topic.table) && (
+              <div className="mt-6">
+                <ComparisonTableView table={topic.table} label="Comparison table" />
+              </div>
+            )}
             {topic.details.length > 0 && (
               <div className="mt-6 space-y-3">
                 {topic.details.map((d) => (

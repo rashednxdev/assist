@@ -1,8 +1,9 @@
 import { insertBookListMarkerLineBreaks } from '@ibas/shared-constants';
 import type { ComparisonTable, ExplanationSection } from '@ibas/shared-types';
-import { hasComparisonTableContent, hasExplanationContent } from '@ibas/shared-types';
+import { hasComparisonTableContent, hasExplanationContent, hasProcessContent } from '@ibas/shared-types';
 import { Badge } from '@/components/ui/badge';
 import { ComparisonTableView } from '@/components/questions/comparison-table-view';
+import { ProcessFlowPreview } from '@/components/books/process-flow-preview';
 
 interface QuestionOptionView {
   id?: string;
@@ -66,6 +67,7 @@ function SectionBlock({ section }: { section: ExplanationSection }) {
     section.details?.trim() ||
     section.note?.trim() ||
     hasComparisonTableContent(section.table) ||
+    hasProcessContent(section.process) ||
     section.subsections?.some((sub) => sub.subtitle?.trim() || sub.details?.trim() || sub.note?.trim());
 
   if (!hasContent) return null;
@@ -76,6 +78,15 @@ function SectionBlock({ section }: { section: ExplanationSection }) {
       <TextBlock text={section.details} />
       <TextBlock text={section.note} />
       {hasComparisonTableContent(section.table) && <ComparisonTableView table={section.table} label="" />}
+      {hasProcessContent(section.process) && (
+        <div className="rounded-lg border border-border bg-background/80 p-3">
+          {section.process?.title?.trim() && (
+            <p className="mb-1 text-sm font-semibold text-foreground">{section.process.title}</p>
+          )}
+          <TextBlock text={section.process?.details} />
+          <ProcessFlowPreview steps={section.process?.steps ?? []} />
+        </div>
+      )}
 
       {section.subsections?.length > 0 && (
         <div className="space-y-3 border-l-2 border-primary/25 pl-4">

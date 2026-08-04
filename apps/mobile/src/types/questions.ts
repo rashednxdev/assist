@@ -43,6 +43,19 @@ export interface QuestionOption {
   is_correct: boolean;
 }
 
+export interface ProcessStep {
+  title: string;
+  description?: string;
+  /** Free-text responsible party for this step. */
+  role?: string;
+}
+
+export interface ExplanationProcess {
+  title?: string;
+  details?: string;
+  steps: ProcessStep[];
+}
+
 export interface ExplanationSection {
   title?: string;
   content?: string;
@@ -55,6 +68,8 @@ export interface ExplanationSection {
   }[];
   /** Optional comparison table nested under this section's title. */
   table?: ComparisonTable;
+  /** Optional step-by-step process nested under this section's title. */
+  process?: ExplanationProcess;
 }
 
 export interface ComparisonTable {

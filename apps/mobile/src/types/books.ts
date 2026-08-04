@@ -1,4 +1,13 @@
-import type { ComparisonTable } from './questions';
+import type { ComparisonTable, ProcessStep } from './questions';
+
+export type { ProcessStep };
+
+export interface ProcessRow {
+  id: string;
+  title: string;
+  details?: string;
+  steps: ProcessStep[];
+}
 
 export interface BookListItem {
   id: string;
@@ -48,6 +57,8 @@ export interface ReaderTopicFull {
   content_link?: string;
   /** Optional comparison table for this rule/topic. */
   table?: ComparisonTable;
+  /** Optional step-by-step processes documented for this rule/topic. */
+  processes?: ProcessRow[];
   details: Array<{ id: string; detail_text: string }>;
   sub_topics: Array<{
     id: string;
@@ -90,6 +101,8 @@ export interface TopicDetail {
   content_link?: string;
   /** Optional comparison table for this rule/topic. */
   table?: ComparisonTable;
+  /** Optional step-by-step processes documented for this rule/topic. */
+  processes?: ProcessRow[];
   is_amended: boolean;
   chapter?: { id: string; name: string; chapter_number?: string } | null;
   details: Array<{ id: string; detail_text: string }>;

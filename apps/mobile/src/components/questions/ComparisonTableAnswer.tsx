@@ -11,7 +11,7 @@ export function ComparisonTableAnswer({
 }: {
   table?: ComparisonTable | null;
 }) {
-  const { width: windowWidth } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const columns = (table?.columns ?? []).map((c) => String(c ?? '').trim()).filter(Boolean);
   const rows = table?.rows ?? [];
 
@@ -23,10 +23,15 @@ export function ComparisonTableAnswer({
     Math.floor((Math.max(windowWidth, 480) - FEATURE_COL_WIDTH - 48) / columns.length),
   );
   const tableWidth = FEATURE_COL_WIDTH + valueColWidth * columns.length;
+  // Only the row body scrolls vertically; the title/column header above it stay fixed in place.
+  // Bounded so it fits comfortably within a full-screen landscape modal as well as an inline page.
+  const bodyMaxHeight = Math.max(160, Math.min(480, windowHeight - 220));
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.hint}>Scroll sideways to compare columns</Text>
+      {/* Single horizontal scroll drives the title, header, and rows together so columns stay
+          aligned — the header row sits outside the inner vertical ScrollView below, so scrolling
+          through rows never moves it. */}
       <ScrollView
         horizontal
         nestedScrollEnabled
@@ -37,10 +42,11 @@ export function ComparisonTableAnswer({
       >
         <View style={[styles.table, { width: tableWidth }]}>
           {table.title?.trim() ? (
-            <View style={[styles.titleRow, { width: tableWidth }]}>
+            <View style={styles.titleRow}>
               <Text style={styles.titleText}>{table.title.trim()}</Text>
             </View>
           ) : null}
+
           <View style={[styles.row, styles.headerRow]}>
             <View style={[styles.cell, { width: FEATURE_COL_WIDTH }, styles.headerCell]}>
               <Text style={styles.headerText}>{featureHeader}</Text>
@@ -54,18 +60,25 @@ export function ComparisonTableAnswer({
               </View>
             ))}
           </View>
-          {rows.map((row, ri) => (
-            <View key={`r-${ri}`} style={[styles.row, ri % 2 === 1 && styles.altRow]}>
-              <View style={[styles.cell, { width: FEATURE_COL_WIDTH }]}>
-                <BookRichText html={row.feature || '—'} style={styles.featureText} />
-              </View>
-              {columns.map((_, ci) => (
-                <View key={`c-${ri}-${ci}`} style={[styles.cell, { width: valueColWidth }]}>
-                  <BookRichText html={row.values?.[ci] ?? ''} style={styles.valueText} />
+
+          <ScrollView
+            style={{ maxHeight: bodyMaxHeight }}
+            nestedScrollEnabled
+            showsVerticalScrollIndicator
+          >
+            {rows.map((row, ri) => (
+              <View key={`r-${ri}`} style={[styles.row, ri % 2 === 1 && styles.altRow]}>
+                <View style={[styles.cell, { width: FEATURE_COL_WIDTH }]}>
+                  <BookRichText html={row.feature || '—'} style={styles.featureText} />
                 </View>
-              ))}
-            </View>
-          ))}
+                {columns.map((_, ci) => (
+                  <View key={`c-${ri}-${ci}`} style={[styles.cell, { width: valueColWidth }]}>
+                    <BookRichText html={row.values?.[ci] ?? ''} style={styles.valueText} />
+                  </View>
+                ))}
+              </View>
+            ))}
+          </ScrollView>
         </View>
       </ScrollView>
     </View>
@@ -75,10 +88,6 @@ export function ComparisonTableAnswer({
 const styles = StyleSheet.create({
   wrap: {
     gap: spacing.sm,
-  },
-  hint: {
-    fontSize: 11,
-    color: colors.textMuted,
   },
   hScroll: {
     flexGrow: 0,
@@ -91,6 +100,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 10,
     backgroundColor: colors.surface,
+    overflow: 'hidden',
   },
   row: {
     flexDirection: 'row',
@@ -106,8 +116,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
     backgroundColor: '#e2ecf2',
-    borderTopLeftRadius: 10,
-    borderTopRightRadius: 10,
   },
   titleText: {
     fontSize: 13,

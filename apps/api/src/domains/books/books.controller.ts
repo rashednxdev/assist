@@ -16,6 +16,8 @@ import {
   bookTreeQuerySchema,
   bookChildrenQuerySchema,
   regulationSearchSchema,
+  createProcessSchema,
+  updateProcessSchema,
 } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
 import * as booksService from './books.service.js';
@@ -204,6 +206,23 @@ export async function createSubTopicHandler(req: AuthRequest, res: Response): Pr
   const dto = createBookSubTopicSchema.parse(req.body);
   const data = await booksService.createSubTopic(String(req.params.topicId), dto);
   res.status(201).json({ data });
+}
+
+export async function createProcessHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = createProcessSchema.parse(req.body);
+  const data = await booksService.createProcess(String(req.params.topicId), dto);
+  res.status(201).json({ data });
+}
+
+export async function updateProcessHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = updateProcessSchema.parse(req.body);
+  const data = await booksService.updateProcess(String(req.params.id), dto);
+  res.json({ data });
+}
+
+export async function deleteProcessHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await booksService.deleteProcess(String(req.params.id));
+  res.json({ data });
 }
 
 export async function searchRegulationsHandler(req: AuthRequest, res: Response): Promise<void> {

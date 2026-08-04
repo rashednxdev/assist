@@ -13,6 +13,9 @@ import { EditableLabel } from '@/components/questions/EditableLabel';
 import { emptyComparisonTable } from '@/components/questions/ComparisonTableEditor';
 import { ComparisonTableEditorModal } from '@/components/questions/ComparisonTableEditorModal';
 import { ComparisonTableAnswer } from '@/components/questions/ComparisonTableAnswer';
+import { emptyExplanationProcess } from '@/components/questions/ProcessStepsEditor';
+import { ProcessEditorModal } from '@/components/questions/ProcessEditorModal';
+import { ProcessFlowPreview } from '@/components/books/ProcessFlowPreview';
 import { ModelAnswerLinkPanel } from '@/components/questions/ModelAnswerLinkPanel';
 import { TextField } from '@/components/ui/TextField';
 import { Button } from '@/components/ui/Button';
@@ -25,7 +28,13 @@ import {
   updateQuestionContent,
   type ReviewTransition,
 } from '@/lib/question-edit-api';
-import type { ComparisonTable, ExplanationSection, QuestionDetail, ReviewStatus } from '@/types/questions';
+import type {
+  ComparisonTable,
+  ExplanationProcess,
+  ExplanationSection,
+  QuestionDetail,
+  ReviewStatus,
+} from '@/types/questions';
 import { colors, spacing } from '@/theme';
 
 interface OptionRow {
@@ -46,6 +55,7 @@ interface SectionRow {
   note?: string;
   subsections: SubsectionRow[];
   table?: ComparisonTable;
+  process?: ExplanationProcess;
 }
 
 function toOptionRows(item: QuestionDetail): OptionRow[] {
@@ -74,11 +84,16 @@ function toSectionRows(sections?: ExplanationSection[]): SectionRow[] {
       note: sub.note,
     })),
     table: s.table,
+    process: s.process,
   }));
 }
 
 function hasTableContent(table?: ComparisonTable) {
   return Boolean(table && table.columns.length >= 2 && table.rows.length > 0);
+}
+
+function hasProcessContent(process?: ExplanationProcess) {
+  return Boolean(process && process.steps.some((s) => s.title?.trim()));
 }
 
 /** Read-only render matching how Question Bank shows a model answer / explanation to end users. */
@@ -100,12 +115,33 @@ function renderSectionPreview(sections: SectionRow[]) {
   ));
 }
 
+/** Every process across a list of sections, shown together at the end of the answer preview —
+ * matching how Question Bank presents them (one dedicated "Process" block, not scattered per
+ * section) rather than per-section. */
+function renderProcessesPreview(sections: SectionRow[]) {
+  const processes = sections.map((s) => s.process).filter((p) => hasProcessContent(p));
+  if (processes.length === 0) return null;
+  return (
+    <View style={previewStyles.block}>
+      <Text style={previewStyles.heading}>Process</Text>
+      {processes.map((proc, idx) => (
+        <View key={idx} style={previewStyles.subBlock}>
+          {proc?.title?.trim() ? <Text style={previewStyles.subHeading}>{proc.title}</Text> : null}
+          {proc?.details?.trim() ? <BookRichText html={proc.details} style={previewStyles.text} /> : null}
+          <ProcessFlowPreview steps={proc?.steps ?? []} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function hasPreviewContent(sections: SectionRow[]) {
   return sections.some(
     (s) =>
       s.title.trim() ||
       s.details.trim() ||
       hasTableContent(s.table) ||
+      hasProcessContent(s.process) ||
       s.subsections.some((sub) => sub.subtitle.trim() || sub.details.trim()),
   );
 }
@@ -179,7 +215,14 @@ function useSectionHandlers(setSections: React.Dispatch<React.SetStateAction<Sec
     [setSections],
   );
 
-  return { update, removeTitle, add, remove, updateSub, addSub, removeSub, setTable };
+  const setProcess = useCallback(
+    (index: number, process: ExplanationProcess | undefined) => {
+      setSections((prev) => prev.map((s, i) => (i === index ? { ...s, process } : s)));
+    },
+    [setSections],
+  );
+
+  return { update, removeTitle, add, remove, updateSub, addSub, removeSub, setTable, setProcess };
 }
 
 const TRANSITION_LABEL: Record<ReviewTransition, string> = {
@@ -221,6 +264,9 @@ function QuestionUpdateEditBody() {
   const [editingTable, setEditingTable] = useState<{ scope: 'model' | 'explanation'; index: number } | null>(
     null,
   );
+  const [editingProcess, setEditingProcess] = useState<{ scope: 'model' | 'explanation'; index: number } | null>(
+    null,
+  );
 
   const modelAnswerHandlers = useSectionHandlers(setSections);
   const explanationHandlers = useSectionHandlers(setExplanationSections);
@@ -236,6 +282,19 @@ function QuestionUpdateEditBody() {
     if (!editingTable) return;
     const handlers = editingTable.scope === 'model' ? modelAnswerHandlers : explanationHandlers;
     handlers.setTable(editingTable.index, table);
+  }
+
+  const editingProcessValue =
+    editingProcess?.scope === 'model'
+      ? sections[editingProcess.index]?.process
+      : editingProcess?.scope === 'explanation'
+        ? explanationSections[editingProcess.index]?.process
+        : undefined;
+
+  function handleEditingProcessChange(process: ExplanationProcess) {
+    if (!editingProcess) return;
+    const handlers = editingProcess.scope === 'model' ? modelAnswerHandlers : explanationHandlers;
+    handlers.setProcess(editingProcess.index, process);
   }
 
   const [saving, setSaving] = useState(false);
@@ -345,6 +404,7 @@ function QuestionUpdateEditBody() {
             note: sub.note,
           })),
           table: s.table,
+          process: s.process,
         }));
       } else if (isTf) {
         payload.correct_true_false = correctTrueFalse;
@@ -358,6 +418,7 @@ function QuestionUpdateEditBody() {
             note: sub.note,
           })),
           table: s.table,
+          process: s.process,
         }));
       } else if (isDescriptiveLike) {
         payload.model_answer_sections = sections.map((s) => ({
@@ -370,6 +431,7 @@ function QuestionUpdateEditBody() {
             note: sub.note,
           })),
           table: s.table,
+          process: s.process,
         }));
       }
       const updated = await updateQuestionContent(id, payload);
@@ -560,7 +622,10 @@ function QuestionUpdateEditBody() {
           }
         >
           {previewExplanation ? (
-            <View>{renderSectionPreview(explanationSections)}</View>
+            <View>
+              {renderSectionPreview(explanationSections)}
+              {renderProcessesPreview(explanationSections)}
+            </View>
           ) : (
             <>
               {explanationSections.map((sec, index) => (
@@ -629,6 +694,46 @@ function QuestionUpdateEditBody() {
                     >
                       <Ionicons name="grid-outline" size={16} color={colors.primary} />
                       <Text style={styles.addBtnText}>Add comparison table</Text>
+                    </Pressable>
+                  ) : null}
+                  {sec.process ? (
+                    <View style={styles.tableSummaryRow}>
+                      <View style={styles.tableSummaryInfo}>
+                        <Ionicons name="list-outline" size={16} color={colors.primary} />
+                        <Text style={styles.tableSummaryText}>
+                          Process • {sec.process.steps.length} step{sec.process.steps.length === 1 ? '' : 's'}
+                        </Text>
+                      </View>
+                      {editable ? (
+                        <View style={styles.tableSummaryActions}>
+                          <Pressable
+                            onPress={() => setEditingProcess({ scope: 'explanation', index })}
+                            hitSlop={8}
+                            disabled={busy}
+                          >
+                            <Ionicons name="create-outline" size={20} color={colors.primary} />
+                          </Pressable>
+                          <Pressable
+                            onPress={() => explanationHandlers.setProcess(index, undefined)}
+                            hitSlop={8}
+                            disabled={busy}
+                          >
+                            <Ionicons name="trash-outline" size={20} color={colors.error} />
+                          </Pressable>
+                        </View>
+                      ) : null}
+                    </View>
+                  ) : editable ? (
+                    <Pressable
+                      style={styles.addBtn}
+                      onPress={() => {
+                        explanationHandlers.setProcess(index, emptyExplanationProcess());
+                        setEditingProcess({ scope: 'explanation', index });
+                      }}
+                      disabled={busy}
+                    >
+                      <Ionicons name="list-outline" size={16} color={colors.primary} />
+                      <Text style={styles.addBtnText}>Add process</Text>
                     </Pressable>
                   ) : null}
                   {sec.subsections.map((sub, subIndex) => (
@@ -706,7 +811,10 @@ function QuestionUpdateEditBody() {
             onChange={() => load()}
           />
           {previewModelAnswer ? (
-            <View>{renderSectionPreview(sections)}</View>
+            <View>
+              {renderSectionPreview(sections)}
+              {renderProcessesPreview(sections)}
+            </View>
           ) : (
             <>
               {sections.map((sec, index) => (
@@ -776,6 +884,46 @@ function QuestionUpdateEditBody() {
                     >
                       <Ionicons name="grid-outline" size={16} color={colors.primary} />
                       <Text style={styles.addBtnText}>Add comparison table</Text>
+                    </Pressable>
+                  ) : null}
+                  {sec.process ? (
+                    <View style={styles.tableSummaryRow}>
+                      <View style={styles.tableSummaryInfo}>
+                        <Ionicons name="list-outline" size={16} color={colors.primary} />
+                        <Text style={styles.tableSummaryText}>
+                          Process • {sec.process.steps.length} step{sec.process.steps.length === 1 ? '' : 's'}
+                        </Text>
+                      </View>
+                      {editable ? (
+                        <View style={styles.tableSummaryActions}>
+                          <Pressable
+                            onPress={() => setEditingProcess({ scope: 'model', index })}
+                            hitSlop={8}
+                            disabled={busy}
+                          >
+                            <Ionicons name="create-outline" size={20} color={colors.primary} />
+                          </Pressable>
+                          <Pressable
+                            onPress={() => modelAnswerHandlers.setProcess(index, undefined)}
+                            hitSlop={8}
+                            disabled={busy}
+                          >
+                            <Ionicons name="trash-outline" size={20} color={colors.error} />
+                          </Pressable>
+                        </View>
+                      ) : null}
+                    </View>
+                  ) : editable ? (
+                    <Pressable
+                      style={styles.addBtn}
+                      onPress={() => {
+                        modelAnswerHandlers.setProcess(index, emptyExplanationProcess());
+                        setEditingProcess({ scope: 'model', index });
+                      }}
+                      disabled={busy}
+                    >
+                      <Ionicons name="list-outline" size={16} color={colors.primary} />
+                      <Text style={styles.addBtnText}>Add process</Text>
                     </Pressable>
                   ) : null}
                   {sec.subsections.map((sub, subIndex) => (
@@ -909,6 +1057,13 @@ function QuestionUpdateEditBody() {
       value={editingTableValue}
       onChange={handleEditingTableChange}
       onClose={() => setEditingTable(null)}
+      disabled={!editable || busy}
+    />
+    <ProcessEditorModal
+      visible={editingProcess !== null}
+      value={editingProcessValue}
+      onChange={handleEditingProcessChange}
+      onClose={() => setEditingProcess(null)}
       disabled={!editable || busy}
     />
     </>

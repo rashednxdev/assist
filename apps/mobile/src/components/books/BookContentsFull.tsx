@@ -3,6 +3,7 @@ import { BookBadge } from '@/components/books/BookBadge';
 import { BookRichText } from '@/components/books/BookRichText';
 import { RuleContentLinkButton } from '@/components/books/RuleContentLinkButton';
 import { TopicComparisonTable } from '@/components/books/TopicComparisonTable';
+import { ProcessFlowPreview } from '@/components/books/ProcessFlowPreview';
 import { BookEmpty, BookLoading } from '@/components/books/BookStates';
 import { cleanBookLabel, ruleHeading, subRuleHeading } from '@/lib/book-display';
 import type { ReaderChapterFull } from '@/types/books';
@@ -47,10 +48,12 @@ export function BookContentsFull({
             </View>
           </View>
 
-          {(chapter.topics ?? []).map((topic) => (
+          {(chapter.topics ?? []).map((topic) => {
+            const hasRuleHeading = Boolean(topic.rule_number?.trim() || topic.name?.trim());
+            return (
             <View key={topic.id} style={styles.rulePanel}>
               <View style={styles.ruleHeader}>
-                <Text style={styles.ruleTitle}>{ruleHeading(topic)}</Text>
+                {hasRuleHeading ? <Text style={styles.ruleTitle}>{ruleHeading(topic)}</Text> : null}
                 {topic.is_amended ? <BookBadge label="Amended" variant="warning" /> : null}
               </View>
 
@@ -66,21 +69,37 @@ export function BookContentsFull({
 
               <TopicComparisonTable table={topic.table} title={ruleHeading(topic)} />
 
+              {(topic.processes ?? []).map((p) => (
+                <View key={p.id} style={styles.processPanel}>
+                  <Text style={styles.processTitle}>{p.title}</Text>
+                  {p.details?.trim() ? <BookRichText html={p.details} /> : null}
+                  <View style={styles.processSteps}>
+                    <ProcessFlowPreview steps={p.steps} />
+                  </View>
+                </View>
+              ))}
+
               {(topic.details ?? []).map((d) => (
                 <View key={d.id} style={styles.detailBlock}>
                   <BookRichText html={d.detail_text} />
                 </View>
               ))}
 
-              {(topic.sub_topics ?? []).map((sub) => (
-                <View key={sub.id} style={styles.subRulePanel}>
-                  <Text style={styles.subRuleTitle}>{subRuleHeading(sub)}</Text>
-                  {sub.description?.trim() ? <BookRichText html={sub.description} /> : null}
-                  {sub.note?.trim() ? <BookRichText html={sub.note} /> : null}
-                </View>
-              ))}
+              {(topic.sub_topics ?? []).map((sub) => {
+                const hasSubHeading = Boolean(sub.rule_number?.trim() || sub.name?.trim());
+                return (
+                  <View key={sub.id} style={styles.subRulePanel}>
+                    {hasSubHeading ? (
+                      <Text style={styles.subRuleTitle}>{subRuleHeading(sub)}</Text>
+                    ) : null}
+                    {sub.description?.trim() ? <BookRichText html={sub.description} /> : null}
+                    {sub.note?.trim() ? <BookRichText html={sub.note} /> : null}
+                  </View>
+                );
+              })}
             </View>
-          ))}
+            );
+          })}
         </View>
       ))}
     </View>
@@ -153,6 +172,22 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text,
     textAlign: 'justify',
+  },
+  processPanel: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    padding: spacing.sm,
+    gap: 4,
+  },
+  processTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'justify',
+  },
+  processSteps: {
+    marginTop: spacing.xs,
   },
   plainText: {
     fontSize: 15,

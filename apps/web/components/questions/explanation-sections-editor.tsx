@@ -1,12 +1,13 @@
 'use client';
 
-import { Plus, Trash2, Table2 } from 'lucide-react';
+import { Plus, Trash2, Table2, ListChecks } from 'lucide-react';
 import type { ExplanationSection } from '@ibas/shared-types';
 import { emptyExplanationSection, emptyExplanationSubsection, emptyComparisonTable } from '@ibas/shared-types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ComparisonTableEditor } from './comparison-table-editor';
+import { ProcessStepsEditor, emptyExplanationProcess } from './process-steps-editor';
 
 interface ExplanationSectionsEditorProps {
   sections: ExplanationSection[];
@@ -146,6 +147,47 @@ export function ExplanationSectionsEditor({ sections, onChange, disabled }: Expl
             ) : (
               <p className="text-xs text-muted">
                 Add a Differences-style table under this title (e.g. compare two items side by side).
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-1.5 border-t border-border pt-4">
+            <div className="flex items-center justify-between gap-2">
+              <Label>Process (optional)</Label>
+              {section.process ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="text-destructive"
+                  disabled={disabled}
+                  onClick={() => updateSection(sectionIndex, { process: undefined })}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Remove process
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={disabled}
+                  onClick={() => updateSection(sectionIndex, { process: emptyExplanationProcess() })}
+                >
+                  <ListChecks className="h-4 w-4" />
+                  Add process
+                </Button>
+              )}
+            </div>
+            {section.process ? (
+              <ProcessStepsEditor
+                value={section.process}
+                onChange={(process) => updateSection(sectionIndex, { process })}
+                disabled={disabled}
+              />
+            ) : (
+              <p className="text-xs text-muted">
+                Add a step-by-step process under this title (e.g. a submission or approval procedure).
               </p>
             )}
           </div>

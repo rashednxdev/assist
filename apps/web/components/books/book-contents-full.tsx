@@ -10,6 +10,7 @@ import { BookDetailsBlock } from '@/components/books/book-details-block';
 import { RichTextView } from '@/components/books/rich-text-view';
 import { RuleContentLinkEmbed } from '@/components/books/rule-content-link-embed';
 import { ComparisonTableView } from '@/components/questions/comparison-table-view';
+import { ProcessFlowPreview } from '@/components/books/process-flow-preview';
 import {
   ChapterInlineEdit,
   InlineEditTrigger,
@@ -19,7 +20,7 @@ import {
 import type { ReaderChapter } from '@/components/books/book-reader-context';
 import { chapterHeading, ruleHeading, subRuleHeading } from '@/lib/book-display';
 import { bookTheme } from '@/lib/book-theme';
-import type { ComparisonTable } from '@ibas/shared-types';
+import type { ComparisonTable, ProcessStep } from '@ibas/shared-types';
 import { hasComparisonTableContent } from '@ibas/shared-types';
 
 export interface ReaderTopicFull {
@@ -34,6 +35,8 @@ export interface ReaderTopicFull {
   content_link?: string;
   /** Optional comparison table for this rule/topic. */
   table?: ComparisonTable;
+  /** Optional step-by-step processes documented for this rule/topic. */
+  processes?: Array<{ id: string; title: string; details?: string; steps: ProcessStep[] }>;
   details: Array<{ id: string; detail_text: string }>;
   sub_topics: Array<{
     id: string;
@@ -217,6 +220,22 @@ export function BookContentsFull({
                       {!editingTopic && hasComparisonTableContent(topic.table) && (
                         <div className="mt-4">
                           <ComparisonTableView table={topic.table} label="Comparison table" />
+                        </div>
+                      )}
+
+                      {!editingTopic && (topic.processes?.length ?? 0) > 0 && (
+                        <div className="mt-4 space-y-3">
+                          {topic.processes!.map((p) => (
+                            <div key={p.id} className="rounded-lg border border-border p-4">
+                              <div className="font-semibold text-foreground">{p.title}</div>
+                              {p.details?.trim() && (
+                                <p className="mt-0.5 text-sm text-muted">{p.details}</p>
+                              )}
+                              <div className="mt-3">
+                                <ProcessFlowPreview steps={p.steps} />
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       )}
 

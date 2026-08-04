@@ -6,9 +6,6 @@ import {
   getInflightFull,
   getInflightOutline,
   getInflightTopic,
-  peekBookReaderFull,
-  peekBookReaderOutline,
-  peekTopicDetail,
   setInflightFull,
   setInflightOutline,
   setInflightTopic,
@@ -43,10 +40,14 @@ export async function fetchBooks(params?: { q?: string; book_type_id?: string })
   return res.data;
 }
 
+/**
+ * Always hits the network (deduped via inflight tracking) — callers that want an instant
+ * cache-first paint should read `peekBookReaderOutline` themselves first, then call this to
+ * revalidate. This function must never short-circuit on a cache hit, since it backs explicit
+ * reloads (e.g. reopening a book screen) that need to pick up server-side edits promptly rather
+ * than silently serving up-to-30-minute-stale content.
+ */
 export async function fetchBookReaderOutline(bookId: string) {
-  const cached = peekBookReaderOutline(bookId);
-  if (cached) return cached;
-
   const inflight = getInflightOutline(bookId);
   if (inflight) return inflight;
 
@@ -65,6 +66,7 @@ function toReaderTopicFull(topic: ReaderChapter['topics'][number], detail?: Topi
     note: detail?.note,
     content_link: detail?.content_link,
     table: detail?.table,
+    processes: detail?.processes,
     details: detail?.details ?? [],
     sub_topics: detail?.sub_topics ?? [],
   };
@@ -116,10 +118,8 @@ async function fetchBookReaderFullRaw(bookId: string, outlineChapters: ReaderCha
   return enrichChaptersFromTopicDetails(outlineChapters);
 }
 
+/** Always hits the network (deduped via inflight tracking) — see fetchBookReaderOutline's note. */
 export async function fetchBookReaderFull(bookId: string, outlineChapters: ReaderChapter[]) {
-  const cached = peekBookReaderFull(bookId);
-  if (cached) return cached;
-
   const inflight = getInflightFull(bookId);
   if (inflight) return inflight;
 
@@ -131,10 +131,8 @@ export async function fetchBookReaderFull(bookId: string, outlineChapters: Reade
   return promise;
 }
 
+/** Always hits the network (deduped via inflight tracking) — see fetchBookReaderOutline's note. */
 export async function fetchTopicDetail(topicId: string) {
-  const cached = peekTopicDetail(topicId);
-  if (cached) return cached;
-
   const inflight = getInflightTopic(topicId);
   if (inflight) return inflight;
 

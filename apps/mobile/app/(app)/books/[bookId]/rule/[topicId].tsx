@@ -6,6 +6,8 @@ import { useNavigation } from '@react-navigation/native';
 import { BookBadge } from '@/components/books/BookBadge';
 import { BookRichText } from '@/components/books/BookRichText';
 import { RuleContentLinkButton } from '@/components/books/RuleContentLinkButton';
+import { TopicComparisonTable } from '@/components/books/TopicComparisonTable';
+import { ProcessFlowPreview } from '@/components/books/ProcessFlowPreview';
 import { useBookReader } from '@/components/books/BookReaderContext';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
 import { chapterHeading, ruleHeading, subRuleHeading } from '@/lib/book-display';
@@ -82,6 +84,18 @@ export default function BookRuleScreen() {
         ) : null}
 
         <RuleContentLinkButton contentLink={topic.content_link} title={ruleHeading(topic)} />
+
+        <TopicComparisonTable table={topic.table} title={ruleHeading(topic)} />
+
+        {(topic.processes ?? []).map((p) => (
+          <View key={p.id} style={styles.subRuleCard}>
+            <Text style={styles.subRuleTitle}>{p.title}</Text>
+            {p.details?.trim() ? <BookRichText html={p.details} /> : null}
+            <View style={styles.processStepsWrap}>
+              <ProcessFlowPreview steps={p.steps} />
+            </View>
+          </View>
+        ))}
 
         {topic.details.map((d) => (
           <View key={d.id} style={styles.detailBlock}>
@@ -236,6 +250,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
     textAlign: 'justify',
+  },
+  processStepsWrap: {
+    marginTop: spacing.xs,
   },
   regRow: {
     paddingVertical: 8,

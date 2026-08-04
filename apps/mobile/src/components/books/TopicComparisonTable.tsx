@@ -61,7 +61,6 @@ export function TopicComparisonTable({
               <Text style={styles.modalTitle} numberOfLines={1}>
                 {title?.trim() || featureHeader}
               </Text>
-              <Text style={styles.modalSub}>Landscape view</Text>
             </View>
             <Pressable style={styles.closeBtn} onPress={() => setOpen(false)} hitSlop={8}>
               <Ionicons name="close" size={22} color={colors.text} />
@@ -149,12 +148,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: colors.text,
-  },
-  modalSub: {
-    fontSize: 11,
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
   },
   closeBtn: {
     flexDirection: 'row',

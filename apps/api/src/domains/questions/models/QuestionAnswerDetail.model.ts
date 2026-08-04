@@ -6,6 +6,18 @@ export interface IExplanationSubsection {
   note?: string;
 }
 
+export interface IProcessStep {
+  title: string;
+  description?: string;
+  role?: string;
+}
+
+export interface IExplanationProcess {
+  title?: string;
+  details?: string;
+  steps: IProcessStep[];
+}
+
 export interface IExplanationSection {
   title: string;
   details?: string;
@@ -13,6 +25,8 @@ export interface IExplanationSection {
   subsections: IExplanationSubsection[];
   /** Optional comparison table nested under this section's title. */
   table?: IComparisonTable;
+  /** Optional step-by-step process nested under this section's title. */
+  process?: IExplanationProcess;
 }
 
 export interface IComparisonTableRow {
@@ -69,6 +83,24 @@ const comparisonTableMongooseSchema = new Schema<IComparisonTable>(
   { _id: false },
 );
 
+const processStepMongooseSchema = new Schema<IProcessStep>(
+  {
+    title: { type: String, required: true },
+    description: { type: String },
+    role: { type: String },
+  },
+  { _id: false },
+);
+
+const explanationProcessMongooseSchema = new Schema<IExplanationProcess>(
+  {
+    title: { type: String },
+    details: { type: String },
+    steps: { type: [processStepMongooseSchema], default: [] },
+  },
+  { _id: false },
+);
+
 const sectionSchema = new Schema<IExplanationSection>(
   {
     title: { type: String, required: true, default: '' },
@@ -77,6 +109,7 @@ const sectionSchema = new Schema<IExplanationSection>(
     subsections: { type: [subsectionSchema], default: [] },
     // Nested schema path (not `{ type: schema }`) so $set/$get round-trip reliably.
     table: comparisonTableMongooseSchema,
+    process: explanationProcessMongooseSchema,
   },
   { _id: false },
 );

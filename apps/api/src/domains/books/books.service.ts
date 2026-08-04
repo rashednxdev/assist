@@ -13,6 +13,8 @@ import type {
   CreateRegulationDto,
   UpdateRegulationDto,
   CreateAmendmentDto,
+  CreateProcessDto,
+  UpdateProcessDto,
 } from '@ibas/shared-types';
 import { BookType } from './models/BookType.model.js';
 import { BookInfo } from './models/BookInfo.model.js';
@@ -24,6 +26,7 @@ import { BookSubTopic } from './models/BookSubTopic.model.js';
 import { BookSubTopicDetail } from './models/BookSubTopicDetail.model.js';
 import { Regulation } from './models/Regulation.model.js';
 import { RegulationAmendment } from './models/RegulationAmendment.model.js';
+import { Process } from './models/Process.model.js';
 import { Question } from '../questions/models/Question.model.js';
 import { QuestionBookLink } from '../questions/models/QuestionBookLink.model.js';
 import { QuestionType } from '../questions/models/QuestionType.model.js';
@@ -363,10 +366,11 @@ export async function getBookChildren(type: 'part' | 'chapter' | 'topic', id: st
 export async function getTopicDetail(topicId: string) {
   const topic = await BookTopic.findById(topicId);
   if (!topic) throw notFound('Topic not found');
-  const [details, subTopics, chapter] = await Promise.all([
+  const [details, subTopics, chapter, processes] = await Promise.all([
     BookTopicDetail.find({ book_topic_id: topicId, is_active: true }).sort({ sort_order: 1 }),
     BookSubTopic.find({ book_topic_id: topicId, is_active: true }).sort({ sort_order: 1 }),
     BookChapter.findById(topic.book_chapter_id),
+    Process.find({ book_topic_id: topicId, is_active: true }).sort({ sort_order: 1 }),
   ]);
   const regulations = await Regulation.find({ book_topic_id: topicId, is_active: true });
   return {
@@ -389,6 +393,7 @@ export async function getTopicDetail(topicId: string) {
       note: st.note,
     })),
     regulations: regulations.map(serializeRegulation),
+    processes: processes.map(serializeProcess),
   };
 }
 
@@ -552,10 +557,11 @@ export async function getBookReaderFull(bookId: string) {
   if (topicIds.length === 0) return outline;
 
   const topicOids = topicIds.map((id) => new mongoose.Types.ObjectId(id));
-  const [topicRows, detailRows, subTopicRows] = await Promise.all([
+  const [topicRows, detailRows, subTopicRows, processRows] = await Promise.all([
     BookTopic.find({ _id: { $in: topicOids }, is_active: true }),
     BookTopicDetail.find({ book_topic_id: { $in: topicOids }, is_active: true }).sort({ sort_order: 1 }),
     BookSubTopic.find({ book_topic_id: { $in: topicOids }, is_active: true }).sort({ sort_order: 1 }),
+    Process.find({ book_topic_id: { $in: topicOids }, is_active: true }).sort({ sort_order: 1 }),
   ]);
 
   const topicById = new Map(topicRows.map((t) => [String(t._id), t]));
@@ -582,6 +588,13 @@ export async function getBookReaderFull(bookId: string) {
     });
     subTopicsByTopic.set(key, list);
   }
+  const processesByTopic = new Map<string, ReturnType<typeof serializeProcess>[]>();
+  for (const proc of processRows) {
+    const key = String(proc.book_topic_id);
+    const list = processesByTopic.get(key) ?? [];
+    list.push(serializeProcess(proc));
+    processesByTopic.set(key, list);
+  }
 
   const chapters = outline.chapters.map((chapter) => ({
     ...chapter,
@@ -595,6 +608,7 @@ export async function getBookReaderFull(bookId: string) {
         table: row?.table,
         details: detailsByTopic.get(topic.id) ?? [],
         sub_topics: subTopicsByTopic.get(topic.id) ?? [],
+        processes: processesByTopic.get(topic.id) ?? [],
       };
     }),
   }));
@@ -630,6 +644,7 @@ export async function getChapterById(chapterId: string) {
       description: t.description,
       note: t.note,
       content_link: t.content_link,
+      table: t.table,
       sort_order: t.sort_order,
       is_amended: t.is_amended,
     })),
@@ -910,6 +925,59 @@ export async function deleteTopic(topicId: string) {
   topic.is_active = false;
   await topic.save();
   await BookSubTopic.updateMany({ book_topic_id: topicId }, { is_active: false });
+  await Process.updateMany({ book_topic_id: topicId }, { is_active: false });
+  return { deleted: true };
+}
+
+function serializeProcess(proc: InstanceType<typeof Process>) {
+  return {
+    id: String(proc._id),
+    book_topic_id: String(proc.book_topic_id),
+    title: proc.title,
+    details: proc.details,
+    steps: proc.steps.map((s) => ({ title: s.title, description: s.description, role: s.role })),
+    sort_order: proc.sort_order,
+  };
+}
+
+export async function listProcessesForTopic(topicId: string) {
+  const rows = await Process.find({ book_topic_id: topicId, is_active: true }).sort({ sort_order: 1 });
+  return rows.map(serializeProcess);
+}
+
+export async function createProcess(topicId: string, dto: CreateProcessDto) {
+  const topic = await BookTopic.findById(topicId);
+  if (!topic) throw notFound('Topic not found');
+  const count = await Process.countDocuments({ book_topic_id: topicId, is_active: true });
+  const sortOrder = dto.sort_order ?? count + 1;
+  const proc = await Process.create({
+    book_topic_id: topic._id,
+    title: dto.title.trim(),
+    details: dto.details,
+    steps: dto.steps ?? [],
+    sort_order: sortOrder,
+    is_active: true,
+  });
+  return serializeProcess(proc);
+}
+
+export async function updateProcess(processId: string, dto: UpdateProcessDto) {
+  const proc = await Process.findById(processId);
+  if (!proc) throw notFound('Process not found');
+  if (dto.title !== undefined) proc.title = dto.title.trim();
+  if (dto.details !== undefined) proc.details = dto.details;
+  if (dto.steps !== undefined) proc.steps = dto.steps;
+  if (dto.sort_order !== undefined) proc.sort_order = dto.sort_order;
+  if (dto.is_active !== undefined) proc.is_active = dto.is_active;
+  await proc.save();
+  return serializeProcess(proc);
+}
+
+export async function deleteProcess(processId: string) {
+  const proc = await Process.findById(processId);
+  if (!proc) throw notFound('Process not found');
+  proc.is_active = false;
+  await proc.save();
   return { deleted: true };
 }
 

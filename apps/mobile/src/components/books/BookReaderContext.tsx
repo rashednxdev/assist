@@ -47,18 +47,19 @@ export function BookReaderProvider({ bookId, children }: { bookId: string; child
 
   const prefetchFull = useCallback(async (chapters: ReaderChapter[]) => {
     if (!bookId) return;
-    if (peekBookReaderFull(bookId)) {
-      setFullChapters(peekBookReaderFull(bookId));
-      return;
-    }
-    setFullLoading(true);
+    // Paint instantly from cache if present, but always continue on to revalidate over the
+    // network below — a stale short-circuit here is what caused edits (e.g. a saved comparison
+    // table) to not show up after leaving and returning to a book screen within the cache TTL.
+    const cachedFull = peekBookReaderFull(bookId);
+    if (cachedFull) setFullChapters(cachedFull);
+    else setFullLoading(true);
     setFullError('');
     try {
       const data = await fetchBookReaderFull(bookId, chapters);
       setFullChapters(data);
     } catch (err) {
       setFullError(err instanceof Error ? err.message : 'Failed to load full book');
-      setFullChapters(null);
+      if (!cachedFull) setFullChapters(null);
     } finally {
       setFullLoading(false);
     }
@@ -74,7 +75,9 @@ export function BookReaderProvider({ bookId, children }: { bookId: string; child
       setOutline(data);
       void prefetchFull(data.chapters);
     } catch (err) {
-      setOutline(null);
+      // Now that this always revalidates over the network (see fetchBookReaderOutline), a
+      // transient failure shouldn't blank out content that was already showing from cache.
+      if (!hadOutline) setOutline(null);
       setError(err instanceof Error ? err.message : 'Failed to load book');
     } finally {
       setLoading(false);

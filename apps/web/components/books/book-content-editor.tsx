@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { REGULATION_TYPES, BOOK_LANGUAGES } from '@ibas/shared-constants';
-import type { ComparisonTable } from '@ibas/shared-types';
+import type { ComparisonTable, ProcessStep } from '@ibas/shared-types';
 import { emptyComparisonTable, hasComparisonTableContent } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,6 +14,8 @@ import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { STATIC_REF_PAGE_OPTIONS } from '@/lib/static-ref-pages';
 import { ComparisonTableModal } from '@/components/questions/comparison-table-modal';
+import { ProcessModal, type ProcessDraft } from '@/components/books/process-modal';
+import { ProcessFlowPreview } from '@/components/books/process-flow-preview';
 
 // Stable reference used only as a fallback seed for the table modal — re-creating this inline on
 // every render would make the modal's initialValue prop change identity each render, which resets
@@ -72,6 +74,14 @@ interface RegulationRow {
   regulation_type: string;
 }
 
+interface ProcessRow {
+  id: string;
+  title: string;
+  details?: string;
+  steps: ProcessStep[];
+  sort_order: number;
+}
+
 function wrapHtml(text: string) {
   const t = text.trim();
   if (!t) return '';
@@ -121,10 +131,12 @@ export function BookContentEditor({
   const [topicsByChapter, setTopicsByChapter] = useState<Record<string, TopicRow[]>>({});
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
   const [subTopicsByTopic, setSubTopicsByTopic] = useState<Record<string, SubTopicRow[]>>({});
+  const [processesByTopic, setProcessesByTopic] = useState<Record<string, ProcessRow[]>>({});
   const [regulations, setRegulations] = useState<RegulationRow[]>([]);
 
   const topics = selectedChapterId ? (topicsByChapter[selectedChapterId] ?? []) : [];
   const subTopics = selectedTopicId ? (subTopicsByTopic[selectedTopicId] ?? []) : [];
+  const processes = selectedTopicId ? (processesByTopic[selectedTopicId] ?? []) : [];
 
   const [chapterForm, setChapterForm] = useState({ name: '', chapter_number: '', sub_name: '', description: '' });
   const [editChapterId, setEditChapterId] = useState<string | null>(null);
@@ -149,6 +161,14 @@ export function BookContentEditor({
   const [editSubId, setEditSubId] = useState<string | null>(null);
   const [editSubForm, setEditSubForm] = useState(subForm);
 
+  const [processModalOpen, setProcessModalOpen] = useState(false);
+  const [editingProcessId, setEditingProcessId] = useState<string | null>(null);
+  const [processDraftSeed, setProcessDraftSeed] = useState<ProcessDraft>({
+    title: '',
+    details: '',
+    steps: [],
+  });
+
   const [regForm, setRegForm] = useState({
     regulation_no: '',
     title: '',
@@ -159,6 +179,7 @@ export function BookContentEditor({
 
   const loadedChapterTopicsRef = useRef(new Set<string>());
   const loadedTopicSubsRef = useRef(new Set<string>());
+  const loadedTopicProcessesRef = useRef(new Set<string>());
 
   const loadChapters = useCallback(() => {
     return apiFetch<{ data: ChapterRow[] }>(`/books/${bookId}/chapters`).then((r) => setChapters(r.data));
@@ -178,6 +199,13 @@ export function BookContentEditor({
     setSubTopicsByTopic((prev) => ({ ...prev, [topicId]: r.data.sub_topics }));
   }, []);
 
+  const ensureTopicProcesses = useCallback(async (topicId: string) => {
+    if (loadedTopicProcessesRef.current.has(topicId)) return;
+    const r = await apiFetch<{ data: { processes: ProcessRow[] } }>(`/books/topics/${topicId}`);
+    loadedTopicProcessesRef.current.add(topicId);
+    setProcessesByTopic((prev) => ({ ...prev, [topicId]: r.data.processes }));
+  }, []);
+
   const loadRegulations = useCallback(() => {
     return apiFetch<{ data: RegulationRow[] }>(`/books/${bookId}/regulations`).then((r) => setRegulations(r.data));
   }, [bookId]);
@@ -194,6 +222,10 @@ export function BookContentEditor({
   useEffect(() => {
     if (selectedTopicId) void ensureTopicSubTopics(selectedTopicId);
   }, [selectedTopicId, ensureTopicSubTopics]);
+
+  useEffect(() => {
+    if (selectedTopicId) void ensureTopicProcesses(selectedTopicId);
+  }, [selectedTopicId, ensureTopicProcesses]);
 
   useEffect(() => {
     if (!selectedTopicId) return;
@@ -591,6 +623,85 @@ export function BookContentEditor({
     }
   }
 
+  function openAddProcess() {
+    setEditingProcessId(null);
+    setProcessDraftSeed({ title: '', details: '', steps: [] });
+    setProcessModalOpen(true);
+  }
+
+  function openEditProcess(p: ProcessRow) {
+    setEditingProcessId(p.id);
+    setProcessDraftSeed({ title: p.title, details: p.details ?? '', steps: p.steps });
+    setProcessModalOpen(true);
+  }
+
+  async function saveProcess(draft: ProcessDraft) {
+    if (!selectedTopicId) return;
+    clearFeedback();
+    setBusy(true);
+    try {
+      const body = {
+        title: draft.title.trim(),
+        details: draft.details.trim() || undefined,
+        steps: draft.steps
+          .filter((s) => s.title.trim())
+          .map((s) => ({
+            title: s.title.trim(),
+            description: s.description?.trim() || undefined,
+            role: s.role?.trim() || undefined,
+          })),
+      };
+      if (editingProcessId) {
+        const res = await apiFetch<{ data: ProcessRow }>(`/books/processes/${editingProcessId}`, {
+          method: 'PATCH',
+          body: JSON.stringify(body),
+        });
+        setProcessesByTopic((prev) => ({
+          ...prev,
+          [selectedTopicId]: (prev[selectedTopicId] ?? []).map((p) =>
+            p.id === editingProcessId ? res.data : p,
+          ),
+        }));
+        setMessage('Process updated');
+      } else {
+        const res = await apiFetch<{ data: ProcessRow }>(`/books/topics/${selectedTopicId}/processes`, {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
+        setProcessesByTopic((prev) => ({
+          ...prev,
+          [selectedTopicId]: [...(prev[selectedTopicId] ?? []), res.data],
+        }));
+        setMessage('Process added');
+      }
+      setProcessModalOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save process');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeProcess(id: string) {
+    if (!confirm('Remove this process?')) return;
+    clearFeedback();
+    setBusy(true);
+    try {
+      await apiFetch(`/books/processes/${id}`, { method: 'DELETE' });
+      if (selectedTopicId) {
+        setProcessesByTopic((prev) => ({
+          ...prev,
+          [selectedTopicId]: (prev[selectedTopicId] ?? []).filter((p) => p.id !== id),
+        }));
+      }
+      setMessage('Process removed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove process');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function addRegulation(e?: React.FormEvent) {
     e?.preventDefault();
     clearFeedback();
@@ -839,10 +950,49 @@ export function BookContentEditor({
                       placeholder="Page link e.g. /static-ref/jsi-2016-p"
                       onChange={(e) => setEditTopicForm({ ...editTopicForm, content_link: e.target.value })}
                     />
-                    <p className="border-t border-border pt-3 text-xs text-muted">
-                      Comparison table is saved separately — use the &quot;View/edit table&quot; button on
-                      this rule above, which saves immediately on its own.
-                    </p>
+                    <div className="space-y-1.5 border-t border-border pt-3">
+                      <Label className="text-xs">Comparison table (optional)</Label>
+                      <p className="text-[11px] text-muted">
+                        Saves immediately on its own — no need to click Save below for table changes.
+                      </p>
+                      {(() => {
+                        const liveTopic = topics.find((x) => x.id === editTopicId);
+                        const hasTable = hasComparisonTableContent(liveTopic?.table);
+                        return (
+                          <div className="flex flex-wrap items-center gap-2">
+                            {hasTable && (
+                              <span className="rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted">
+                                {liveTopic?.table?.rows.length} row{liveTopic?.table?.rows.length === 1 ? '' : 's'} ·{' '}
+                                {liveTopic?.table?.columns.length} column
+                                {liveTopic?.table?.columns.length === 1 ? '' : 's'}
+                              </span>
+                            )}
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs"
+                              disabled={busy}
+                              onClick={() => setListTableTopicId(editTopicId)}
+                            >
+                              {hasTable ? 'View/edit table' : 'Add table'}
+                            </Button>
+                            {hasTable && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 text-xs text-destructive"
+                                disabled={busy}
+                                onClick={() => editTopicId && removeListTopicTable(editTopicId)}
+                              >
+                                Remove table
+                              </Button>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
                     <div className="flex gap-2">
                       <Button size="sm" disabled={busy} onClick={saveTopicEdit}>Save</Button>
                       <Button size="sm" variant="ghost" onClick={() => setEditTopicId(null)}>Cancel</Button>
@@ -1003,6 +1153,60 @@ export function BookContentEditor({
       </div>
 
       <Card>
+        <CardHeader className="border-b border-border pb-3 flex-row items-center justify-between">
+          <CardTitle className="text-base">Processes</CardTitle>
+          {selectedTopicId && (
+            <Button size="sm" disabled={busy} onClick={openAddProcess}>
+              Add process
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent className="space-y-3 pt-4">
+          {!selectedTopicId ? (
+            <p className="text-sm text-muted">Select a rule to manage processes.</p>
+          ) : processes.length === 0 ? (
+            <p className="text-sm text-muted">No processes added yet.</p>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2">
+              {processes.map((p) => (
+                <div key={p.id} className="rounded-lg border border-border p-3 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="font-medium">{p.title}</div>
+                      <div className="text-xs text-muted">
+                        {p.steps.length} step{p.steps.length === 1 ? '' : 's'}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-xs"
+                        disabled={busy}
+                        onClick={() => openEditProcess(p)}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-xs text-destructive"
+                        disabled={busy}
+                        onClick={() => removeProcess(p.id)}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+                  <ProcessFlowPreview steps={p.steps} />
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
         <CardHeader className="border-b border-border pb-3">
           <CardTitle className="text-base">Regulations</CardTitle>
         </CardHeader>
@@ -1115,6 +1319,12 @@ export function BookContentEditor({
         onSave={(table) => {
           if (listTableTopicId) void saveListTopicTable(listTableTopicId, table);
         }}
+      />
+      <ProcessModal
+        open={processModalOpen}
+        initialValue={processDraftSeed}
+        onCancel={() => setProcessModalOpen(false)}
+        onSave={(draft) => void saveProcess(draft)}
       />
     </div>
   );

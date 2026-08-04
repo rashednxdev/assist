@@ -34,6 +34,9 @@ import {
   createSubTopicHandler,
   updateSubTopicHandler,
   deleteSubTopicHandler,
+  createProcessHandler,
+  updateProcessHandler,
+  deleteProcessHandler,
   searchRegulationsHandler,
   listBookRegulationsHandler,
   getRegulationHandler,
@@ -90,3 +93,6 @@ booksRouter.delete('/topics/:topicId', requireAdmin, asyncHandler(deleteTopicHan
 booksRouter.post('/topics/:topicId/sub-topics', requireAdmin, asyncHandler(createSubTopicHandler));
 booksRouter.patch('/sub-topics/:subTopicId', requireAdmin, asyncHandler(updateSubTopicHandler));
 booksRouter.delete('/sub-topics/:subTopicId', requireAdmin, asyncHandler(deleteSubTopicHandler));
+booksRouter.post('/topics/:topicId/processes', requireAdmin, asyncHandler(createProcessHandler));
+booksRouter.patch('/processes/:id', requireAdmin, asyncHandler(updateProcessHandler));
+booksRouter.delete('/processes/:id', requireAdmin, asyncHandler(deleteProcessHandler));

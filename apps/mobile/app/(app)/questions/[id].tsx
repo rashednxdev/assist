@@ -20,6 +20,7 @@ import {
 } from '@/lib/evaluation-api';
 import type { ExplanationSection, QuestionDetail, QuestionOption } from '@/types/questions';
 import { ComparisonTableAnswer } from '@/components/questions/ComparisonTableAnswer';
+import { ProcessFlowPreview } from '@/components/books/ProcessFlowPreview';
 import { BookRichText } from '@/components/books/BookRichText';
 import { useDifferencesLandscape } from '@/hooks/useDifferencesLandscape';
 import { bilingualQuestionText } from '@/lib/question-display';
@@ -125,6 +126,12 @@ export default function QuestionDetailScreen() {
   const explanationSections = useMemo(
     () => normalizeSections(item?.explanation_sections),
     [item?.explanation_sections],
+  );
+  // Collected from the raw (unfiltered) section lists — a section whose only content is a
+  // process would otherwise be dropped by normalizeSections before we get a chance to see it.
+  const allProcesses = useMemo(
+    () => [...collectProcesses(item?.model_answer_sections), ...collectProcesses(item?.explanation_sections)],
+    [item?.model_answer_sections, item?.explanation_sections],
   );
 
   const isDifferences =
@@ -380,6 +387,21 @@ export default function QuestionDetailScreen() {
         </View>
       ) : null}
 
+      {showAnswer && allProcesses.length > 0 ? (
+        <View style={styles.panel}>
+          <Text style={styles.sectionTitle}>Process</Text>
+          {allProcesses.map((proc, idx) => (
+            <View key={idx} style={styles.processGroupBlock}>
+              {proc.title?.trim() ? <Text style={styles.subsectionTitle}>{proc.title}</Text> : null}
+              {proc.details?.trim() ? (
+                <BookRichText html={proc.details} style={styles.sectionText} />
+              ) : null}
+              <ProcessFlowPreview steps={proc.steps} />
+            </View>
+          ))}
+        </View>
+      ) : null}
+
       {!item.has_options ? (
         <View style={styles.panel}>
           <Text style={[styles.sectionTitle, styles.selfEvalTitle]}>Self evaluation</Text>
@@ -474,6 +496,20 @@ function hasSavedEval(evaluation: QuestionEvaluationRecord | null, isMcq: boolea
 
 function sectionHasTable(sec: ExplanationSection) {
   return Boolean(sec.table && sec.table.columns.length >= 2 && sec.table.rows.length > 0);
+}
+
+function sectionHasProcessContent(process?: ExplanationSection['process']) {
+  return Boolean(process && process.steps.some((s) => s.title?.trim()));
+}
+
+/** Every process across a list of sections — used to show all of a question's processes together
+ * in one dedicated panel at the end of the answer, rather than scattered inline per section. */
+function collectProcesses(sections?: ExplanationSection[]) {
+  return (sections ?? [])
+    .map((sec) => sec.process)
+    .filter((process): process is NonNullable<ExplanationSection['process']> =>
+      sectionHasProcessContent(process),
+    );
 }
 
 function normalizeSections(sections?: ExplanationSection[]) {
@@ -651,6 +687,11 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     color: colors.textMuted,
     fontStyle: 'italic',
+  },
+  processGroupBlock: {
+    marginTop: 4,
+    gap: 4,
+    paddingBottom: 8,
   },
   subsectionBlock: {
     marginTop: 4,

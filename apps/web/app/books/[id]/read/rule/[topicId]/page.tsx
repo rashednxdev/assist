@@ -13,9 +13,10 @@ import { BookDetailsBlock } from '@/components/books/book-details-block';
 import { RichTextView } from '@/components/books/rich-text-view';
 import { RuleContentLinkEmbed } from '@/components/books/rule-content-link-embed';
 import { ComparisonTableView } from '@/components/questions/comparison-table-view';
+import { ProcessFlowPreview } from '@/components/books/process-flow-preview';
 import { chapterHeading, ruleHeading, subRuleHeading } from '@/lib/book-display';
 import { bookTheme } from '@/lib/book-theme';
-import type { ComparisonTable } from '@ibas/shared-types';
+import type { ComparisonTable, ProcessStep } from '@ibas/shared-types';
 import { hasComparisonTableContent } from '@ibas/shared-types';
 
 interface TopicDetail {
@@ -27,6 +28,8 @@ interface TopicDetail {
   content_link?: string;
   /** Optional comparison table for this rule/topic. */
   table?: ComparisonTable;
+  /** Optional step-by-step processes documented for this rule/topic. */
+  processes?: Array<{ id: string; title: string; details?: string; steps: ProcessStep[] }>;
   is_amended: boolean;
   chapter?: { id: string; name: string; chapter_number?: string } | null;
   details: Array<{ id: string; detail_text: string }>;
@@ -101,6 +104,20 @@ export default function BookRuleReadPage() {
             {hasComparisonTableContent(topic.table) && (
               <div className="mt-6">
                 <ComparisonTableView table={topic.table} label="Comparison table" />
+              </div>
+            )}
+            {(topic.processes?.length ?? 0) > 0 && (
+              <div className="mt-6 space-y-3">
+                <h2 className="text-sm font-semibold text-muted">Processes</h2>
+                {topic.processes!.map((p) => (
+                  <div key={p.id} className="rounded-lg border border-border p-4">
+                    <div className="font-semibold text-foreground">{p.title}</div>
+                    {p.details?.trim() && <p className="mt-0.5 text-sm text-muted">{p.details}</p>}
+                    <div className="mt-3">
+                      <ProcessFlowPreview steps={p.steps} />
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
             {topic.details.length > 0 && (

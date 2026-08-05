@@ -14,6 +14,7 @@ import {
   listMarathonReviewHandler,
   questionsSyncHandler,
   similarQuestionsHandler,
+  linkQuestionSearchHandler,
   getQuestionHandler,
   createQuestionHandler,
   batchImportMcqHandler,
@@ -59,6 +60,7 @@ questionsRouter.get('/trashed', requireAdmin, asyncHandler(listTrashedQuestionsH
 questionsRouter.get('/marathon-review', requireModuleAccess('QUESTIONS'), asyncHandler(listMarathonReviewHandler));
 questionsRouter.get('/sync', requireModuleAccess('QUESTIONS'), asyncHandler(questionsSyncHandler));
 questionsRouter.get('/similar', requireModuleAccess('QUESTIONS'), asyncHandler(similarQuestionsHandler));
+questionsRouter.get('/link-search', canBrowseQuestions, asyncHandler(linkQuestionSearchHandler));
 questionsRouter.get('/:id', canBrowseQuestions, asyncHandler(getQuestionHandler));
 
 questionsRouter.post('/batch-import', requireAdmin, asyncHandler(batchImportMcqHandler));

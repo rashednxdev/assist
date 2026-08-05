@@ -4,6 +4,7 @@ import {
   updateQuestionSchema,
   listQuestionsQuerySchema,
   similarQuestionsQuerySchema,
+  linkQuestionSearchQuerySchema,
   marathonReviewQuerySchema,
   questionsSyncQuerySchema,
   createQuestionTypeSchema,
@@ -113,6 +114,12 @@ export async function similarQuestionsHandler(req: AuthRequest, res: Response): 
   res.json({ data });
 }
 
+export async function linkQuestionSearchHandler(req: AuthRequest, res: Response): Promise<void> {
+  const filters = linkQuestionSearchQuerySchema.parse(req.query);
+  const data = await questionsService.searchQuestionsForLink(filters);
+  res.json({ data });
+}
+
 export async function getQuestionHandler(req: AuthRequest, res: Response): Promise<void> {
   const data = await questionsService.getQuestionById(String(req.params.id));
   res.json({ data });
@@ -194,7 +201,7 @@ export async function batchPermanentlyDeleteQuestionsHandler(req: AuthRequest, r
 
 export async function batchUnpublishQuestionsHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = batchQuestionIdsSchema.parse(req.body);
-  const data = await questionsService.batchUnpublishQuestions(dto.ids);
+  const data = await questionsService.batchUnpublishQuestions(dto.ids, req.user!.id);
   res.json({ data });
 }
 
@@ -203,7 +210,7 @@ export async function batchSubmitForQualityCheckQuestionsHandler(
   res: Response,
 ): Promise<void> {
   const dto = batchQuestionIdsSchema.parse(req.body);
-  const data = await questionsService.batchSubmitForQualityCheckQuestions(dto.ids);
+  const data = await questionsService.batchSubmitForQualityCheckQuestions(dto.ids, req.user!.id);
   res.json({ data });
 }
 
@@ -211,12 +218,12 @@ export async function submitQuestionForQualityCheckHandler(
   req: AuthRequest,
   res: Response,
 ): Promise<void> {
-  const data = await questionsService.submitQuestionForQualityCheck(String(req.params.id));
+  const data = await questionsService.submitQuestionForQualityCheck(String(req.params.id), req.user!.id);
   res.json({ data });
 }
 
 export async function returnQuestionToDraftHandler(req: AuthRequest, res: Response): Promise<void> {
-  const data = await questionsService.returnQuestionToDraft(String(req.params.id));
+  const data = await questionsService.returnQuestionToDraft(String(req.params.id), req.user!.id);
   res.json({ data });
 }
 
@@ -226,7 +233,7 @@ export async function publishQuestionHandler(req: AuthRequest, res: Response): P
 }
 
 export async function unpublishQuestionHandler(req: AuthRequest, res: Response): Promise<void> {
-  const data = await questionsService.unpublishQuestion(String(req.params.id));
+  const data = await questionsService.unpublishQuestion(String(req.params.id), req.user!.id);
   res.json({ data });
 }
 

@@ -15,6 +15,7 @@
     "migrate:review-status": "tsx scripts/migrations/migrate-review-status.ts",
     "migrate:book-published": "tsx scripts/migrations/migrate-book-published.ts",
     "migrate:question-edit-module": "tsx scripts/migrations/add-question-edit-module.ts",
+    "migrate:status-changed-by": "tsx scripts/migrations/migrate-status-changed-by.ts",
     "test:db": "tsx scripts/test-connection.ts"
   },
   "dependencies": {
@@ -33,6 +34,7 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.15.1",
     "multer": "^2.0.1",
+    "nodemailer": "^9.0.4",
     "pdf-parse": "^1.1.1",
     "pdfjs-dist": "^4.10.38",
     "pino": "^9.7.0",
@@ -48,6 +50,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^1.4.12",
     "@types/node": "^22.15.30",
+    "@types/nodemailer": "^8.0.1",
     "@types/pdf-parse": "^1.1.5",
     "pino-pretty": "^13.0.0",
     "tsx": "^4.19.4",

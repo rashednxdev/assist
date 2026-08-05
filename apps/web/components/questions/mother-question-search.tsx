@@ -12,6 +12,7 @@ interface SearchResult {
   body_en: string;
   body_bn?: string;
   question_type_code: string;
+  match?: number;
 }
 
 interface BookOption {
@@ -72,11 +73,24 @@ export function MotherQuestionSearch({
     setError('');
     try {
       const params = new URLSearchParams();
-      if (query.trim()) params.set('q', query.trim());
       if (chapterId) params.set('book_chapter_id', chapterId);
       else if (bookId) params.set('book_info_id', bookId);
-      params.set('limit', '20');
-      const res = await apiFetch<{ data: SearchResult[] }>(`/questions?${params.toString()}`);
+
+      const q = query.trim();
+      let path: string;
+      if (q) {
+        // Word-match search: any word in the query matching anywhere in a question counts,
+        // ranked by % of query words matched (50%+), across every status except trashed.
+        params.set('q', q);
+        if (excludeQuestionId) params.set('exclude_id', excludeQuestionId);
+        params.set('limit', '20');
+        path = `/questions/link-search?${params.toString()}`;
+      } else {
+        params.set('limit', '20');
+        path = `/questions?${params.toString()}`;
+      }
+
+      const res = await apiFetch<{ data: SearchResult[] }>(path);
       setResults(res.data.filter((r) => r.id !== excludeQuestionId));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Search failed');
@@ -138,7 +152,12 @@ export function MotherQuestionSearch({
         <ul className="max-h-56 space-y-1.5 overflow-y-auto">
           {results.map((r) => (
             <li key={r.id} className="flex items-center justify-between gap-2 rounded-md border border-border px-2.5 py-2 text-sm">
-              <span className="line-clamp-2 flex-1">{r.body_bn || r.body_en}</span>
+              <span className="line-clamp-2 flex-1">
+                {r.body_bn || r.body_en}
+                {typeof r.match === 'number' && (
+                  <span className="ml-2 whitespace-nowrap text-xs font-medium text-muted">{r.match}% match</span>
+                )}
+              </span>
               <Button
                 type="button"
                 size="sm"

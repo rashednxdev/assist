@@ -21,6 +21,8 @@ export interface QuestionListItem {
   is_published: boolean;
   /** Not populated by the offline sync cache (Question Bank/Marathon) — only by live /questions calls. */
   review_status?: ReviewStatus;
+  /** Who most recently set the current review_status — undefined for legacy questions. Question Update module only. */
+  status_by_name?: string;
   book_chapter_id?: string;
   book_topic_id?: string;
   book_sub_topic_id?: string;
@@ -109,6 +111,8 @@ export interface QuestionDetail {
   is_published: boolean;
   /** Not populated by the offline sync cache (Question Bank/Marathon) — only by live /questions calls. */
   review_status?: ReviewStatus;
+  /** Who most recently set the current review_status — undefined for legacy questions. Question Update module only. */
+  status_by_name?: string;
   book_id?: string;
   book_name?: string;
   chapter_number?: string;

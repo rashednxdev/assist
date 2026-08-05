@@ -17,6 +17,7 @@ export default function RegisterPage() {
   const router = useRouter();
   const [form, setForm] = useState({
     full_name_en: '',
+    email: '',
     phone: '',
     password: '',
     confirm_password: '',
@@ -41,6 +42,7 @@ export default function RegisterPage() {
     try {
       const res = await registerRequest({
         full_name_en: form.full_name_en.trim(),
+        email: form.email.trim(),
         phone: form.phone.trim(),
         password: form.password,
         confirm_password: form.confirm_password,
@@ -93,6 +95,16 @@ export default function RegisterPage() {
                   placeholder="01700000000"
                   required
                   pattern="01[3-9][0-9]{8}"
+                />
+              </FormField>
+              <FormField label="Email" htmlFor="email" required hint="Used to reset your password if you forget it">
+                <Input
+                  id="email"
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                  placeholder="you@example.com"
+                  required
                 />
               </FormField>
               <div className="grid gap-4 sm:grid-cols-2">

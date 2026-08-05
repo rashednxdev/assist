@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm view *)",
+      "Bash(pnpm install *)",
+      "Bash(pnpm --filter mobile typecheck)",
+      "Bash(timeout 25 npx expo start --no-dev --offline)",
+      "Bash(echo \"EXIT:$?\")"
+    ]
+  }
+}

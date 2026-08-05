@@ -38,12 +38,9 @@ import { UserQuestionEvaluation } from '../evaluation/models/UserQuestionEvaluat
 import { QuestionDeletion } from './models/QuestionDeletion.model.js';
 import { PaperQuestion } from '../papers/models/PaperQuestion.model.js';
 import { ChildQuestion } from '../papers/models/ChildQuestion.model.js';
+import { User } from '../users/models/User.model.js';
 import { notFound, badRequest } from '../../shared/errors/AppError.js';
-import {
-  escapeRegex,
-  extractSearchKeywords,
-  questionSimilarity,
-} from './question-similarity.js';
+import { escapeRegex, normalizeQuestionText, queryWordMatchScore } from './question-similarity.js';
 
 const TF_OPTIONS = [
   { option_key: 'a' as const, option_text_en: 'True', option_text_bn: 'সঠিক' },
@@ -336,6 +333,7 @@ function serializeQuestionListItem(
   q: InstanceType<typeof Question>,
   typeName: string | undefined,
   optionCount: number,
+  statusByName?: string,
 ) {
   return {
     id: String(q._id),
@@ -349,6 +347,8 @@ function serializeQuestionListItem(
     time_seconds: q.time_seconds,
     is_published: q.is_published,
     review_status: q.review_status,
+    /** Who most recently set the current review_status — undefined for legacy questions predating this field. */
+    status_by_name: statusByName,
     book_chapter_id: idStr(q.book_chapter_id),
     book_topic_id: idStr(q.book_topic_id),
     book_sub_topic_id: idStr(q.book_sub_topic_id),
@@ -365,6 +365,10 @@ function serializeQuestionListItem(
 async function loadQuestionDetail(questionId: string) {
   const question = await Question.findById(questionId);
   if (!question || !question.is_active) throw notFound('Question not found');
+
+  const statusByUser = question.status_changed_by
+    ? await User.findById(question.status_changed_by).select('full_name_en full_name_bn')
+    : null;
 
   await ensureLegacyBookLink(question);
   const book_links = await loadSerializedBookLinks(question._id);
@@ -446,6 +450,8 @@ async function loadQuestionDetail(questionId: string) {
     time_seconds: question.time_seconds,
     is_published: question.is_published,
     review_status: question.review_status,
+    /** Who most recently set the current review_status — undefined for legacy questions predating this field. */
+    status_by_name: statusByUser ? statusByUser.full_name_bn || statusByUser.full_name_en : undefined,
     language: question.language,
     created_by: String(question.created_by),
     reviewed_by: idStr(question.reviewed_by),
@@ -796,7 +802,9 @@ export async function findSimilarQuestions(params: {
   limit?: number;
 }) {
   const text = params.text.trim();
-  const threshold = params.threshold ?? 0.6;
+  // Same word-match search standard as link-search: any word matching counts, ranked by % of
+  // query words found, 50%+ by default — instead of requiring near-identical full-text similarity.
+  const threshold = params.threshold ?? 0.5;
   const limit = params.limit ?? 8;
   if (text.length < 8) return [];
 
@@ -811,37 +819,25 @@ export async function findSimilarQuestions(params: {
     query._id = { $ne: new mongoose.Types.ObjectId(params.exclude_id) };
   }
 
-  const keywords = extractSearchKeywords(text);
-  if (keywords.length > 0) {
-    query.$or = keywords.flatMap((w) => [
+  // Same word list the scorer uses below, so the Mongo prefilter never drops a candidate the
+  // score would otherwise have kept — any single word appearing anywhere is enough to fetch it.
+  const words = [...new Set(normalizeQuestionText(text).split(' ').filter((w) => w.length > 1))];
+  if (words.length > 0) {
+    query.$or = words.flatMap((w) => [
       { body_en: { $regex: escapeRegex(w), $options: 'i' } },
       { body_bn: { $regex: escapeRegex(w), $options: 'i' } },
     ]);
   }
 
-  let candidates = await Question.find(query)
+  const candidates = await Question.find(query)
     .select('body_en body_bn question_type_code is_published')
     .sort({ updated_at: -1 })
     .limit(200);
 
-  if (candidates.length === 0) {
-    const fallbackQuery: Record<string, unknown> = {
-      is_active: true,
-      question_type_id: qType._id,
-    };
-    if (params.exclude_id) {
-      fallbackQuery._id = { $ne: new mongoose.Types.ObjectId(params.exclude_id) };
-    }
-    candidates = await Question.find(fallbackQuery)
-      .select('body_en body_bn question_type_code is_published')
-      .sort({ updated_at: -1 })
-      .limit(150);
-  }
-
   return candidates
     .map((q) => {
-      const scoreEn = questionSimilarity(text, q.body_en);
-      const scoreBn = q.body_bn ? questionSimilarity(text, q.body_bn) : 0;
+      const scoreEn = queryWordMatchScore(text, q.body_en);
+      const scoreBn = q.body_bn ? queryWordMatchScore(text, q.body_bn) : 0;
       const score = Math.max(scoreEn, scoreBn);
       return {
         id: String(q._id),
@@ -850,6 +846,78 @@ export async function findSimilarQuestions(params: {
         question_type_code: q.question_type_code,
         is_published: q.is_published,
         similarity: Math.round(score * 100),
+        score,
+      };
+    })
+    .filter((item) => item.score >= threshold)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map(({ score: _score, ...item }) => item);
+}
+
+/**
+ * "Link answer with another question" search — any word in `q` matching anywhere in a question's
+ * text counts as a candidate; results are ranked by the % of query words found (any status except
+ * trashed, no book-list-cache short-circuit) and only 50%+ matches (by default) are returned.
+ */
+export async function searchQuestionsForLink(params: {
+  q: string;
+  exclude_id?: string;
+  book_chapter_id?: string;
+  book_info_id?: string;
+  threshold?: number;
+  limit?: number;
+}) {
+  const text = params.q.trim();
+  if (!text) return [];
+  const threshold = params.threshold ?? 0.5;
+  const limit = params.limit ?? 20;
+
+  const query: Record<string, unknown> = { is_active: true };
+  if (params.exclude_id) {
+    query._id = { $ne: new mongoose.Types.ObjectId(params.exclude_id) };
+  }
+
+  if (params.book_chapter_id) {
+    query.book_chapter_id = params.book_chapter_id;
+  } else if (params.book_info_id) {
+    const chapters = await BookChapter.find({
+      book_info_id: params.book_info_id,
+      is_active: true,
+    }).select('_id');
+    const chapterIds = chapters.map((c) => c._id);
+    if (chapterIds.length === 0) return [];
+    query.book_chapter_id = { $in: chapterIds };
+  }
+
+  // Same word list the scorer uses below, so the Mongo prefilter never drops a candidate the
+  // score would otherwise have kept — any single word appearing anywhere is enough to fetch it.
+  const words = [...new Set(normalizeQuestionText(text).split(' ').filter((w) => w.length > 1))];
+  if (words.length > 0) {
+    query.$or = words.flatMap((w) => [
+      { body_en: { $regex: escapeRegex(w), $options: 'i' } },
+      { body_bn: { $regex: escapeRegex(w), $options: 'i' } },
+    ]);
+  }
+
+  const candidates = await Question.find(query)
+    .select('body_en body_bn question_type_code review_status is_published')
+    .sort({ updated_at: -1 })
+    .limit(300);
+
+  return candidates
+    .map((c) => {
+      const scoreEn = queryWordMatchScore(text, c.body_en);
+      const scoreBn = c.body_bn ? queryWordMatchScore(text, c.body_bn) : 0;
+      const score = Math.max(scoreEn, scoreBn);
+      return {
+        id: String(c._id),
+        body_en: c.body_en,
+        body_bn: c.body_bn,
+        question_type_code: c.question_type_code,
+        review_status: c.review_status,
+        is_published: c.is_published,
+        match: Math.round(score * 100),
         score,
       };
     })
@@ -1034,6 +1102,17 @@ export async function listQuestions(
   const types = typeIds.length > 0 ? await QuestionType.find({ _id: { $in: typeIds } }) : [];
   const typeMap = new Map(types.map((t) => [String(t._id), t.name]));
 
+  const statusByUserIds = [
+    ...new Set(items.map((q) => idStr(q.status_changed_by)).filter((id): id is string => Boolean(id))),
+  ];
+  const statusByUsers =
+    statusByUserIds.length > 0
+      ? await User.find({ _id: { $in: statusByUserIds } }).select('full_name_en full_name_bn')
+      : [];
+  const statusByNameMap = new Map(
+    statusByUsers.map((u) => [String(u._id), u.full_name_bn || u.full_name_en]),
+  );
+
   const questionIds = items.map((q) => q._id);
   const [linkCounts, optionCounts] = await Promise.all([
     questionIds.length
@@ -1067,6 +1146,7 @@ export async function listQuestions(
       q,
       typeMap.get(String(q.question_type_id)),
       optionCountMap.get(String(q._id)) ?? 0,
+      q.status_changed_by ? statusByNameMap.get(String(q.status_changed_by)) : undefined,
     );
     const storedCount = linkCountMap.get(String(q._id)) ?? 0;
     item.book_link_count = storedCount > 0 ? storedCount : q.book_chapter_id ? 1 : 0;
@@ -1253,6 +1333,7 @@ export async function createQuestion(dto: CreateQuestionDto, createdBy: string) 
     review_status: 'draft',
     is_active: true,
     created_by: new mongoose.Types.ObjectId(createdBy),
+    status_changed_by: new mongoose.Types.ObjectId(createdBy),
     mother_question_id: motherId,
   });
 
@@ -1589,11 +1670,11 @@ export async function batchPermanentlyDeleteQuestions(ids: string[]) {
 }
 
 /** Published -> quality_check for each id (skips/reports any that aren't currently published). */
-export async function batchUnpublishQuestions(ids: string[]) {
+export async function batchUnpublishQuestions(ids: string[], userId: string) {
   const results: Array<{ id: string; unpublished?: boolean; error?: string }> = [];
   for (const id of ids) {
     try {
-      await unpublishQuestion(id);
+      await unpublishQuestion(id, userId);
       results.push({ id, unpublished: true });
     } catch (err) {
       results.push({ id, error: err instanceof Error ? err.message : 'Unpublish failed' });
@@ -1605,11 +1686,11 @@ export async function batchUnpublishQuestions(ids: string[]) {
 }
 
 /** Draft -> quality_check for each id (skips/reports any that aren't currently draft). */
-export async function batchSubmitForQualityCheckQuestions(ids: string[]) {
+export async function batchSubmitForQualityCheckQuestions(ids: string[], userId: string) {
   const results: Array<{ id: string; submitted?: boolean; error?: string }> = [];
   for (const id of ids) {
     try {
-      await submitQuestionForQualityCheck(id);
+      await submitQuestionForQualityCheck(id, userId);
       results.push({ id, submitted: true });
     } catch (err) {
       results.push({ id, error: err instanceof Error ? err.message : 'Submit for quality check failed' });
@@ -1646,25 +1727,27 @@ export async function listTrashedQuestions(filters: {
  * Draft -> quality_check. A question sits here for an admin to review before it can be published;
  * it stays unpublished the whole time, so no content validation is required to enter review.
  */
-export async function submitQuestionForQualityCheck(id: string) {
+export async function submitQuestionForQualityCheck(id: string, userId: string) {
   const question = await Question.findById(id);
   if (!question || !question.is_active) throw notFound('Question not found');
   if (question.review_status !== 'draft') {
     throw badRequest('Only draft questions can be submitted for quality check');
   }
   question.review_status = 'quality_check';
+  question.status_changed_by = new mongoose.Types.ObjectId(userId);
   await question.save();
   return loadQuestionDetail(id);
 }
 
 /** Quality_check -> draft, e.g. when review finds it needs more work. */
-export async function returnQuestionToDraft(id: string) {
+export async function returnQuestionToDraft(id: string, userId: string) {
   const question = await Question.findById(id);
   if (!question || !question.is_active) throw notFound('Question not found');
   if (question.review_status !== 'quality_check') {
     throw badRequest('Only questions in quality check can be sent back to draft');
   }
   question.review_status = 'draft';
+  question.status_changed_by = new mongoose.Types.ObjectId(userId);
   await question.save();
   return loadQuestionDetail(id);
 }
@@ -1710,16 +1793,18 @@ export async function publishQuestion(id: string, reviewerId: string) {
   question.is_published = true;
   question.review_status = 'published';
   question.reviewed_by = new mongoose.Types.ObjectId(reviewerId);
+  question.status_changed_by = new mongoose.Types.ObjectId(reviewerId);
   await question.save();
   return loadQuestionDetail(id);
 }
 
 /** Published -> quality_check (not draft) — pulls a live question back for re-review. */
-export async function unpublishQuestion(id: string) {
+export async function unpublishQuestion(id: string, userId: string) {
   const question = await Question.findById(id);
   if (!question || !question.is_active) throw notFound('Question not found');
   question.is_published = false;
   question.review_status = 'quality_check';
+  question.status_changed_by = new mongoose.Types.ObjectId(userId);
   await question.save();
   return loadQuestionDetail(id);
 }

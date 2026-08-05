@@ -247,7 +247,7 @@ export function QuestionEditor({
       const params = new URLSearchParams({
         text,
         question_type_id: value.question_type_id,
-        threshold: '0.6',
+        threshold: '0.5',
       });
       if (excludeQuestionId) params.set('exclude_id', excludeQuestionId);
 
@@ -354,7 +354,7 @@ export function QuestionEditor({
                 <p className="text-xs font-medium text-amber-900 dark:text-amber-200">
                   {similarLoading
                     ? 'Checking for similar questions…'
-                    : `Similar questions in this type (${similarQuestions.length} at ≥60% match)`}
+                    : `Similar questions in this type (${similarQuestions.length} at ≥50% match)`}
                 </p>
                 {!similarLoading && similarQuestions.length > 0 && (
                   <ul className="mt-2 space-y-2">

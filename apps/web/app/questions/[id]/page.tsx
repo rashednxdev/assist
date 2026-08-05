@@ -45,6 +45,8 @@ interface QuestionDetail {
   time_seconds: number;
   is_published: boolean;
   review_status: ReviewStatus;
+  /** Who most recently set the current review_status — undefined for legacy questions. */
+  status_by_name?: string;
   question_type_id: string;
   question_type_code: string;
   question_type_name?: string;
@@ -247,7 +249,7 @@ export default function QuestionDetailPage() {
         <Badge variant="secondary">{question.difficulty}</Badge>
         <Badge variant="outline">{question.marks} marks</Badge>
         {question.negative_marks ? <Badge variant="outline">−{question.negative_marks} wrong</Badge> : null}
-        <ReviewStatusBadge status={question.review_status} />
+        <ReviewStatusBadge status={question.review_status} by={question.status_by_name} />
       </div>
 
       {editMode && isAdmin ? (

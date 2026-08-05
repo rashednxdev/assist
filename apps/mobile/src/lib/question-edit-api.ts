@@ -64,11 +64,10 @@ export type ReviewTransition = 'submit-for-quality-check' | 'return-to-draft' | 
 export async function transitionQuestionReviewStatus(
   id: string,
   action: ReviewTransition,
-): Promise<{ review_status: ReviewStatus; is_published: boolean }> {
-  const res = await apiFetch<{ data: { review_status: ReviewStatus; is_published: boolean } }>(
-    `/questions/${id}/${action}`,
-    { method: 'POST' },
-  );
+): Promise<{ review_status: ReviewStatus; is_published: boolean; status_by_name?: string }> {
+  const res = await apiFetch<{
+    data: { review_status: ReviewStatus; is_published: boolean; status_by_name?: string };
+  }>(`/questions/${id}/${action}`, { method: 'POST' });
   return res.data;
 }
 

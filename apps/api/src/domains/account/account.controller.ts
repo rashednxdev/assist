@@ -6,6 +6,8 @@ import {
   updateMyProfileSchema,
   createUserAddressSchema,
   subscribePlanSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
 } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
 import * as accountService from './account.service.js';
@@ -14,6 +16,18 @@ export async function registerHandler(req: AuthRequest, res: Response): Promise<
   const dto = registerSchema.parse(req.body);
   const result = await accountService.registerUser(dto);
   res.status(201).json({ data: result });
+}
+
+export async function forgotPasswordHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = forgotPasswordSchema.parse(req.body);
+  const data = await accountService.requestPasswordReset(dto);
+  res.json({ data });
+}
+
+export async function resetPasswordHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = resetPasswordSchema.parse(req.body);
+  const data = await accountService.resetPasswordWithOtp(dto);
+  res.json({ data });
 }
 
 export async function resendOtpHandler(req: AuthRequest, res: Response): Promise<void> {

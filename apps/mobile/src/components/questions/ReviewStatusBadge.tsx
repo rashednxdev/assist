@@ -13,6 +13,6 @@ const VARIANT: Record<ReviewStatus, 'default' | 'warning' | 'muted'> = {
   published: 'default',
 };
 
-export function ReviewStatusBadge({ status }: { status: ReviewStatus }) {
-  return <BookBadge label={LABEL[status]} variant={VARIANT[status]} />;
+export function ReviewStatusBadge({ status, by }: { status: ReviewStatus; by?: string }) {
+  return <BookBadge label={by ? `${LABEL[status]} · ${by}` : LABEL[status]} variant={VARIANT[status]} />;
 }

@@ -82,6 +82,29 @@ export async function register(body: Omit<RegisterDto, 'device_id' | 'device_lab
   return res.data;
 }
 
+/** Step 1 of "forgot password" — emails a reset code to the address on file for this phone number. */
+export async function forgotPassword(phone: string) {
+  const res = await apiFetch<{ data: { sent: true; email_hint: string } }>('/auth/password/forgot', {
+    method: 'POST',
+    body: JSON.stringify({ phone }),
+  });
+  return res.data;
+}
+
+/** Step 2 — the emailed code plus a new password. No auth token required (that's the point). */
+export async function resetPassword(params: {
+  phone: string;
+  code: string;
+  new_password: string;
+  confirm_password: string;
+}) {
+  const res = await apiFetch<{ data: { success: true } }>('/auth/password/reset', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+  return res.data;
+}
+
 export async function fetchMe() {
   const res = await apiFetch<{ data: MeUser }>('/auth/me');
   return res.data;

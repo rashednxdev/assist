@@ -14,6 +14,14 @@ const envSchema = z.object({
   OCR_MIN_TEXT_CHARS: z.coerce.number().min(0).default(40),
   /** Directory for public content cache JSON files (no user/auth data). */
   CONTENT_CACHE_DIR: z.string().optional(),
+  /**
+   * Gmail SMTP for outgoing email (password-reset OTP, etc.). Unset in dev logs the code instead
+   * of sending. The "from" address is always SMTP_USER itself — Gmail rejects/rewrites mismatched
+   * From headers, so there's no separate EMAIL_FROM to configure.
+   */
+  SMTP_USER: z.string().optional(),
+  /** Gmail App Password (not the account password) — Google Account > Security > App passwords. */
+  SMTP_PASS: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);

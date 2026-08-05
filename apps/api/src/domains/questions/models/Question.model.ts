@@ -23,6 +23,8 @@ export interface IQuestion extends Document {
   language: string;
   created_by: Types.ObjectId;
   reviewed_by?: Types.ObjectId;
+  /** Who most recently changed `review_status` (draft/quality_check/published), for "by <name>" display. */
+  status_changed_by?: Types.ObjectId;
   /**
    * When set, this question is a "prototype" of another ("mother") question — it shares the
    * mother's model answer. Editing the answer from either side edits the mother's copy, which
@@ -54,6 +56,7 @@ const schema = new Schema<IQuestion>(
     language: { type: String, default: 'both' },
     created_by: { type: Schema.Types.ObjectId, required: true, ref: 'User' },
     reviewed_by: { type: Schema.Types.ObjectId, ref: 'User' },
+    status_changed_by: { type: Schema.Types.ObjectId, ref: 'User' },
     mother_question_id: { type: Schema.Types.ObjectId, ref: 'Question' },
   },
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } },

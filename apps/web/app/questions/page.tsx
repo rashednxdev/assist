@@ -51,6 +51,8 @@ interface QuestionItem {
   time_seconds: number;
   is_published: boolean;
   review_status: ReviewStatus;
+  /** Who most recently set the current review_status — undefined for legacy questions. */
+  status_by_name?: string;
   book_chapter_id?: string;
   book_topic_id?: string;
   book_sub_topic_id?: string;
@@ -282,14 +284,18 @@ export default function QuestionsPage() {
     setListMsg('');
     setPublishingId(item.id);
     try {
-      const { data } = await apiFetch<{ data: { review_status: ReviewStatus; is_published: boolean } }>(
-        `/questions/${item.id}/${action}`,
-        { method: 'POST' },
-      );
+      const { data } = await apiFetch<{
+        data: { review_status: ReviewStatus; is_published: boolean; status_by_name?: string };
+      }>(`/questions/${item.id}/${action}`, { method: 'POST' });
       setItems((prev) =>
         prev.map((q) =>
           q.id === item.id
-            ? { ...q, review_status: data.review_status, is_published: data.is_published }
+            ? {
+                ...q,
+                review_status: data.review_status,
+                is_published: data.is_published,
+                status_by_name: data.status_by_name,
+              }
             : q,
         ),
       );
@@ -847,7 +853,9 @@ export default function QuestionsPage() {
                           {item.option_count > 0 && (
                             <Badge variant="outline">{item.option_count} options</Badge>
                           )}
-                          {isAdmin && <ReviewStatusBadge status={item.review_status} />}
+                          {isAdmin && (
+                            <ReviewStatusBadge status={item.review_status} by={item.status_by_name} />
+                          )}
                         </div>
                       </div>
                     </Link>

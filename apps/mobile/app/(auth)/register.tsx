@@ -16,6 +16,7 @@ export default function RegisterScreen() {
   const { refreshUser } = useAuth();
   const [form, setForm] = useState({
     full_name_en: '',
+    email: '',
     phone: '',
     password: '',
     confirm_password: '',
@@ -39,6 +40,10 @@ export default function RegisterScreen() {
       setError('Enter a valid mobile number (01XXXXXXXXX).');
       return;
     }
+    if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) {
+      setError('Enter a valid email address — it’s used to reset your password if you forget it.');
+      return;
+    }
     if (form.password.length < 8) {
       setError('Password must be at least 8 characters.');
       return;
@@ -55,6 +60,7 @@ export default function RegisterScreen() {
     try {
       await register({
         full_name_en: form.full_name_en.trim(),
+        email: form.email.trim(),
         phone: form.phone.trim(),
         password: form.password,
         confirm_password: form.confirm_password,
@@ -98,6 +104,15 @@ export default function RegisterScreen() {
         keyboardType="phone-pad"
         hint="01XXXXXXXXX"
         placeholder="01700000000"
+      />
+      <TextField
+        label="Email"
+        value={form.email}
+        onChangeText={(v) => setField('email', v)}
+        keyboardType="email-address"
+        autoCapitalize="none"
+        hint="Used to reset your password if you forget it"
+        placeholder="you@example.com"
       />
       <TextField
         label="Password"

@@ -451,7 +451,16 @@ function QuestionUpdateEditBody() {
     setSaveMessage('');
     try {
       const res = await transitionQuestionReviewStatus(id, action);
-      setItem((prev) => (prev ? { ...prev, review_status: res.review_status, is_published: res.is_published } : prev));
+      setItem((prev) =>
+        prev
+          ? {
+              ...prev,
+              review_status: res.review_status,
+              is_published: res.is_published,
+              status_by_name: res.status_by_name,
+            }
+          : prev,
+      );
       setSaveMessage(TRANSITION_LABEL[action] + ' — done');
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Status update failed');
@@ -507,7 +516,7 @@ function QuestionUpdateEditBody() {
     >
       <View style={styles.headerRow}>
         <BookBadge label={item.question_type_name ?? item.question_type_code} variant="muted" />
-        <ReviewStatusBadge status={status} />
+        <ReviewStatusBadge status={status} by={item.status_by_name} />
       </View>
 
       {!editable ? (
@@ -995,7 +1004,10 @@ function QuestionUpdateEditBody() {
       ) : null}
 
       {editable ? (
-        <CollapsibleSection title="Review status" right={<ReviewStatusBadge status={status} />}>
+        <CollapsibleSection
+          title="Review status"
+          right={<ReviewStatusBadge status={status} by={item.status_by_name} />}
+        >
           <View style={styles.transitionRow}>
             {status === 'draft' ? (
               <Button

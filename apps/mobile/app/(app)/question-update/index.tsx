@@ -357,7 +357,7 @@ export default function QuestionUpdateListScreen() {
                   />
                   <BookBadge label={item.difficulty} variant="muted" />
                   <BookBadge label={`${item.marks} marks`} variant="muted" />
-                  <ReviewStatusBadge status={item.review_status ?? 'draft'} />
+                  <ReviewStatusBadge status={item.review_status ?? 'draft'} by={item.status_by_name} />
                 </View>
               </View>
               <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />

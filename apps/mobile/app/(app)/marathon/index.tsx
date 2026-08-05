@@ -22,6 +22,7 @@ import {
 } from '@/lib/marathon-progress';
 import { getCachedMarathonItems } from '@/lib/questions-db';
 import { subscribeQuestionsSync, syncQuestions } from '@/lib/questions-sync';
+import { questionMatchScore } from '@/lib/question-search';
 import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
 import { SaveButton } from '@/components/ui/SaveButton';
 import { BlockingLoader } from '@/components/ui/BlockingLoader';
@@ -205,15 +206,16 @@ export default function MarathonReviewScreen() {
     }
   }, [runSync]);
 
-  /** Client-side search — no API reload when query changes. */
+  /**
+   * Client-side smart search — no API reload when query changes. Any query word matching
+   * anywhere counts, 50%+ overall match required (same standard as the web admin's link-search).
+   * Matched items keep their original book/chapter/number order — Marathon's numbering and
+   * answer-reveal flow depend on it, unlike Question Bank's flatter list.
+   */
   const filteredItems = useMemo(() => {
-    const q = appliedQuery.trim().toLowerCase();
+    const q = appliedQuery.trim();
     if (!q) return items;
-    return items.filter((item) => {
-      const en = (item.body_en ?? '').toLowerCase();
-      const bn = (item.body_bn ?? '').toLowerCase();
-      return en.includes(q) || bn.includes(q);
-    });
+    return items.filter((item) => questionMatchScore(q, item.body_en, item.body_bn) >= 0.5);
   }, [items, appliedQuery]);
 
   const groups = useMemo(() => groupByBookChapter(filteredItems), [filteredItems]);

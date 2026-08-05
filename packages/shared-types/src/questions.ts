@@ -138,7 +138,7 @@ export const similarQuestionsQuerySchema = z.object({
   text: z.string().min(1),
   question_type_id: mongoId,
   exclude_id: mongoId.optional(),
-  threshold: z.coerce.number().min(0).max(1).default(0.6),
+  threshold: z.coerce.number().min(0).max(1).default(0.5),
   limit: z.coerce.number().int().min(1).max(20).default(8),
 });
 
@@ -171,6 +171,21 @@ export const listQuestionsQuerySchema = z.object({
   /** How many rows to skip (for infinite scroll / pagination). */
   offset: z.coerce.number().int().min(0).default(0),
 });
+
+/**
+ * "Link to another question's answer" search — any word in `q` matching anywhere in a question
+ * (any status except trashed) counts, ranked by % of query words matched, 50%+ by default.
+ */
+export const linkQuestionSearchQuerySchema = z.object({
+  q: z.string().min(1),
+  exclude_id: mongoId.optional(),
+  book_chapter_id: mongoId.optional(),
+  book_info_id: mongoId.optional(),
+  threshold: z.coerce.number().min(0).max(1).default(0.5),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+});
+
+export type LinkQuestionSearchQuery = z.infer<typeof linkQuestionSearchQuerySchema>;
 
 export const marathonReviewQuerySchema = z.object({
   q: z.string().optional(),

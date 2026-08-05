@@ -46,8 +46,8 @@ export const registerSchema = z
   .object({
     full_name_en: z.string().min(2),
     full_name_bn: z.string().optional(),
-    /** Optional — when omitted, a phone-based placeholder email is stored. */
-    email: z.string().email().optional(),
+    /** Required — the only channel a forgotten password can be reset through. */
+    email: z.string().email(),
     phone: z.string().regex(/^01[3-9]\d{8}$/, 'Enter a valid Bangladesh mobile number'),
     password: z.string().min(8),
     confirm_password: z.string().min(8),
@@ -83,6 +83,28 @@ export const changePasswordSchema = z
   });
 
 export type ChangePasswordDto = z.infer<typeof changePasswordSchema>;
+
+/** Step 1 of "forgot password": look up the account by phone, email a reset code to it. */
+export const forgotPasswordSchema = z.object({
+  phone: z.string().regex(/^01[3-9]\d{8}$/, 'Enter a valid Bangladesh mobile number'),
+});
+
+export type ForgotPasswordDto = z.infer<typeof forgotPasswordSchema>;
+
+/** Step 2: the code from that email, plus a new password. */
+export const resetPasswordSchema = z
+  .object({
+    phone: z.string().regex(/^01[3-9]\d{8}$/, 'Enter a valid Bangladesh mobile number'),
+    code: z.string().length(6),
+    new_password: z.string().min(8),
+    confirm_password: z.string().min(8),
+  })
+  .refine((d) => d.new_password === d.confirm_password, {
+    message: 'Passwords do not match',
+    path: ['confirm_password'],
+  });
+
+export type ResetPasswordDto = z.infer<typeof resetPasswordSchema>;
 
 export const updateMyProfileSchema = z.object({
   full_name_en: z.string().min(2).optional(),

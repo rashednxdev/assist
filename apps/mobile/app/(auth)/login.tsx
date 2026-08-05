@@ -70,6 +70,11 @@ export default function LoginScreen() {
         autoComplete="password"
         placeholder="••••••••"
       />
+      <Link href="/(auth)/forgot-password" asChild>
+        <Pressable style={styles.forgotLink}>
+          <Text style={styles.forgotLinkText}>Forgot password?</Text>
+        </Pressable>
+      </Link>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <Button title="Sign in" variant="premium" onPress={handleLogin} loading={loading} />
       {loading ? (
@@ -80,6 +85,15 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
+  forgotLink: {
+    alignSelf: 'flex-end',
+    marginTop: -spacing.xs,
+  },
+  forgotLinkText: {
+    color: colors.goldLight,
+    fontSize: 13,
+    fontWeight: '700',
+  },
   error: {
     color: '#f87171',
     fontSize: 14,

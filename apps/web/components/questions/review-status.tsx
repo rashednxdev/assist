@@ -16,8 +16,13 @@ const STATUS_VARIANT: Record<ReviewStatus, 'outline' | 'warning' | 'success'> = 
   published: 'success',
 };
 
-export function ReviewStatusBadge({ status }: { status: ReviewStatus }) {
-  return <Badge variant={STATUS_VARIANT[status]}>{STATUS_LABEL[status]}</Badge>;
+export function ReviewStatusBadge({ status, by }: { status: ReviewStatus; by?: string }) {
+  return (
+    <Badge variant={STATUS_VARIANT[status]}>
+      {STATUS_LABEL[status]}
+      {by && <span className="ml-1 font-normal opacity-80">· {by}</span>}
+    </Badge>
+  );
 }
 
 /**

@@ -19,6 +19,7 @@ import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates
 import { fetchQuestionTypes } from '@/lib/questions-api';
 import { getCachedQuestionListItems } from '@/lib/questions-db';
 import { subscribeQuestionsSync, syncQuestions } from '@/lib/questions-sync';
+import { searchQuestionsByText } from '@/lib/question-search';
 import { questionDetailHref } from '@/lib/question-routes';
 import {
   loadQuestionBankLastQuestion,
@@ -39,7 +40,7 @@ const UNLINKED_BOOK_KEY = '__unlinked__';
 type BankRow =
   | { kind: 'book'; key: string; book_name: string }
   | { kind: 'chapter'; key: string; label: string }
-  | { kind: 'question'; key: string; item: QuestionListItem };
+  | { kind: 'question'; key: string; item: QuestionListItem; match?: number };
 
 /**
  * Flattens the already book/chapter-sorted list into book/chapter header rows interleaved with
@@ -131,24 +132,45 @@ export default function QuestionsScreen() {
     appliedQuery.trim() || typeCode || difficulty || selectedBookId,
   );
 
-  /** Client-side filter — no API call when search / book / chips change. */
-  const visibleItems = useMemo(() => {
-    const q = appliedQuery.trim().toLowerCase();
+  /** Chip-filtered items (book/type/difficulty) — search scoring happens separately below. */
+  const chipFilteredItems = useMemo(() => {
     return items.filter((item) => {
       if (selectedBookId && item.book_id !== selectedBookId) return false;
       if (typeCode && item.question_type_code !== typeCode) return false;
       if (difficulty && item.difficulty !== difficulty) return false;
-      if (q) {
-        const en = (item.body_en ?? '').toLowerCase();
-        const bn = (item.body_bn ?? '').toLowerCase();
-        if (!en.includes(q) && !bn.includes(q)) return false;
-      }
       return true;
     });
-  }, [items, selectedBookId, typeCode, difficulty, appliedQuery]);
+  }, [items, selectedBookId, typeCode, difficulty]);
 
-  /** Grouped-by-book/chapter rows for the FlatList — visibleItems is already sorted that way. */
-  const bankRows = useMemo(() => buildBankRows(visibleItems), [visibleItems]);
+  /**
+   * Smart search: word-match scoring (any query word matching anywhere counts), 50%+ match,
+   * best match first — same standard as the web admin's link-search. Entirely local since the
+   * whole bank is already synced; no network round-trip per keystroke.
+   */
+  const searchResults = useMemo(
+    () =>
+      searchQuestionsByText(appliedQuery, chipFilteredItems, (item) => ({
+        bodyEn: item.body_en,
+        bodyBn: item.body_bn,
+      })),
+    [chipFilteredItems, appliedQuery],
+  );
+
+  const visibleItems = useMemo(() => searchResults.map((r) => r.item), [searchResults]);
+  const isSearching = Boolean(appliedQuery.trim());
+
+  /**
+   * Grouped-by-book/chapter rows when browsing (no search); a flat, best-match-first list with
+   * match% badges when searching — relevance order wouldn't make sense interleaved with headers.
+   */
+  const bankRows = useMemo(() => {
+    if (isSearching) {
+      return searchResults.map(
+        (r): BankRow => ({ kind: 'question', key: r.item.id, item: r.item, match: Math.round(r.score * 100) }),
+      );
+    }
+    return buildBankRows(visibleItems);
+  }, [isSearching, searchResults, visibleItems]);
 
   itemsRef.current = items;
   bankRowsRef.current = bankRows;
@@ -596,6 +618,9 @@ export default function QuestionsScreen() {
                     />
                     {isAdmin ? <BookBadge label={item.difficulty} variant="muted" /> : null}
                     {isAdmin ? <BookBadge label={`${item.marks} marks`} variant="muted" /> : null}
+                    {typeof row.match === 'number' ? (
+                      <BookBadge label={`${row.match}% match`} variant="muted" />
+                    ) : null}
                   </View>
                 </View>
                 <SaveButton

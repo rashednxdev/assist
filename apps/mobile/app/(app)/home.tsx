@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { PerformanceCard } from '@/components/home/PerformanceCard';
 import { ModuleTile } from '@/components/home/ModuleTile';
 import { ExamCountdownCard } from '@/components/home/ExamCountdownCard';
+import { AccessRequiredScreen, type AccessRequiredVariant } from '@/components/home/AccessRequiredScreen';
 import { useAuth } from '@/lib/auth-context';
 import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
 import { hasLearningModule } from '@/lib/api';
@@ -157,6 +158,10 @@ export default function HomeScreen() {
   const [checkingModuleId, setCheckingModuleId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [accessScreen, setAccessScreen] = useState<{
+    variant: AccessRequiredVariant;
+    moduleTitle?: string;
+  } | null>(null);
 
   const openModule = useCallback(
     async (module: (typeof MODULES)[number]) => {
@@ -172,12 +177,9 @@ export default function HomeScreen() {
           router.push(module.href);
           return;
         }
-        Alert.alert(
-          'Access required',
-          `${module.title} is not granted for your account yet. Ask an admin to enable module access.`,
-        );
+        setAccessScreen({ variant: 'denied', moduleTitle: module.title });
       } catch {
-        Alert.alert('Could not verify access', 'Check your connection and try again.');
+        setAccessScreen({ variant: 'network-error' });
       } finally {
         setCheckingModuleId(null);
       }
@@ -391,6 +393,13 @@ export default function HomeScreen() {
           added in the next phase.
         </Text>
       </ScrollView>
+
+      <AccessRequiredScreen
+        visible={accessScreen !== null}
+        variant={accessScreen?.variant ?? 'denied'}
+        moduleTitle={accessScreen?.moduleTitle}
+        onClose={() => setAccessScreen(null)}
+      />
     </View>
   );
 }

@@ -1,5 +1,5 @@
 import type { Response } from 'express';
-import { createDivisionSchema, updateGeoSchema } from '@ibas/shared-types';
+import { createDivisionSchema, updateGeoSchema, updateModuleSchema } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
 import * as setupService from './setup.service.js';
 
@@ -19,8 +19,15 @@ export async function listThanasHandler(req: AuthRequest, res: Response): Promis
   res.json({ data });
 }
 
-export async function listModulesHandler(_req: AuthRequest, res: Response): Promise<void> {
-  const data = await setupService.listModules();
+export async function listModulesHandler(req: AuthRequest, res: Response): Promise<void> {
+  const all = req.query.all === 'true';
+  const data = await setupService.listModules(all);
+  res.json({ data });
+}
+
+export async function updateModuleHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = updateModuleSchema.parse(req.body);
+  const data = await setupService.updateModule(String(req.params.id), dto);
   res.json({ data });
 }
 

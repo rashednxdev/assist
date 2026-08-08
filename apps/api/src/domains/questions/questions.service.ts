@@ -1774,7 +1774,17 @@ export async function publishQuestion(id: string, reviewerId: string) {
     const hasCorrect = await QuestionAnswer.findOne({ question_id: id, is_correct: true });
     if (!hasCorrect) throw badRequest('Question must have a correct answer before publishing');
   } else {
-    const detail = await QuestionAnswerDetail.findOne({ question_id: id });
+    let detail = await QuestionAnswerDetail.findOne({ question_id: id });
+    // Prototype questions borrow their model answer from a "mother" question instead of owning
+    // one themselves — their own QuestionAnswerDetail is intentionally empty. Resolve to the
+    // mother's detail before checking, mirroring the same resolution loadQuestionDetail already
+    // does for display (see ~line 408 above), so a valid prototype can actually be published.
+    if (question.mother_question_id) {
+      const mother = await Question.findById(question.mother_question_id);
+      if (mother && mother.is_active) {
+        detail = await QuestionAnswerDetail.findOne({ question_id: mother._id });
+      }
+    }
     if (isDifferencesType(qType.code)) {
       if (!hasComparisonTableContent(detail?.model_answer_comparison as ComparisonTable | undefined)) {
         throw badRequest('Comparison table model answer is required before publishing');

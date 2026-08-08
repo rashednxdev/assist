@@ -61,6 +61,22 @@ export async function fetchQuestionEvaluationsBatch(questionIds: string[]) {
   return res.data;
 }
 
+const BATCH_CHUNK_SIZE = 200;
+
+/** Like fetchQuestionEvaluationsBatch, but splits large id lists into parallel chunked requests
+ * so a full unfiltered question bank doesn't produce one oversized query string. */
+export async function fetchQuestionEvaluationsBatchChunked(questionIds: string[]) {
+  const unique = [...new Set(questionIds.filter(Boolean))];
+  if (unique.length === 0) return [] as QuestionEvalBrief[];
+  if (unique.length <= BATCH_CHUNK_SIZE) return fetchQuestionEvaluationsBatch(unique);
+  const chunks: string[][] = [];
+  for (let i = 0; i < unique.length; i += BATCH_CHUNK_SIZE) {
+    chunks.push(unique.slice(i, i + BATCH_CHUNK_SIZE));
+  }
+  const results = await Promise.all(chunks.map((chunk) => fetchQuestionEvaluationsBatch(chunk)));
+  return results.flat();
+}
+
 export async function fetchQuestionPracticeStem(questionId: string) {
   const res = await apiFetch<{ data: QuestionPracticeStem }>(`/evaluation/questions/${questionId}/practice`);
   return res.data;

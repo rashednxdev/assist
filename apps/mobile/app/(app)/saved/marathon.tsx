@@ -11,6 +11,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
 import { BookRichText } from '@/components/books/BookRichText';
+import { RatingIndicator } from '@/components/evaluation/RatingIndicator';
+import { fetchQuestionEvaluationsBatch, type QuestionEvalBrief } from '@/lib/evaluation-api';
 import { SwipeToRemove } from '@/components/saved/SwipeToRemove';
 import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
 import { removeSavedShortcut, type SavedShortcut } from '@/lib/saved-shortcuts';
@@ -149,6 +151,33 @@ export default function SavedMarathonScreen() {
   const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set());
   const [selectedBookKey, setSelectedBookKey] = useState<string | null>(null);
   const [bookMenuOpen, setBookMenuOpen] = useState(false);
+  const [evalMap, setEvalMap] = useState<Map<string, QuestionEvalBrief>>(new Map());
+
+  useEffect(() => {
+    const ids = marathonSaved.map((row) => row.id);
+    if (ids.length === 0) {
+      setEvalMap(new Map());
+      return;
+    }
+    let cancelled = false;
+    fetchQuestionEvaluationsBatch(ids)
+      .then((rows) => {
+        if (cancelled) return;
+        const map = new Map<string, QuestionEvalBrief>();
+        for (const row of rows) {
+          if (row.progress_index > 0 || row.self_rating || row.is_correct !== undefined) {
+            map.set(row.question_id, row);
+          }
+        }
+        setEvalMap(map);
+      })
+      .catch(() => {
+        if (!cancelled) setEvalMap(new Map());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [marathonSaved]);
 
   const allGroups = useMemo(() => groupMarathonByBook(marathonSaved), [marathonSaved]);
   const bookOptions = useMemo(
@@ -359,6 +388,9 @@ export default function SavedMarathonScreen() {
                         delayLongPress={350}
                       >
                         <Text style={styles.number}>{displayNumber}.</Text>
+                        <View style={styles.ratingWrap}>
+                          <RatingIndicator evaluation={evalMap.get(row.id)} />
+                        </View>
                         <View style={styles.questionBody}>
                           {detail ? (
                             <BookRichText html={text} style={styles.questionText} />
@@ -539,6 +571,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.primary,
     minWidth: 28,
+  },
+  ratingWrap: {
+    paddingTop: 3,
   },
   questionBody: {
     flex: 1,

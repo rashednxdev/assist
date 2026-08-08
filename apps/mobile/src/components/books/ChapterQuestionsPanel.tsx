@@ -30,8 +30,8 @@ import { subscribeQuestionsSync } from '@/lib/questions-sync';
 import { stripHtml } from '@/lib/book-display';
 import { bilingualQuestionText } from '@/lib/question-display';
 import type { ChapterQuestionBrief } from '@/types/books';
-import { ComparisonTableAnswer } from '@/components/questions/ComparisonTableAnswer';
-import { useDifferencesLandscape } from '@/hooks/useDifferencesLandscape';
+import { ComparisonTablePreview } from '@/components/questions/ComparisonTablePreview';
+import { AnswerDwellRecorder } from '@/components/questions/AnswerDwellRecorder';
 import type { ExplanationSection, QuestionDetail } from '@/types/questions';
 import { colors, spacing } from '@/theme';
 
@@ -66,7 +66,9 @@ function renderSection(section: ExplanationSection, index: number) {
         <BookRichText html={section.details} style={styles.answerText} />
       ) : null}
       {section.note?.trim() ? <BookRichText html={section.note} style={styles.answerNote} /> : null}
-      {sectionHasTable(section) ? <ComparisonTableAnswer table={section.table} /> : null}
+      {sectionHasTable(section) ? (
+        <ComparisonTablePreview table={section.table} title={section.title} />
+      ) : null}
     </View>
   );
 }
@@ -171,24 +173,6 @@ export function ChapterQuestionsPanel({
   const questionStem = question
     ? bilingualQuestionText(question.body_en, question.body_bn)
     : null;
-
-  const showDifferencesAnswer = Boolean(
-    open &&
-      panelView === 'detail' &&
-      question &&
-      (question.question_type_code === 'DIFFERENCES' || hasComparison) &&
-      hasComparison,
-  );
-  const hasSectionTable =
-    open &&
-    panelView === 'detail' &&
-    showAnswer &&
-    Boolean(
-      question?.model_answer_sections?.some(sectionHasTable) ||
-        question?.explanation_sections?.some(sectionHasTable),
-    );
-
-  useDifferencesLandscape(showDifferencesAnswer || hasSectionTable);
 
   useEffect(() => {
     if (!open) {
@@ -495,10 +479,19 @@ export function ChapterQuestionsPanel({
                     </View>
                   ) : null}
 
+                  {open && showAnswer && !question.has_options ? (
+                    <AnswerDwellRecorder
+                      id={question.id}
+                      bodyEn={question.body_en}
+                      bodyBn={question.body_bn}
+                      subtitle={bookName ?? chapterTitle}
+                    />
+                  ) : null}
+
                   {showAnswer ? (
                     <View style={styles.answerWrap}>
                       {hasComparison ? (
-                        <ComparisonTableAnswer table={question.model_answer_comparison} />
+                        <ComparisonTablePreview table={question.model_answer_comparison} />
                       ) : question.question_type_code === 'DIFFERENCES' ? (
                         <>
                           <Text style={styles.sectionLabel}>Answer</Text>

@@ -1,5 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
-import type { AuthUser, ModuleAccessGrant, RegisterDto } from '@ibas/shared-types';
+import type { AuthUser, ModuleAccessGrant, ModuleStop, RegisterDto } from '@ibas/shared-types';
 import { apiFetch, setApiAccessToken } from './api';
 import { getDeviceLabel, getOrCreateDeviceId } from './device-id';
 
@@ -12,6 +12,7 @@ export type MeUser = AuthUser & {
   email_verified: boolean;
   phone_verified: boolean;
   module_access: ModuleAccessGrant[];
+  module_stops: ModuleStop[];
 };
 
 export interface AccountSummary {

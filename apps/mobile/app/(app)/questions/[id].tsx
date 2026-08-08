@@ -19,10 +19,10 @@ import {
   type SelfRatingLevel,
 } from '@/lib/evaluation-api';
 import type { ExplanationSection, QuestionDetail, QuestionOption } from '@/types/questions';
-import { ComparisonTableAnswer } from '@/components/questions/ComparisonTableAnswer';
+import { ComparisonTablePreview } from '@/components/questions/ComparisonTablePreview';
+import { AnswerDwellRecorder } from '@/components/questions/AnswerDwellRecorder';
 import { ProcessFlowPreview } from '@/components/books/ProcessFlowPreview';
 import { BookRichText } from '@/components/books/BookRichText';
-import { useDifferencesLandscape } from '@/hooks/useDifferencesLandscape';
 import { bilingualQuestionText } from '@/lib/question-display';
 import {
   loadQuestionBankLastQuestion,
@@ -141,12 +141,6 @@ export default function QuestionDetailScreen() {
   const hasComparison =
     Boolean(comparisonTable?.columns && comparisonTable.columns.length >= 2) &&
     Boolean(comparisonTable?.rows && comparisonTable.rows.length > 0);
-  const showDifferencesAnswer = Boolean(showAnswer && isDifferences && hasComparison);
-  const hasSectionTable =
-    showAnswer && (modelSections.some(sectionHasTable) || explanationSections.some(sectionHasTable));
-
-  useDifferencesLandscape(showDifferencesAnswer || hasSectionTable);
-
   useLayoutEffect(() => {
     const headerEval = showPreviousEval ? evaluation : null;
     navigation.setOptions({
@@ -284,6 +278,14 @@ export default function QuestionDetailScreen() {
       </View>
 
       <ScrollView style={styles.scrollArea} contentContainerStyle={styles.content}>
+      {showAnswer && !item.has_options ? (
+        <AnswerDwellRecorder
+          id={item.id}
+          bodyEn={item.body_en}
+          bodyBn={item.body_bn}
+          subtitle={item.book_name}
+        />
+      ) : null}
       {item.has_options ? (
         <View style={styles.panel}>
           <Text style={[styles.sectionTitle, styles.selfEvalTitle]}>Evaluate</Text>
@@ -356,7 +358,7 @@ export default function QuestionDetailScreen() {
 
       {showAnswer && hasComparison ? (
         <View style={[styles.panel, styles.differencesPanel]}>
-          <ComparisonTableAnswer table={comparisonTable} />
+          <ComparisonTablePreview table={comparisonTable} />
         </View>
       ) : null}
 
@@ -528,7 +530,7 @@ function renderSection(sec: ExplanationSection, idx: number, keyPrefix: string) 
       {sec.content?.trim() ? <BookRichText html={sec.content} style={styles.sectionText} /> : null}
       {sec.details?.trim() ? <BookRichText html={sec.details} style={styles.sectionText} /> : null}
       {sec.note?.trim() ? <BookRichText html={sec.note} style={styles.sectionNote} /> : null}
-      {sectionHasTable(sec) ? <ComparisonTableAnswer table={sec.table} /> : null}
+      {sectionHasTable(sec) ? <ComparisonTablePreview table={sec.table} title={sec.title} /> : null}
       {sec.subsections?.map((sub, i) => (
         <View key={`${keyPrefix}-${idx}-sub-${i}`} style={styles.subsectionBlock}>
           {sub.subtitle?.trim() ? <Text style={styles.subsectionTitle}>{sub.subtitle}</Text> : null}

@@ -4,6 +4,7 @@ import type { AuthRequest } from '../../middleware/auth.js';
 import { login, refreshExpiresMs } from './auth.service.js';
 import { User } from '../users/models/User.model.js';
 import { listModuleAccessForSession } from '../users/module-access.service.js';
+import { listStoppedModules } from '../setup/setup.service.js';
 import { badRequest } from '../../shared/errors/AppError.js';
 
 export async function loginHandler(req: AuthRequest, res: Response): Promise<void> {
@@ -60,6 +61,10 @@ export async function meHandler(req: AuthRequest, res: Response): Promise<void> 
   }
 
   const module_access = await listModuleAccessForSession(String(user._id));
+  const module_stops = (await listStoppedModules()).map((m) => ({
+    module_code: m.code,
+    stopped_reason: m.stopped_reason,
+  }));
 
   res.json({
     data: {
@@ -79,6 +84,7 @@ export async function meHandler(req: AuthRequest, res: Response): Promise<void> 
         is_active: r.is_active,
       })),
       module_access,
+      module_stops,
     },
   });
 }

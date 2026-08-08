@@ -10,6 +10,9 @@ export interface IModule extends Document {
   color: string;
   sort_order: number;
   is_active: boolean;
+  /** Admin-authored note shown to students when is_active is false (a global stop, not a
+   * per-user access denial) — explains why without them needing to ask. */
+  stopped_reason?: string;
   created_at: Date;
 }
 
@@ -24,6 +27,7 @@ const schema = new Schema<IModule>(
     color: { type: String, required: true },
     sort_order: { type: Number, required: true },
     is_active: { type: Boolean, default: true },
+    stopped_reason: { type: String },
   },
   { timestamps: { createdAt: 'created_at', updatedAt: false } },
 );

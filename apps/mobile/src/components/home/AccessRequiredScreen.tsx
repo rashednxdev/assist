@@ -7,16 +7,20 @@ import { colors, spacing } from '@/theme';
 const WHATSAPP_DISPLAY_NUMBER = '01911 120 610';
 const WHATSAPP_INTL_NUMBER = '8801911120610';
 
-export type AccessRequiredVariant = 'denied' | 'network-error';
+export type AccessRequiredVariant = 'denied' | 'network-error' | 'stopped';
 
 interface AccessRequiredScreenProps {
   visible: boolean;
   variant: AccessRequiredVariant;
   moduleTitle?: string;
+  stoppedReason?: string;
   onClose: () => void;
 }
 
-const COPY: Record<AccessRequiredVariant, { icon: keyof typeof Ionicons.glyphMap; title: string; body: (moduleTitle?: string) => string }> = {
+const COPY: Record<
+  AccessRequiredVariant,
+  { icon: keyof typeof Ionicons.glyphMap; title: string; body: (moduleTitle?: string, stoppedReason?: string) => string }
+> = {
   denied: {
     icon: 'lock-closed',
     title: 'Access Required',
@@ -29,9 +33,21 @@ const COPY: Record<AccessRequiredVariant, { icon: keyof typeof Ionicons.glyphMap
     body: () =>
       `We couldn't verify your access right now. Check your connection, or message us on WhatsApp if this keeps happening.`,
   },
+  stopped: {
+    icon: 'pause-circle',
+    title: 'Temporarily Unavailable',
+    body: (moduleTitle, stoppedReason) =>
+      stoppedReason?.trim() || `${moduleTitle ?? 'This module'} is temporarily unavailable. Please check back later.`,
+  },
 };
 
-export function AccessRequiredScreen({ visible, variant, moduleTitle, onClose }: AccessRequiredScreenProps) {
+export function AccessRequiredScreen({
+  visible,
+  variant,
+  moduleTitle,
+  stoppedReason,
+  onClose,
+}: AccessRequiredScreenProps) {
   const copy = COPY[variant];
 
   function openWhatsApp() {
@@ -72,23 +88,27 @@ export function AccessRequiredScreen({ visible, variant, moduleTitle, onClose }:
             </View>
 
             <Text style={styles.title}>{copy.title}</Text>
-            <Text style={styles.body}>{copy.body(moduleTitle)}</Text>
+            <Text style={styles.body}>{copy.body(moduleTitle, stoppedReason)}</Text>
 
-            <View style={styles.divider} />
+            {variant !== 'stopped' ? (
+              <>
+                <View style={styles.divider} />
 
-            <Pressable
-              style={({ pressed }) => [styles.waButton, pressed && styles.waButtonPressed]}
-              onPress={openWhatsApp}
-              accessibilityRole="button"
-              accessibilityLabel="Contact on WhatsApp"
-            >
-              <Ionicons name="logo-whatsapp" size={24} color={colors.white} />
-              <Text style={styles.waButtonText}>Contact on WhatsApp</Text>
-            </Pressable>
-            <Text style={styles.waNumber}>{WHATSAPP_DISPLAY_NUMBER}</Text>
+                <Pressable
+                  style={({ pressed }) => [styles.waButton, pressed && styles.waButtonPressed]}
+                  onPress={openWhatsApp}
+                  accessibilityRole="button"
+                  accessibilityLabel="Contact on WhatsApp"
+                >
+                  <Ionicons name="logo-whatsapp" size={24} color={colors.white} />
+                  <Text style={styles.waButtonText}>Contact on WhatsApp</Text>
+                </Pressable>
+                <Text style={styles.waNumber}>{WHATSAPP_DISPLAY_NUMBER}</Text>
+              </>
+            ) : null}
 
             <Pressable onPress={onClose} hitSlop={10} style={styles.laterBtn}>
-              <Text style={styles.laterText}>Maybe later</Text>
+              <Text style={styles.laterText}>{variant === 'stopped' ? 'Got it' : 'Maybe later'}</Text>
             </Pressable>
           </View>
         </SafeAreaView>

@@ -14,6 +14,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
 import { BookRichText } from '@/components/books/BookRichText';
+import { RatingIndicator } from '@/components/evaluation/RatingIndicator';
+import { fetchQuestionEvaluationsBatchChunked, type QuestionEvalBrief } from '@/lib/evaluation-api';
 import { cleanBookLabel } from '@/lib/book-display';
 import {
   loadMarathonLastQuestion,
@@ -219,6 +221,34 @@ export default function MarathonReviewScreen() {
   }, [items, appliedQuery]);
 
   const groups = useMemo(() => groupByBookChapter(filteredItems), [filteredItems]);
+
+  const [evalMap, setEvalMap] = useState<Map<string, QuestionEvalBrief>>(new Map());
+  useEffect(() => {
+    const ids = filteredItems.map((i) => i.id);
+    if (ids.length === 0) {
+      setEvalMap(new Map());
+      return;
+    }
+    let cancelled = false;
+    fetchQuestionEvaluationsBatchChunked(ids)
+      .then((rows) => {
+        if (cancelled) return;
+        const map = new Map<string, QuestionEvalBrief>();
+        for (const row of rows) {
+          if (row.progress_index > 0 || row.self_rating || row.is_correct !== undefined) {
+            map.set(row.question_id, row);
+          }
+        }
+        setEvalMap(map);
+      })
+      .catch(() => {
+        if (!cancelled) setEvalMap(new Map());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [filteredItems]);
+
   const bookOptions = useMemo(() => {
     const map = new Map<string, { id: string; name: string; count: number }>();
     for (const item of items) {
@@ -595,6 +625,9 @@ export default function MarathonReviewScreen() {
                             ) : null}
                           </View>
                         </Pressable>
+                        <View style={styles.ratingWrap}>
+                          <RatingIndicator evaluation={evalMap.get(item.id)} />
+                        </View>
                         <SaveButton
                           saved={isSaved(item.id, 'marathon')}
                           onPress={() =>
@@ -892,6 +925,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 4,
+  },
+  ratingWrap: {
+    paddingTop: 12,
+    paddingHorizontal: 2,
   },
   questionRowResumeWrap: {
     backgroundColor: '#eaf7ee',

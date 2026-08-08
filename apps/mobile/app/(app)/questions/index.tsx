@@ -16,6 +16,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { QUESTION_DIFFICULTIES } from '@ibas/shared-constants';
 import { BookBadge } from '@/components/books/BookBadge';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
+import { RatingIndicator } from '@/components/evaluation/RatingIndicator';
+import { fetchQuestionEvaluationsBatchChunked, type QuestionEvalBrief } from '@/lib/evaluation-api';
 import { fetchQuestionTypes } from '@/lib/questions-api';
 import { getCachedQuestionListItems } from '@/lib/questions-db';
 import { subscribeQuestionsSync, syncQuestions } from '@/lib/questions-sync';
@@ -102,6 +104,7 @@ export default function QuestionsScreen() {
   const [resumeReady, setResumeReady] = useState(false);
   const [resuming, setResuming] = useState(true);
   const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [evalMap, setEvalMap] = useState<Map<string, QuestionEvalBrief>>(new Map());
 
   const listRef = useRef<FlatList<BankRow>>(null);
   const scrollYRef = useRef(0);
@@ -158,6 +161,32 @@ export default function QuestionsScreen() {
 
   const visibleItems = useMemo(() => searchResults.map((r) => r.item), [searchResults]);
   const isSearching = Boolean(appliedQuery.trim());
+
+  useEffect(() => {
+    const ids = visibleItems.map((i) => i.id);
+    if (ids.length === 0) {
+      setEvalMap(new Map());
+      return;
+    }
+    let cancelled = false;
+    fetchQuestionEvaluationsBatchChunked(ids)
+      .then((rows) => {
+        if (cancelled) return;
+        const map = new Map<string, QuestionEvalBrief>();
+        for (const row of rows) {
+          if (row.progress_index > 0 || row.self_rating || row.is_correct !== undefined) {
+            map.set(row.question_id, row);
+          }
+        }
+        setEvalMap(map);
+      })
+      .catch(() => {
+        if (!cancelled) setEvalMap(new Map());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [visibleItems]);
 
   /**
    * Grouped-by-book/chapter rows when browsing (no search); a flat, best-match-first list with
@@ -608,6 +637,7 @@ export default function QuestionsScreen() {
                     ) : null}
                   </View>
                   <View style={styles.badges}>
+                    <RatingIndicator evaluation={evalMap.get(item.id)} />
                     <BookBadge
                       label={
                         item.question_type_name ??

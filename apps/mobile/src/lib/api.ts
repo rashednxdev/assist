@@ -1,4 +1,4 @@
-import type { ModuleAccessGrant } from '@ibas/shared-types';
+import type { ModuleAccessGrant, ModuleStop } from '@ibas/shared-types';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1';
 const API_TIMEOUT_MS = Number(process.env.EXPO_PUBLIC_API_TIMEOUT_MS ?? 90_000);
@@ -87,6 +87,14 @@ export type LearningModuleCode = (typeof LEARNING_MODULE_CODES)[number];
 
 export function hasLearningModule(grants: ModuleAccessGrant[], code: LearningModuleCode): boolean {
   return grants.some((g) => g.module_code === code && g.can_read);
+}
+
+/** A module the admin has globally stopped for everyone — distinct from a per-user grant gap. */
+export function findModuleStop(
+  stops: ModuleStop[],
+  code: LearningModuleCode,
+): ModuleStop | undefined {
+  return stops.find((s) => s.module_code === code);
 }
 
 /** True update permission (not just read) — e.g. the QUESTION_EDIT module's actual edit gate. */

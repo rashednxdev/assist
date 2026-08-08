@@ -7,6 +7,7 @@ import {
   listDistrictsHandler,
   listThanasHandler,
   listModulesHandler,
+  updateModuleHandler,
   listRolesHandler,
   geographyTreeHandler,
   createDivisionHandler,
@@ -38,4 +39,5 @@ setupRouter.post('/districts/:districtId/thanas', asyncHandler(createThanaHandle
 setupRouter.patch('/thanas/:id', asyncHandler(updateThanaHandler));
 setupRouter.delete('/thanas/:id', asyncHandler(deleteThanaHandler));
 setupRouter.get('/modules', asyncHandler(listModulesHandler));
+setupRouter.patch('/modules/:id', asyncHandler(updateModuleHandler));
 setupRouter.get('/roles', asyncHandler(listRolesHandler));

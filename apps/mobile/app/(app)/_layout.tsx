@@ -60,6 +60,7 @@ export default function AppLayout() {
         }}
       />
       <Stack.Screen name="saved" />
+      <Stack.Screen name="history" />
       <Stack.Screen name="notifications" />
       <Stack.Screen name="books" />
       <Stack.Screen name="questions" />

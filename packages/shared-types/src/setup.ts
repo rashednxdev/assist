@@ -32,6 +32,13 @@ export const updateGeoSchema = createDivisionSchema.partial().extend({
   is_active: z.boolean().optional(),
 });
 
+export const updateModuleSchema = z.object({
+  is_active: z.boolean().optional(),
+  stopped_reason: z.string().max(500).optional(),
+});
+
+export type UpdateModuleDto = z.infer<typeof updateModuleSchema>;
+
 export const createUserAddressSchema = z.object({
   address_type: z.enum(['permanent', 'present', 'office']),
   division_id: z.string().min(1),

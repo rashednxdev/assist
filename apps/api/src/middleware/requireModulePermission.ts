@@ -2,6 +2,7 @@ import type { Response, NextFunction, RequestHandler } from 'express';
 import type { AuthRequest } from './auth.js';
 import { forbidden, unauthorized } from '../shared/errors/AppError.js';
 import { hasModulePermission } from '../domains/users/module-access.service.js';
+import { findAllStoppedModule } from './requireModuleAccess.js';
 
 type ModulePermission = 'can_read' | 'can_create' | 'can_update' | 'can_delete' | 'can_grade' | 'can_publish';
 
@@ -33,6 +34,8 @@ export function requireModulePermission(
     }
 
     for (const { moduleCode, permission } of checks) {
+      const stopped = await findAllStoppedModule([moduleCode]);
+      if (stopped) continue;
       if (await hasModulePermission(req.user.id, moduleCode, permission)) {
         next();
         return;

@@ -5,7 +5,7 @@ import { Module } from './models/Module.model.js';
 import { Role } from '../workflow/models/Role.model.js';
 import { notFound, badRequest } from '../../shared/errors/AppError.js';
 import type { z } from 'zod';
-import { createDivisionSchema, updateGeoSchema } from '@ibas/shared-types';
+import { createDivisionSchema, updateGeoSchema, type UpdateModuleDto } from '@ibas/shared-types';
 
 type CreateDivisionDto = z.infer<typeof createDivisionSchema>;
 type UpdateGeoDto = z.infer<typeof updateGeoSchema>;
@@ -27,8 +27,20 @@ export async function listThanas(districtId: string, includeInactive = false) {
   return Thana.find(filter).sort({ name_en: 1 }).lean();
 }
 
-export async function listModules() {
-  return Module.find({ is_active: true }).sort({ sort_order: 1 }).lean();
+export async function listModules(includeInactive = false) {
+  const filter = includeInactive ? {} : { is_active: true };
+  return Module.find(filter).sort({ sort_order: 1 }).lean();
+}
+
+export async function updateModule(id: string, dto: UpdateModuleDto) {
+  const doc = await Module.findByIdAndUpdate(id, dto, { new: true });
+  if (!doc) throw notFound('Module not found');
+  return doc;
+}
+
+/** Modules currently stopped for everyone — feeds GET /auth/me's module_stops payload. */
+export async function listStoppedModules() {
+  return Module.find({ is_active: false }).select('code stopped_reason').lean();
 }
 
 export async function listRoles() {

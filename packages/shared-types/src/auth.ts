@@ -42,6 +42,15 @@ export const moduleAccessGrantSchema = z.object({
 
 export type ModuleAccessGrant = z.infer<typeof moduleAccessGrantSchema>;
 
+/** A module globally stopped for everyone (not a per-user denial) — returned on GET /auth/me
+ * regardless of whether the user holds a grant for it, so mobile can show the admin's reason. */
+export const moduleStopSchema = z.object({
+  module_code: z.string(),
+  stopped_reason: z.string().optional(),
+});
+
+export type ModuleStop = z.infer<typeof moduleStopSchema>;
+
 export const registerSchema = z
   .object({
     full_name_en: z.string().min(2),

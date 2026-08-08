@@ -1,8 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BookEmpty } from '@/components/books/BookStates';
+import { RatingIndicator } from '@/components/evaluation/RatingIndicator';
+import { fetchQuestionEvaluationsBatch, type QuestionEvalBrief } from '@/lib/evaluation-api';
 import { SwipeToRemove } from '@/components/saved/SwipeToRemove';
 import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
 import { removeSavedShortcut, type SavedShortcut } from '@/lib/saved-shortcuts';
@@ -38,6 +40,33 @@ export default function SavedQuestionsScreen() {
   const questions = useMemo(() => items.filter((row) => row.kind === 'question'), [items]);
   const [selectedBookKey, setSelectedBookKey] = useState<string | null>(null);
   const [bookMenuOpen, setBookMenuOpen] = useState(false);
+  const [evalMap, setEvalMap] = useState<Map<string, QuestionEvalBrief>>(new Map());
+
+  useEffect(() => {
+    const ids = questions.map((q) => q.id);
+    if (ids.length === 0) {
+      setEvalMap(new Map());
+      return;
+    }
+    let cancelled = false;
+    fetchQuestionEvaluationsBatch(ids)
+      .then((rows) => {
+        if (cancelled) return;
+        const map = new Map<string, QuestionEvalBrief>();
+        for (const row of rows) {
+          if (row.progress_index > 0 || row.self_rating || row.is_correct !== undefined) {
+            map.set(row.question_id, row);
+          }
+        }
+        setEvalMap(map);
+      })
+      .catch(() => {
+        if (!cancelled) setEvalMap(new Map());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [questions]);
 
   const groups = useMemo(() => groupQuestionsByBook(questions), [questions]);
   const bookOptions = useMemo(
@@ -142,9 +171,12 @@ export default function SavedQuestionsScreen() {
                     <Ionicons name="help-circle-outline" size={22} color="#7c3aed" />
                   </View>
                   <View style={styles.body}>
-                    <Text style={styles.title} numberOfLines={3}>
-                      {item.title}
-                    </Text>
+                    <View style={styles.titleRow}>
+                      <Text style={[styles.title, styles.titleText]} numberOfLines={3}>
+                        {item.title}
+                      </Text>
+                      <RatingIndicator evaluation={evalMap.get(item.id)} />
+                    </View>
                   </View>
                 </Pressable>
               </SwipeToRemove>
@@ -271,5 +303,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.text,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+  },
+  titleText: {
+    flex: 1,
   },
 });

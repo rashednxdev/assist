@@ -19,7 +19,7 @@ import { ExamCountdownCard } from '@/components/home/ExamCountdownCard';
 import { AccessRequiredScreen, type AccessRequiredVariant } from '@/components/home/AccessRequiredScreen';
 import { useAuth } from '@/lib/auth-context';
 import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
-import { hasLearningModule } from '@/lib/api';
+import { hasLearningModule, findModuleStop } from '@/lib/api';
 import {
   fetchProgressDashboard,
   type ProgressDashboardData,
@@ -161,10 +161,16 @@ export default function HomeScreen() {
   const [accessScreen, setAccessScreen] = useState<{
     variant: AccessRequiredVariant;
     moduleTitle?: string;
+    stoppedReason?: string;
   } | null>(null);
 
   const openModule = useCallback(
     async (module: (typeof MODULES)[number]) => {
+      const stop = findModuleStop(user?.module_stops ?? [], module.code);
+      if (stop) {
+        setAccessScreen({ variant: 'stopped', moduleTitle: module.title, stoppedReason: stop.stopped_reason });
+        return;
+      }
       if (hasLearningModule(user?.module_access ?? [], module.code)) {
         router.push(module.href);
         return;
@@ -173,6 +179,11 @@ export default function HomeScreen() {
       setCheckingModuleId(module.id);
       try {
         const me = await refreshUser();
+        const freshStop = findModuleStop(me.module_stops ?? [], module.code);
+        if (freshStop) {
+          setAccessScreen({ variant: 'stopped', moduleTitle: module.title, stoppedReason: freshStop.stopped_reason });
+          return;
+        }
         if (hasLearningModule(me.module_access ?? [], module.code)) {
           router.push(module.href);
           return;
@@ -184,7 +195,7 @@ export default function HomeScreen() {
         setCheckingModuleId(null);
       }
     },
-    [refreshUser, router, user?.module_access],
+    [refreshUser, router, user?.module_access, user?.module_stops],
   );
 
   const loadData = useCallback(async () => {
@@ -300,6 +311,21 @@ export default function HomeScreen() {
               <View style={styles.menuDivider} />
               <Pressable
                 style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
+                onPress={() => {
+                  setMenuOpen(false);
+                  router.push('/(app)/history' as Href);
+                }}
+              >
+                <Ionicons name="time-outline" size={20} color={colors.primary} />
+                <View style={styles.menuItemText}>
+                  <Text style={styles.menuItemTitle}>Answer History</Text>
+                  <Text style={styles.menuItemSub}>Recently viewed answers on this device</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+              </Pressable>
+              <View style={styles.menuDivider} />
+              <Pressable
+                style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
                 onPress={confirmSignOut}
               >
                 <Ionicons name="log-out-outline" size={20} color={colors.error} />
@@ -329,7 +355,7 @@ export default function HomeScreen() {
         <Text style={styles.sectionTitle}>Learning modules</Text>
         <View style={styles.grid}>
           {MODULES.map((m) => {
-            const enabled = canAccess(m.code);
+            const enabled = canAccess(m.code) && !findModuleStop(user?.module_stops ?? [], m.code);
             // Question Update is an admin-approved facility, not a default learning module —
             // stay hidden entirely (not just disabled) until access is actually granted.
             if (m.code === 'QUESTION_EDIT' && !enabled) return null;
@@ -398,6 +424,7 @@ export default function HomeScreen() {
         visible={accessScreen !== null}
         variant={accessScreen?.variant ?? 'denied'}
         moduleTitle={accessScreen?.moduleTitle}
+        stoppedReason={accessScreen?.stoppedReason}
         onClose={() => setAccessScreen(null)}
       />
     </View>

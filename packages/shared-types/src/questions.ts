@@ -136,7 +136,8 @@ export const updateQuestionSchema = questionFieldsSchema.partial().extend({
 
 export const similarQuestionsQuerySchema = z.object({
   text: z.string().min(1),
-  question_type_id: mongoId,
+  /** No longer used to restrict the search — duplicate-checking now spans every question type. */
+  question_type_id: mongoId.optional(),
   exclude_id: mongoId.optional(),
   threshold: z.coerce.number().min(0).max(1).default(0.5),
   limit: z.coerce.number().int().min(1).max(20).default(8),

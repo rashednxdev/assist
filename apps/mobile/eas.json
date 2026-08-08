@@ -9,7 +9,12 @@
       "android": {
         "buildType": "apk"
       },
-      "prebuildCommand": "cd ../.. && pnpm build:packages"
+      "prebuildCommand": "cd ../.. && pnpm build:packages",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://ibas-api.onrender.com/api/v1",
+        "EXPO_PUBLIC_API_TIMEOUT_MS": "90000",
+        "EXPO_PUBLIC_WEB_URL": "https://ibas-web.onrender.com"
+      }
     }
   }
 }

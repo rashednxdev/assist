@@ -246,7 +246,6 @@ export function QuestionEditor({
       setSimilarLoading(true);
       const params = new URLSearchParams({
         text,
-        question_type_id: value.question_type_id,
         threshold: '0.5',
       });
       if (excludeQuestionId) params.set('exclude_id', excludeQuestionId);
@@ -354,7 +353,7 @@ export function QuestionEditor({
                 <p className="text-xs font-medium text-amber-900 dark:text-amber-200">
                   {similarLoading
                     ? 'Checking for similar questions…'
-                    : `Similar questions in this type (${similarQuestions.length} at ≥50% match)`}
+                    : `Similar questions, any type (${similarQuestions.length} at ≥50% match)`}
                 </p>
                 {!similarLoading && similarQuestions.length > 0 && (
                   <ul className="mt-2 space-y-2">
@@ -368,6 +367,9 @@ export function QuestionEditor({
                           <div className="mt-1 flex flex-wrap items-center gap-1.5">
                             <Badge variant="outline" className="text-xs">
                               {q.similarity}% match
+                            </Badge>
+                            <Badge variant="outline" className="text-xs">
+                              {q.question_type_code}
                             </Badge>
                             <Badge variant={q.is_published ? 'default' : 'secondary'} className="text-xs">
                               {q.is_published ? 'Published' : 'Draft'}

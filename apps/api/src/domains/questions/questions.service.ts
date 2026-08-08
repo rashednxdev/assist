@@ -796,7 +796,6 @@ export async function deleteQuestionType(id: string) {
 
 export async function findSimilarQuestions(params: {
   text: string;
-  question_type_id: string;
   exclude_id?: string;
   threshold?: number;
   limit?: number;
@@ -804,16 +803,13 @@ export async function findSimilarQuestions(params: {
   const text = params.text.trim();
   // Same word-match search standard as link-search: any word matching counts, ranked by % of
   // query words found, 50%+ by default — instead of requiring near-identical full-text similarity.
+  // Spans every question type — a near-duplicate is worth flagging regardless of type.
   const threshold = params.threshold ?? 0.5;
   const limit = params.limit ?? 8;
   if (text.length < 8) return [];
 
-  const qType = await QuestionType.findById(params.question_type_id);
-  if (!qType || !qType.is_active) throw notFound('Question type not found');
-
   const query: Record<string, unknown> = {
     is_active: true,
-    question_type_id: qType._id,
   };
   if (params.exclude_id) {
     query._id = { $ne: new mongoose.Types.ObjectId(params.exclude_id) };

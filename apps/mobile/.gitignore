@@ -7,3 +7,6 @@ expo-env.d.ts
 
 .env
 .expo-test-bundle/
+release/
+*.apk
+*.aab

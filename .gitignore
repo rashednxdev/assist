@@ -7,6 +7,9 @@ dist/
 .next/
 out/
 .turbo/
+*.apk
+*.aab
+apps/mobile/release/
 
 # Env
 .env.local

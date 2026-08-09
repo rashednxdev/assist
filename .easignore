@@ -1,0 +1,13 @@
+# Keep the EAS upload small and avoid Windows file locks from local Gradle.
+**/android/.gradle/**
+**/android/**/build/**
+**/android/**/.cxx/**
+**/node_modules/**/android/build/**
+**/node_modules/**/android/.cxx/**
+**/.expo/**
+**/release/*.apk
+**/apps/web/.next/**
+**/apps/api/dist/**
+**/.git/**
+**/agent-transcripts/**
+**/terminals/**

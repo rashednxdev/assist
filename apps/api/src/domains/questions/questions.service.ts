@@ -38,6 +38,8 @@ import { UserQuestionEvaluation } from '../evaluation/models/UserQuestionEvaluat
 import { QuestionDeletion } from './models/QuestionDeletion.model.js';
 import { PaperQuestion } from '../papers/models/PaperQuestion.model.js';
 import { ChildQuestion } from '../papers/models/ChildQuestion.model.js';
+import { PaperDetail } from '../papers/models/PaperDetail.model.js';
+import { ExamSession } from '../exams/models/ExamSession.model.js';
 import { User } from '../users/models/User.model.js';
 import { notFound, badRequest } from '../../shared/errors/AppError.js';
 import { escapeRegex, normalizeQuestionText, queryWordMatchScore } from './question-similarity.js';
@@ -61,6 +63,133 @@ function isMcqOrTf(code: string) {
 
 function isDifferencesType(code: string) {
   return code === 'DIFFERENCES';
+}
+
+/** Papers that include this bank question (direct slot or composite child part). */
+export type QuestionUsedInPaper = {
+  id: string;
+  name: string;
+  session_year?: string;
+  session_label_en?: string;
+  session_label_bn?: string;
+  question_number?: number;
+  via: 'direct' | 'child_part';
+};
+
+type PaperSlotRef = {
+  question_id: string;
+  paper_id: mongoose.Types.ObjectId;
+  question_number?: number;
+  via: 'direct' | 'child_part';
+};
+
+function sortUsedInPapers(items: QuestionUsedInPaper[]) {
+  items.sort((a, b) => {
+    const sa = a.session_label_en || a.session_year || '';
+    const sb = b.session_label_en || b.session_year || '';
+    if (sa !== sb) return sa.localeCompare(sb);
+    return a.name.localeCompare(b.name);
+  });
+  return items;
+}
+
+async function loadUsedInPapersByQuestionIds(
+  questionIds: mongoose.Types.ObjectId[],
+): Promise<Map<string, QuestionUsedInPaper[]>> {
+  const result = new Map<string, QuestionUsedInPaper[]>();
+  if (questionIds.length === 0) return result;
+
+  const [directSlots, childParts] = await Promise.all([
+    PaperQuestion.find({ question_id: { $in: questionIds }, is_active: true })
+      .select('paper_id question_id question_number')
+      .lean(),
+    ChildQuestion.find({ question_id: { $in: questionIds }, is_active: true })
+      .select('paper_question_id question_id')
+      .lean(),
+  ]);
+
+  const parentSlotIds = childParts.map((c) => c.paper_question_id);
+  const parentSlots = parentSlotIds.length
+    ? await PaperQuestion.find({ _id: { $in: parentSlotIds }, is_active: true })
+        .select('_id paper_id question_number')
+        .lean()
+    : [];
+  const parentById = new Map(parentSlots.map((s) => [String(s._id), s]));
+
+  const refs: PaperSlotRef[] = [
+    ...directSlots
+      .filter((s) => s.question_id)
+      .map((s) => ({
+        question_id: String(s.question_id),
+        paper_id: s.paper_id as mongoose.Types.ObjectId,
+        question_number: s.question_number,
+        via: 'direct' as const,
+      })),
+    ...childParts.flatMap((c) => {
+      const parent = parentById.get(String(c.paper_question_id));
+      if (!parent || !c.question_id) return [];
+      return [
+        {
+          question_id: String(c.question_id),
+          paper_id: parent.paper_id as mongoose.Types.ObjectId,
+          question_number: parent.question_number,
+          via: 'child_part' as const,
+        },
+      ];
+    }),
+  ];
+  if (refs.length === 0) return result;
+
+  // One entry per (question, paper) — prefer a direct bank slot over a child-part reference.
+  const byQuestionPaper = new Map<string, PaperSlotRef>();
+  for (const ref of refs) {
+    const key = `${ref.question_id}:${String(ref.paper_id)}`;
+    const existing = byQuestionPaper.get(key);
+    if (!existing || (existing.via === 'child_part' && ref.via === 'direct')) {
+      byQuestionPaper.set(key, ref);
+    }
+  }
+
+  const paperIds = [
+    ...new Set([...byQuestionPaper.values()].map((r) => String(r.paper_id))),
+  ].map((id) => new mongoose.Types.ObjectId(id));
+  const papers = await PaperDetail.find({ _id: { $in: paperIds }, is_active: true }).lean();
+  const paperById = new Map(papers.map((p) => [String(p._id), p]));
+  const sessionIds = [
+    ...new Set(papers.map((p) => String(p.exam_session_id)).filter(Boolean)),
+  ];
+  const sessions = sessionIds.length
+    ? await ExamSession.find({ _id: { $in: sessionIds } }).lean()
+    : [];
+  const sessionById = new Map(sessions.map((s) => [String(s._id), s]));
+
+  for (const ref of byQuestionPaper.values()) {
+    const paper = paperById.get(String(ref.paper_id));
+    if (!paper) continue;
+    const session = sessionById.get(String(paper.exam_session_id));
+    const entry: QuestionUsedInPaper = {
+      id: String(paper._id),
+      name: paper.name,
+      session_year: paper.session_year || session?.label_en,
+      session_label_en: session?.label_en,
+      session_label_bn: session?.label_bn,
+      question_number: ref.question_number,
+      via: ref.via,
+    };
+    const list = result.get(ref.question_id) ?? [];
+    list.push(entry);
+    result.set(ref.question_id, list);
+  }
+
+  for (const [qid, list] of result) {
+    result.set(qid, sortUsedInPapers(list));
+  }
+  return result;
+}
+
+async function loadUsedInPapers(questionId: string): Promise<QuestionUsedInPaper[]> {
+  const map = await loadUsedInPapersByQuestionIds([new mongoose.Types.ObjectId(questionId)]);
+  return map.get(questionId) ?? [];
 }
 
 interface AnswerDetailInput {
@@ -357,6 +486,7 @@ function serializeQuestionListItem(
     book_name: undefined as string | undefined,
     book_link_count: 0,
     option_count: optionCount,
+    used_in_papers: [] as QuestionUsedInPaper[],
     created_at: q.created_at,
     updated_at: q.updated_at,
   };
@@ -425,6 +555,7 @@ async function loadQuestionDetail(questionId: string) {
     id: String(p._id),
     label: p.body_en.slice(0, 160),
   }));
+  const used_in_papers = await loadUsedInPapers(questionId);
 
   return {
     id: String(question._id),
@@ -485,6 +616,7 @@ async function loadQuestionDetail(questionId: string) {
         : undefined,
     note: detail?.note,
     reference_regulation_id: idStr(detail?.reference_regulation_id),
+    used_in_papers,
   };
 }
 
@@ -1110,7 +1242,7 @@ export async function listQuestions(
   );
 
   const questionIds = items.map((q) => q._id);
-  const [linkCounts, optionCounts] = await Promise.all([
+  const [linkCounts, optionCounts, usedInPapersByQuestion] = await Promise.all([
     questionIds.length
       ? QuestionBookLink.aggregate<{ _id: mongoose.Types.ObjectId; count: number }>([
           { $match: { question_id: { $in: questionIds }, is_active: true } },
@@ -1123,6 +1255,7 @@ export async function listQuestions(
           { $group: { _id: '$question_id', count: { $sum: 1 } } },
         ])
       : Promise.resolve([]),
+    loadUsedInPapersByQuestionIds(questionIds),
   ]);
   const linkCountMap = new Map(linkCounts.map((c) => [String(c._id), c.count]));
   const optionCountMap = new Map(optionCounts.map((c) => [String(c._id), c.count]));
@@ -1146,6 +1279,7 @@ export async function listQuestions(
     );
     const storedCount = linkCountMap.get(String(q._id)) ?? 0;
     item.book_link_count = storedCount > 0 ? storedCount : q.book_chapter_id ? 1 : 0;
+    item.used_in_papers = usedInPapersByQuestion.get(String(q._id)) ?? [];
     const chapterId = idStr(q.book_chapter_id);
     const bookId = chapterId ? chapterBookId.get(chapterId) : undefined;
     if (bookId) {

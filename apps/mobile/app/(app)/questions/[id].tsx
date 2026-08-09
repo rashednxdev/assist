@@ -4,7 +4,9 @@ import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { SELF_RATING_PROGRESS } from '@ibas/shared-constants';
-import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
+import { hasComparisonTableContent } from '@ibas/shared-types';
+import { BookEmpty, BookError } from '@/components/books/BookStates';
+import { BlockingLoader } from '@/components/ui/BlockingLoader';
 import { EvaluationCelebrate } from '@/components/evaluation/EvaluationCelebrate';
 import { RatingIndicator } from '@/components/evaluation/RatingIndicator';
 import { fetchQuestionDetail } from '@/lib/questions-api';
@@ -138,9 +140,7 @@ export default function QuestionDetailScreen() {
     item?.question_type_code === 'DIFFERENCES' ||
     Boolean(item?.model_answer_comparison?.columns?.length);
   const comparisonTable = item?.model_answer_comparison;
-  const hasComparison =
-    Boolean(comparisonTable?.columns && comparisonTable.columns.length >= 2) &&
-    Boolean(comparisonTable?.rows && comparisonTable.rows.length > 0);
+  const hasComparison = hasComparisonTableContent(comparisonTable);
   useLayoutEffect(() => {
     const headerEval = showPreviousEval ? evaluation : null;
     navigation.setOptions({
@@ -258,7 +258,13 @@ export default function QuestionDetailScreen() {
     router.replace(questionDetailHref(nextId));
   }
 
-  if (loading) return <BookLoading />;
+  if (loading) {
+    return (
+      <View style={styles.root}>
+        <BlockingLoader label="Loading Question Bank…" />
+      </View>
+    );
+  }
   if (error) return <BookError message={error} />;
   if (!item) return <BookEmpty title="Question not found" />;
 
@@ -497,7 +503,7 @@ function hasSavedEval(evaluation: QuestionEvaluationRecord | null, isMcq: boolea
 }
 
 function sectionHasTable(sec: ExplanationSection) {
-  return Boolean(sec.table && sec.table.columns.length >= 2 && sec.table.rows.length > 0);
+  return hasComparisonTableContent(sec.table);
 }
 
 function sectionHasProcessContent(process?: ExplanationSection['process']) {

@@ -45,6 +45,13 @@
     },
     "web": {
       "favicon": "./assets/icon.png"
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "591b2377-7e29-480a-ba95-472dba9adb95"
+      }
+    },
+    "owner": "rashedunnabi"
   }
 }

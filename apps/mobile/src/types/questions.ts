@@ -35,6 +35,16 @@ export interface QuestionListItem {
   option_count: number;
   created_at: string;
   updated_at: string;
+  /** Papers that include this question (live /questions list only). */
+  used_in_papers?: Array<{
+    id: string;
+    name: string;
+    session_year?: string;
+    session_label_en?: string;
+    session_label_bn?: string;
+    question_number?: number;
+    via: 'direct' | 'child_part';
+  }>;
 }
 
 export interface QuestionOption {
@@ -130,4 +140,14 @@ export interface QuestionDetail {
   model_answer_comparison?: ComparisonTable;
   note?: string;
   book_links?: QuestionBookLink[];
+  /** Papers that include this question (from live /questions/:id — not in offline sync cache). */
+  used_in_papers?: Array<{
+    id: string;
+    name: string;
+    session_year?: string;
+    session_label_en?: string;
+    session_label_bn?: string;
+    question_number?: number;
+    via: 'direct' | 'child_part';
+  }>;
 }

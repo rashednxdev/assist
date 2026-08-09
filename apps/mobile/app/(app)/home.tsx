@@ -19,6 +19,7 @@ import { ExamCountdownCard } from '@/components/home/ExamCountdownCard';
 import { AccessRequiredScreen, type AccessRequiredVariant } from '@/components/home/AccessRequiredScreen';
 import { useAuth } from '@/lib/auth-context';
 import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
+import { useAnswerHistory } from '@/hooks/useAnswerHistory';
 import { hasLearningModule, findModuleStop } from '@/lib/api';
 import {
   fetchProgressDashboard,
@@ -153,6 +154,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const { user, signOut, canAccess, refreshUser } = useAuth();
   const { items: savedItems } = useSavedShortcuts();
+  const { items: historyItems } = useAnswerHistory();
   const [progress, setProgress] = useState<ProgressDashboardData | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [checkingModuleId, setCheckingModuleId] = useState<string | null>(null);
@@ -311,21 +313,6 @@ export default function HomeScreen() {
               <View style={styles.menuDivider} />
               <Pressable
                 style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
-                onPress={() => {
-                  setMenuOpen(false);
-                  router.push('/(app)/history' as Href);
-                }}
-              >
-                <Ionicons name="time-outline" size={20} color={colors.primary} />
-                <View style={styles.menuItemText}>
-                  <Text style={styles.menuItemTitle}>Answer History</Text>
-                  <Text style={styles.menuItemSub}>Recently viewed answers on this device</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-              </Pressable>
-              <View style={styles.menuDivider} />
-              <Pressable
-                style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
                 onPress={confirmSignOut}
               >
                 <Ionicons name="log-out-outline" size={20} color={colors.error} />
@@ -374,6 +361,18 @@ export default function HomeScreen() {
               />
             );
           })}
+          <ModuleTile
+            title="Answer History"
+            subtitle={
+              historyItems.length > 0
+                ? `${historyItems.length} recently viewed`
+                : 'Recently viewed answers'
+            }
+            icon="time-outline"
+            color="#4338ca"
+            enabled
+            onPress={() => router.push('/(app)/history' as Href)}
+          />
         </View>
 
         <Text style={styles.sectionTitle}>Marathon Review</Text>

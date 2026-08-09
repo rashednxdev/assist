@@ -8,7 +8,8 @@
     "dev:tunnel": "cross-env EXPO_NO_METRO_WORKSPACE_ROOT=1 NODE_OPTIONS=--max-old-space-size=8192 expo start --tunnel --clear",
     "android": "cross-env EXPO_NO_METRO_WORKSPACE_ROOT=1 NODE_OPTIONS=--max-old-space-size=8192 expo start --android --lan",
     "ios": "cross-env EXPO_NO_METRO_WORKSPACE_ROOT=1 NODE_OPTIONS=--max-old-space-size=8192 expo start --ios --lan",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "eas-build-post-install": "cd ../.. && pnpm build:packages"
   },
   "dependencies": {
     "@babel/runtime": "^7.26.0",

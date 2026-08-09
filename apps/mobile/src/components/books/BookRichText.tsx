@@ -3,33 +3,51 @@ import { insertBookListMarkerLineBreaks } from '@ibas/shared-constants';
 import { stripHtml } from '@/lib/book-display';
 import { colors } from '@/theme';
 
+type LineAlign = 'justify' | 'center' | 'rightHalf';
+
 interface MarkupLine {
   text: string;
-  align: 'justify' | 'center';
+  align: LineAlign;
 }
 
 /**
- * Admin-entered line-break markup, recognized anywhere in the content: "//" starts a new line
- * (justified, same as the default), and "///" also starts a new line but centers it — e.g. for a
- * heading-like line inside a paragraph. The marker itself is removed from the output. "///" is
- * matched before "//" in the split regex since it's a superset of that pattern.
+ * Admin-entered line-break markup, recognized anywhere in content:
+ * - "//" → new line (justified)
+ * - consecutive "//" (optionally separated by spaces) → that many line breaks / blank lines
+ * - "///" → new line, centered full width
+ * - "////" → new line, centered in the right half of the screen
+ * Longer markers are matched first. Markers are removed from the output.
  */
 function splitMarkupLines(text: string): MarkupLine[] {
-  const parts = text.split(/(\/{3}|\/{2})/);
+  const parts = text.split(/(\/{4}|\/{3}|\/{2})/);
   const lines: MarkupLine[] = [];
   let buffer = '';
-  let align: MarkupLine['align'] = 'justify';
+  let align: LineAlign = 'justify';
+
   for (const part of parts) {
-    if (part === '///' || part === '//') {
+    if (part === '////' || part === '///' || part === '//') {
       lines.push({ text: buffer.trim(), align });
       buffer = '';
-      align = part === '///' ? 'center' : 'justify';
-    } else {
-      buffer += part;
+      if (part === '////') align = 'rightHalf';
+      else if (part === '///') align = 'center';
+      else align = 'justify';
+      continue;
     }
+    // Whitespace-only chunks between markers keep the buffer empty so the next
+    // "//" pushes a blank line (N consecutive "//" → N line breaks).
+    if (part.trim() === '') continue;
+    buffer += part;
   }
   lines.push({ text: buffer.trim(), align });
-  return lines.filter((line) => line.text.length > 0);
+
+  while (lines.length > 0 && lines[0].text.length === 0) lines.shift();
+  while (lines.length > 0 && lines[lines.length - 1].text.length === 0) lines.pop();
+  return lines;
+}
+
+function lineTextStyle(align: LineAlign) {
+  if (align === 'center' || align === 'rightHalf') return styles.center;
+  return null;
 }
 
 /** Plain-text content with list-marker line breaks + justified text (books & questions). */
@@ -54,25 +72,41 @@ export function BookRichText({
   }
 
   const lines = splitMarkupLines(plain);
-  if (lines.length <= 1) {
+  if (lines.length === 0) {
     return (
       <Text style={[styles.plain, style]} {...rest}>
-        {lines[0]?.text ?? plain}
+        {plain.replace(/\/{2,}/g, '').trim()}
+      </Text>
+    );
+  }
+  if (lines.length === 1 && lines[0].align === 'justify') {
+    return (
+      <Text style={[styles.plain, style]} {...rest}>
+        {lines[0].text}
       </Text>
     );
   }
 
   return (
     <View>
-      {lines.map((line, i) => (
-        <Text
-          key={i}
-          style={[styles.plain, style, line.align === 'center' && styles.center]}
-          {...rest}
-        >
-          {line.text}
-        </Text>
-      ))}
+      {lines.map((line, i) => {
+        if (!line.text) {
+          return <View key={i} style={styles.blankLine} />;
+        }
+        const textNode = (
+          <Text style={[styles.plain, style, lineTextStyle(line.align)]} {...rest}>
+            {line.text}
+          </Text>
+        );
+        if (line.align === 'rightHalf') {
+          return (
+            <View key={i} style={styles.rightHalf}>
+              {textNode}
+            </View>
+          );
+        }
+        return <View key={i}>{textNode}</View>;
+      })}
     </View>
   );
 }
@@ -86,5 +120,12 @@ const styles = StyleSheet.create({
   },
   center: {
     textAlign: 'center',
+  },
+  rightHalf: {
+    width: '50%',
+    alignSelf: 'flex-end',
+  },
+  blankLine: {
+    height: 24,
   },
 });

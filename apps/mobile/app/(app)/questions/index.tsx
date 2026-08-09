@@ -15,7 +15,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { QUESTION_DIFFICULTIES } from '@ibas/shared-constants';
 import { BookBadge } from '@/components/books/BookBadge';
-import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
+import { BookEmpty, BookError } from '@/components/books/BookStates';
 import { RatingIndicator } from '@/components/evaluation/RatingIndicator';
 import { fetchQuestionEvaluationsBatchChunked, type QuestionEvalBrief } from '@/lib/evaluation-api';
 import { fetchQuestionTypes } from '@/lib/questions-api';
@@ -315,17 +315,13 @@ export default function QuestionsScreen() {
     }
   }, [runSync]);
 
-  // After the full bank has loaded, jump to the last-read question by index.
+  // After the full bank has loaded, jump to the last-read question by index — same shape as
+  // Marathon Review's resume effect: wait while the cache is still empty rather than bailing out
+  // on a not-yet-synced item, then always attempt the scroll once there's something to scroll.
   useEffect(() => {
-    if (!resumeReady || didResume.current || !resumeTarget) return;
-    if (hasActiveFilter) {
-      setResuming(false);
-      return;
-    }
+    if (!resumeReady || didResume.current || !resumeTarget || items.length === 0) return;
     if (loading) return;
-
-    const index = items.findIndex((i) => i.id === resumeTarget.id);
-    if (index < 0) {
+    if (hasActiveFilter) {
       didResume.current = true;
       setResuming(false);
       return;
@@ -347,6 +343,12 @@ export default function QuestionsScreen() {
 
     return () => clearTimeout(t);
   }, [resumeReady, resumeTarget, items, loading, hasActiveFilter]);
+
+  // Safety net: an empty bank (or one where resume never resolves) shouldn't loop the loader
+  // forever — matches Marathon Review's fallback.
+  useEffect(() => {
+    if (!loading && resumeReady && items.length === 0) setResuming(false);
+  }, [loading, resumeReady, items]);
 
   function onScroll(e: NativeSyntheticEvent<NativeScrollEvent>) {
     scrollYRef.current = e.nativeEvent.contentOffset.y;
@@ -399,7 +401,9 @@ export default function QuestionsScreen() {
 
   return (
     <View style={styles.root}>
-      {resuming ? <BlockingLoader label="Loading Question Bank…" /> : null}
+      {resuming || (loading && items.length === 0) ? (
+        <BlockingLoader label="Loading Question Bank…" />
+      ) : null}
       <View style={styles.toolbar}>
         <View style={styles.searchRow}>
           <Ionicons name="search" size={18} color={colors.textMuted} />
@@ -551,9 +555,7 @@ export default function QuestionsScreen() {
         />
       </View>
 
-      {loading && items.length === 0 ? (
-        <BookLoading />
-      ) : error && items.length === 0 ? (
+      {loading && items.length === 0 ? null : error && items.length === 0 ? (
         <BookError message={error} />
       ) : (
         <FlatList

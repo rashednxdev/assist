@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { hasComparisonTableContent } from '@ibas/shared-types';
 import { BookBadge } from '@/components/books/BookBadge';
 import { BookLoading } from '@/components/books/BookStates';
 import { BookRichText } from '@/components/books/BookRichText';
@@ -52,7 +53,7 @@ function hasSavedEval(evaluation: QuestionEvaluationRecord | null) {
 }
 
 function sectionHasTable(section: ExplanationSection) {
-  return Boolean(section.table && section.table.columns.length >= 2 && section.table.rows.length > 0);
+  return hasComparisonTableContent(section.table);
 }
 
 function renderSection(section: ExplanationSection, index: number) {
@@ -166,9 +167,7 @@ export function ChapterQuestionsPanel({
     [displayedQuestions, selectedId],
   );
 
-  const hasComparison =
-    Boolean(question?.model_answer_comparison?.columns && question.model_answer_comparison.columns.length >= 2) &&
-    Boolean(question?.model_answer_comparison?.rows && question.model_answer_comparison.rows.length > 0);
+  const hasComparison = hasComparisonTableContent(question?.model_answer_comparison);
 
   const questionStem = question
     ? bilingualQuestionText(question.body_en, question.body_bn)

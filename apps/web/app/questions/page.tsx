@@ -58,7 +58,28 @@ interface QuestionItem {
   book_sub_topic_id?: string;
   book_link_count?: number;
   option_count: number;
+  used_in_papers?: Array<{
+    id: string;
+    name: string;
+    session_year?: string;
+    session_label_en?: string;
+    session_label_bn?: string;
+  }>;
   updated_at: string;
+}
+
+function paperUsageLabel(paper: {
+  name: string;
+  session_year?: string;
+  session_label_en?: string;
+  session_label_bn?: string;
+}) {
+  const session =
+    paper.session_label_en?.trim() ||
+    paper.session_year?.trim() ||
+    paper.session_label_bn?.trim() ||
+    '';
+  return session ? `${session} · ${paper.name}` : paper.name;
 }
 
 function linkBadge(item: QuestionItem) {
@@ -856,6 +877,11 @@ export default function QuestionsPage() {
                           {isAdmin && (
                             <ReviewStatusBadge status={item.review_status} by={item.status_by_name} />
                           )}
+                          {(item.used_in_papers ?? []).map((paper) => (
+                            <Badge key={paper.id} variant="secondary" title={paperUsageLabel(paper)}>
+                              {paperUsageLabel(paper)}
+                            </Badge>
+                          ))}
                         </div>
                       </div>
                     </Link>

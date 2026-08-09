@@ -27,20 +27,55 @@ export function emptyComparisonTable(columnCount = 2): ComparisonTable {
   };
 }
 
+/** Plain text from a rich/HTML table cell — used to decide if the cell has real content. */
+export function comparisonTableCellText(raw?: string | null): string {
+  if (!raw) return '';
+  return String(raw)
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&#160;/gi, ' ')
+    .replace(/[\u00a0\u200b\ufeff]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function keptColumnIndexes(
+  columns: string[] | undefined,
+  rows: ComparisonTableRow[] | undefined,
+  opts: { requireCellData: boolean },
+) {
+  const rawRows = rows ?? [];
+  return (columns ?? [])
+    .map((c, i) => ({ label: String(c ?? '').trim(), index: i }))
+    .filter((c) => c.label.length > 0)
+    .filter(
+      (c) =>
+        !opts.requireCellData ||
+        rawRows.some((r) => comparisonTableCellText(r.values?.[c.index]).length > 0),
+    )
+    .map((c) => c.index);
+}
+
+/**
+ * Normalize a table for persistence: drop blank headers (keeping value indexes aligned),
+ * drop fully empty rows. Keeps compare-columns that still have a header even if cells are
+ * empty so an in-progress Item B column is not wiped on save.
+ */
 export function cleanComparisonTable(table: ComparisonTable | null | undefined): ComparisonTable | undefined {
   if (!table) return undefined;
   const title = (table.title ?? '').trim();
   const featureHeader = (table.feature_header ?? 'Feature').trim() || 'Feature';
-  const columns = (table.columns ?? []).map((c) => c.trim()).filter(Boolean);
-  if (columns.length < 2) return undefined;
+  const keptIndexes = keptColumnIndexes(table.columns, table.rows, { requireCellData: false });
+  if (keptIndexes.length < 2) return undefined;
 
+  const columns = keptIndexes.map((i) => String(table.columns[i] ?? '').trim());
   const rows = (table.rows ?? [])
     .map((row) => {
       const feature = (row.feature ?? '').trim();
-      const values = columns.map((_, i) => (row.values?.[i] ?? '').trim());
+      const values = keptIndexes.map((i) => (row.values?.[i] ?? '').trim());
       return { feature, values };
     })
-    .filter((row) => row.feature || row.values.some((v) => v));
+    .filter((row) => row.feature || row.values.some((v) => comparisonTableCellText(v)));
 
   if (rows.length === 0) return undefined;
 
@@ -48,15 +83,46 @@ export function cleanComparisonTable(table: ComparisonTable | null | undefined):
     ...(title ? { title } : {}),
     feature_header: featureHeader,
     columns,
-    rows: rows.map((row) => ({
-      feature: row.feature,
-      values: columns.map((_, i) => row.values[i] ?? ''),
-    })),
+    rows,
+  };
+}
+
+/**
+ * Table shaped for display: also drops any compare-column whose cells are all empty
+ * (e.g. an unused "Item B"), even when the header label is present. Allows a single
+ * remaining compare-column so partial tables still render.
+ */
+export function visibleComparisonTable(table: ComparisonTable | null | undefined): ComparisonTable | undefined {
+  if (!table) return undefined;
+  const title = (table.title ?? '').trim();
+  const featureHeader = (table.feature_header ?? 'Feature').trim() || 'Feature';
+  const keptIndexes = keptColumnIndexes(table.columns, table.rows, { requireCellData: true });
+  if (keptIndexes.length < 1) return undefined;
+
+  const columns = keptIndexes.map((i) => String(table.columns[i] ?? '').trim());
+  const rows = (table.rows ?? [])
+    .map((row) => ({
+      feature: row.feature ?? '',
+      values: keptIndexes.map((i) => row.values?.[i] ?? ''),
+    }))
+    .filter(
+      (row) =>
+        comparisonTableCellText(row.feature).length > 0 ||
+        row.values.some((v) => comparisonTableCellText(v).length > 0),
+    );
+
+  if (rows.length === 0) return undefined;
+
+  return {
+    ...(title ? { title } : {}),
+    feature_header: featureHeader,
+    columns,
+    rows,
   };
 }
 
 export function hasComparisonTableContent(table: ComparisonTable | null | undefined): boolean {
-  return Boolean(cleanComparisonTable(table));
+  return Boolean(visibleComparisonTable(table));
 }
 
 export function serializeComparisonTable(

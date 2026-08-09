@@ -358,6 +358,15 @@ export default function QuestionUpdateListScreen() {
                   <BookBadge label={item.difficulty} variant="muted" />
                   <BookBadge label={`${item.marks} marks`} variant="muted" />
                   <ReviewStatusBadge status={item.review_status ?? 'draft'} by={item.status_by_name} />
+                  {(item.used_in_papers ?? []).map((paper) => {
+                    const session =
+                      paper.session_label_en?.trim() ||
+                      paper.session_year?.trim() ||
+                      paper.session_label_bn?.trim() ||
+                      '';
+                    const label = session ? `${session} · ${paper.name}` : paper.name;
+                    return <BookBadge key={paper.id} label={label} variant="muted" />;
+                  })}
                 </View>
               </View>
               <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />

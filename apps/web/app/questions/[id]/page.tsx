@@ -73,6 +73,15 @@ interface QuestionDetail {
     is_correct: boolean;
   }[];
   correct_option_key?: string;
+  used_in_papers?: Array<{
+    id: string;
+    name: string;
+    session_year?: string;
+    session_label_en?: string;
+    session_label_bn?: string;
+    question_number?: number;
+    via: 'direct' | 'child_part';
+  }>;
 }
 
 function linkLabel(level?: string) {
@@ -197,6 +206,7 @@ export default function QuestionDetailPage() {
 
   const link = linkLabel(question.link_level);
   const bookLinks = question.book_links ?? [];
+  const usedInPapers = question.used_in_papers ?? [];
   const isTextAnswerType = !question.has_options && question.question_type_code !== 'DIFFERENCES';
 
   return (
@@ -245,6 +255,21 @@ export default function QuestionDetailPage() {
           <Badge variant="secondary">{bookLinks.length} book link{bookLinks.length !== 1 ? 's' : ''}</Badge>
         ) : link ? (
           <Badge variant="secondary">Linked: {link}</Badge>
+        ) : null}
+        {usedInPapers.length > 0 ? (
+          usedInPapers.map((paper) => {
+            const session =
+              paper.session_label_en?.trim() ||
+              paper.session_year?.trim() ||
+              paper.session_label_bn?.trim() ||
+              '';
+            const label = session ? `${session} · ${paper.name}` : paper.name;
+            return (
+              <Link key={paper.id} href={`/papers/${paper.id}`} title={label}>
+                <Badge variant="secondary">{label}</Badge>
+              </Link>
+            );
+          })
         ) : null}
         <Badge variant="secondary">{question.difficulty}</Badge>
         <Badge variant="outline">{question.marks} marks</Badge>

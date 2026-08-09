@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { OPTION_KEYS } from '@ibas/shared-constants';
+import { hasComparisonTableContent } from '@ibas/shared-types';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
 import { BookBadge } from '@/components/books/BookBadge';
 import { BookRichText } from '@/components/books/BookRichText';
@@ -89,7 +90,7 @@ function toSectionRows(sections?: ExplanationSection[]): SectionRow[] {
 }
 
 function hasTableContent(table?: ComparisonTable) {
-  return Boolean(table && table.columns.length >= 2 && table.rows.length > 0);
+  return hasComparisonTableContent(table);
 }
 
 function hasProcessContent(process?: ExplanationProcess) {
@@ -517,6 +518,15 @@ function QuestionUpdateEditBody() {
       <View style={styles.headerRow}>
         <BookBadge label={item.question_type_name ?? item.question_type_code} variant="muted" />
         <ReviewStatusBadge status={status} by={item.status_by_name} />
+        {(item.used_in_papers ?? []).map((paper) => {
+          const session =
+            paper.session_label_en?.trim() ||
+            paper.session_year?.trim() ||
+            paper.session_label_bn?.trim() ||
+            '';
+          const label = session ? `${session} · ${paper.name}` : paper.name;
+          return <BookBadge key={paper.id} label={label} variant="muted" />;
+        })}
       </View>
 
       {!editable ? (
@@ -1113,6 +1123,7 @@ const styles = StyleSheet.create({
   },
   headerRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
   noticeBanner: {

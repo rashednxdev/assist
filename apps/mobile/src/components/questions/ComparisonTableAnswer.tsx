@@ -1,10 +1,11 @@
 import { useWindowDimensions, ScrollView, View, Text, StyleSheet } from 'react-native';
+import { visibleComparisonTable } from '@ibas/shared-types';
 import { BookRichText } from '@/components/books/BookRichText';
 import type { ComparisonTable } from '@/types/questions';
 import { colors, spacing } from '@/theme';
 
-const FEATURE_COL_WIDTH = 112;
-const VALUE_COL_MIN_WIDTH = 140;
+const FEATURE_COL_WIDTH = 68;
+const VALUE_COL_MIN_WIDTH = 84;
 
 export function ComparisonTableAnswer({
   table,
@@ -12,12 +13,14 @@ export function ComparisonTableAnswer({
   table?: ComparisonTable | null;
 }) {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const columns = (table?.columns ?? []).map((c) => String(c ?? '').trim()).filter(Boolean);
-  const rows = table?.rows ?? [];
+  // Drop compare-columns with no cell data (e.g. unused "Item B") and blank headers.
+  const visible = visibleComparisonTable(table);
+  const columns = visible?.columns ?? [];
+  const rows = visible?.rows ?? [];
 
-  if (!table || columns.length < 2 || rows.length === 0) return null;
+  if (!visible || columns.length < 1 || rows.length === 0) return null;
 
-  const featureHeader = table.feature_header?.trim() || 'Feature';
+  const featureHeader = visible.feature_header?.trim() || 'Feature';
   const valueColWidth = Math.max(
     VALUE_COL_MIN_WIDTH,
     Math.floor((Math.max(windowWidth, 480) - FEATURE_COL_WIDTH - 48) / columns.length),
@@ -41,9 +44,9 @@ export function ComparisonTableAnswer({
         contentContainerStyle={styles.hScrollContent}
       >
         <View style={[styles.table, { width: tableWidth }]}>
-          {table.title?.trim() ? (
+          {visible.title?.trim() ? (
             <View style={styles.titleRow}>
-              <Text style={styles.titleText}>{table.title.trim()}</Text>
+              <Text style={styles.titleText}>{visible.title.trim()}</Text>
             </View>
           ) : null}
 
@@ -52,10 +55,7 @@ export function ComparisonTableAnswer({
               <Text style={styles.headerText}>{featureHeader}</Text>
             </View>
             {columns.map((col, i) => (
-              <View
-                key={`h-${i}`}
-                style={[styles.cell, { width: valueColWidth }, styles.headerCell]}
-              >
+              <View key={`h-${i}`} style={[styles.cell, { width: valueColWidth }, styles.headerCell]}>
                 <Text style={styles.headerText}>{col}</Text>
               </View>
             ))}
@@ -111,14 +111,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#eef4f8',
   },
   titleRow: {
-    paddingHorizontal: 10,
-    paddingVertical: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 6,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
     backgroundColor: '#e2ecf2',
   },
   titleText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: colors.text,
     textAlign: 'center',
@@ -127,28 +127,28 @@ const styles = StyleSheet.create({
     backgroundColor: '#fafbfc',
   },
   cell: {
-    paddingHorizontal: 10,
-    paddingVertical: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 6,
     borderRightWidth: StyleSheet.hairlineWidth,
     borderRightColor: colors.border,
     justifyContent: 'flex-start',
   },
   headerCell: {
-    paddingVertical: 12,
+    paddingVertical: 7,
   },
   headerText: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '700',
     color: colors.text,
   },
   featureText: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '700',
     color: colors.text,
   },
   valueText: {
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 11,
+    lineHeight: 15,
     color: colors.text,
   },
 });

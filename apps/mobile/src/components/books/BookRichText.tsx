@@ -16,6 +16,7 @@ interface MarkupLine {
  * - consecutive "//" (optionally separated by spaces) → that many line breaks / blank lines
  * - "///" → new line, centered full width
  * - "////" → new line, centered in the right half of the screen
+ * - "[]" inside a line → left side left-aligned, right side right-aligned (middle empty)
  * Longer markers are matched first. Markers are removed from the output.
  */
 function splitMarkupLines(text: string): MarkupLine[] {
@@ -45,9 +46,58 @@ function splitMarkupLines(text: string): MarkupLine[] {
   return lines;
 }
 
+/** Split on the first `[]` in a line into left / right halves. */
+function splitBracketSides(text: string): { left: string; right: string } | null {
+  const idx = text.indexOf('[]');
+  if (idx < 0) return null;
+  return {
+    left: text.slice(0, idx).trim(),
+    right: text.slice(idx + 2).trim(),
+  };
+}
+
 function lineTextStyle(align: LineAlign) {
   if (align === 'center' || align === 'rightHalf') return styles.center;
   return null;
+}
+
+function renderLineContent(
+  line: MarkupLine,
+  style: StyleProp<TextStyle> | undefined,
+  rest: Omit<TextProps, 'children' | 'style'>,
+  key: number,
+) {
+  if (!line.text) {
+    return <View key={key} style={styles.blankLine} />;
+  }
+
+  const sides = splitBracketSides(line.text);
+  if (sides) {
+    return (
+      <View key={key} style={styles.splitRow}>
+        <Text style={[styles.plain, styles.splitLeft, style]} {...rest}>
+          {sides.left}
+        </Text>
+        <Text style={[styles.plain, styles.splitRight, style]} {...rest}>
+          {sides.right}
+        </Text>
+      </View>
+    );
+  }
+
+  const textNode = (
+    <Text style={[styles.plain, style, lineTextStyle(line.align)]} {...rest}>
+      {line.text}
+    </Text>
+  );
+  if (line.align === 'rightHalf') {
+    return (
+      <View key={key} style={styles.rightHalf}>
+        {textNode}
+      </View>
+    );
+  }
+  return <View key={key}>{textNode}</View>;
 }
 
 /** Plain-text content with list-marker line breaks + justified text (books & questions). */
@@ -63,7 +113,8 @@ export function BookRichText({
   if (!stripped) return null;
   const plain = insertBookListMarkerLineBreaks(stripped, '\n');
 
-  if (!plain.includes('//')) {
+  const needsMarkup = plain.includes('//') || plain.includes('[]');
+  if (!needsMarkup) {
     return (
       <Text style={[styles.plain, style]} {...rest}>
         {plain}
@@ -71,15 +122,23 @@ export function BookRichText({
     );
   }
 
-  const lines = splitMarkupLines(plain);
+  const lines = plain.includes('//')
+    ? splitMarkupLines(plain)
+    : [{ text: plain.trim(), align: 'justify' as const }];
+
   if (lines.length === 0) {
     return (
       <Text style={[styles.plain, style]} {...rest}>
-        {plain.replace(/\/{2,}/g, '').trim()}
+        {plain.replace(/\/{2,}/g, '').replace(/\[\]/g, '').trim()}
       </Text>
     );
   }
-  if (lines.length === 1 && lines[0].align === 'justify') {
+
+  if (
+    lines.length === 1 &&
+    lines[0].align === 'justify' &&
+    !lines[0].text.includes('[]')
+  ) {
     return (
       <Text style={[styles.plain, style]} {...rest}>
         {lines[0].text}
@@ -87,28 +146,7 @@ export function BookRichText({
     );
   }
 
-  return (
-    <View>
-      {lines.map((line, i) => {
-        if (!line.text) {
-          return <View key={i} style={styles.blankLine} />;
-        }
-        const textNode = (
-          <Text style={[styles.plain, style, lineTextStyle(line.align)]} {...rest}>
-            {line.text}
-          </Text>
-        );
-        if (line.align === 'rightHalf') {
-          return (
-            <View key={i} style={styles.rightHalf}>
-              {textNode}
-            </View>
-          );
-        }
-        return <View key={i}>{textNode}</View>;
-      })}
-    </View>
-  );
+  return <View>{lines.map((line, i) => renderLineContent(line, style, rest, i))}</View>;
 }
 
 const styles = StyleSheet.create({
@@ -124,6 +162,21 @@ const styles = StyleSheet.create({
   rightHalf: {
     width: '50%',
     alignSelf: 'flex-end',
+  },
+  splitRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    width: '100%',
+  },
+  splitLeft: {
+    flex: 1,
+    textAlign: 'left',
+    paddingRight: 6,
+  },
+  splitRight: {
+    flex: 1,
+    textAlign: 'right',
+    paddingLeft: 6,
   },
   blankLine: {
     height: 24,

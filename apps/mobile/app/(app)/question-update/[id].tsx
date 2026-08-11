@@ -94,7 +94,14 @@ function hasTableContent(table?: ComparisonTable) {
 }
 
 function hasProcessContent(process?: ExplanationProcess) {
-  return Boolean(process && process.steps.some((s) => s.title?.trim()));
+  return Boolean(
+    process &&
+      (process.title?.trim() ||
+        process.details?.trim() ||
+        process.steps.some(
+          (s) => s.title?.trim() || s.description?.trim() || s.role?.trim(),
+        )),
+  );
 }
 
 /** Read-only render matching how Question Bank shows a model answer / explanation to end users. */

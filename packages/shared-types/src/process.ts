@@ -1,7 +1,8 @@
 import { z } from 'zod';
 
 export const processStepSchema = z.object({
-  title: z.string().min(1),
+  /** Optional for model-answer processes; book Process UI still expects a title in practice. */
+  title: z.string().optional().default(''),
   description: z.string().optional(),
   /** Free-text responsible party for this step — not tied to the Workflow Role collection. */
   role: z.string().optional(),

@@ -38,6 +38,8 @@ export const moduleAccessGrantSchema = z.object({
   can_delete: z.boolean(),
   can_grade: z.boolean(),
   can_publish: z.boolean(),
+  /** Keep access while the module is centrally stopped. */
+  bypass_stop: z.boolean().optional(),
 });
 
 export type ModuleAccessGrant = z.infer<typeof moduleAccessGrantSchema>;

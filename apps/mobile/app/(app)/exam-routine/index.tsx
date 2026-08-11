@@ -86,6 +86,11 @@ export default function ExamRoutineListScreen() {
             <View style={styles.cardBody}>
               <Text style={styles.title}>{r.exam_name}</Text>
               <Text style={styles.sub}>{formatDdMmYyyy(r.start_date)}</Text>
+              {r.start_date_note?.trim() ? (
+                <Text style={styles.note} numberOfLines={2}>
+                  {r.start_date_note.trim()}
+                </Text>
+              ) : null}
             </View>
             <View style={styles.countdownWrap}>
               <Text style={styles.countdownText}>{countdownLabel(days)}</Text>
@@ -136,6 +141,11 @@ const styles = StyleSheet.create({
   sub: {
     fontSize: 12,
     color: colors.textMuted,
+  },
+  note: {
+    fontSize: 11,
+    color: '#92400e',
+    lineHeight: 15,
   },
   countdownWrap: {
     borderRadius: 999,

@@ -46,6 +46,11 @@ export function ExamCountdownCard() {
       <View style={styles.body}>
         <Text style={styles.title}>{nearest.exam_name}</Text>
         <Text style={styles.sub}>Starts {formatDdMmYyyy(nearest.start_date)}</Text>
+        {nearest.start_date_note?.trim() ? (
+          <Text style={styles.note} numberOfLines={2}>
+            {nearest.start_date_note.trim()}
+          </Text>
+        ) : null}
       </View>
       <View style={styles.countdownWrap}>
         <Text style={styles.countdownNumber}>{nearest.days}</Text>
@@ -89,6 +94,12 @@ const styles = StyleSheet.create({
   sub: {
     fontSize: 12,
     color: colors.textMuted,
+  },
+  note: {
+    fontSize: 11,
+    color: '#92400e',
+    marginTop: 2,
+    lineHeight: 15,
   },
   countdownWrap: {
     alignItems: 'center',

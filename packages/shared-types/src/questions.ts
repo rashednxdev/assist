@@ -182,6 +182,11 @@ export const linkQuestionSearchQuerySchema = z.object({
   exclude_id: mongoId.optional(),
   book_chapter_id: mongoId.optional(),
   book_info_id: mongoId.optional(),
+  /** When set, only published / unpublished questions (paper compose needs published-only). */
+  is_published: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === 'true')),
   threshold: z.coerce.number().min(0).max(1).default(0.5),
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });

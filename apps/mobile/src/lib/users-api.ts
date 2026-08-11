@@ -1,0 +1,147 @@
+import { apiFetch } from './api';
+
+export interface AdminUserRow {
+  id: string;
+  full_name_en: string;
+  full_name_bn?: string;
+  email: string;
+  phone: string;
+  user_type: string;
+  status: string;
+  is_super_admin?: boolean;
+}
+
+export interface AdminUserDetail extends AdminUserRow {
+  is_verified?: boolean;
+  allow_multi_device?: boolean;
+  bound_device_id?: string | null;
+  bound_device_at?: string | null;
+  bound_device_label?: string | null;
+  workflow_roles?: Array<{ role_code: string; is_active: boolean; role_id: string }>;
+}
+
+export interface ModuleCatalogItem {
+  _id: string;
+  code: string;
+  name_en: string;
+}
+
+export interface UserModuleAccessRow {
+  id: string;
+  module_id: string;
+  module_code: string;
+  can_read: boolean;
+  can_create: boolean;
+  can_update: boolean;
+  can_delete: boolean;
+  can_grade: boolean;
+  can_publish: boolean;
+  bypass_stop?: boolean;
+}
+
+export const MOBILE_MODULE_CODES = [
+  'BOOKS',
+  'QUESTIONS',
+  'EXAM',
+  'PAPER',
+  'OCR',
+  'PENSION',
+  'QUESTION_EDIT',
+  'QOTD',
+  'EXAM_ROUTINE',
+  'EXAM_WEEK',
+  'USER_QUESTIONS',
+] as const;
+
+export async function fetchAdminUsers(params?: { q?: string; page?: number; limit?: number }) {
+  const search = new URLSearchParams();
+  search.set('page', String(params?.page ?? 1));
+  search.set('limit', String(params?.limit ?? 30));
+  if (params?.q?.trim()) search.set('q', params.q.trim());
+  return apiFetch<{ data: AdminUserRow[]; meta: { total: number } }>(`/users?${search.toString()}`);
+}
+
+export async function fetchAdminUser(id: string) {
+  const res = await apiFetch<{ data: AdminUserDetail }>(`/users/${id}`);
+  return res.data;
+}
+
+export async function createAdminUser(body: {
+  full_name_en: string;
+  full_name_bn?: string;
+  email: string;
+  phone: string;
+  password: string;
+  user_type: string;
+}) {
+  return apiFetch<{ data: AdminUserDetail }>('/users', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateAdminUser(
+  id: string,
+  body: Partial<{
+    full_name_en: string;
+    full_name_bn: string;
+    email: string;
+    phone: string;
+    user_type: string;
+    status: string;
+    is_super_admin: boolean;
+    allow_multi_device: boolean;
+    clear_bound_device: boolean;
+    force_logout: boolean;
+  }>,
+) {
+  return apiFetch<{ data: AdminUserDetail }>(`/users/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
+export async function fetchSetupModules() {
+  const res = await apiFetch<{ data: ModuleCatalogItem[] }>('/setup/modules?all=true');
+  return res.data;
+}
+
+export async function fetchUserModuleAccess(userId: string) {
+  const res = await apiFetch<{ data: UserModuleAccessRow[] }>(`/users/${userId}/module-access`);
+  return res.data;
+}
+
+export async function upsertUserModuleAccess(
+  userId: string,
+  body: {
+    module_id: string;
+    can_read: boolean;
+    can_create: boolean;
+    can_update: boolean;
+    can_delete: boolean;
+    can_grade: boolean;
+    can_publish: boolean;
+    bypass_stop: boolean;
+  },
+) {
+  return apiFetch<{ data: UserModuleAccessRow }>(`/users/${userId}/module-access`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export async function revokeUserModuleAccess(userId: string, moduleId: string) {
+  return apiFetch(`/users/${userId}/module-access/${moduleId}`, { method: 'DELETE' });
+}
+
+export async function sendNotificationToUser(userId: string, title: string, message: string) {
+  return apiFetch('/admin-notifications', {
+    method: 'POST',
+    body: JSON.stringify({
+      title,
+      message,
+      target_type: 'specific',
+      target_user_ids: [userId],
+    }),
+  });
+}

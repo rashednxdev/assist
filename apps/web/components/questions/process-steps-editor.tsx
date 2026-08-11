@@ -119,7 +119,7 @@ export function ProcessStepsEditor({
               disabled={disabled}
               value={step.title}
               onChange={(e) => updateStep(i, { title: e.target.value })}
-              placeholder="Step title *"
+              placeholder="Step title (optional)"
               className="h-8 text-sm"
             />
             <textarea
@@ -140,7 +140,11 @@ export function ProcessStepsEditor({
       <div className="space-y-1.5">
         <Label className="text-xs">Preview</Label>
         <div className="rounded-lg border border-border bg-surface p-4">
-          <ProcessFlowPreview steps={value.steps.filter((s) => s.title.trim())} />
+          <ProcessFlowPreview
+            steps={value.steps.filter(
+              (s) => s.title?.trim() || s.description?.trim() || s.role?.trim(),
+            )}
+          />
         </div>
       </div>
     </div>

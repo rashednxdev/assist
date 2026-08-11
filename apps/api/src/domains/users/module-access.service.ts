@@ -17,6 +17,7 @@ function serializeAccess(doc: InstanceType<typeof UserModuleAccess>) {
     can_delete: doc.can_delete,
     can_grade: doc.can_grade,
     can_publish: doc.can_publish,
+    bypass_stop: Boolean(doc.bypass_stop),
     task_restrictions: doc.task_restrictions,
     expires_at: doc.expires_at,
     is_active: doc.is_active,
@@ -50,6 +51,7 @@ export async function listModuleAccessForSession(userId: string) {
     can_delete: doc.can_delete,
     can_grade: doc.can_grade,
     can_publish: doc.can_publish,
+    bypass_stop: Boolean(doc.bypass_stop),
   }));
 }
 
@@ -81,6 +83,7 @@ export async function upsertModuleAccess(userId: string, dto: UpsertModuleAccess
       can_delete: dto.can_delete,
       can_grade: dto.can_grade,
       can_publish: dto.can_publish,
+      bypass_stop: dto.bypass_stop ?? false,
       task_restrictions: dto.task_restrictions ?? [],
       granted_by: new mongoose.Types.ObjectId(grantedBy),
       granted_at: new Date(),

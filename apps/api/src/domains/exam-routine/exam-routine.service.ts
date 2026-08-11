@@ -58,6 +58,7 @@ export async function listAdminRoutines(limit: number, offset: number) {
     exam_name_id: String(r.exam_name_id),
     exam_name: examNameById.get(String(r.exam_name_id)) ?? 'Unknown exam',
     start_date: r.start_date,
+    start_date_note: r.start_date_note || undefined,
     entry_count: countById.get(String(r._id)) ?? 0,
   }));
   return { items, total };
@@ -71,6 +72,7 @@ export async function createExamRoutine(dto: CreateExamRoutineDto, createdBy: st
     const routine = await ExamRoutine.create({
       exam_name_id: dto.exam_name_id,
       start_date: dto.start_date,
+      start_date_note: dto.start_date_note?.trim() || undefined,
       created_by: createdBy,
       is_active: true,
     });
@@ -93,6 +95,7 @@ export async function getRoutineDetailById(id: string) {
     exam_name_id: String(routine.exam_name_id),
     exam_name: exam?.name ?? 'Unknown exam',
     start_date: routine.start_date,
+    start_date_note: routine.start_date_note || undefined,
     entries: await serializeEntries(entries),
   };
 }
@@ -108,6 +111,7 @@ export async function getRoutineByExamName(examNameId: string) {
     exam_name_id: String(routine.exam_name_id),
     exam_name: exam.name,
     start_date: routine.start_date,
+    start_date_note: routine.start_date_note || undefined,
     entries: await serializeEntries(entries),
   };
 }
@@ -121,6 +125,7 @@ export async function listRoutinesForMobile() {
     exam_name_id: String(r.exam_name_id),
     exam_name: examNameById.get(String(r.exam_name_id)) ?? 'Unknown exam',
     start_date: r.start_date,
+    start_date_note: r.start_date_note || undefined,
   }));
 }
 
@@ -128,6 +133,9 @@ export async function updateExamRoutine(id: string, dto: UpdateExamRoutineDto) {
   const routine = await ExamRoutine.findById(id);
   if (!routine) throw notFound('Exam routine not found');
   if (dto.start_date !== undefined) routine.start_date = dto.start_date;
+  if (dto.start_date_note !== undefined) {
+    routine.start_date_note = dto.start_date_note?.trim() || undefined;
+  }
   if (dto.is_active !== undefined) routine.is_active = dto.is_active;
   await routine.save();
   return { id: String(routine._id) };

@@ -7,10 +7,13 @@ const timeStr = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Time must be HH:m
 export const createExamRoutineSchema = z.object({
   exam_name_id: mongoId,
   start_date: dateStr,
+  /** Optional note shown with the countdown on mobile/home. */
+  start_date_note: z.string().max(500).optional(),
 });
 
 export const updateExamRoutineSchema = z.object({
   start_date: dateStr.optional(),
+  start_date_note: z.string().max(500).optional().nullable(),
   is_active: z.boolean().optional(),
 });
 
@@ -39,6 +42,7 @@ export interface ExamRoutineListItem {
   exam_name_id: string;
   exam_name: string;
   start_date: string;
+  start_date_note?: string;
   entry_count: number;
 }
 
@@ -57,5 +61,6 @@ export interface ExamRoutineDetail {
   exam_name_id: string;
   exam_name: string;
   start_date: string;
+  start_date_note?: string;
   entries: ExamRoutineEntryItem[];
 }

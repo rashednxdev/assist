@@ -1,7 +1,7 @@
 import { Stack } from 'expo-router';
 import { colors } from '@/theme';
 
-export default function PapersLayout() {
+export default function UsersLayout() {
   return (
     <Stack
       screenOptions={{
@@ -14,14 +14,22 @@ export default function PapersLayout() {
       <Stack.Screen
         name="index"
         options={{
-          title: 'Exam Papers',
+          title: 'Users',
           headerBackTitle: 'Home',
+        }}
+      />
+      <Stack.Screen
+        name="new"
+        options={{
+          title: 'Add user',
+          headerBackTitle: 'Users',
         }}
       />
       <Stack.Screen
         name="[id]"
         options={{
-          title: 'Paper',
+          title: 'User',
+          headerBackTitle: 'Users',
         }}
       />
     </Stack>

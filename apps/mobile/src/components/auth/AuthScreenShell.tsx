@@ -13,7 +13,7 @@ interface AuthScreenShellProps {
   variant?: 'default' | 'premium';
 }
 
-const PREMIUM_FEATURES = ['Exam prep', 'Question bank', 'Books & Tools', 'Practice papers'];
+const PREMIUM_FEATURES = ['Exam prep', 'Question bank', 'Books & Tools', 'Exam papers'];
 
 function AuthScreenBody({
   title,

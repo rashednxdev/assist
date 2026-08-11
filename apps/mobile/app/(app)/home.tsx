@@ -20,7 +20,7 @@ import { AccessRequiredScreen, type AccessRequiredVariant } from '@/components/h
 import { useAuth } from '@/lib/auth-context';
 import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
 import { useAnswerHistory } from '@/hooks/useAnswerHistory';
-import { hasLearningModule, findModuleStop } from '@/lib/api';
+import { hasLearningModule, findModuleStop, isModuleEffectivelyStopped } from '@/lib/api';
 import {
   fetchProgressDashboard,
   type ProgressDashboardData,
@@ -70,7 +70,7 @@ const MODULES: Array<{
   {
     id: 'paper',
     code: 'PAPER' as const,
-    title: 'Practice Papers',
+    title: 'Exam Papers',
     subtitle: 'Session-wise model papers',
     icon: 'document-text-outline' as const,
     color: '#d97706',
@@ -107,7 +107,7 @@ const MODULES: Array<{
     id: 'exam-week',
     code: 'EXAM_WEEK' as const,
     title: 'Exams of the Week',
-    subtitle: 'Featured practice papers, by week',
+    subtitle: 'Featured exam papers, by week',
     icon: 'trophy-outline' as const,
     color: examWeekColors.accent,
     href: '/(app)/exam-week' as Href,
@@ -168,9 +168,13 @@ export default function HomeScreen() {
 
   const openModule = useCallback(
     async (module: (typeof MODULES)[number]) => {
-      const stop = findModuleStop(user?.module_stops ?? [], module.code);
-      if (stop) {
-        setAccessScreen({ variant: 'stopped', moduleTitle: module.title, stoppedReason: stop.stopped_reason });
+      if (isModuleEffectivelyStopped(user?.module_stops ?? [], user?.module_access ?? [], module.code)) {
+        const stop = findModuleStop(user?.module_stops ?? [], module.code);
+        setAccessScreen({
+          variant: 'stopped',
+          moduleTitle: module.title,
+          stoppedReason: stop?.stopped_reason,
+        });
         return;
       }
       if (hasLearningModule(user?.module_access ?? [], module.code)) {
@@ -181,9 +185,13 @@ export default function HomeScreen() {
       setCheckingModuleId(module.id);
       try {
         const me = await refreshUser();
-        const freshStop = findModuleStop(me.module_stops ?? [], module.code);
-        if (freshStop) {
-          setAccessScreen({ variant: 'stopped', moduleTitle: module.title, stoppedReason: freshStop.stopped_reason });
+        if (isModuleEffectivelyStopped(me.module_stops ?? [], me.module_access ?? [], module.code)) {
+          const freshStop = findModuleStop(me.module_stops ?? [], module.code);
+          setAccessScreen({
+            variant: 'stopped',
+            moduleTitle: module.title,
+            stoppedReason: freshStop?.stopped_reason,
+          });
           return;
         }
         if (hasLearningModule(me.module_access ?? [], module.code)) {
@@ -342,7 +350,9 @@ export default function HomeScreen() {
         <Text style={styles.sectionTitle}>Learning modules</Text>
         <View style={styles.grid}>
           {MODULES.map((m) => {
-            const enabled = canAccess(m.code) && !findModuleStop(user?.module_stops ?? [], m.code);
+            const enabled =
+              canAccess(m.code) &&
+              !isModuleEffectivelyStopped(user?.module_stops ?? [], user?.module_access ?? [], m.code);
             // Question Update is an admin-approved facility, not a default learning module —
             // stay hidden entirely (not just disabled) until access is actually granted.
             if (m.code === 'QUESTION_EDIT' && !enabled) return null;
@@ -362,7 +372,7 @@ export default function HomeScreen() {
             );
           })}
           <ModuleTile
-            title="Answer History"
+            title="Answer Reading History"
             subtitle={
               historyItems.length > 0
                 ? `${historyItems.length} recently viewed`
@@ -373,6 +383,18 @@ export default function HomeScreen() {
             enabled
             onPress={() => router.push('/(app)/history' as Href)}
           />
+          {user?.is_super_admin ||
+          user?.user_type === 'system_admin' ||
+          user?.user_type === 'admin' ? (
+            <ModuleTile
+              title="Users"
+              subtitle="Manage users, module access & notify"
+              icon="people-outline"
+              color="#475569"
+              enabled
+              onPress={() => router.push('/(app)/users' as Href)}
+            />
+          ) : null}
         </View>
 
         <Text style={styles.sectionTitle}>Marathon Review</Text>

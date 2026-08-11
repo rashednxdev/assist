@@ -97,6 +97,17 @@ export function findModuleStop(
   return stops.find((s) => s.module_code === code);
 }
 
+/** True when the module is centrally stopped and this user has no bypass_stop grant. */
+export function isModuleEffectivelyStopped(
+  stops: ModuleStop[],
+  grants: ModuleAccessGrant[],
+  code: LearningModuleCode,
+): boolean {
+  const stop = findModuleStop(stops, code);
+  if (!stop) return false;
+  return !grants.some((g) => g.module_code === code && g.can_read && g.bypass_stop);
+}
+
 /** True update permission (not just read) — e.g. the QUESTION_EDIT module's actual edit gate. */
 export function hasLearningModuleUpdate(grants: ModuleAccessGrant[], code: LearningModuleCode): boolean {
   return grants.some((g) => g.module_code === code && g.can_update);

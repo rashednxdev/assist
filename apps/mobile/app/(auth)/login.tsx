@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/Button';
 import { login } from '@/lib/auth-api';
 import { useAuth } from '@/lib/auth-context';
 import { ApiError } from '@/lib/api';
+import { getCachedQuestionCount } from '@/lib/questions-db';
+import { syncQuestions } from '@/lib/questions-sync';
 import { colors, spacing } from '@/theme';
 
 export default function LoginScreen() {
@@ -27,6 +29,7 @@ export default function LoginScreen() {
     try {
       await login(email.trim(), password);
       await refreshUser();
+      if (getCachedQuestionCount() === 0) void syncQuestions();
       router.replace('/(app)/home');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Sign in failed. Please try again.');

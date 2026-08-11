@@ -11,6 +11,8 @@ export interface IUserModuleAccess extends Document {
   can_delete: boolean;
   can_grade: boolean;
   can_publish: boolean;
+  /** Keep access for this user while the module is centrally stopped. */
+  bypass_stop: boolean;
   task_restrictions: string[];
   granted_by: Types.ObjectId;
   granted_at: Date;
@@ -30,6 +32,7 @@ const schema = new Schema<IUserModuleAccess>(
     can_delete: { type: Boolean, default: false },
     can_grade: { type: Boolean, default: false },
     can_publish: { type: Boolean, default: false },
+    bypass_stop: { type: Boolean, default: false },
     task_restrictions: { type: [String], default: [] },
     granted_by: { type: Schema.Types.ObjectId, required: true },
     granted_at: { type: Date, default: Date.now },

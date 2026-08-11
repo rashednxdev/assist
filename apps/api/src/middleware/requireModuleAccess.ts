@@ -10,8 +10,9 @@ function isAdmin(user: AuthRequest['user']): boolean {
 }
 
 /**
- * A module globally stopped by an admin blocks everyone regardless of per-user grants. For a
- * route accepting several alternative codes (requireModuleAccessAny), only block if EVERY given
+ * A module globally stopped by an admin blocks everyone regardless of per-user grants,
+ * unless that user was explicitly granted `bypass_stop` for the module. For a route
+ * accepting several alternative codes (requireModuleAccessAny), only block if EVERY given
  * code is currently stopped — if at least one alternative is still active, fall through to the
  * normal per-user check for that one. A code with no matching Module doc is treated as not
  * stopped (never blocks) rather than as an error.
@@ -27,6 +28,17 @@ export async function findAllStoppedModule(
   const allStopped = moduleCodes.every((code) => stopped.some((m) => m.code === code));
   if (!allStopped || stopped.length === 0) return null;
   return stopped[0] ?? null;
+}
+
+async function hasBypassStopGrant(userId: string, moduleCodes: string[]): Promise<boolean> {
+  const grant = await UserModuleAccess.findOne({
+    user_id: userId,
+    module_code: { $in: moduleCodes },
+    is_active: true,
+    can_read: true,
+    bypass_stop: true,
+  });
+  return Boolean(grant);
 }
 
 /** Gate a read route behind an active, granted UserModuleAccess row for the given module code. */
@@ -47,8 +59,11 @@ export function requireModuleAccess(moduleCode: string): RequestHandler {
 
     const stopped = await findAllStoppedModule([moduleCode]);
     if (stopped) {
-      next(forbidden(stopped.stopped_reason || 'This module is temporarily unavailable.'));
-      return;
+      const bypass = await hasBypassStopGrant(req.user.id, [moduleCode]);
+      if (!bypass) {
+        next(forbidden(stopped.stopped_reason || 'This module is temporarily unavailable.'));
+        return;
+      }
     }
 
     const grant = await UserModuleAccess.findOne({
@@ -85,8 +100,11 @@ export function requireModuleAccessAny(...moduleCodes: string[]): RequestHandler
 
     const stopped = await findAllStoppedModule(moduleCodes);
     if (stopped) {
-      next(forbidden(stopped.stopped_reason || 'This module is temporarily unavailable.'));
-      return;
+      const bypass = await hasBypassStopGrant(req.user.id, moduleCodes);
+      if (!bypass) {
+        next(forbidden(stopped.stopped_reason || 'This module is temporarily unavailable.'));
+        return;
+      }
     }
 
     const grant = await UserModuleAccess.findOne({

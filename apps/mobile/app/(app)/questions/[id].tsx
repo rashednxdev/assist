@@ -507,7 +507,14 @@ function sectionHasTable(sec: ExplanationSection) {
 }
 
 function sectionHasProcessContent(process?: ExplanationSection['process']) {
-  return Boolean(process && process.steps.some((s) => s.title?.trim()));
+  return Boolean(
+    process &&
+      (process.title?.trim() ||
+        process.details?.trim() ||
+        process.steps.some(
+          (s) => s.title?.trim() || s.description?.trim() || s.role?.trim(),
+        )),
+  );
 }
 
 /** Every process across a list of sections — used to show all of a question's processes together

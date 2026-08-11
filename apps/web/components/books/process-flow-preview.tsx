@@ -1,7 +1,7 @@
 'use client';
 
 export interface ProcessStepPreview {
-  title: string;
+  title?: string;
   description?: string;
   role?: string;
 }
@@ -32,7 +32,9 @@ export function ProcessFlowPreview({ steps }: { steps: ProcessStepPreview[] }) {
                 {step.role.trim()}
               </span>
             )}
-            <div className="font-semibold text-foreground">{step.title}</div>
+            {step.title?.trim() ? (
+              <div className="font-semibold text-foreground">{step.title}</div>
+            ) : null}
             {step.description?.trim() && (
               <p className="mt-0.5 text-sm text-muted">{step.description}</p>
             )}

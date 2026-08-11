@@ -54,6 +54,7 @@ interface ModuleAccess {
   can_delete: boolean;
   can_grade: boolean;
   can_publish: boolean;
+  bypass_stop?: boolean;
 }
 
 interface AddressItem {
@@ -132,7 +133,7 @@ export default function EditUserPage() {
     Promise.all([
       loadUser(),
       apiFetch<{ data: RoleItem[] }>('/setup/roles').then((r) => setRoles(r.data)),
-      apiFetch<{ data: ModuleItem[] }>('/setup/modules').then((r) => setModules(r.data)),
+      apiFetch<{ data: ModuleItem[] }>('/setup/modules?all=true').then((r) => setModules(r.data)),
     ])
       .catch(() => setError('Failed to load user'))
       .finally(() => setLoading(false));
@@ -243,6 +244,7 @@ export default function EditUserPage() {
       can_delete: false,
       can_grade: false,
       can_publish: false,
+      bypass_stop: false,
     };
     try {
       await apiFetch(`/users/${userId}/module-access`, {
@@ -501,6 +503,7 @@ export default function EditUserPage() {
               can_delete: false,
               can_grade: false,
               can_publish: false,
+              bypass_stop: false,
             };
             const flags = ['can_read', 'can_create', 'can_update', 'can_delete', 'can_grade', 'can_publish'] as const;
 
@@ -533,6 +536,19 @@ export default function EditUserPage() {
                       {flag.replace('can_', '')}
                     </label>
                   ))}
+                  <label className="flex items-center gap-1 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(draft.bypass_stop)}
+                      onChange={(e) =>
+                        setAccessDraft((prev) => ({
+                          ...prev,
+                          [mod._id]: { ...draft, bypass_stop: e.target.checked },
+                        }))
+                      }
+                    />
+                    Allow while module stopped
+                  </label>
                 </div>
                 <Button type="button" size="sm" onClick={() => saveModuleAccess(mod._id)}>
                   {existing ? 'Update access' : 'Grant access'}

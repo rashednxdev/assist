@@ -26,6 +26,7 @@ export default function ExamRoutineAdminPage() {
   const [exams, setExams] = useState<ExamRow[]>([]);
   const [examId, setExamId] = useState('');
   const [startDate, setStartDate] = useState('');
+  const [startDateNote, setStartDateNote] = useState('');
   const [creating, setCreating] = useState(false);
 
   async function load() {
@@ -57,10 +58,15 @@ export default function ExamRoutineAdminPage() {
     try {
       await apiFetch('/exam-routine', {
         method: 'POST',
-        body: JSON.stringify({ exam_name_id: examId, start_date: startDate }),
+        body: JSON.stringify({
+          exam_name_id: examId,
+          start_date: startDate,
+          start_date_note: startDateNote.trim() || undefined,
+        }),
       });
       setExamId('');
       setStartDate('');
+      setStartDateNote('');
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create routine');
@@ -82,7 +88,7 @@ export default function ExamRoutineAdminPage() {
         <CardHeader>
           <CardTitle className="text-base">New routine</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-3">
+        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="space-y-1.5">
             <Label htmlFor="routine-exam">Exam</Label>
             <select
@@ -106,6 +112,16 @@ export default function ExamRoutineAdminPage() {
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="routine-note">Note for countdown (optional)</Label>
+            <Input
+              id="routine-note"
+              value={startDateNote}
+              onChange={(e) => setStartDateNote(e.target.value)}
+              placeholder="Shown on mobile countdown"
+              maxLength={500}
             />
           </div>
           <div className="flex items-end">

@@ -92,7 +92,7 @@ export function PerformanceCard({
         </View>
 
         <View style={styles.metricCard}>
-          <Text style={styles.metricTitle}>Practice papers</Text>
+          <Text style={styles.metricTitle}>Exam papers</Text>
           <Text style={styles.metricValue}>{papers.average_progress_percent}%</Text>
           <Text style={styles.metricMeta}>
             {papers.attempted} started · {papers.rated_questions}/{papers.total_questions || 0}

@@ -216,18 +216,13 @@ function toQuestionListItem(row: QuestionRow): QuestionListItem {
 /**
  * Published, active questions of every type EXCEPT MCQ — what the mobile Question Bank shows.
  * MCQ has its own dedicated Marathon Review screen, so it's excluded here to avoid showing the
- * same questions in both places. Ordered by book/chapter/text (not recency) so the screen can
- * group them the same way Marathon Review does; questions with no book link sort last.
+ * same questions in both places. Default order is newest publish/modify first; the screen may
+ * re-sort when the user turns on book grouping.
  */
 export function getCachedQuestionListItems(): QuestionListItem[] {
   const rows = getDb().getAllSync<QuestionRow>(
     `SELECT * FROM questions WHERE is_published = 1 AND is_active = 1 AND question_type_code != 'MCQ'
-     ORDER BY
-       CASE WHEN book_name IS NULL THEN 1 ELSE 0 END,
-       book_name COLLATE NOCASE ASC,
-       chapter_number COLLATE NOCASE ASC,
-       body_en COLLATE NOCASE ASC,
-       id ASC`,
+     ORDER BY updated_at DESC, id DESC`,
   );
   return rows.map(toQuestionListItem);
 }

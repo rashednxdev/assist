@@ -42,21 +42,25 @@ function subsectionHasContent(sub: ExplanationSubsection): boolean {
   return Boolean(sub.subtitle.trim() || sub.details?.trim() || sub.note?.trim());
 }
 
+function processStepHasContent(step: { title?: string; description?: string; role?: string }): boolean {
+  return Boolean(step.title?.trim() || step.description?.trim() || step.role?.trim());
+}
+
 export function hasProcessContent(process?: ExplanationProcess | null): boolean {
   if (!process) return false;
   if (process.title?.trim() || process.details?.trim()) return true;
-  return (process.steps ?? []).some((s) => s.title?.trim());
+  return (process.steps ?? []).some(processStepHasContent);
 }
 
 export function cleanExplanationProcess(process?: ExplanationProcess | null): ExplanationProcess | undefined {
   if (!hasProcessContent(process)) return undefined;
   const steps = (process!.steps ?? [])
     .map((s) => ({
-      title: s.title.trim(),
+      title: (s.title ?? '').trim(),
       description: s.description?.trim() || undefined,
       role: s.role?.trim() || undefined,
     }))
-    .filter((s) => s.title);
+    .filter(processStepHasContent);
   return {
     title: process!.title?.trim() || undefined,
     details: process!.details?.trim() || undefined,

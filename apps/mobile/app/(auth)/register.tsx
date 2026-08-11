@@ -9,6 +9,8 @@ import { TermsViewerModal } from '@/components/auth/TermsViewerModal';
 import { register } from '@/lib/auth-api';
 import { useAuth } from '@/lib/auth-context';
 import { ApiError } from '@/lib/api';
+import { getCachedQuestionCount } from '@/lib/questions-db';
+import { syncQuestions } from '@/lib/questions-sync';
 import { colors, spacing } from '@/theme';
 
 export default function RegisterScreen() {
@@ -68,6 +70,7 @@ export default function RegisterScreen() {
         accept_terms: acceptedTerms,
       });
       await refreshUser();
+      if (getCachedQuestionCount() === 0) void syncQuestions();
       router.replace('/(app)/home');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Registration failed. Please try again.');

@@ -61,7 +61,7 @@ export const navGroups: NavGroup[] = [
       { href: '/books/regulations', label: 'Regulations', icon: ScrollText, moduleCode: 'BOOKS', requirePlatformAdmin: true },
       { href: '/questions', label: 'Question bank', icon: HelpCircle, moduleCode: 'QUESTIONS' },
       { href: '/exams', label: 'Exam programs', icon: GraduationCap, moduleCode: 'EXAM' },
-      { href: '/papers', label: 'Practice papers', icon: FileText, moduleCode: 'PAPER' },
+      { href: '/papers', label: 'Exam papers', icon: FileText, moduleCode: 'PAPER' },
       { href: '/pension', label: 'Pension calculator', icon: Calculator, moduleCode: 'PENSION' },
       { href: '/joining-period', label: 'Joining period', icon: Calculator, moduleCode: 'PENSION' },
     ],

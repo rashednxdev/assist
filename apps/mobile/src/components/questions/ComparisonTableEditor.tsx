@@ -67,6 +67,14 @@ export function ComparisonTableEditor({ value, onChange, disabled }: ComparisonT
     patch({ rows: table.rows.filter((_, i) => i !== rowIndex) });
   }
 
+  function moveRow(rowIndex: number, dir: -1 | 1) {
+    const target = rowIndex + dir;
+    if (target < 0 || target >= table.rows.length) return;
+    const rows = [...table.rows];
+    [rows[rowIndex], rows[target]] = [rows[target]!, rows[rowIndex]!];
+    patch({ rows });
+  }
+
   return (
     <View style={styles.wrap}>
       <TextField
@@ -116,11 +124,35 @@ export function ComparisonTableEditor({ value, onChange, disabled }: ComparisonT
         <View key={ri} style={styles.rowBlock}>
           <View style={styles.rowBlockHeader}>
             <Text style={styles.rowBlockLabel}>Row {ri + 1}</Text>
-            {table.rows.length > 1 ? (
-              <Pressable onPress={() => removeRow(ri)} hitSlop={8} disabled={disabled}>
-                <Ionicons name="close-circle-outline" size={18} color={colors.error} />
+            <View style={styles.rowBlockActions}>
+              <Pressable
+                onPress={() => moveRow(ri, -1)}
+                hitSlop={8}
+                disabled={disabled || ri === 0}
+              >
+                <Ionicons
+                  name="chevron-up-circle-outline"
+                  size={20}
+                  color={ri === 0 ? colors.border : colors.primary}
+                />
               </Pressable>
-            ) : null}
+              <Pressable
+                onPress={() => moveRow(ri, 1)}
+                hitSlop={8}
+                disabled={disabled || ri === table.rows.length - 1}
+              >
+                <Ionicons
+                  name="chevron-down-circle-outline"
+                  size={20}
+                  color={ri === table.rows.length - 1 ? colors.border : colors.primary}
+                />
+              </Pressable>
+              {table.rows.length > 1 ? (
+                <Pressable onPress={() => removeRow(ri)} hitSlop={8} disabled={disabled}>
+                  <Ionicons name="close-circle-outline" size={18} color={colors.error} />
+                </Pressable>
+              ) : null}
+            </View>
           </View>
           <TextField
             label=""
@@ -186,6 +218,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: colors.textMuted,
+  },
+  rowBlockActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   addBtn: {
     flexDirection: 'row',

@@ -25,7 +25,7 @@ export default function AnswerHistoryScreen() {
   if (items.length === 0) {
     return (
       <BookEmpty
-        title="No answer history yet"
+        title="No answer reading history yet"
         subtitle="Questions you spend at least 6 seconds reading the answer of will show up here, most recent first."
       />
     );
@@ -62,7 +62,7 @@ export default function AnswerHistoryScreen() {
             <SwipeToRemove
               key={item.id}
               confirmTitle="Remove from history?"
-              confirmMessage="Remove this entry from Answer History?"
+              confirmMessage="Remove this entry from Answer Reading History?"
               onConfirmRemove={() => removeAnswerHistoryEntry(item.id)}
             >
               <Pressable

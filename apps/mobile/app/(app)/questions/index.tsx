@@ -8,10 +8,10 @@ import {
   Pressable,
   ScrollView,
   RefreshControl,
-  type NativeSyntheticEvent,
-  type NativeScrollEvent,
+  Switch,
+  ActivityIndicator,
 } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { QUESTION_DIFFICULTIES } from '@ibas/shared-constants';
 import { BookBadge } from '@/components/books/BookBadge';
@@ -23,11 +23,7 @@ import { getCachedQuestionListItems } from '@/lib/questions-db';
 import { subscribeQuestionsSync, syncQuestions } from '@/lib/questions-sync';
 import { searchQuestionsByText } from '@/lib/question-search';
 import { questionDetailHref } from '@/lib/question-routes';
-import {
-  loadQuestionBankLastQuestion,
-  saveQuestionBankLastQuestion,
-  type QuestionBankLastQuestion,
-} from '@/lib/question-bank-progress';
+import { saveQuestionBankLastQuestion } from '@/lib/question-bank-progress';
 import { setQuestionBankSessionOrder } from '@/lib/question-bank-order';
 import { useAuth } from '@/lib/auth-context';
 import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
@@ -38,17 +34,31 @@ import type { QuestionListItem, QuestionType } from '@/types/questions';
 import { colors, spacing } from '@/theme';
 
 const UNLINKED_BOOK_KEY = '__unlinked__';
+const PAGE_SIZE = 100;
 
 type BankRow =
   | { kind: 'book'; key: string; book_name: string }
   | { kind: 'chapter'; key: string; label: string }
   | { kind: 'question'; key: string; item: QuestionListItem; match?: number };
 
-/**
- * Flattens the already book/chapter-sorted list into book/chapter header rows interleaved with
- * question rows — same grouped presentation as Marathon Review, but kept as one FlatList data
- * array so search/scrollToIndex/resume-to-last-read keep working unchanged.
- */
+/** Book/chapter grouping for optional “Group by Books & Tools” mode. */
+function sortForBookGrouping(items: QuestionListItem[]): QuestionListItem[] {
+  return [...items].sort((a, b) => {
+    const aBook = a.book_name?.trim() || '';
+    const bBook = b.book_name?.trim() || '';
+    const aUnlinked = !a.book_id ? 1 : 0;
+    const bUnlinked = !b.book_id ? 1 : 0;
+    if (aUnlinked !== bUnlinked) return aUnlinked - bUnlinked;
+    const bookCmp = aBook.localeCompare(bBook, undefined, { sensitivity: 'base' });
+    if (bookCmp !== 0) return bookCmp;
+    const aCh = a.chapter_number?.trim() || '';
+    const bCh = b.chapter_number?.trim() || '';
+    const chCmp = aCh.localeCompare(bCh, undefined, { sensitivity: 'base', numeric: true });
+    if (chCmp !== 0) return chCmp;
+    return (b.updated_at || '').localeCompare(a.updated_at || '');
+  });
+}
+
 function buildBankRows(items: QuestionListItem[]): BankRow[] {
   const rows: BankRow[] = [];
   let lastBookKey: string | null = null;
@@ -100,22 +110,16 @@ export default function QuestionsScreen() {
   const [difficulty, setDifficulty] = useState('');
   const [bookMenuOpen, setBookMenuOpen] = useState(false);
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
-  const [resumeTarget, setResumeTarget] = useState<QuestionBankLastQuestion | null>(null);
-  const [resumeReady, setResumeReady] = useState(false);
-  const [resuming, setResuming] = useState(true);
-  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [groupByBooks, setGroupByBooks] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [evalMap, setEvalMap] = useState<Map<string, QuestionEvalBrief>>(new Map());
+  const [loadingMore, setLoadingMore] = useState(false);
 
-  const listRef = useRef<FlatList<BankRow>>(null);
-  const scrollYRef = useRef(0);
-  const didResume = useRef(false);
   const itemsRef = useRef<QuestionListItem[]>([]);
-  const bankRowsRef = useRef<BankRow[]>([]);
-  const skipNextFocusScroll = useRef(true);
+  const filteredRef = useRef<QuestionListItem[]>([]);
 
   const typeNameMap = useMemo(() => new Map(types.map((t) => [t.code, t.name])), [types]);
 
-  /** Books present in the already-loaded list (local filter only). */
   const bookOptions = useMemo(() => {
     const map = new Map<string, { id: string; name: string; count: number }>();
     for (const item of items) {
@@ -132,10 +136,10 @@ export default function QuestionsScreen() {
     : null;
 
   const hasActiveFilter = Boolean(
-    appliedQuery.trim() || typeCode || difficulty || selectedBookId,
+    appliedQuery.trim() || typeCode || difficulty || selectedBookId || groupByBooks,
   );
 
-  /** Chip-filtered items (book/type/difficulty) — search scoring happens separately below. */
+  /** Chip/book filters over the full local cache (synced in background). */
   const chipFilteredItems = useMemo(() => {
     return items.filter((item) => {
       if (selectedBookId && item.book_id !== selectedBookId) return false;
@@ -146,9 +150,8 @@ export default function QuestionsScreen() {
   }, [items, selectedBookId, typeCode, difficulty]);
 
   /**
-   * Smart search: word-match scoring (any query word matching anywhere counts), 50%+ match,
-   * best match first — same standard as the web admin's link-search. Entirely local since the
-   * whole bank is already synced; no network round-trip per keystroke.
+   * Search runs against the full filtered cache (not only the first page), so results include
+   * questions still syncing/loaded in the background SQLite store.
    */
   const searchResults = useMemo(
     () =>
@@ -159,11 +162,48 @@ export default function QuestionsScreen() {
     [chipFilteredItems, appliedQuery],
   );
 
-  const visibleItems = useMemo(() => searchResults.map((r) => r.item), [searchResults]);
   const isSearching = Boolean(appliedQuery.trim());
 
+  const filteredAll = useMemo(() => {
+    const base = isSearching ? searchResults.map((r) => r.item) : chipFilteredItems;
+    if (groupByBooks && !isSearching) return sortForBookGrouping(base);
+    return base;
+  }, [isSearching, searchResults, chipFilteredItems, groupByBooks]);
+
+  const pagedItems = useMemo(
+    () => filteredAll.slice(0, visibleCount),
+    [filteredAll, visibleCount],
+  );
+
+  const matchById = useMemo(() => {
+    if (!isSearching) return new Map<string, number>();
+    return new Map(searchResults.map((r) => [r.item.id, Math.round(r.score * 100)]));
+  }, [isSearching, searchResults]);
+
+  const bankRows = useMemo(() => {
+    if (groupByBooks && !isSearching) return buildBankRows(pagedItems);
+    return pagedItems.map(
+      (item): BankRow => ({
+        kind: 'question',
+        key: item.id,
+        item,
+        match: matchById.get(item.id),
+      }),
+    );
+  }, [groupByBooks, isSearching, pagedItems, matchById]);
+
+  const hasMore = visibleCount < filteredAll.length;
+
+  itemsRef.current = items;
+  filteredRef.current = filteredAll;
+  setQuestionBankSessionOrder(filteredAll.map((row) => row.id));
+
   useEffect(() => {
-    const ids = visibleItems.map((i) => i.id);
+    setVisibleCount(PAGE_SIZE);
+  }, [appliedQuery, typeCode, difficulty, selectedBookId, groupByBooks]);
+
+  useEffect(() => {
+    const ids = pagedItems.map((i) => i.id);
     if (ids.length === 0) {
       setEvalMap(new Map());
       return;
@@ -186,90 +226,12 @@ export default function QuestionsScreen() {
     return () => {
       cancelled = true;
     };
-  }, [visibleItems]);
-
-  /**
-   * Grouped-by-book/chapter rows when browsing (no search); a flat, best-match-first list with
-   * match% badges when searching — relevance order wouldn't make sense interleaved with headers.
-   */
-  const bankRows = useMemo(() => {
-    if (isSearching) {
-      return searchResults.map(
-        (r): BankRow => ({ kind: 'question', key: r.item.id, item: r.item, match: Math.round(r.score * 100) }),
-      );
-    }
-    return buildBankRows(visibleItems);
-  }, [isSearching, searchResults, visibleItems]);
-
-  itemsRef.current = items;
-  bankRowsRef.current = bankRows;
-  setQuestionBankSessionOrder(items.map((row) => row.id));
-
-  function scrollToQuestionId(id: string, animated = false) {
-    const data = bankRowsRef.current;
-    const index = data.findIndex((row) => row.kind === 'question' && row.item.id === id);
-    if (index < 0) return false;
-
-    const run = () => {
-      listRef.current?.scrollToIndex({
-        index,
-        animated,
-        viewPosition: 0.08,
-      });
-      scrollYRef.current = 0;
-    };
-
-    // FlatList may not be ready on the first frame after data settles
-    requestAnimationFrame(() => {
-      try {
-        run();
-      } catch {
-        setTimeout(run, 80);
-      }
-    });
-    return true;
-  }
-
-  useEffect(() => {
-    void loadQuestionBankLastQuestion().then((pos) => {
-      setResumeTarget(pos);
-      if (pos) setHighlightId(pos.id);
-      else setResuming(false);
-      setResumeReady(true);
-    });
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      let cancelled = false;
-      void loadQuestionBankLastQuestion().then((pos) => {
-        if (cancelled || !pos) return;
-        setResumeTarget(pos);
-        setHighlightId(pos.id);
-
-        // Skip first focus (cold open) — that resume runs after the full list loads.
-        if (skipNextFocusScroll.current) {
-          skipNextFocusScroll.current = false;
-          return;
-        }
-        // Returning from a question detail: put last-read back in view.
-        if (!hasActiveFilter) {
-          setTimeout(() => {
-            if (!cancelled) scrollToQuestionId(pos.id, true);
-          }, 50);
-        }
-      });
-      return () => {
-        cancelled = true;
-      };
-    }, [hasActiveFilter]),
-  );
+  }, [pagedItems]);
 
   const refreshFromCache = useCallback(() => {
     setItems(getCachedQuestionListItems());
   }, []);
 
-  // Local read is instant; the network sync just refreshes what's already on screen.
   useEffect(() => {
     setError('');
     try {
@@ -283,7 +245,7 @@ export default function QuestionsScreen() {
     fetchQuestionTypes()
       .then(setTypes)
       .catch(() => {
-        // Non-fatal — type chips just fall back to the raw type code.
+        // Non-fatal — type chips fall back to raw type code.
       });
 
     return subscribeQuestionsSync(refreshFromCache);
@@ -315,48 +277,10 @@ export default function QuestionsScreen() {
     }
   }, [runSync]);
 
-  // After the full bank has loaded, jump to the last-read question by index — same shape as
-  // Marathon Review's resume effect: wait while the cache is still empty rather than bailing out
-  // on a not-yet-synced item, then always attempt the scroll once there's something to scroll.
-  useEffect(() => {
-    if (!resumeReady || didResume.current || !resumeTarget || items.length === 0) return;
-    if (loading) return;
-    if (hasActiveFilter) {
-      didResume.current = true;
-      setResuming(false);
-      return;
-    }
-
-    setHighlightId(resumeTarget.id);
-    const t = setTimeout(() => {
-      const ok = scrollToQuestionId(resumeTarget.id, false);
-      didResume.current = true;
-      setResuming(false);
-      if (!ok && typeof resumeTarget.index === 'number') {
-        listRef.current?.scrollToIndex({
-          index: Math.min(resumeTarget.index, Math.max(0, bankRowsRef.current.length - 1)),
-          animated: false,
-          viewPosition: 0.08,
-        });
-      }
-    }, 120);
-
-    return () => clearTimeout(t);
-  }, [resumeReady, resumeTarget, items, loading, hasActiveFilter]);
-
-  // Safety net: an empty bank (or one where resume never resolves) shouldn't loop the loader
-  // forever — matches Marathon Review's fallback.
-  useEffect(() => {
-    if (!loading && resumeReady && items.length === 0) setResuming(false);
-  }, [loading, resumeReady, items]);
-
-  function onScroll(e: NativeSyntheticEvent<NativeScrollEvent>) {
-    scrollYRef.current = e.nativeEvent.contentOffset.y;
-  }
-
   function submitSearch() {
     setAppliedQuery(query.trim());
-    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+    // Keep searching the full local bank; also nudge a background sync for fresher hits.
+    void syncQuestions();
   }
 
   function clearSearch() {
@@ -370,40 +294,38 @@ export default function QuestionsScreen() {
     setTypeCode('');
     setDifficulty('');
     setSelectedBookId(null);
+    setGroupByBooks(false);
     setBookMenuOpen(false);
-    listRef.current?.scrollToOffset({ offset: 0, animated: true });
   }
 
-  function toggleBookMenu() {
-    setBookMenuOpen((v) => !v);
-  }
-
-  function selectBook(bookId: string | null) {
-    setSelectedBookId(bookId);
-    setBookMenuOpen(false);
-    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+  function loadMore() {
+    if (!hasMore || loadingMore) return;
+    setLoadingMore(true);
+    // Defer so FlatList can finish the current frame before growing data.
+    requestAnimationFrame(() => {
+      setVisibleCount((n) => Math.min(n + PAGE_SIZE, filteredRef.current.length));
+      setLoadingMore(false);
+    });
   }
 
   function openQuestion(item: QuestionListItem) {
-    const list = itemsRef.current;
+    const list = filteredRef.current;
     const index = list.findIndex((row) => row.id === item.id);
     const next = index >= 0 && index < list.length - 1 ? list[index + 1] : undefined;
-    const pos: QuestionBankLastQuestion = {
+    void saveQuestionBankLastQuestion({
       id: item.id,
       index: index >= 0 ? index : undefined,
       nextId: next?.id,
-    };
-    setHighlightId(item.id);
-    setResumeTarget(pos);
-    void saveQuestionBankLastQuestion(pos);
+    });
     router.push(questionDetailHref(item.id));
   }
 
   return (
     <View style={styles.root}>
-      {resuming || (loading && items.length === 0) ? (
+      {loading && items.length === 0 ? (
         <BlockingLoader label="Loading Question Bank…" />
       ) : null}
+
       <View style={styles.toolbar}>
         <View style={styles.searchRow}>
           <Ionicons name="search" size={18} color={colors.textMuted} />
@@ -427,9 +349,9 @@ export default function QuestionsScreen() {
         </Pressable>
         <Pressable
           style={[styles.moreIconBtn, bookMenuOpen && styles.moreIconBtnActive]}
-          onPress={toggleBookMenu}
+          onPress={() => setBookMenuOpen((v) => !v)}
           hitSlop={8}
-          accessibilityLabel="Books with questions"
+          accessibilityLabel="Books & Tools options"
         >
           <Ionicons
             name="ellipsis-vertical"
@@ -442,11 +364,30 @@ export default function QuestionsScreen() {
       {bookMenuOpen ? (
         <View style={styles.bookMenu}>
           <Text style={styles.bookMenuTitle}>Books &amp; Tools</Text>
-          <Text style={styles.bookMenuSub}>Filter this list locally — no reload</Text>
-          <ScrollView nestedScrollEnabled style={{ maxHeight: 220 }} contentContainerStyle={styles.bookMenuList}>
+          <Text style={styles.bookMenuSub}>Group or filter from the local question bank</Text>
+
+          <View style={styles.groupRow}>
+            <View style={styles.groupCopy}>
+              <Text style={styles.groupLabel}>Group by Books &amp; Tools</Text>
+              <Text style={styles.groupHint}>Off = newest publish/edit first</Text>
+            </View>
+            <Switch
+              value={groupByBooks}
+              onValueChange={(v) => {
+                setGroupByBooks(v);
+                setVisibleCount(PAGE_SIZE);
+              }}
+            />
+          </View>
+
+          <ScrollView nestedScrollEnabled style={{ maxHeight: 200 }} contentContainerStyle={styles.bookMenuList}>
             <Pressable
               style={[styles.bookMenuItem, !selectedBookId && styles.bookMenuItemActive]}
-              onPress={() => selectBook(null)}
+              onPress={() => {
+                setSelectedBookId(null);
+                setBookMenuOpen(false);
+                setVisibleCount(PAGE_SIZE);
+              }}
             >
               <Text
                 style={[styles.bookMenuItemText, !selectedBookId && styles.bookMenuItemTextActive]}
@@ -466,7 +407,11 @@ export default function QuestionsScreen() {
                   <Pressable
                     key={book.id}
                     style={[styles.bookMenuItem, active && styles.bookMenuItemActive]}
-                    onPress={() => selectBook(book.id)}
+                    onPress={() => {
+                      setSelectedBookId(book.id);
+                      setBookMenuOpen(false);
+                      setVisibleCount(PAGE_SIZE);
+                    }}
                   >
                     <Text
                       style={[styles.bookMenuItemText, active && styles.bookMenuItemTextActive]}
@@ -483,28 +428,46 @@ export default function QuestionsScreen() {
         </View>
       ) : null}
 
-      {selectedBookName ? (
+      {(selectedBookName || groupByBooks) && (
         <View style={styles.filterChipRow}>
-          <View style={styles.filterChip}>
-            <Text style={styles.filterChipText} numberOfLines={1}>
-              {selectedBookName}
-            </Text>
-            <Pressable onPress={() => selectBook(null)} hitSlop={8} accessibilityLabel="Clear book filter">
-              <Ionicons name="close-circle" size={16} color={colors.primary} />
-            </Pressable>
-          </View>
+          {groupByBooks ? (
+            <View style={styles.filterChip}>
+              <Text style={styles.filterChipText}>Grouped by books</Text>
+              <Pressable
+                onPress={() => setGroupByBooks(false)}
+                hitSlop={8}
+                accessibilityLabel="Turn off grouping"
+              >
+                <Ionicons name="close-circle" size={16} color={colors.primary} />
+              </Pressable>
+            </View>
+          ) : null}
+          {selectedBookName ? (
+            <View style={styles.filterChip}>
+              <Text style={styles.filterChipText} numberOfLines={1}>
+                {selectedBookName}
+              </Text>
+              <Pressable
+                onPress={() => setSelectedBookId(null)}
+                hitSlop={8}
+                accessibilityLabel="Clear book filter"
+              >
+                <Ionicons name="close-circle" size={16} color={colors.primary} />
+              </Pressable>
+            </View>
+          ) : null}
         </View>
-      ) : null}
+      )}
 
       <View style={styles.metaRow}>
         <Text style={styles.metaText}>
-          {hasActiveFilter
-            ? `Showing ${visibleItems.length} of ${items.length} loaded`
-            : `Showing ${items.length} questions${syncing ? ' · syncing…' : ''}`}
+          {`Showing ${Math.min(visibleCount, filteredAll.length)} of ${filteredAll.length}${
+            items.length !== filteredAll.length ? ` · ${items.length} in bank` : ''
+          }${syncing ? ' · syncing…' : ''}`}
         </Text>
         {hasActiveFilter ? (
           <Pressable onPress={clearAllFilters} hitSlop={8}>
-            <Text style={styles.clearFiltersText}>Clear filters</Text>
+            <Text style={styles.clearFiltersText}>Clear</Text>
           </Pressable>
         ) : null}
       </View>
@@ -559,45 +522,37 @@ export default function QuestionsScreen() {
         <BookError message={error} />
       ) : (
         <FlatList
-          ref={listRef}
           data={bankRows}
           keyExtractor={(row) => row.key}
           contentContainerStyle={styles.list}
-          onScroll={onScroll}
-          scrollEventThrottle={16}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          onScrollToIndexFailed={(info) => {
-            const approx = Math.max(0, info.averageItemLength || 120);
-            listRef.current?.scrollToOffset({
-              offset: approx * info.index,
-              animated: false,
-            });
-            setTimeout(() => {
-              listRef.current?.scrollToIndex({
-                index: info.index,
-                animated: false,
-                viewPosition: 0.08,
-              });
-            }, 120);
-          }}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.35}
           ListEmptyComponent={
             <BookEmpty
-              title={hasActiveFilter ? 'No matches in loaded questions' : 'No questions found'}
+              title={hasActiveFilter ? 'No matches in question bank' : 'No questions found'}
               subtitle={
                 hasActiveFilter
-                  ? 'Clear filters to restore the full list.'
+                  ? 'Clear filters or search to restore the full list.'
                   : 'Try again later or pull after questions are published.'
               }
             />
           }
           ListFooterComponent={
             <View style={styles.footerWrap}>
-              {items.length > 0 && !hasActiveFilter ? (
-                <Text style={styles.footerHint}>{items.length} questions loaded</Text>
-              ) : hasActiveFilter && visibleItems.length > 0 ? (
-                <Text style={styles.footerHint}>
-                  Filtered · {visibleItems.length} of {items.length}
-                </Text>
+              {loadingMore || (hasMore && pagedItems.length > 0) ? (
+                <View style={styles.footerLoading}>
+                  {loadingMore || hasMore ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  ) : null}
+                  <Text style={styles.footerHint}>
+                    {hasMore
+                      ? `Showing ${pagedItems.length} · scroll for more`
+                      : `${filteredAll.length} questions`}
+                  </Text>
+                </View>
+              ) : filteredAll.length > 0 ? (
+                <Text style={styles.footerHint}>{filteredAll.length} questions</Text>
               ) : null}
             </View>
           }
@@ -610,34 +565,18 @@ export default function QuestionsScreen() {
             }
 
             const item = row.item;
-            const isLast = highlightId === item.id;
             return (
               <Pressable
-                style={({ pressed }) => [
-                  styles.card,
-                  isLast && styles.cardLastRead,
-                  pressed && styles.pressed,
-                ]}
+                style={({ pressed }) => [styles.card, pressed && styles.pressed]}
                 onPress={() => openQuestion(item)}
               >
-                <View style={[styles.cardIcon, isLast && styles.cardIconLastRead]}>
-                  <Ionicons
-                    name="help-circle-outline"
-                    size={20}
-                    color={isLast ? '#2f7d4a' : '#7c3aed'}
-                  />
+                <View style={styles.cardIcon}>
+                  <Ionicons name="help-circle-outline" size={20} color="#7c3aed" />
                 </View>
                 <View style={styles.cardBody}>
-                  <View style={styles.cardTitleRow}>
-                    <Text style={styles.cardText} numberOfLines={4}>
-                      {item.body_en}
-                    </Text>
-                    {isLast ? (
-                      <View style={styles.lastReadChip}>
-                        <Text style={styles.lastReadChipText}>Last read</Text>
-                      </View>
-                    ) : null}
-                  </View>
+                  <Text style={styles.cardText} numberOfLines={4}>
+                    {item.body_en}
+                  </Text>
                   <View style={styles.badges}>
                     <RatingIndicator evaluation={evalMap.get(item.id)} />
                     <BookBadge
@@ -760,7 +699,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.sm,
-    maxHeight: 280,
+    maxHeight: 340,
   },
   bookMenuTitle: {
     fontSize: 14,
@@ -775,6 +714,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingBottom: 8,
   },
+  groupRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    marginBottom: 6,
+    borderRadius: 10,
+    backgroundColor: '#f8fafc',
+  },
+  groupCopy: { flex: 1, gap: 2 },
+  groupLabel: { fontSize: 13, fontWeight: '700', color: colors.text },
+  groupHint: { fontSize: 11, color: colors.textMuted },
   bookMenuList: {
     gap: 2,
   },
@@ -809,6 +762,9 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   filterChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
   },
@@ -901,17 +857,13 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
   },
   footerLoading: {
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm,
     alignItems: 'center',
     gap: 8,
   },
-  footerLoadingText: {
-    fontSize: 12,
-    color: colors.textMuted,
-  },
   footerHint: {
     textAlign: 'center',
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.xs,
     fontSize: 12,
     color: colors.textMuted,
   },
@@ -938,10 +890,6 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     marginBottom: spacing.sm,
   },
-  cardLastRead: {
-    backgroundColor: '#eaf7ee',
-    borderColor: '#a8d5b5',
-  },
   cardIcon: {
     width: 40,
     height: 40,
@@ -950,34 +898,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cardIconLastRead: {
-    backgroundColor: '#d4eedc',
-  },
   cardBody: {
     flex: 1,
     gap: 8,
   },
-  cardTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
   cardText: {
-    flex: 1,
     fontSize: 14,
     color: colors.text,
     lineHeight: 20,
-  },
-  lastReadChip: {
-    backgroundColor: '#c8e6d0',
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  lastReadChipText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#2f7d4a',
   },
   badges: {
     flexDirection: 'row',

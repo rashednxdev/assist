@@ -68,6 +68,9 @@ export default function ExamRoutineDetailScreen() {
       <View style={styles.header}>
         <Text style={styles.examName}>{routine.exam_name}</Text>
         <Text style={styles.startLabel}>Starts {formatDdMmYyyy(routine.start_date)}</Text>
+        {routine.start_date_note?.trim() ? (
+          <Text style={styles.startNote}>{routine.start_date_note.trim()}</Text>
+        ) : null}
         <View style={styles.countdownWrap}>
           <Text style={styles.countdownNumber}>{Math.abs(days)}</Text>
           <Text style={styles.countdownUnit}>
@@ -152,6 +155,14 @@ const styles = StyleSheet.create({
   startLabel: {
     fontSize: 13,
     color: colors.textMuted,
+  },
+  startNote: {
+    fontSize: 12,
+    color: '#92400e',
+    textAlign: 'center',
+    marginTop: 4,
+    lineHeight: 17,
+    paddingHorizontal: spacing.md,
   },
   countdownWrap: {
     marginTop: spacing.sm,

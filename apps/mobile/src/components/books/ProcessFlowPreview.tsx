@@ -33,7 +33,7 @@ export function ProcessFlowPreview({ steps }: { steps: ProcessStep[] }) {
                 <Text style={styles.rolePillText}>{step.role.trim()}</Text>
               </View>
             ) : null}
-            <Text style={styles.stepTitle}>{step.title}</Text>
+            {step.title?.trim() ? <Text style={styles.stepTitle}>{step.title}</Text> : null}
             {step.description?.trim() ? (
               <Text style={styles.stepDescription}>{step.description}</Text>
             ) : null}
@@ -87,7 +87,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   rolePillText: {
-    fontSize: 11,
+    fontSize: 14,
     fontWeight: '700',
     color: PROCESS_ACCENT_DARK,
   },

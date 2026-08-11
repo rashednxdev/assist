@@ -77,8 +77,9 @@ export default function ModulesPage() {
         <h1 className="text-2xl font-semibold">System modules</h1>
         <p className="text-sm text-muted">
           iBAS++ functional modules. Stopping a module blocks it for every user immediately,
-          regardless of their individual access grants (set on each user&apos;s Access tab) &mdash;
-          use this for outages or maintenance, not per-user access control.
+          except users you mark &ldquo;Allow while module stopped&rdquo; on their Access tab
+          (and admins, who always retain access). Use this for outages or maintenance;
+          grant normal access on each user&apos;s Access tab.
         </p>
       </div>
 

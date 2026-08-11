@@ -162,7 +162,7 @@ export default function ProgressDashboardScreen() {
                 <Ionicons name="document-text" size={20} color="#d97706" />
               </View>
               <View style={styles.sectionHeadText}>
-                <Text style={styles.sectionTitle}>Practice papers</Text>
+                <Text style={styles.sectionTitle}>Exam papers</Text>
                 <Text style={styles.sectionSub}>
                   Papers where you rated or answered questions
                 </Text>
@@ -186,13 +186,13 @@ export default function ProgressDashboardScreen() {
               <View style={styles.emptyBox}>
                 <Text style={styles.emptyTitle}>No paper progress yet</Text>
                 <Text style={styles.emptyHint}>
-                  Open Practice Papers and submit evaluations to track progress here.
+                  Open Exam Papers and submit evaluations to track progress here.
                 </Text>
                 <Pressable
                   style={styles.ctaBtn}
                   onPress={() => router.push('/(app)/papers')}
                 >
-                  <Text style={styles.ctaText}>Go to Practice Papers</Text>
+                  <Text style={styles.ctaText}>Go to Exam Papers</Text>
                 </Pressable>
               </View>
             ) : (
@@ -234,7 +234,7 @@ export default function ProgressDashboardScreen() {
               </View>
               <View style={styles.sectionHeadText}>
                 <Text style={styles.sectionTitle}>MCQ exam attempts</Text>
-                <Text style={styles.sectionSub}>Timed exams submitted from Practice Papers</Text>
+                <Text style={styles.sectionSub}>Timed exams submitted from Exam Papers</Text>
               </View>
             </View>
 

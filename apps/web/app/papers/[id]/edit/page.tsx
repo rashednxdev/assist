@@ -84,6 +84,8 @@ interface BankQuestion {
   body_en: string;
   marks: number;
   is_published: boolean;
+  /** Word-match % from link-search (only present when searching). */
+  match?: number;
 }
 
 type Panel = 'section' | 'question';
@@ -245,9 +247,22 @@ export default function PaperComposerPage() {
   useEffect(() => {
     if (panel !== 'question') return;
     const timer = window.setTimeout(() => {
-      const params = new URLSearchParams({ is_published: 'true', limit: '50' });
-      if (partBankQ.trim()) params.set('q', partBankQ.trim());
-      apiFetch<{ data: BankQuestion[] }>(`/questions?${params.toString()}`)
+      const q = partBankQ.trim();
+      if (q) {
+        // Any query word can prefilter a candidate; only ≥50% word-match results are returned,
+        // ranked by match % — same standard as mother/link question search.
+        const params = new URLSearchParams({
+          q,
+          is_published: 'true',
+          threshold: '0.5',
+          limit: '50',
+        });
+        apiFetch<{ data: BankQuestion[] }>(`/questions/link-search?${params.toString()}`)
+          .then((r) => setPartBank(r.data))
+          .catch(() => setPartBank([]));
+        return;
+      }
+      apiFetch<{ data: BankQuestion[] }>(`/questions?is_published=true&limit=50`)
         .then((r) => setPartBank(r.data))
         .catch(() => setPartBank([]));
     }, 300);
@@ -1049,7 +1064,9 @@ export default function PaperComposerPage() {
                   {availablePartQuestions.length === 0 ? (
                     <p className="p-3 text-sm text-muted">
                       {partBank.length === 0
-                        ? 'No published questions match your search'
+                        ? partBankQ.trim()
+                          ? 'No published questions with at least 50% word match'
+                          : 'No published questions match your search'
                         : 'All matching questions are already sub-parts of this question'}
                     </p>
                   ) : (
@@ -1078,6 +1095,11 @@ export default function PaperComposerPage() {
                                 <Badge variant="secondary" className="mr-1.5">
                                   {q.question_type_code}
                                 </Badge>
+                                {typeof q.match === 'number' ? (
+                                  <Badge variant="outline" className="mr-1.5">
+                                    {q.match}% match
+                                  </Badge>
+                                ) : null}
                                 {truncate(q.body_en, 120)}
                                 <span className="mt-0.5 block text-xs text-muted">{q.marks} marks</span>
                               </span>

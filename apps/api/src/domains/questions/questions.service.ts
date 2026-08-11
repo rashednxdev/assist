@@ -993,6 +993,7 @@ export async function searchQuestionsForLink(params: {
   exclude_id?: string;
   book_chapter_id?: string;
   book_info_id?: string;
+  is_published?: boolean;
   threshold?: number;
   limit?: number;
 }) {
@@ -1004,6 +1005,9 @@ export async function searchQuestionsForLink(params: {
   const query: Record<string, unknown> = { is_active: true };
   if (params.exclude_id) {
     query._id = { $ne: new mongoose.Types.ObjectId(params.exclude_id) };
+  }
+  if (params.is_published !== undefined) {
+    query.is_published = params.is_published;
   }
 
   if (params.book_chapter_id) {
@@ -1029,7 +1033,7 @@ export async function searchQuestionsForLink(params: {
   }
 
   const candidates = await Question.find(query)
-    .select('body_en body_bn question_type_code review_status is_published')
+    .select('body_en body_bn question_type_code review_status is_published marks')
     .sort({ updated_at: -1 })
     .limit(300);
 
@@ -1045,6 +1049,7 @@ export async function searchQuestionsForLink(params: {
         question_type_code: c.question_type_code,
         review_status: c.review_status,
         is_published: c.is_published,
+        marks: c.marks,
         match: Math.round(score * 100),
         score,
       };

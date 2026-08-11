@@ -70,7 +70,7 @@ const learnLinks = [
   },
   {
     href: '/papers',
-    label: 'Practice papers',
+    label: 'Exam papers',
     desc: 'Model tests for your subject',
     icon: FileText,
     moduleCode: 'PAPER',

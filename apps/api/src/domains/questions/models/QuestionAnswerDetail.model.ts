@@ -85,7 +85,7 @@ const comparisonTableMongooseSchema = new Schema<IComparisonTable>(
 
 const processStepMongooseSchema = new Schema<IProcessStep>(
   {
-    title: { type: String, required: true },
+    title: { type: String, default: '' },
     description: { type: String },
     role: { type: String },
   },

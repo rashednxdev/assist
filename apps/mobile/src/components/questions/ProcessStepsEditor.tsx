@@ -103,7 +103,7 @@ export function ProcessStepsEditor({ value, onChange, disabled }: ProcessStepsEd
             label=""
             value={step.title}
             onChangeText={(v) => updateStep(i, { title: v })}
-            placeholder="Step title *"
+            placeholder="Step title (optional)"
             editable={!disabled}
           />
           <TextField

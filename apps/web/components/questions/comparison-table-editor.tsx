@@ -1,6 +1,6 @@
 'use client';
 
-import { Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
 import type { ComparisonTable } from '@ibas/shared-types';
 import { emptyComparisonTable } from '@ibas/shared-types';
 import { Button } from '@/components/ui/button';
@@ -67,6 +67,14 @@ export function ComparisonTableEditor({
   function removeRow(rowIndex: number) {
     if (table.rows.length <= 1) return;
     patch({ rows: table.rows.filter((_, i) => i !== rowIndex) });
+  }
+
+  function moveRow(rowIndex: number, dir: -1 | 1) {
+    const target = rowIndex + dir;
+    if (target < 0 || target >= table.rows.length) return;
+    const rows = [...table.rows];
+    [rows[rowIndex], rows[target]] = [rows[target]!, rows[rowIndex]!];
+    patch({ rows });
   }
 
   return (
@@ -141,6 +149,30 @@ export function ComparisonTableEditor({
               <tr key={ri} className="align-top">
                 <td className="border-b border-border px-2 py-2">
                   <div className="flex gap-1">
+                    <div className="flex shrink-0 flex-col gap-0.5">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 w-7 p-0"
+                        disabled={disabled || ri === 0}
+                        onClick={() => moveRow(ri, -1)}
+                        title="Move row up"
+                      >
+                        <ChevronUp className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 w-7 p-0"
+                        disabled={disabled || ri === table.rows.length - 1}
+                        onClick={() => moveRow(ri, 1)}
+                        title="Move row down"
+                      >
+                        <ChevronDown className="h-4 w-4" />
+                      </Button>
+                    </div>
                     <Input
                       disabled={disabled}
                       className="h-8 font-medium"

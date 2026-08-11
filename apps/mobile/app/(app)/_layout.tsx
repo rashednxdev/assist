@@ -3,16 +3,21 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { Redirect, Stack } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
 import { syncQuestions } from '@/lib/questions-sync';
+import { getCachedQuestionCount } from '@/lib/questions-db';
 import { registerForPushNotifications } from '@/lib/push-notifications';
 import { colors } from '@/theme';
 
 export default function AppLayout() {
   const { user, loading } = useAuth();
 
-  // Warm the local question cache as soon as a session is active, so Question Bank / Marathon
-  // are already up to date by the time the user opens them.
+  // Warm the local question cache as soon as a session is active. If the bank is empty
+  // (fresh login/register or cleared cache), kick sync immediately in the background.
   useEffect(() => {
     if (!user) return;
+    if (getCachedQuestionCount() === 0) {
+      void syncQuestions();
+      return;
+    }
     void syncQuestions();
   }, [user?.id]);
 
@@ -73,6 +78,7 @@ export default function AppLayout() {
       <Stack.Screen name="exam-routine" />
       <Stack.Screen name="user-questions" />
       <Stack.Screen name="exam-week" />
+      <Stack.Screen name="users" />
     </Stack>
   );
 }

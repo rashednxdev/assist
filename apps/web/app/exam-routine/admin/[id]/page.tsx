@@ -38,6 +38,7 @@ export default function ExamRoutineDetailPage() {
   const [adding, setAdding] = useState(false);
 
   const [startDate, setStartDate] = useState('');
+  const [startDateNote, setStartDateNote] = useState('');
   const [savingStart, setSavingStart] = useState(false);
 
   async function load() {
@@ -46,6 +47,7 @@ export default function ExamRoutineDetailPage() {
       const res = await apiFetch<{ data: ExamRoutineDetail }>(`/exam-routine/admin/${routineId}`);
       setRoutine(res.data);
       setStartDate(res.data.start_date);
+      setStartDateNote(res.data.start_date_note ?? '');
       const tree = await apiFetch<{ data: TreeResponse }>(`/exams/names/${res.data.exam_name_id}/tree`);
       setSubjects(tree.data.parts.flatMap((p) => p.subjects));
     } catch (err) {
@@ -65,7 +67,10 @@ export default function ExamRoutineDetailPage() {
     try {
       await apiFetch(`/exam-routine/${routineId}`, {
         method: 'PATCH',
-        body: JSON.stringify({ start_date: startDate }),
+        body: JSON.stringify({
+          start_date: startDate,
+          start_date_note: startDateNote.trim() || null,
+        }),
       });
       await load();
     } catch (err) {
@@ -125,22 +130,35 @@ export default function ExamRoutineDetailPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Countdown start date</CardTitle>
+          <CardTitle className="text-base">Exam start date (countdown target)</CardTitle>
         </CardHeader>
-        <CardContent className="flex flex-wrap items-end gap-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="start-date">Start date</Label>
-            <Input
-              id="start-date"
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-48"
-            />
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="start-date">Start date</Label>
+              <Input
+                id="start-date"
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-48"
+              />
+            </div>
+            <Button type="button" size="sm" disabled={savingStart} onClick={() => void saveStartDate()}>
+              {savingStart ? 'Saving...' : 'Save'}
+            </Button>
           </div>
-          <Button type="button" size="sm" disabled={savingStart} onClick={() => void saveStartDate()}>
-            {savingStart ? 'Saving...' : 'Save'}
-          </Button>
+          <div className="space-y-1.5">
+            <Label htmlFor="start-date-note">Note for countdown (optional)</Label>
+            <Input
+              id="start-date-note"
+              value={startDateNote}
+              onChange={(e) => setStartDateNote(e.target.value)}
+              placeholder="Shown under the countdown on mobile, e.g. Admit card release TBD"
+              maxLength={500}
+            />
+            <p className="text-xs text-muted">Appears on the mobile home countdown and exam routine screens.</p>
+          </div>
         </CardContent>
       </Card>
 

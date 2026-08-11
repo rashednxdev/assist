@@ -24,6 +24,7 @@ export default function PapersScreen() {
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [typeId, setTypeId] = useState('');
+  const [subjectId, setSubjectId] = useState('');
   const [status, setStatus] = useState('');
   const [progressByPaperId, setProgressByPaperId] = useState<Record<string, ProgressSummaryData>>({});
 
@@ -74,10 +75,33 @@ export default function PapersScreen() {
     void load();
   }, [load]);
 
+  const subjectOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const item of items) {
+      if (!item.exam_subject_id) continue;
+      if (map.has(item.exam_subject_id)) continue;
+      const label =
+        item.exam_subject_name?.trim() ||
+        item.exam_subject_name_bn?.trim() ||
+        'Subject';
+      map.set(item.exam_subject_id, label);
+    }
+    return [...map.entries()]
+      .map(([id, label]) => ({ id, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [items]);
+
+  useEffect(() => {
+    if (subjectId && !subjectOptions.some((s) => s.id === subjectId)) {
+      setSubjectId('');
+    }
+  }, [subjectId, subjectOptions]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return items.filter((item) => {
       if (typeId && item.paper_type_id !== typeId) return false;
+      if (subjectId && item.exam_subject_id !== subjectId) return false;
       if (!q) return true;
       const line = [
         item.name,
@@ -90,7 +114,7 @@ export default function PapersScreen() {
         .toLowerCase();
       return line.includes(q);
     });
-  }, [items, query, typeId]);
+  }, [items, query, typeId, subjectId]);
 
   return (
     <View style={styles.root}>
@@ -123,6 +147,25 @@ export default function PapersScreen() {
             </Pressable>
           )}
         />
+        {subjectOptions.length > 0 ? (
+          <FlatList
+            horizontal
+            data={[{ id: '', label: 'All Subjects' }, ...subjectOptions]}
+            keyExtractor={(item) => `subject-${item.id || 'all'}`}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chips}
+            renderItem={({ item }) => (
+              <Pressable
+                style={[styles.chip, subjectId === item.id && styles.chipActive]}
+                onPress={() => setSubjectId(item.id)}
+              >
+                <Text style={[styles.chipText, subjectId === item.id && styles.chipTextActive]}>
+                  {item.label}
+                </Text>
+              </Pressable>
+            )}
+          />
+        ) : null}
         {isAdmin ? (
           <FlatList
             horizontal

@@ -8,6 +8,8 @@ export const upsertModuleAccessSchema = z.object({
   can_delete: z.boolean().default(false),
   can_grade: z.boolean().default(false),
   can_publish: z.boolean().default(false),
+  /** When true, this user keeps access even if the module is centrally stopped. */
+  bypass_stop: z.boolean().default(false),
   task_restrictions: z.array(z.string()).optional(),
   expires_at: z.coerce.date().optional(),
 });

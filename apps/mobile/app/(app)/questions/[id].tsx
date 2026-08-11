@@ -261,7 +261,7 @@ export default function QuestionDetailScreen() {
   if (loading) {
     return (
       <View style={styles.root}>
-        <BlockingLoader label="Loading Question Bank…" />
+        <BlockingLoader label="Loading Question Answer…" />
       </View>
     );
   }

@@ -14,6 +14,8 @@ import {
   batchDescriptiveImportSchema,
   batchDifferencesImportSchema,
   batchQuestionIdsSchema,
+  batchQuestionSubjectLinksSchema,
+  questionSubjectLinkInputSchema,
   setMotherQuestionSchema,
 } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
@@ -248,5 +250,42 @@ export async function deleteQuestionBookLinkHandler(req: AuthRequest, res: Respo
     String(req.params.id),
     String(req.params.linkId),
   );
+  res.json({ data });
+}
+
+export async function listQuestionSubjectCatalogHandler(
+  _req: AuthRequest,
+  res: Response,
+): Promise<void> {
+  res.json({ data: await questionsService.listQuestionSubjectCatalog() });
+}
+
+export async function listQuestionSubjectLinksHandler(req: AuthRequest, res: Response): Promise<void> {
+  res.json({ data: await questionsService.listQuestionSubjectLinks(String(req.params.id)) });
+}
+
+export async function addQuestionSubjectLinkHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = questionSubjectLinkInputSchema.parse(req.body);
+  const data = await questionsService.addQuestionSubjectLink(String(req.params.id), dto);
+  res.status(201).json({ data });
+}
+
+export async function deleteQuestionSubjectLinkHandler(
+  req: AuthRequest,
+  res: Response,
+): Promise<void> {
+  const data = await questionsService.deleteQuestionSubjectLink(
+    String(req.params.id),
+    String(req.params.examSubjectId),
+  );
+  res.json({ data });
+}
+
+export async function batchAddQuestionSubjectLinksHandler(
+  req: AuthRequest,
+  res: Response,
+): Promise<void> {
+  const dto = batchQuestionSubjectLinksSchema.parse(req.body);
+  const data = await questionsService.batchAddQuestionSubjectLinks(dto);
   res.json({ data });
 }

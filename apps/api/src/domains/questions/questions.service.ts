@@ -3,9 +3,11 @@ import type {
   BatchDescriptiveImportDto,
   BatchDifferencesImportDto,
   BatchMcqImportDto,
+  BatchQuestionSubjectLinksDto,
   CreateQuestionDto,
   CreateQuestionTypeDto,
   QuestionBookLinkInput,
+  QuestionSubjectLinkInput,
   QuestionSyncDeletion,
   QuestionSyncRow,
   UpdateQuestionDto,
@@ -28,6 +30,7 @@ import { BookTopic } from '../books/models/BookTopic.model.js';
 import { QuestionType } from './models/QuestionType.model.js';
 import { Question } from './models/Question.model.js';
 import { QuestionBookLink } from './models/QuestionBookLink.model.js';
+import { QuestionSubjectLink } from './models/QuestionSubjectLink.model.js';
 import { QuestionOption } from './models/QuestionOption.model.js';
 import { QuestionAnswer } from './models/QuestionAnswer.model.js';
 import {
@@ -40,6 +43,9 @@ import { PaperQuestion } from '../papers/models/PaperQuestion.model.js';
 import { ChildQuestion } from '../papers/models/ChildQuestion.model.js';
 import { PaperDetail } from '../papers/models/PaperDetail.model.js';
 import { ExamSession } from '../exams/models/ExamSession.model.js';
+import { ExamSubject } from '../exams/models/ExamSubject.model.js';
+import { ExamPart } from '../exams/models/ExamPart.model.js';
+import { ExamName } from '../exams/models/ExamName.model.js';
 import { User } from '../users/models/User.model.js';
 import { notFound, badRequest } from '../../shared/errors/AppError.js';
 import { escapeRegex, normalizeQuestionText, queryWordMatchScore } from './question-similarity.js';
@@ -485,6 +491,7 @@ function serializeQuestionListItem(
     book_id: undefined as string | undefined,
     book_name: undefined as string | undefined,
     book_link_count: 0,
+    subjects: [] as Array<{ id: string; name: string; name_bn?: string }>,
     option_count: optionCount,
     used_in_papers: [] as QuestionUsedInPaper[],
     created_at: q.created_at,
@@ -1121,6 +1128,7 @@ export async function listQuestions(
     book_sub_topic_id?: string;
     regulation_id?: string;
     book_info_id?: string;
+    exam_subject_id?: string;
     /** Not tagged to any book/chapter yet — overrides book_chapter_id/book_info_id when true. */
     untagged?: boolean;
     sort?: string;
@@ -1133,7 +1141,10 @@ export async function listQuestions(
   const limit = filters.limit;
 
   const canUsePublishedCache =
-    !options?.bypassCache && filters.is_published === true && filters.trashed !== true;
+    !options?.bypassCache &&
+    filters.is_published === true &&
+    filters.trashed !== true &&
+    !filters.exam_subject_id;
 
   if (canUsePublishedCache) {
     const { cachedPublishedQuestions } = await import('../content-cache/content-cache.service.js');
@@ -1220,6 +1231,24 @@ export async function listQuestions(
     }
   }
 
+  if (filters.exam_subject_id) {
+    const tagged = await QuestionSubjectLink.find({
+      exam_subject_id: filters.exam_subject_id,
+      is_active: true,
+    }).select('question_id');
+    const taggedIds = tagged.map((l) => l.question_id);
+    if (taggedIds.length === 0) {
+      return { items: [], total: 0, limit, offset };
+    }
+    const existingIdFilter = query._id as { $in?: mongoose.Types.ObjectId[] } | undefined;
+    if (existingIdFilter?.$in) {
+      const allow = new Set(taggedIds.map(String));
+      query._id = { $in: existingIdFilter.$in.filter((id) => allow.has(String(id))) };
+    } else {
+      query._id = { $in: taggedIds };
+    }
+  }
+
   if (filters.q?.trim()) {
     const q = filters.q.trim();
     query.$or = [{ body_en: { $regex: q, $options: 'i' } }, { body_bn: { $regex: q, $options: 'i' } }];
@@ -1247,7 +1276,7 @@ export async function listQuestions(
   );
 
   const questionIds = items.map((q) => q._id);
-  const [linkCounts, optionCounts, usedInPapersByQuestion] = await Promise.all([
+  const [linkCounts, optionCounts, usedInPapersByQuestion, subjectLinks] = await Promise.all([
     questionIds.length
       ? QuestionBookLink.aggregate<{ _id: mongoose.Types.ObjectId; count: number }>([
           { $match: { question_id: { $in: questionIds }, is_active: true } },
@@ -1261,9 +1290,30 @@ export async function listQuestions(
         ])
       : Promise.resolve([]),
     loadUsedInPapersByQuestionIds(questionIds),
+    questionIds.length
+      ? QuestionSubjectLink.find({ question_id: { $in: questionIds }, is_active: true }).sort({
+          sort_order: 1,
+        })
+      : Promise.resolve([]),
   ]);
   const linkCountMap = new Map(linkCounts.map((c) => [String(c._id), c.count]));
   const optionCountMap = new Map(optionCounts.map((c) => [String(c._id), c.count]));
+
+  const subjectIds = [...new Set(subjectLinks.map((l) => String(l.exam_subject_id)))];
+  const subjectDocs =
+    subjectIds.length > 0 ? await ExamSubject.find({ _id: { $in: subjectIds } }) : [];
+  const subjectMeta = new Map(
+    subjectDocs.map((s) => [String(s._id), { id: String(s._id), name: s.name, name_bn: s.name_bn }]),
+  );
+  const subjectsByQuestion = new Map<string, Array<{ id: string; name: string; name_bn?: string }>>();
+  for (const link of subjectLinks) {
+    const meta = subjectMeta.get(String(link.exam_subject_id));
+    if (!meta) continue;
+    const key = String(link.question_id);
+    const list = subjectsByQuestion.get(key) ?? [];
+    list.push(meta);
+    subjectsByQuestion.set(key, list);
+  }
 
   const chapterIds = [
     ...new Set(items.map((q) => idStr(q.book_chapter_id)).filter((id): id is string => Boolean(id))),
@@ -1284,6 +1334,7 @@ export async function listQuestions(
     );
     const storedCount = linkCountMap.get(String(q._id)) ?? 0;
     item.book_link_count = storedCount > 0 ? storedCount : q.book_chapter_id ? 1 : 0;
+    item.subjects = subjectsByQuestion.get(String(q._id)) ?? [];
     item.used_in_papers = usedInPapersByQuestion.get(String(q._id)) ?? [];
     const chapterId = idStr(q.book_chapter_id);
     const bookId = chapterId ? chapterBookId.get(chapterId) : undefined;
@@ -1541,6 +1592,185 @@ export async function deleteQuestionBookLink(questionId: string, linkId: string)
   return { deleted: true };
 }
 
+export type QuestionSubjectTag = {
+  id: string;
+  exam_subject_id: string;
+  name: string;
+  name_bn?: string;
+  exam_name?: string;
+  exam_part_name?: string;
+};
+
+export async function listQuestionSubjectCatalog(): Promise<
+  Array<{ id: string; name: string; name_bn?: string; label: string; exam_name?: string }>
+> {
+  const subjects = await ExamSubject.find({ is_active: true }).sort({ name: 1 });
+  if (subjects.length === 0) return [];
+
+  const partIds = [...new Set(subjects.map((s) => String(s.exam_part_id)))];
+  const parts = await ExamPart.find({ _id: { $in: partIds } });
+  const partMap = new Map(parts.map((p) => [String(p._id), p]));
+  const examIds = [...new Set(parts.map((p) => String(p.exam_name_id)))];
+  const exams = examIds.length ? await ExamName.find({ _id: { $in: examIds } }) : [];
+  const examMap = new Map(exams.map((e) => [String(e._id), e]));
+
+  return subjects.map((s) => {
+    const part = partMap.get(String(s.exam_part_id));
+    const exam = part ? examMap.get(String(part.exam_name_id)) : undefined;
+    const examLabel = exam?.short_name?.trim() || exam?.name?.trim() || '';
+    const subjectLabel = s.name_bn?.trim() || s.name;
+    const label = examLabel ? `${examLabel} · ${subjectLabel}` : subjectLabel;
+    return {
+      id: String(s._id),
+      name: s.name,
+      name_bn: s.name_bn,
+      exam_name: exam?.name,
+      label,
+    };
+  });
+}
+
+async function loadSerializedSubjectLinks(
+  questionId: mongoose.Types.ObjectId | string,
+): Promise<QuestionSubjectTag[]> {
+  const links = await QuestionSubjectLink.find({
+    question_id: questionId,
+    is_active: true,
+  }).sort({ sort_order: 1 });
+  if (links.length === 0) return [];
+  const subjectIds = links.map((l) => l.exam_subject_id);
+  const subjects = await ExamSubject.find({ _id: { $in: subjectIds } });
+  const subjectMap = new Map(subjects.map((s) => [String(s._id), s]));
+  return links.flatMap((l) => {
+    const s = subjectMap.get(String(l.exam_subject_id));
+    if (!s) return [];
+    const tag: QuestionSubjectTag = {
+      id: String(l._id),
+      exam_subject_id: String(l.exam_subject_id),
+      name: s.name,
+      name_bn: s.name_bn,
+    };
+    return [tag];
+  });
+}
+
+async function touchQuestionUpdatedAt(questionId: mongoose.Types.ObjectId) {
+  await Question.updateOne({ _id: questionId }, { $set: { updated_at: new Date() } });
+}
+
+export async function listQuestionSubjectLinks(questionId: string) {
+  const question = await Question.findById(questionId);
+  if (!question || !question.is_active) throw notFound('Question not found');
+  return loadSerializedSubjectLinks(question._id);
+}
+
+export async function addQuestionSubjectLink(questionId: string, dto: QuestionSubjectLinkInput) {
+  const question = await Question.findById(questionId);
+  if (!question || !question.is_active) throw notFound('Question not found');
+
+  const subject = await ExamSubject.findById(dto.exam_subject_id);
+  if (!subject || !subject.is_active) throw notFound('Exam subject not found');
+
+  const existing = await QuestionSubjectLink.findOne({
+    question_id: question._id,
+    exam_subject_id: subject._id,
+    is_active: true,
+  });
+  if (existing) {
+    return {
+      id: String(existing._id),
+      exam_subject_id: String(subject._id),
+      name: subject.name,
+      name_bn: subject.name_bn,
+    };
+  }
+
+  const inactive = await QuestionSubjectLink.findOne({
+    question_id: question._id,
+    exam_subject_id: subject._id,
+    is_active: false,
+  });
+  if (inactive) {
+    inactive.is_active = true;
+    inactive.deactivated_by_trash = false;
+    await inactive.save();
+    await touchQuestionUpdatedAt(question._id);
+    return {
+      id: String(inactive._id),
+      exam_subject_id: String(subject._id),
+      name: subject.name,
+      name_bn: subject.name_bn,
+    };
+  }
+
+  const latest = await QuestionSubjectLink.findOne({
+    question_id: question._id,
+    is_active: true,
+  })
+    .sort({ sort_order: -1 })
+    .select('sort_order');
+
+  const link = await QuestionSubjectLink.create({
+    question_id: question._id,
+    exam_subject_id: subject._id,
+    sort_order: (latest?.sort_order ?? -1) + 1,
+    is_active: true,
+  });
+  await touchQuestionUpdatedAt(question._id);
+  return {
+    id: String(link._id),
+    exam_subject_id: String(subject._id),
+    name: subject.name,
+    name_bn: subject.name_bn,
+  };
+}
+
+export async function deleteQuestionSubjectLink(questionId: string, examSubjectId: string) {
+  const question = await Question.findById(questionId);
+  if (!question || !question.is_active) throw notFound('Question not found');
+
+  const link = await QuestionSubjectLink.findOne({
+    question_id: question._id,
+    exam_subject_id: examSubjectId,
+    is_active: true,
+  });
+  if (!link) throw notFound('Subject tag not found');
+
+  link.is_active = false;
+  await link.save();
+  await touchQuestionUpdatedAt(question._id);
+  return { deleted: true };
+}
+
+export async function batchAddQuestionSubjectLinks(dto: BatchQuestionSubjectLinksDto) {
+  const questions = await Question.find({
+    _id: { $in: dto.ids },
+    is_active: true,
+  }).select('_id');
+  if (questions.length === 0) throw badRequest('No active questions selected');
+
+  const subjects = await ExamSubject.find({
+    _id: { $in: dto.exam_subject_ids },
+    is_active: true,
+  }).select('_id');
+  if (subjects.length === 0) throw badRequest('No active subjects selected');
+
+  let added = 0;
+  for (const q of questions) {
+    for (const subject of subjects) {
+      const before = await QuestionSubjectLink.findOne({
+        question_id: q._id,
+        exam_subject_id: subject._id,
+        is_active: true,
+      });
+      if (before) continue;
+      await addQuestionSubjectLink(String(q._id), { exam_subject_id: String(subject._id) });
+      added += 1;
+    }
+  }
+  return { updated: questions.length, added };
+}
+
 export async function updateQuestion(id: string, dto: UpdateQuestionDto) {
   const question = await Question.findById(id);
   if (!question || !question.is_active) throw notFound('Question not found');
@@ -1697,6 +1927,10 @@ export async function deleteQuestion(id: string) {
     { question_id: question._id, is_active: true },
     { $set: { is_active: false, deactivated_by_trash: true } },
   );
+  await QuestionSubjectLink.updateMany(
+    { question_id: question._id, is_active: true },
+    { $set: { is_active: false, deactivated_by_trash: true } },
+  );
 
   return { deleted: true, trashed: true, id: String(question._id) };
 }
@@ -1722,6 +1956,11 @@ export async function restoreQuestion(id: string) {
       { $set: { is_active: true } },
     );
   }
+
+  await QuestionSubjectLink.updateMany(
+    { question_id: question._id, deactivated_by_trash: true },
+    { $set: { is_active: true, deactivated_by_trash: false } },
+  );
 
   return loadQuestionDetail(id);
 }
@@ -2361,6 +2600,34 @@ export async function listQuestionsSync(filters: {
   const books = bookIds.length ? await BookInfo.find({ _id: { $in: bookIds } }) : [];
   const bookMap = new Map(books.map((b) => [String(b._id), b]));
 
+  const pageIds = page.map((q) => q._id);
+  const syncSubjectLinks = pageIds.length
+    ? await QuestionSubjectLink.find({ question_id: { $in: pageIds }, is_active: true }).sort({
+        sort_order: 1,
+      })
+    : [];
+  const syncSubjectIds = [...new Set(syncSubjectLinks.map((l) => String(l.exam_subject_id)))];
+  const syncSubjects =
+    syncSubjectIds.length > 0 ? await ExamSubject.find({ _id: { $in: syncSubjectIds } }) : [];
+  const syncSubjectMeta = new Map(
+    syncSubjects.map((s) => [
+      String(s._id),
+      { id: String(s._id), name: s.name, name_bn: s.name_bn },
+    ]),
+  );
+  const syncSubjectsByQuestion = new Map<
+    string,
+    Array<{ id: string; name: string; name_bn?: string }>
+  >();
+  for (const link of syncSubjectLinks) {
+    const meta = syncSubjectMeta.get(String(link.exam_subject_id));
+    if (!meta) continue;
+    const key = String(link.question_id);
+    const list = syncSubjectsByQuestion.get(key) ?? [];
+    list.push(meta);
+    syncSubjectsByQuestion.set(key, list);
+  }
+
   const data: QuestionSyncRow[] = page.map((q) => {
     const qidForBook = String(q._id);
     const chapterId = chapterIdByQuestion.get(qidForBook);
@@ -2385,6 +2652,7 @@ export async function listQuestionsSync(filters: {
       book_name: book?.name,
       chapter_number: chapter?.chapter_number ?? undefined,
       chapter_name: chapter?.name,
+      subjects: syncSubjectsByQuestion.get(qidForBook) ?? [],
       updated_at: q.updated_at.toISOString(),
     };
 

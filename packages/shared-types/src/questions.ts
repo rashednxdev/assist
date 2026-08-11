@@ -165,6 +165,8 @@ export const listQuestionsQuerySchema = z.object({
   regulation_id: mongoId.optional(),
   /** Filter questions linked to any chapter of this book. */
   book_info_id: mongoId.optional(),
+  /** Filter questions tagged with this exam subject (multi-tag). */
+  exam_subject_id: mongoId.optional(),
   /** List sort order, defaults to most-recently-updated first. */
   sort: z.enum(QUESTION_SORT_OPTIONS).optional(),
   /** Page size (load first N, then request more with offset). */
@@ -241,6 +243,8 @@ export interface QuestionSyncRow {
   book_name?: string;
   chapter_number?: string;
   chapter_name?: string;
+  /** Exam subjects tagged on this question (multi). */
+  subjects?: Array<{ id: string; name: string; name_bn?: string }>;
   updated_at: string;
   /** Present only for question_type_code === 'MCQ'. */
   options?: QuestionSyncOption[];
@@ -341,6 +345,21 @@ export const batchQuestionIdsSchema = z.object({
 });
 
 export type BatchQuestionIdsDto = z.infer<typeof batchQuestionIdsSchema>;
+
+/** Add one exam subject tag to a question (toggle on). */
+export const questionSubjectLinkInputSchema = z.object({
+  exam_subject_id: mongoId,
+});
+
+export type QuestionSubjectLinkInput = z.infer<typeof questionSubjectLinkInputSchema>;
+
+/** Tag many questions with one or more subjects in one action (add-only). */
+export const batchQuestionSubjectLinksSchema = z.object({
+  ids: z.array(mongoId).min(1, 'Select at least one question').max(100),
+  exam_subject_ids: z.array(mongoId).min(1, 'Select at least one subject').max(50),
+});
+
+export type BatchQuestionSubjectLinksDto = z.infer<typeof batchQuestionSubjectLinksSchema>;
 
 /** Make this question a "prototype" that shares its model answer from a "mother" question. */
 export const setMotherQuestionSchema = z.object({

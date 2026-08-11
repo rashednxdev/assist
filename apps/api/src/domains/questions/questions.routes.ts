@@ -35,6 +35,11 @@ import {
   unpublishQuestionHandler,
   addQuestionBookLinkHandler,
   deleteQuestionBookLinkHandler,
+  listQuestionSubjectCatalogHandler,
+  listQuestionSubjectLinksHandler,
+  addQuestionSubjectLinkHandler,
+  deleteQuestionSubjectLinkHandler,
+  batchAddQuestionSubjectLinksHandler,
   setMotherQuestionHandler,
   removeMotherQuestionHandler,
 } from './questions.controller.js';
@@ -57,6 +62,7 @@ questionsRouter.delete('/types/:id', requireAdmin, asyncHandler(deleteQuestionTy
 
 questionsRouter.get('/', canBrowseQuestions, asyncHandler(listQuestionsHandler));
 questionsRouter.get('/trashed', requireAdmin, asyncHandler(listTrashedQuestionsHandler));
+questionsRouter.get('/subject-catalog', canBrowseQuestions, asyncHandler(listQuestionSubjectCatalogHandler));
 questionsRouter.get('/marathon-review', requireModuleAccess('QUESTIONS'), asyncHandler(listMarathonReviewHandler));
 questionsRouter.get('/sync', requireModuleAccess('QUESTIONS'), asyncHandler(questionsSyncHandler));
 questionsRouter.get('/similar', requireModuleAccess('QUESTIONS'), asyncHandler(similarQuestionsHandler));
@@ -87,6 +93,11 @@ questionsRouter.post(
   requireAdmin,
   asyncHandler(batchSubmitForQualityCheckQuestionsHandler),
 );
+questionsRouter.post(
+  '/batch-subject-links',
+  requireAdmin,
+  asyncHandler(batchAddQuestionSubjectLinksHandler),
+);
 questionsRouter.post('/', requireAdmin, asyncHandler(createQuestionHandler));
 questionsRouter.patch('/:id', canEditQuestions, asyncHandler(updateQuestionHandler));
 questionsRouter.post('/:id/restore', requireAdmin, asyncHandler(restoreQuestionHandler));
@@ -106,5 +117,12 @@ questionsRouter.post('/:id/publish', canEditQuestions, asyncHandler(publishQuest
 questionsRouter.post('/:id/unpublish', canEditQuestions, asyncHandler(unpublishQuestionHandler));
 questionsRouter.post('/:id/book-links', requireAdmin, asyncHandler(addQuestionBookLinkHandler));
 questionsRouter.delete('/:id/book-links/:linkId', requireAdmin, asyncHandler(deleteQuestionBookLinkHandler));
+questionsRouter.get('/:id/subject-links', canBrowseQuestions, asyncHandler(listQuestionSubjectLinksHandler));
+questionsRouter.post('/:id/subject-links', requireAdmin, asyncHandler(addQuestionSubjectLinkHandler));
+questionsRouter.delete(
+  '/:id/subject-links/:examSubjectId',
+  requireAdmin,
+  asyncHandler(deleteQuestionSubjectLinkHandler),
+);
 questionsRouter.post('/:id/mother-question', canEditQuestions, asyncHandler(setMotherQuestionHandler));
 questionsRouter.delete('/:id/mother-question', canEditQuestions, asyncHandler(removeMotherQuestionHandler));

@@ -21,6 +21,11 @@ import { isPlatformAdmin } from '@/lib/capabilities';
 import { RowActions } from '@/components/shared/row-actions';
 import { QuestionEditModal } from '@/components/questions/question-edit-modal';
 import { CsvBatchImport } from '@/components/questions/csv-batch-import';
+import {
+  QuestionSubjectTags,
+  type QuestionSubjectTag,
+  type SubjectCatalogItem,
+} from '@/components/questions/question-subject-tags';
 import { ReviewStatusActions, ReviewStatusBadge, type ReviewStatus } from '@/components/questions/review-status';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -57,6 +62,7 @@ interface QuestionItem {
   book_topic_id?: string;
   book_sub_topic_id?: string;
   book_link_count?: number;
+  subjects?: QuestionSubjectTag[];
   option_count: number;
   used_in_papers?: Array<{
     id: string;
@@ -136,6 +142,9 @@ export default function QuestionsPage() {
     Array<{ id: string; name: string; chapter_number?: string }>
   >([]);
   const [filterChapterId, setFilterChapterId] = useState('');
+  const [filterSubjectId, setFilterSubjectId] = useState('');
+  const [subjectCatalog, setSubjectCatalog] = useState<SubjectCatalogItem[]>([]);
+  const [batchSubjectId, setBatchSubjectId] = useState('');
   const [sortOption, setSortOption] = useState<QuestionSortOption>('updated_desc');
 
   const PAGE_SIZE = 50;
@@ -154,6 +163,7 @@ export default function QuestionsPage() {
     if (typeCode) params.set('question_type_code', typeCode);
     if (filterChapterId) params.set('book_chapter_id', filterChapterId);
     else if (filterBookId) params.set('book_info_id', filterBookId);
+    if (filterSubjectId) params.set('exam_subject_id', filterSubjectId);
     if (sortOption && sortOption !== 'updated_desc') params.set('sort', sortOption);
     params.set('limit', String(PAGE_SIZE));
     params.set('offset', String((targetPage - 1) * PAGE_SIZE));
@@ -183,6 +193,9 @@ export default function QuestionsPage() {
     apiFetch<{ data: Array<{ id: string; name: string; short_name?: string }> }>('/books')
       .then((r) => setImportBooks(r.data))
       .catch(() => setImportBooks([]));
+    apiFetch<{ data: SubjectCatalogItem[] }>('/questions/subject-catalog')
+      .then((r) => setSubjectCatalog(r.data))
+      .catch(() => setSubjectCatalog([]));
   }, []);
 
   useEffect(() => {
@@ -452,6 +465,35 @@ export default function QuestionsPage() {
       load();
     } catch (err) {
       setListErr(err instanceof Error ? err.message : 'Batch submit for quality check failed');
+    } finally {
+      setBatchBusy(false);
+    }
+  }
+
+  async function batchTagSubjects() {
+    if (selectedIds.length === 0 || !batchSubjectId) return;
+    setListErr('');
+    setListMsg('');
+    setBatchBusy(true);
+    try {
+      const res = await apiFetch<{ data: { updated: number; added: number } }>(
+        '/questions/batch-subject-links',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            ids: selectedIds,
+            exam_subject_ids: [batchSubjectId],
+          }),
+        },
+      );
+      setListMsg(
+        `Tagged ${res.data.updated} question${res.data.updated === 1 ? '' : 's'} (+${res.data.added} new tags)`,
+      );
+      setBatchSubjectId('');
+      setSelectedIds([]);
+      load();
+    } catch (err) {
+      setListErr(err instanceof Error ? err.message : 'Batch subject tagging failed');
     } finally {
       setBatchBusy(false);
     }
@@ -745,6 +787,22 @@ export default function QuestionsPage() {
                 </select>
               </div>
               <div className="space-y-1.5">
+                <Label htmlFor="filter-subject">Subject</Label>
+                <select
+                  id="filter-subject"
+                  value={filterSubjectId}
+                  onChange={(e) => setFilterSubjectId(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">All subjects</option>
+                  {subjectCatalog.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
                 <Label htmlFor="sort">Sort by</Label>
                 <select
                   id="sort"
@@ -813,6 +871,29 @@ export default function QuestionsPage() {
                 <Trash2 className="h-4 w-4" />
                 Trash selected ({selectedIds.length})
               </Button>
+              <select
+                className="h-9 max-w-[240px] rounded-md border border-input bg-background px-2 text-sm"
+                value={batchSubjectId}
+                disabled={selectedIds.length === 0 || batchBusy}
+                onChange={(e) => setBatchSubjectId(e.target.value)}
+                aria-label="Subject to tag on selected questions"
+              >
+                <option value="">Tag subject…</option>
+                {subjectCatalog.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={selectedIds.length === 0 || !batchSubjectId || batchBusy}
+                onClick={() => void batchTagSubjects()}
+              >
+                Apply subject
+              </Button>
             </div>
           )}
           {loading ? (
@@ -853,38 +934,66 @@ export default function QuestionsPage() {
                         aria-label={`Select question ${item.body_en.slice(0, 40)}`}
                       />
                     )}
-                    <Link
-                      href={`/questions/${item.id}`}
-                      className="flex min-w-0 flex-1 items-start gap-3"
-                    >
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-muted text-primary">
-                        <HelpCircle className="h-5 w-5" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="font-medium text-foreground group-hover:text-primary">{item.body_en}</div>
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          <Badge variant="outline">{item.question_type_name ?? item.question_type_code}</Badge>
-                          {link && <Badge variant="secondary">{link}</Badge>}
-                          {isAdmin && <Badge variant="secondary">{item.difficulty}</Badge>}
-                          {isAdmin && (
+                    <div className="min-w-0 flex-1">
+                      <Link
+                        href={`/questions/${item.id}`}
+                        className="flex min-w-0 items-start gap-3"
+                      >
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-muted text-primary">
+                          <HelpCircle className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium text-foreground group-hover:text-primary">
+                            {item.body_en}
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
                             <Badge variant="outline">
-                              {item.marks} mark{item.marks !== 1 ? 's' : ''}
+                              {item.question_type_name ?? item.question_type_code}
                             </Badge>
-                          )}
-                          {item.option_count > 0 && (
-                            <Badge variant="outline">{item.option_count} options</Badge>
-                          )}
-                          {isAdmin && (
-                            <ReviewStatusBadge status={item.review_status} by={item.status_by_name} />
-                          )}
-                          {(item.used_in_papers ?? []).map((paper) => (
-                            <Badge key={paper.id} variant="secondary" title={paperUsageLabel(paper)}>
-                              {paperUsageLabel(paper)}
+                            {link && <Badge variant="secondary">{link}</Badge>}
+                            {isAdmin && <Badge variant="secondary">{item.difficulty}</Badge>}
+                            {isAdmin && (
+                              <Badge variant="outline">
+                                {item.marks} mark{item.marks !== 1 ? 's' : ''}
+                              </Badge>
+                            )}
+                            {item.option_count > 0 && (
+                              <Badge variant="outline">{item.option_count} options</Badge>
+                            )}
+                            {isAdmin && (
+                              <ReviewStatusBadge status={item.review_status} by={item.status_by_name} />
+                            )}
+                            {(item.used_in_papers ?? []).map((paper) => (
+                              <Badge key={paper.id} variant="secondary" title={paperUsageLabel(paper)}>
+                                {paperUsageLabel(paper)}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      </Link>
+                      {isAdmin ? (
+                        <div className="pl-[52px]">
+                          <QuestionSubjectTags
+                            questionId={item.id}
+                            subjects={item.subjects ?? []}
+                            catalog={subjectCatalog}
+                            onChange={(subjects) =>
+                              setItems((prev) =>
+                                prev.map((row) => (row.id === item.id ? { ...row, subjects } : row)),
+                              )
+                            }
+                          />
+                        </div>
+                      ) : (item.subjects ?? []).length > 0 ? (
+                        <div className="mt-2 flex flex-wrap gap-1.5 pl-[52px]">
+                          {(item.subjects ?? []).map((s) => (
+                            <Badge key={s.id} variant="secondary">
+                              {s.name_bn?.trim() || s.name}
                             </Badge>
                           ))}
                         </div>
-                      </div>
-                    </Link>
+                      ) : null}
+                    </div>
                     {isAdmin && (
                       <div className="flex shrink-0 flex-wrap gap-1">
                         <Button

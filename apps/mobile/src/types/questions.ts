@@ -32,6 +32,8 @@ export interface QuestionListItem {
   chapter_number?: string;
   chapter_name?: string;
   book_link_count?: number;
+  /** Exam subjects tagged on this question (from sync cache or live list). */
+  subjects?: Array<{ id: string; name: string; name_bn?: string }>;
   option_count: number;
   created_at: string;
   updated_at: string;

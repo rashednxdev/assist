@@ -110,6 +110,7 @@ export default function QuestionsScreen() {
   const [difficulty, setDifficulty] = useState('');
   const [bookMenuOpen, setBookMenuOpen] = useState(false);
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
   const [groupByBooks, setGroupByBooks] = useState(false);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [evalMap, setEvalMap] = useState<Map<string, QuestionEvalBrief>>(new Map());
@@ -131,23 +132,45 @@ export default function QuestionsScreen() {
     return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [items]);
 
+  const subjectOptions = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; count: number }>();
+    for (const item of items) {
+      for (const subject of item.subjects ?? []) {
+        const label = subject.name_bn?.trim() || subject.name;
+        const existing = map.get(subject.id);
+        if (existing) existing.count += 1;
+        else map.set(subject.id, { id: subject.id, name: label, count: 1 });
+      }
+    }
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [items]);
+
   const selectedBookName = selectedBookId
     ? bookOptions.find((b) => b.id === selectedBookId)?.name
     : null;
 
   const hasActiveFilter = Boolean(
-    appliedQuery.trim() || typeCode || difficulty || selectedBookId || groupByBooks,
+    appliedQuery.trim() ||
+      typeCode ||
+      difficulty ||
+      selectedBookId ||
+      selectedSubjectId ||
+      groupByBooks,
   );
 
   /** Chip/book filters over the full local cache (synced in background). */
   const chipFilteredItems = useMemo(() => {
     return items.filter((item) => {
       if (selectedBookId && item.book_id !== selectedBookId) return false;
+      if (selectedSubjectId) {
+        const tagged = (item.subjects ?? []).some((s) => s.id === selectedSubjectId);
+        if (!tagged) return false;
+      }
       if (typeCode && item.question_type_code !== typeCode) return false;
       if (difficulty && item.difficulty !== difficulty) return false;
       return true;
     });
-  }, [items, selectedBookId, typeCode, difficulty]);
+  }, [items, selectedBookId, selectedSubjectId, typeCode, difficulty]);
 
   /**
    * Search runs against the full filtered cache (not only the first page), so results include
@@ -200,7 +223,7 @@ export default function QuestionsScreen() {
 
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
-  }, [appliedQuery, typeCode, difficulty, selectedBookId, groupByBooks]);
+  }, [appliedQuery, typeCode, difficulty, selectedBookId, selectedSubjectId, groupByBooks]);
 
   useEffect(() => {
     const ids = pagedItems.map((i) => i.id);
@@ -294,6 +317,7 @@ export default function QuestionsScreen() {
     setTypeCode('');
     setDifficulty('');
     setSelectedBookId(null);
+    setSelectedSubjectId(null);
     setGroupByBooks(false);
     setBookMenuOpen(false);
   }
@@ -516,6 +540,36 @@ export default function QuestionsScreen() {
             </Pressable>
           )}
         />
+        {subjectOptions.length > 0 ? (
+          <FlatList
+            horizontal
+            data={[
+              { id: '', label: 'All Subjects' },
+              ...subjectOptions.map((s) => ({ id: s.id, label: s.name })),
+            ]}
+            keyExtractor={(item) => `subject-${item.id || 'all'}`}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chips}
+            renderItem={({ item }) => (
+              <Pressable
+                style={[
+                  styles.chip,
+                  (selectedSubjectId ?? '') === item.id && styles.chipActive,
+                ]}
+                onPress={() => setSelectedSubjectId(item.id || null)}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    (selectedSubjectId ?? '') === item.id && styles.chipTextActive,
+                  ]}
+                >
+                  {item.label}
+                </Text>
+              </Pressable>
+            )}
+          />
+        ) : null}
       </View>
 
       {loading && items.length === 0 ? null : error && items.length === 0 ? (

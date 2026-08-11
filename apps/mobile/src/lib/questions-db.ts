@@ -31,6 +31,7 @@ function getDb(): SQLite.SQLiteDatabase {
       book_name TEXT,
       chapter_number TEXT,
       chapter_name TEXT,
+      subject_links TEXT,
       updated_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS question_options (
@@ -51,6 +52,12 @@ function getDb(): SQLite.SQLiteDatabase {
       last_synced_at TEXT
     );
   `);
+  // Older installs — add subject_links when missing.
+  try {
+    db.execSync('ALTER TABLE questions ADD COLUMN subject_links TEXT');
+  } catch {
+    // column already exists
+  }
   return db;
 }
 
@@ -72,6 +79,7 @@ type QuestionRow = {
   book_name: string | null;
   chapter_number: string | null;
   chapter_name: string | null;
+  subject_links: string | null;
   updated_at: string;
 };
 
@@ -116,8 +124,8 @@ export function applySyncBatch(rows: QuestionSyncRow[], deletedIds: string[]): v
         `INSERT INTO questions (
            id, question_type_code, body_en, body_bn, difficulty, marks, time_seconds,
            is_published, is_active, book_chapter_id, book_topic_id, book_sub_topic_id,
-           regulation_id, book_id, book_name, chapter_number, chapter_name, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           regulation_id, book_id, book_name, chapter_number, chapter_name, subject_links, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            question_type_code = excluded.question_type_code,
            body_en = excluded.body_en,
@@ -135,6 +143,7 @@ export function applySyncBatch(rows: QuestionSyncRow[], deletedIds: string[]): v
            book_name = excluded.book_name,
            chapter_number = excluded.chapter_number,
            chapter_name = excluded.chapter_name,
+           subject_links = excluded.subject_links,
            updated_at = excluded.updated_at`,
         [
           row.id,
@@ -154,6 +163,7 @@ export function applySyncBatch(rows: QuestionSyncRow[], deletedIds: string[]): v
           row.book_name ?? null,
           row.chapter_number ?? null,
           row.chapter_name ?? null,
+          row.subjects && row.subjects.length > 0 ? JSON.stringify(row.subjects) : null,
           row.updated_at,
         ],
       );
@@ -187,6 +197,18 @@ export function applySyncBatch(rows: QuestionSyncRow[], deletedIds: string[]): v
   });
 }
 
+function parseSubjects(
+  raw: string | null,
+): Array<{ id: string; name: string; name_bn?: string }> {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as Array<{ id: string; name: string; name_bn?: string }>;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function toQuestionListItem(row: QuestionRow): QuestionListItem {
   return {
     id: row.id,
@@ -207,6 +229,7 @@ function toQuestionListItem(row: QuestionRow): QuestionListItem {
     book_name: row.book_name ?? undefined,
     chapter_number: row.chapter_number ?? undefined,
     chapter_name: row.chapter_name ?? undefined,
+    subjects: parseSubjects(row.subject_links),
     option_count: 0,
     created_at: row.updated_at,
     updated_at: row.updated_at,

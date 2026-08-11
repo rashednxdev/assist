@@ -39,6 +39,7 @@ export interface UserModuleAccessRow {
   bypass_stop?: boolean;
 }
 
+/** Modules shown in mobile Users → Module access (learning + Users admin). */
 export const MOBILE_MODULE_CODES = [
   'BOOKS',
   'QUESTIONS',
@@ -51,7 +52,24 @@ export const MOBILE_MODULE_CODES = [
   'EXAM_ROUTINE',
   'EXAM_WEEK',
   'USER_QUESTIONS',
+  'USER',
 ] as const;
+
+/** Users is never shown to applicants. Admins always; others need an active USER grant. */
+export function canManageUsers(user: {
+  is_super_admin?: boolean;
+  user_type?: string;
+  module_access?: Array<{ module_code: string; can_create?: boolean; can_update?: boolean; can_read?: boolean }>;
+} | null | undefined): boolean {
+  if (!user) return false;
+  if (user.user_type === 'applicant') return false;
+  if (user.is_super_admin || user.user_type === 'system_admin' || user.user_type === 'admin') {
+    return true;
+  }
+  return (user.module_access ?? []).some(
+    (g) => g.module_code === 'USER' && (g.can_create === true || g.can_update === true || g.can_read === true),
+  );
+}
 
 export async function fetchAdminUsers(params?: { q?: string; page?: number; limit?: number }) {
   const search = new URLSearchParams();

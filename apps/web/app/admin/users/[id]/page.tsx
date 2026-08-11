@@ -87,6 +87,9 @@ const MOBILE_MODULE_CODES = [
   'QUESTION_EDIT',
   'QOTD',
   'EXAM_ROUTINE',
+  'EXAM_WEEK',
+  'USER_QUESTIONS',
+  'USER',
 ];
 
 const tabs: { id: Tab; label: string }[] = [

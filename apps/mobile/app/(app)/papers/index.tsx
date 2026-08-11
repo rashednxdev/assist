@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, Pressable, TextInput } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -6,8 +6,10 @@ import { BookBadge } from '@/components/books/BookBadge';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
 import { ProgressSummary } from '@/components/evaluation/ProgressSummary';
 import { fetchPaperEvaluation, type ProgressSummary as ProgressSummaryData } from '@/lib/evaluation-api';
+import { paperHeadingLines } from '@/lib/paper-display';
 import { fetchPapers, fetchPaperTypes } from '@/lib/papers-api';
 import { paperDetailHref } from '@/lib/paper-routes';
+import { isDeviceOnline, showToast } from '@/lib/toast';
 import { useAuth } from '@/lib/auth-context';
 import type { PaperItem, PaperType } from '@/types/papers';
 import { colors, spacing } from '@/theme';
@@ -17,6 +19,7 @@ export default function PapersScreen() {
   const { user } = useAuth();
   const isAdmin =
     user?.is_super_admin || user?.user_type === 'system_admin' || user?.user_type === 'admin';
+  const offlineToastShown = useRef(false);
 
   const [items, setItems] = useState<PaperItem[]>([]);
   const [types, setTypes] = useState<PaperType[]>([]);
@@ -27,6 +30,19 @@ export default function PapersScreen() {
   const [subjectId, setSubjectId] = useState('');
   const [status, setStatus] = useState('');
   const [progressByPaperId, setProgressByPaperId] = useState<Record<string, ProgressSummaryData>>({});
+
+  const notifyOffline = useCallback(async () => {
+    const online = await isDeviceOnline();
+    if (!online) {
+      if (!offlineToastShown.current) {
+        showToast('You are offline');
+        offlineToastShown.current = true;
+      }
+      return false;
+    }
+    offlineToastShown.current = false;
+    return true;
+  }, []);
 
   const loadProgress = useCallback(async (papers: PaperItem[]) => {
     const published = papers.filter((paper) => paper.is_published);
@@ -50,6 +66,15 @@ export default function PapersScreen() {
   const load = useCallback(async () => {
     setError('');
     setLoading(true);
+    const online = await notifyOffline();
+    if (!online) {
+      setLoading(false);
+      setItems((prev) => {
+        if (prev.length === 0) setError('You are offline');
+        return prev;
+      });
+      return;
+    }
     try {
       const [paperRows, typeRows] = await Promise.all([
         fetchPapers({ is_published: status as 'true' | 'false' | '' }),
@@ -58,17 +83,27 @@ export default function PapersScreen() {
       setItems(paperRows);
       setTypes(typeRows);
       void loadProgress(paperRows);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load papers');
+    } catch {
+      const onlineNow = await isDeviceOnline();
+      if (!onlineNow) {
+        showToast('You are offline');
+        setItems((prev) => {
+          if (prev.length === 0) setError('You are offline');
+          return prev;
+        });
+      } else {
+        setError('Failed to load papers');
+      }
     } finally {
       setLoading(false);
     }
-  }, [status, loadProgress]);
+  }, [status, loadProgress, notifyOffline]);
 
   useFocusEffect(
     useCallback(() => {
+      void notifyOffline();
       if (items.length > 0) void loadProgress(items);
-    }, [items, loadProgress]),
+    }, [items, loadProgress, notifyOffline]),
   );
 
   useEffect(() => {
@@ -81,8 +116,8 @@ export default function PapersScreen() {
       if (!item.exam_subject_id) continue;
       if (map.has(item.exam_subject_id)) continue;
       const label =
-        item.exam_subject_name?.trim() ||
         item.exam_subject_name_bn?.trim() ||
+        item.exam_subject_name?.trim() ||
         'Subject';
       map.set(item.exam_subject_id, label);
     }
@@ -103,12 +138,17 @@ export default function PapersScreen() {
       if (typeId && item.paper_type_id !== typeId) return false;
       if (subjectId && item.exam_subject_id !== subjectId) return false;
       if (!q) return true;
+      const heading = paperHeadingLines(item);
       const line = [
         item.name,
+        heading.examLine,
+        heading.subjectLine,
         item.paper_type_name,
         item.exam_short_name,
         item.exam_subject_name,
+        item.exam_subject_name_bn,
         item.session_label_en,
+        item.session_label_bn,
       ]
         .join(' ')
         .toLowerCase();
@@ -193,7 +233,7 @@ export default function PapersScreen() {
 
       {loading && items.length === 0 ? (
         <BookLoading />
-      ) : error ? (
+      ) : error && items.length === 0 ? (
         <BookError message={error} />
       ) : (
         <FlatList
@@ -204,40 +244,40 @@ export default function PapersScreen() {
             <BookEmpty title="No papers found" subtitle="Try a different search or filter." />
           }
           renderItem={({ item }) => {
+            const { paperName, examLine, subjectLine } = paperHeadingLines(item);
             const progress = progressByPaperId[item.id];
             return (
-            <Pressable
-              style={({ pressed }) => [styles.card, pressed && styles.pressed]}
-              onPress={() => router.push(paperDetailHref(item.id))}
-            >
-              <View style={styles.iconWrap}>
-                <Ionicons name="document-text-outline" size={20} color="#d97706" />
-              </View>
-              <View style={styles.bodyWrap}>
-                <Text style={styles.title}>{item.name}</Text>
-                <Text style={styles.meta}>
-                  {[item.exam_short_name, item.exam_subject_name, item.session_label_en]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </Text>
-                {progress && progress.total_questions > 0 ? (
-                  <View style={styles.progressWrap}>
-                    <Text style={styles.progressLabel}>Overall evaluation</Text>
-                    <ProgressSummary summary={progress} size="sm" />
-                  </View>
-                ) : null}
-                <View style={styles.badges}>
-                  <BookBadge label={item.paper_type_name ?? 'Paper'} variant="muted" />
-                  <BookBadge label={`${item.total_marks} marks`} variant="muted" />
-                  <BookBadge label={`${item.duration_minutes} min`} variant="muted" />
-                  <BookBadge label={`${item.question_count} questions`} variant="muted" />
-                  {isAdmin ? (
-                    <BookBadge label={item.is_published ? 'Published' : 'Draft'} variant="muted" />
-                  ) : null}
+              <Pressable
+                style={({ pressed }) => [styles.card, pressed && styles.pressed]}
+                onPress={() => router.push(paperDetailHref(item.id))}
+              >
+                <View style={styles.iconWrap}>
+                  <Ionicons name="document-text-outline" size={20} color="#d97706" />
                 </View>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-            </Pressable>
+                <View style={styles.bodyWrap}>
+                  <View style={styles.headingBlock}>
+                    <Text style={styles.paperName}>{paperName}</Text>
+                    {examLine ? <Text style={styles.examLine}>{examLine}</Text> : null}
+                    {subjectLine ? <Text style={styles.subjectLine}>{subjectLine}</Text> : null}
+                  </View>
+                  {progress && progress.total_questions > 0 ? (
+                    <View style={styles.progressWrap}>
+                      <Text style={styles.progressLabel}>Overall evaluation</Text>
+                      <ProgressSummary summary={progress} size="sm" />
+                    </View>
+                  ) : null}
+                  <View style={styles.badges}>
+                    <BookBadge label={item.paper_type_name ?? 'Paper'} variant="muted" />
+                    <BookBadge label={`${item.total_marks} marks`} variant="muted" />
+                    <BookBadge label={`${item.duration_minutes} min`} variant="muted" />
+                    <BookBadge label={`${item.question_count} questions`} variant="muted" />
+                    {isAdmin ? (
+                      <BookBadge label={item.is_published ? 'Published' : 'Draft'} variant="muted" />
+                    ) : null}
+                  </View>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              </Pressable>
             );
           }}
         />
@@ -255,14 +295,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
-  },
-  iconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: '#fef3c7',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   searchRow: {
     flexDirection: 'row',
@@ -324,18 +356,43 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: spacing.md,
   },
+  iconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: '#fef3c7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   bodyWrap: {
     flex: 1,
     gap: 6,
   },
-  title: {
+  headingBlock: {
+    alignItems: 'center',
+    gap: 6,
+    width: '100%',
+  },
+  paperName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  examLine: {
     fontSize: 16,
     fontWeight: '700',
     color: colors.text,
+    textAlign: 'center',
+    lineHeight: 24,
   },
-  meta: {
-    fontSize: 13,
-    color: colors.textMuted,
+  subjectLine: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    textAlign: 'center',
+    lineHeight: 24,
   },
   progressWrap: {
     gap: 4,

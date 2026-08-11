@@ -13,14 +13,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
 import { BookBadge } from '@/components/books/BookBadge';
 import { useAuth } from '@/lib/auth-context';
-import { fetchAdminUsers, type AdminUserRow } from '@/lib/users-api';
+import { canManageUsers, fetchAdminUsers, type AdminUserRow } from '@/lib/users-api';
 import { colors, spacing } from '@/theme';
-
-function isAdminUser(user: ReturnType<typeof useAuth>['user']) {
-  return Boolean(
-    user?.is_super_admin || user?.user_type === 'system_admin' || user?.user_type === 'admin',
-  );
-}
 
 export default function UsersListScreen() {
   const router = useRouter();
@@ -33,7 +27,7 @@ export default function UsersListScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  const allowed = isAdminUser(user);
+  const allowed = canManageUsers(user);
 
   const load = useCallback(async (q: string) => {
     setError('');

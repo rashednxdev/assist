@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { banglaText, formatDurationBn, toBanglaDigits } from '@/lib/bangla-format';
+import { formatDurationBn, toBanglaDigits } from '@/lib/bangla-format';
+import { paperHeadingLines } from '@/lib/paper-display';
 import type { PaperItem } from '@/types/papers';
 import { colors, spacing } from '@/theme';
 
@@ -8,18 +9,11 @@ interface PaperSheetHeaderProps {
 }
 
 export function PaperSheetHeader({ paper }: PaperSheetHeaderProps) {
-  const examName = paper.exam_name_bn?.trim() || paper.exam_name?.trim() || paper.exam_short_name || '';
-  const partName = paper.exam_part_name_bn?.trim() || paper.exam_part_name?.trim() || '';
-  const sessionLabel = paper.session_label_bn?.trim() || paper.session_year?.trim() || '';
-  const examLine = [examName, partName, sessionLabel]
-    .filter(Boolean)
-    .map((segment) => banglaText(segment))
-    .join('/');
-  const subjectLine = paper.exam_subject_name_bn?.trim() || paper.exam_subject_name?.trim() || '';
+  const { paperName, examLine, subjectLine } = paperHeadingLines(paper);
 
   return (
     <View style={styles.header}>
-      <Text style={styles.paperName}>{paper.name}</Text>
+      <Text style={styles.paperName}>{paperName}</Text>
       <View style={styles.centerBlock}>
         {examLine ? <Text style={styles.examLine}>{examLine}</Text> : null}
         {subjectLine ? <Text style={styles.subjectLine}>{subjectLine}</Text> : null}

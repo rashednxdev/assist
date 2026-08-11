@@ -21,6 +21,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
 import { useAnswerHistory } from '@/hooks/useAnswerHistory';
 import { hasLearningModule, findModuleStop, isModuleEffectivelyStopped } from '@/lib/api';
+import { canManageUsers } from '@/lib/users-api';
 import {
   fetchProgressDashboard,
   type ProgressDashboardData,
@@ -318,6 +319,25 @@ export default function HomeScreen() {
                 </View>
                 <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
               </Pressable>
+              {canManageUsers(user) ? (
+                <>
+                  <View style={styles.menuDivider} />
+                  <Pressable
+                    style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
+                    onPress={() => {
+                      setMenuOpen(false);
+                      router.push('/(app)/users' as Href);
+                    }}
+                  >
+                    <Ionicons name="people-outline" size={20} color={colors.primary} />
+                    <View style={styles.menuItemText}>
+                      <Text style={styles.menuItemTitle}>Users</Text>
+                      <Text style={styles.menuItemSub}>Manage users, module access & notify</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+                  </Pressable>
+                </>
+              ) : null}
               <View style={styles.menuDivider} />
               <Pressable
                 style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
@@ -383,18 +403,6 @@ export default function HomeScreen() {
             enabled
             onPress={() => router.push('/(app)/history' as Href)}
           />
-          {user?.is_super_admin ||
-          user?.user_type === 'system_admin' ||
-          user?.user_type === 'admin' ? (
-            <ModuleTile
-              title="Users"
-              subtitle="Manage users, module access & notify"
-              icon="people-outline"
-              color="#475569"
-              enabled
-              onPress={() => router.push('/(app)/users' as Href)}
-            />
-          ) : null}
         </View>
 
         <Text style={styles.sectionTitle}>Marathon Review</Text>

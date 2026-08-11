@@ -148,7 +148,7 @@ export const navGroups: NavGroup[] = [
     title: 'Administration',
     adminOnly: true,
     items: [
-      { href: '/admin/users', label: 'Users', icon: Users, moduleCode: 'USER', requireCreate: true },
+      { href: '/admin/users', label: 'Users', icon: Users, moduleCode: 'USER' },
       { href: '/admin/setup/modules', label: 'Modules', icon: Layers, moduleCode: 'SETUP', requireCreate: true },
       { href: '/admin/setup/geography', label: 'Geography', icon: MapPin, moduleCode: 'SETUP', requireCreate: true },
       { href: '/admin/cache', label: 'Content cache', icon: Database, moduleCode: 'SETUP', requireCreate: true },

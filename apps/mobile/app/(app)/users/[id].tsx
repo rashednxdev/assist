@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/Button';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
 import { useAuth } from '@/lib/auth-context';
 import {
+  canManageUsers,
   fetchAdminUser,
   fetchSetupModules,
   fetchUserModuleAccess,
@@ -47,8 +48,7 @@ type PermFlag = (typeof PERM_FLAGS)[number];
 export default function UserDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user: me } = useAuth();
-  const isAdmin =
-    me?.is_super_admin || me?.user_type === 'system_admin' || me?.user_type === 'admin';
+  const isAdmin = canManageUsers(me);
 
   const [tab, setTab] = useState<Tab>('profile');
   const [detail, setDetail] = useState<AdminUserDetail | null>(null);

@@ -65,6 +65,9 @@ export function canSeeNavItem(
 
   if (!item.moduleCode) return true;
 
+  // Users administration is never available to applicant accounts.
+  if (item.moduleCode === 'USER' && user.user_type === 'applicant') return false;
+
   if (item.requireCreate) {
     return hasModuleCreate(grants, item.moduleCode);
   }

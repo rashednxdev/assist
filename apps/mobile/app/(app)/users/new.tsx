@@ -4,7 +4,7 @@ import { useRouter, type Href } from 'expo-router';
 import { TextField } from '@/components/ui/TextField';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/lib/auth-context';
-import { createAdminUser } from '@/lib/users-api';
+import { canManageUsers, createAdminUser } from '@/lib/users-api';
 import { colors, spacing } from '@/theme';
 
 const USER_TYPES = [
@@ -17,8 +17,7 @@ const USER_TYPES = [
 export default function NewUserScreen() {
   const router = useRouter();
   const { user } = useAuth();
-  const isAdmin =
-    user?.is_super_admin || user?.user_type === 'system_admin' || user?.user_type === 'admin';
+  const isAdmin = canManageUsers(user);
 
   const [fullName, setFullName] = useState('');
   const [fullNameBn, setFullNameBn] = useState('');

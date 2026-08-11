@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
 import { requireAdmin } from '../../middleware/requireAdmin.js';
+import { requireModulePermission } from '../../middleware/requireModulePermission.js';
 import { asyncHandler } from '../../shared/asyncHandler.js';
 import {
   sendNotificationHandler,
@@ -22,5 +23,11 @@ adminNotificationsRouter.post('/mine/read-all', asyncHandler(markAllNotification
 adminNotificationsRouter.post('/devices', asyncHandler(registerDeviceHandler));
 adminNotificationsRouter.delete('/devices/:deviceId', asyncHandler(unregisterDeviceHandler));
 
-adminNotificationsRouter.post('/', requireAdmin, asyncHandler(sendNotificationHandler));
+const notifySendAccess = requireModulePermission([
+  { moduleCode: 'NOTICE', permission: 'can_create' },
+  { moduleCode: 'USER', permission: 'can_create' },
+  { moduleCode: 'USER', permission: 'can_update' },
+]);
+
+adminNotificationsRouter.post('/', notifySendAccess, asyncHandler(sendNotificationHandler));
 adminNotificationsRouter.get('/', requireAdmin, asyncHandler(listSentNotificationsHandler));

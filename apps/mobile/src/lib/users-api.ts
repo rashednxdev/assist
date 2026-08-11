@@ -9,6 +9,8 @@ export interface AdminUserRow {
   user_type: string;
   status: string;
   is_super_admin?: boolean;
+  /** Admin-only. */
+  amount_received?: number;
 }
 
 export interface AdminUserDetail extends AdminUserRow {
@@ -111,6 +113,7 @@ export async function updateAdminUser(
     allow_multi_device: boolean;
     clear_bound_device: boolean;
     force_logout: boolean;
+    amount_received: number;
   }>,
 ) {
   return apiFetch<{ data: AdminUserDetail }>(`/users/${id}`, {

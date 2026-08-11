@@ -26,6 +26,8 @@ export interface IUser extends Document {
   email_verified: boolean;
   phone_verified: boolean;
   is_super_admin: boolean;
+  /** Admin-only accounting field — not exposed on /auth/me. */
+  amount_received: number;
   created_by: Types.ObjectId;
   created_at: Date;
   updated_at: Date;
@@ -68,6 +70,7 @@ const userSchema = new Schema<IUser>(
     email_verified: { type: Boolean, default: false },
     phone_verified: { type: Boolean, default: false },
     is_super_admin: { type: Boolean, default: false },
+    amount_received: { type: Number, default: 0, min: 0 },
     created_by: { type: Schema.Types.ObjectId, required: true },
   },
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } },

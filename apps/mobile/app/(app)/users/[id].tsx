@@ -112,6 +112,7 @@ export default function UserDetailScreen() {
         status: detail.status,
         is_super_admin: detail.is_super_admin,
         allow_multi_device: detail.allow_multi_device ?? false,
+        amount_received: Number(detail.amount_received ?? 0),
       });
       setDetail(updated.data);
       setMessage('Profile saved');
@@ -282,6 +283,18 @@ export default function UserDetailScreen() {
               value={detail.phone}
               onChangeText={(v) => setDetail({ ...detail, phone: v })}
               keyboardType="phone-pad"
+            />
+            <TextField
+              label="Amount received"
+              value={String(detail.amount_received ?? 0)}
+              onChangeText={(v) => {
+                const cleaned = v.replace(/[^0-9.]/g, '');
+                setDetail({
+                  ...detail,
+                  amount_received: cleaned === '' ? 0 : Number(cleaned),
+                });
+              }}
+              keyboardType="decimal-pad"
             />
             <Text style={styles.label}>User type</Text>
             <View style={styles.chips}>

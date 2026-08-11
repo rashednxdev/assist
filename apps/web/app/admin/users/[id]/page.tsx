@@ -28,6 +28,7 @@ interface UserDetail {
   bound_device_id?: string | null;
   bound_device_at?: string | null;
   bound_device_label?: string | null;
+  amount_received?: number;
   workflow_roles: Array<{ role_code: string; is_active: boolean; role_id: string }>;
 }
 
@@ -173,6 +174,7 @@ export default function EditUserPage() {
           is_verified: user.is_verified,
           is_super_admin: user.is_super_admin,
           allow_multi_device: user.allow_multi_device ?? false,
+          amount_received: Number(user.amount_received ?? 0),
         }),
       });
       setMessage('Profile saved');
@@ -371,6 +373,22 @@ export default function EditUserPage() {
                     required
                   />
                 </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Amount received</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={user.amount_received ?? 0}
+                  onChange={(e) =>
+                    setUser({
+                      ...user,
+                      amount_received: e.target.value === '' ? 0 : Number(e.target.value),
+                    })
+                  }
+                />
+                <p className="text-xs text-muted">Admin only — not shown on the user&apos;s own profile.</p>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">

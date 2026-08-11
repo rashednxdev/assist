@@ -21,6 +21,7 @@ interface UserRow {
   phone: string;
   user_type: string;
   status: string;
+  amount_received?: number;
 }
 
 function statusVariant(status: string): 'success' | 'warning' | 'destructive' | 'secondary' {
@@ -115,6 +116,15 @@ export default function UsersPage() {
               },
               { key: 'email', header: 'Email', cell: (u) => u.email },
               { key: 'phone', header: 'Phone', className: 'hidden md:table-cell', cell: (u) => u.phone },
+              {
+                key: 'amount_received',
+                header: 'Amount received',
+                className: 'hidden sm:table-cell',
+                cell: (u) =>
+                  typeof u.amount_received === 'number'
+                    ? u.amount_received.toLocaleString()
+                    : '0',
+              },
               {
                 key: 'type',
                 header: 'Type',

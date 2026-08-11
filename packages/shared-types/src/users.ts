@@ -11,6 +11,8 @@ export const createUserSchema = z.object({
   employee_id: z.string().optional(),
   nid: z.string().optional(),
   is_super_admin: z.boolean().optional().default(false),
+  /** Admin-only. Not returned on the user's own /me profile. */
+  amount_received: z.number().min(0).optional().default(0),
 });
 
 export type CreateUserDto = z.infer<typeof createUserSchema>;
@@ -27,6 +29,8 @@ export const updateUserSchema = createUserSchema
     clear_bound_device: z.boolean().optional(),
     /** Invalidate all existing sessions (force the user to sign in again). */
     force_logout: z.boolean().optional(),
+    /** Admin-only amount received (currency units). */
+    amount_received: z.number().min(0).optional(),
   });
 
 export type UpdateUserDto = z.infer<typeof updateUserSchema>;

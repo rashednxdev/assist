@@ -124,6 +124,9 @@ export default function UsersListScreen() {
             <View style={styles.body}>
               <Text style={styles.title}>{item.full_name_en}</Text>
               <Text style={styles.sub}>{item.phone || item.email}</Text>
+              <Text style={styles.amount}>
+                Amount received: {(item.amount_received ?? 0).toLocaleString()}
+              </Text>
               <View style={styles.badges}>
                 <BookBadge label={item.user_type} variant="muted" />
                 <BookBadge label={item.status} variant="muted" />
@@ -203,5 +206,6 @@ const styles = StyleSheet.create({
   body: { flex: 1, gap: 4 },
   title: { fontSize: 16, fontWeight: '700', color: colors.text },
   sub: { fontSize: 13, color: colors.textMuted },
+  amount: { fontSize: 13, fontWeight: '600', color: colors.text },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
 });

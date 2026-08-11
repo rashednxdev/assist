@@ -22,6 +22,7 @@ async function serializeUser(user: InstanceType<typeof User>) {
     status: user.status,
     is_verified: user.is_verified,
     is_super_admin: user.is_super_admin,
+    amount_received: Number(user.amount_received ?? 0),
     workflow_roles: user.workflow_roles,
     allow_multi_device: Boolean(credentials?.allow_multi_device),
     bound_device_id: credentials?.bound_device_id ?? null,
@@ -91,6 +92,7 @@ export async function createUser(dto: CreateUserDto, createdBy: string, creatorI
     email_verified: true,
     phone_verified: true,
     is_super_admin: dto.is_super_admin ?? false,
+    amount_received: dto.amount_received ?? 0,
     created_by: new mongoose.Types.ObjectId(createdBy),
   });
 
@@ -131,6 +133,7 @@ export async function updateUser(id: string, dto: UpdateUserDto) {
   if (dto.status !== undefined) user.status = dto.status;
   if (dto.is_verified !== undefined) user.is_verified = dto.is_verified;
   if (dto.is_super_admin !== undefined) user.is_super_admin = dto.is_super_admin;
+  if (dto.amount_received !== undefined) user.amount_received = dto.amount_received;
 
   await user.save();
 

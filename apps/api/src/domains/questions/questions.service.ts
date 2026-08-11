@@ -1233,7 +1233,7 @@ export async function listQuestions(
 
   if (filters.exam_subject_id) {
     const tagged = await QuestionSubjectLink.find({
-      exam_subject_id: filters.exam_subject_id,
+      exam_subject_id: new mongoose.Types.ObjectId(filters.exam_subject_id),
       is_active: true,
     }).select('question_id');
     const taggedIds = tagged.map((l) => l.question_id);

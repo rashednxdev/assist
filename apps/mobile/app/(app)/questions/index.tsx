@@ -18,8 +18,8 @@ import { BookBadge } from '@/components/books/BookBadge';
 import { BookEmpty, BookError } from '@/components/books/BookStates';
 import { RatingIndicator } from '@/components/evaluation/RatingIndicator';
 import { fetchQuestionEvaluationsBatchChunked, type QuestionEvalBrief } from '@/lib/evaluation-api';
-import { fetchQuestionTypes } from '@/lib/questions-api';
-import { getCachedQuestionListItems } from '@/lib/questions-db';
+import { fetchQuestionTypes, fetchQuestionSubjectCatalog, fetchQuestionsBySubject } from '@/lib/questions-api';
+import { getCachedQuestionListItems, mergeCachedQuestionSubjects } from '@/lib/questions-db';
 import { subscribeQuestionsSync, syncQuestions } from '@/lib/questions-sync';
 import { searchQuestionsByText } from '@/lib/question-search';
 import { questionDetailHref } from '@/lib/question-routes';
@@ -111,6 +111,10 @@ export default function QuestionsScreen() {
   const [bookMenuOpen, setBookMenuOpen] = useState(false);
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
+  const [subjectCatalog, setSubjectCatalog] = useState<
+    Array<{ id: string; name: string; label: string }>
+  >([]);
+  const [subjectMatchIds, setSubjectMatchIds] = useState<Set<string> | null>(null);
   const [groupByBooks, setGroupByBooks] = useState(false);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [evalMap, setEvalMap] = useState<Map<string, QuestionEvalBrief>>(new Map());
@@ -134,16 +138,23 @@ export default function QuestionsScreen() {
 
   const subjectOptions = useMemo(() => {
     const map = new Map<string, { id: string; name: string; count: number }>();
+    for (const s of subjectCatalog) {
+      map.set(s.id, { id: s.id, name: s.name, count: 0 });
+    }
     for (const item of items) {
       for (const subject of item.subjects ?? []) {
         const label = subject.name_bn?.trim() || subject.name;
         const existing = map.get(subject.id);
-        if (existing) existing.count += 1;
-        else map.set(subject.id, { id: subject.id, name: label, count: 1 });
+        if (existing) {
+          existing.count += 1;
+          if (!existing.name) existing.name = label;
+        } else {
+          map.set(subject.id, { id: subject.id, name: label, count: 1 });
+        }
       }
     }
     return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
-  }, [items]);
+  }, [items, subjectCatalog]);
 
   const selectedBookName = selectedBookId
     ? bookOptions.find((b) => b.id === selectedBookId)?.name
@@ -163,14 +174,18 @@ export default function QuestionsScreen() {
     return items.filter((item) => {
       if (selectedBookId && item.book_id !== selectedBookId) return false;
       if (selectedSubjectId) {
-        const tagged = (item.subjects ?? []).some((s) => s.id === selectedSubjectId);
-        if (!tagged) return false;
+        if (subjectMatchIds) {
+          if (!subjectMatchIds.has(item.id)) return false;
+        } else {
+          const tagged = (item.subjects ?? []).some((s) => s.id === selectedSubjectId);
+          if (!tagged) return false;
+        }
       }
       if (typeCode && item.question_type_code !== typeCode) return false;
       if (difficulty && item.difficulty !== difficulty) return false;
       return true;
     });
-  }, [items, selectedBookId, selectedSubjectId, typeCode, difficulty]);
+  }, [items, selectedBookId, selectedSubjectId, subjectMatchIds, typeCode, difficulty]);
 
   /**
    * Search runs against the full filtered cache (not only the first page), so results include
@@ -271,8 +286,54 @@ export default function QuestionsScreen() {
         // Non-fatal — type chips fall back to raw type code.
       });
 
+    fetchQuestionSubjectCatalog()
+      .then((rows) =>
+        setSubjectCatalog(
+          rows.map((r) => ({
+            id: r.id,
+            name: r.name_bn?.trim() || r.name,
+            label: r.label,
+          })),
+        ),
+      )
+      .catch(() => setSubjectCatalog([]));
+
     return subscribeQuestionsSync(refreshFromCache);
   }, [refreshFromCache]);
+
+  useEffect(() => {
+    if (!selectedSubjectId) {
+      setSubjectMatchIds(null);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      const cached = getCachedQuestionListItems();
+      const localTagged = cached.some((item) =>
+        (item.subjects ?? []).some((s) => s.id === selectedSubjectId),
+      );
+      if (localTagged) {
+        setSubjectMatchIds(null);
+        return;
+      }
+      try {
+        const rows = await fetchQuestionsBySubject(selectedSubjectId);
+        if (cancelled) return;
+        mergeCachedQuestionSubjects(
+          rows.map((r) => ({ id: r.id, subjects: r.subjects ?? [] })),
+        );
+        setSubjectMatchIds(new Set(rows.map((r) => r.id)));
+        refreshFromCache();
+      } catch {
+        if (!cancelled) setSubjectMatchIds(new Set());
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSubjectId, refreshFromCache]);
 
   const runSync = useCallback(async () => {
     setSyncing(true);
@@ -318,6 +379,7 @@ export default function QuestionsScreen() {
     setDifficulty('');
     setSelectedBookId(null);
     setSelectedSubjectId(null);
+    setSubjectMatchIds(null);
     setGroupByBooks(false);
     setBookMenuOpen(false);
   }

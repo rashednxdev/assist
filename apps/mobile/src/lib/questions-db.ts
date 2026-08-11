@@ -250,6 +250,21 @@ export function getCachedQuestionListItems(): QuestionListItem[] {
   return rows.map(toQuestionListItem);
 }
 
+/** Merge server subject tags into already-cached question rows (does not insert missing questions). */
+export function mergeCachedQuestionSubjects(
+  rows: Array<{ id: string; subjects?: Array<{ id: string; name: string; name_bn?: string }> }>,
+): void {
+  if (rows.length === 0) return;
+  const database = getDb();
+  database.withTransactionSync(() => {
+    for (const row of rows) {
+      const payload =
+        row.subjects && row.subjects.length > 0 ? JSON.stringify(row.subjects) : null;
+      database.runSync('UPDATE questions SET subject_links = ? WHERE id = ?', [payload, row.id]);
+    }
+  });
+}
+
 /**
  * Published MCQs linked to a book chapter, for Marathon Review. Ordering approximates the
  * server's book/chapter grouping (book name, then chapter number, then question text) — good

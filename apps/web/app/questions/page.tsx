@@ -182,7 +182,6 @@ export default function QuestionsPage() {
   }
 
   useEffect(() => {
-    load();
     loadTypes();
     fetchMe()
       .then((res) => setIsAdmin(isPlatformAdmin(res.data)))
@@ -229,6 +228,12 @@ export default function QuestionsPage() {
       })
       .catch(() => setFilterChapters([]));
   }, [filterBookId]);
+
+  // Apply subject / book / chapter / type filters as soon as they change (no extra Search click).
+  useEffect(() => {
+    load(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: reload when filters change
+  }, [filterSubjectId, filterBookId, filterChapterId, typeCode, difficulty, reviewStatusFilter, sortOption]);
 
   async function saveQuestionType(e: React.FormEvent) {
     e.preventDefault();

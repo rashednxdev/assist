@@ -8,6 +8,10 @@ import { BookChapter } from '../books/models/BookChapter.model.js';
 import { getSyllabusTree } from '../syllabus/syllabus.service.js';
 import { notFound, badRequest } from '../../shared/errors/AppError.js';
 import { bdToday as todayStr, bdCutoff as cutoffStr, bdNowTime as nowTimeStr } from '../../shared/bd-time.js';
+import {
+  subjectObjectIds,
+  type ExamSubjectScope,
+} from '../users/subject-access.service.js';
 
 const DEFAULT_SHOW_PAST_DAYS = 7;
 
@@ -200,10 +204,16 @@ export async function deleteQotdEntry(id: string) {
   return { deleted: true };
 }
 
-export async function listQotdDates(isAdmin: boolean) {
+export async function listQotdDates(isAdmin: boolean, subjectScope?: ExamSubjectScope) {
   const visibility = await visibilityFilter(isAdmin);
+  const subjectIds = subjectObjectIds(subjectScope ?? { mode: 'all' });
+  if (subjectIds && subjectIds.length === 0) return [];
+
+  const match: Record<string, unknown> = { is_active: true, ...visibility };
+  if (subjectIds) match.exam_subject_id = { $in: subjectIds };
+
   const rows = await QotdEntry.aggregate<{ _id: string; subject_count: number; question_count: number }>([
-    { $match: { is_active: true, ...visibility } },
+    { $match: match },
     {
       $group: {
         _id: '$date',
@@ -230,9 +240,21 @@ async function resolveQuestionItems(questionIds: (mongoose.Types.ObjectId | stri
   return { byId, bookNameByChapter };
 }
 
-export async function getEntriesForDate(date: string, isAdmin: boolean) {
+export async function getEntriesForDate(
+  date: string,
+  isAdmin: boolean,
+  subjectScope?: ExamSubjectScope,
+) {
   const visibility = await visibilityFilter(isAdmin);
-  const entries = await QotdEntry.find({ is_active: true, date, ...visibility });
+  const allowedSubjectIds = subjectObjectIds(subjectScope ?? { mode: 'all' });
+  if (allowedSubjectIds && allowedSubjectIds.length === 0) {
+    if (isAdmin) return { date, groups: [] };
+    throw notFound('No questions found for this date');
+  }
+
+  const query: Record<string, unknown> = { is_active: true, date, ...visibility };
+  if (allowedSubjectIds) query.exam_subject_id = { $in: allowedSubjectIds };
+  const entries = await QotdEntry.find(query);
 
   if (entries.length === 0) {
     if (isAdmin) return { date, groups: [] };

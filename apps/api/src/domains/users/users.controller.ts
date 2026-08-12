@@ -12,6 +12,12 @@ import * as usersService from './users.service.js';
 import * as moduleAccessService from './module-access.service.js';
 import * as userProfileService from './user-profile.service.js';
 import { logUserActivity } from './models/UserActivityLog.model.js';
+import { listQuestionSubjectCatalog } from '../questions/questions.service.js';
+
+export async function listExamSubjectOptionsHandler(_req: AuthRequest, res: Response): Promise<void> {
+  // Admins configuring user subject access need the full catalog (not learner-scoped).
+  res.json({ data: await listQuestionSubjectCatalog({ mode: 'all' }) });
+}
 
 export async function listUsersHandler(req: AuthRequest, res: Response): Promise<void> {
   const { page, limit, skip } = parsePagination(req);

@@ -5,7 +5,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { BookEmpty, BookLoading } from '@/components/books/BookStates';
 import { SwipeToRemove } from '@/components/saved/SwipeToRemove';
 import { useAnswerHistory } from '@/hooks/useAnswerHistory';
-import { formatRelativeTime, removeAnswerHistoryEntry } from '@/lib/answer-history';
+import {
+  formatRelativeTime,
+  groupAnswerHistoryByDate,
+  HISTORY_DATE_FILTERS,
+  matchesDateFilter,
+  removeAnswerHistoryEntry,
+  type AnswerHistoryDateFilter,
+} from '@/lib/answer-history';
 import { questionDetailHref } from '@/lib/question-routes';
 import { colors, spacing } from '@/theme';
 
@@ -13,12 +20,28 @@ export default function AnswerHistoryScreen() {
   const router = useRouter();
   const { items, ready } = useAnswerHistory();
   const [query, setQuery] = useState('');
+  const [dateFilter, setDateFilter] = useState<AnswerHistoryDateFilter>('all');
+  const [source, setSource] = useState('');
+
+  const sources = useMemo(() => {
+    const names = [...new Set(items.map((row) => row.subtitle?.trim()).filter((v): v is string => Boolean(v)))];
+    return names.sort((a, b) => a.localeCompare(b));
+  }, [items]);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter((row) => row.title.toLowerCase().includes(q));
-  }, [items, query]);
+    return items.filter((row) => {
+      if (!matchesDateFilter(row.viewed_at, dateFilter)) return false;
+      if (source && (row.subtitle ?? '') !== source) return false;
+      if (!q) return true;
+      return (
+        row.title.toLowerCase().includes(q) ||
+        (row.subtitle ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [items, query, dateFilter, source]);
+
+  const groups = useMemo(() => groupAnswerHistoryByDate(visible), [visible]);
 
   if (!ready) return <BookLoading />;
 
@@ -26,7 +49,7 @@ export default function AnswerHistoryScreen() {
     return (
       <BookEmpty
         title="No answer reading history yet"
-        subtitle="Questions you spend at least 6 seconds reading the answer of will show up here, most recent first."
+        subtitle="Questions you spend at least 6 seconds reading the answer of will show up here, grouped by date."
       />
     );
   }
@@ -50,43 +73,101 @@ export default function AnswerHistoryScreen() {
         ) : null}
       </View>
 
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.chips}
+      >
+        {HISTORY_DATE_FILTERS.map((item) => {
+          const active = dateFilter === item.id;
+          return (
+            <Pressable
+              key={item.id}
+              style={[styles.chip, active && styles.chipActive]}
+              onPress={() => setDateFilter(item.id)}
+            >
+              <Text style={[styles.chipText, active && styles.chipTextActive]}>{item.label}</Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
+      {sources.length > 1 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chips}
+        >
+          <Pressable
+            style={[styles.chip, !source && styles.chipActive]}
+            onPress={() => setSource('')}
+          >
+            <Text style={[styles.chipText, !source && styles.chipTextActive]}>All sources</Text>
+          </Pressable>
+          {sources.map((name) => {
+            const active = source === name;
+            return (
+              <Pressable
+                key={name}
+                style={[styles.chip, active && styles.chipActive]}
+                onPress={() => setSource(active ? '' : name)}
+              >
+                <Text style={[styles.chipText, active && styles.chipTextActive]} numberOfLines={1}>
+                  {name}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      ) : null}
+
       <Text style={styles.countLabel}>
         {visible.length} of {items.length} shown
       </Text>
 
       {visible.length === 0 ? (
-        <BookEmpty title="No matches" subtitle="Try a different search term." />
+        <BookEmpty title="No matches" subtitle="Try a different date filter or search term." />
       ) : (
         <ScrollView contentContainerStyle={styles.list}>
-          {visible.map((item) => (
-            <SwipeToRemove
-              key={item.id}
-              confirmTitle="Remove from history?"
-              confirmMessage="Remove this entry from Answer Reading History?"
-              onConfirmRemove={() => removeAnswerHistoryEntry(item.id)}
-            >
-              <Pressable
-                style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-                onPress={() => router.push(questionDetailHref(item.id))}
-              >
-                <View style={styles.iconWrap}>
-                  <Ionicons name="time-outline" size={20} color="#0f5c8c" />
-                </View>
-                <View style={styles.body}>
-                  <Text style={styles.title} numberOfLines={3}>
-                    {item.title}
-                  </Text>
-                  <View style={styles.metaRow}>
-                    {item.subtitle ? (
-                      <Text style={styles.subtitle} numberOfLines={1}>
-                        {item.subtitle}
+          {groups.map((group) => (
+            <View key={group.key} style={styles.group}>
+              <View style={styles.groupHeader}>
+                <Text style={styles.groupLabel}>{group.label}</Text>
+                <Text style={styles.groupCount}>
+                  {group.items.length} {group.items.length === 1 ? 'item' : 'items'}
+                </Text>
+              </View>
+              {group.items.map((item) => (
+                <SwipeToRemove
+                  key={item.id}
+                  confirmTitle="Remove from history?"
+                  confirmMessage="Remove this entry from Answer Reading History?"
+                  onConfirmRemove={() => removeAnswerHistoryEntry(item.id)}
+                >
+                  <Pressable
+                    style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+                    onPress={() => router.push(questionDetailHref(item.id))}
+                  >
+                    <View style={styles.iconWrap}>
+                      <Ionicons name="time-outline" size={20} color="#0f5c8c" />
+                    </View>
+                    <View style={styles.body}>
+                      <Text style={styles.title} numberOfLines={3}>
+                        {item.title}
                       </Text>
-                    ) : null}
-                    <Text style={styles.time}>{formatRelativeTime(item.viewed_at)}</Text>
-                  </View>
-                </View>
-              </Pressable>
-            </SwipeToRemove>
+                      <View style={styles.metaRow}>
+                        {item.subtitle ? (
+                          <Text style={styles.subtitle} numberOfLines={1}>
+                            {item.subtitle}
+                          </Text>
+                        ) : null}
+                        <Text style={styles.time}>{formatRelativeTime(item.viewed_at)}</Text>
+                      </View>
+                    </View>
+                  </Pressable>
+                </SwipeToRemove>
+              ))}
+            </View>
           ))}
         </ScrollView>
       )}
@@ -118,6 +199,31 @@ const styles = StyleSheet.create({
     color: colors.text,
     padding: 0,
   },
+  chips: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    gap: 8,
+  },
+  chip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  chipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  chipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textMuted,
+  },
+  chipTextActive: {
+    color: colors.white,
+  },
   countLabel: {
     fontSize: 12,
     color: colors.textMuted,
@@ -127,8 +233,27 @@ const styles = StyleSheet.create({
   },
   list: {
     padding: spacing.md,
-    gap: spacing.sm,
+    gap: spacing.md,
     paddingBottom: spacing.xl,
+  },
+  group: {
+    gap: spacing.sm,
+  },
+  groupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
+  },
+  groupLabel: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  groupCount: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textMuted,
   },
   row: {
     flexDirection: 'row',

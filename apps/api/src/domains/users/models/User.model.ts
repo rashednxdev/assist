@@ -26,8 +26,14 @@ export interface IUser extends Document {
   email_verified: boolean;
   phone_verified: boolean;
   is_super_admin: boolean;
-  /** Admin-only accounting field — not exposed on /auth/me. */
+  /** Admin-only accounting field — /auth/me exposes only has_paid derived from this. */
   amount_received: number;
+  /**
+   * When true (default), learner content is not filtered by exam subject.
+   * When false, only `exam_subject_ids` are visible in papers / QB / exam-week / QOTD.
+   */
+  all_exam_subjects: boolean;
+  exam_subject_ids: Types.ObjectId[];
   created_by: Types.ObjectId;
   created_at: Date;
   updated_at: Date;
@@ -71,6 +77,8 @@ const userSchema = new Schema<IUser>(
     phone_verified: { type: Boolean, default: false },
     is_super_admin: { type: Boolean, default: false },
     amount_received: { type: Number, default: 0, min: 0 },
+    all_exam_subjects: { type: Boolean, default: true },
+    exam_subject_ids: { type: [Schema.Types.ObjectId], default: [], ref: 'ExamSubject' },
     created_by: { type: Schema.Types.ObjectId, required: true },
   },
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } },

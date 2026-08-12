@@ -13,6 +13,11 @@ export type MeUser = AuthUser & {
   phone_verified: boolean;
   module_access: ModuleAccessGrant[];
   module_stops: ModuleStop[];
+  /** False when amount_received is 0 (admins always true). */
+  has_paid?: boolean;
+  all_exam_subjects?: boolean;
+  exam_subject_ids?: string[];
+  exam_subjects?: Array<{ id: string; name: string; name_bn?: string }>;
 };
 
 export interface AccountSummary {

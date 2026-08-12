@@ -11,8 +11,11 @@ export const createUserSchema = z.object({
   employee_id: z.string().optional(),
   nid: z.string().optional(),
   is_super_admin: z.boolean().optional().default(false),
-  /** Admin-only. Not returned on the user's own /me profile. */
+  /** Admin-only. Not returned on the user's own /me profile (has_paid is). */
   amount_received: z.number().min(0).optional().default(0),
+  /** When true, user may see all exam subjects. When false, only exam_subject_ids. */
+  all_exam_subjects: z.boolean().optional().default(true),
+  exam_subject_ids: z.array(z.string().min(1)).optional().default([]),
 });
 
 export type CreateUserDto = z.infer<typeof createUserSchema>;
@@ -31,6 +34,8 @@ export const updateUserSchema = createUserSchema
     force_logout: z.boolean().optional(),
     /** Admin-only amount received (currency units). */
     amount_received: z.number().min(0).optional(),
+    all_exam_subjects: z.boolean().optional(),
+    exam_subject_ids: z.array(z.string().min(1)).optional(),
   });
 
 export type UpdateUserDto = z.infer<typeof updateUserSchema>;

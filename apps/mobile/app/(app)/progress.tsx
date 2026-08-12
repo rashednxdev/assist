@@ -122,9 +122,9 @@ export default function ProgressDashboardScreen() {
 
           <View style={styles.section}>
             <View style={styles.sectionHead}>
-              <View style={[styles.sectionIcon, { backgroundColor: '#ede9fe' }]}>
-                <Ionicons name="help-circle" size={20} color="#7c3aed" />
-              </View>
+              <View style={[styles.sectionIcon, { backgroundColor: '#ecfdf5' }]}>
+                <Ionicons name="checkmark-done-outline" size={20} color="#059669" />
+              </View
               <View style={styles.sectionHeadText}>
                 <Text style={styles.sectionTitle}>Evaluate MCQ</Text>
                 <Text style={styles.sectionSub}>Based on answers you submitted</Text>

@@ -28,6 +28,11 @@ import { QuestionType } from '../questions/models/QuestionType.model.js';
 import { notFound, badRequest, forbidden } from '../../shared/errors/AppError.js';
 import { bdToday as todayStr, bdNowTime as nowTimeStr } from '../../shared/bd-time.js';
 import type { AuthUser } from '../../middleware/auth.js';
+import {
+  assertExamSubjectAllowed,
+  subjectObjectIds,
+  type ExamSubjectScope,
+} from '../users/subject-access.service.js';
 
 function idStr(v: mongoose.Types.ObjectId | string | undefined) {
   return v ? String(v) : undefined;
@@ -319,13 +324,25 @@ export async function deletePaperType(id: string) {
 
 export async function listPapers(
   filters: ListPapersQuery,
-  options?: { publishedOnly?: boolean; bypassCache?: boolean },
+  options?: {
+    publishedOnly?: boolean;
+    bypassCache?: boolean;
+    subjectScope?: ExamSubjectScope;
+  },
 ) {
+  const subjectIds = subjectObjectIds(options?.subjectScope ?? { mode: 'all' });
+  if (subjectIds && subjectIds.length === 0) return [];
+
+  if (filters.exam_subject_id && subjectIds && !subjectIds.some((id) => String(id) === filters.exam_subject_id)) {
+    return [];
+  }
+
   const canUseCache =
     !options?.bypassCache &&
     Boolean(options?.publishedOnly || filters.is_published === 'true') &&
     !filters.exam_subject_id &&
-    !filters.exam_session_id;
+    !filters.exam_session_id &&
+    !subjectIds;
 
   if (canUseCache) {
     const { cachedPublishedPapers } = await import('../content-cache/content-cache.service.js');
@@ -334,7 +351,11 @@ export async function listPapers(
   }
 
   const query: Record<string, unknown> = { is_active: true };
-  if (filters.exam_subject_id) query.exam_subject_id = filters.exam_subject_id;
+  if (filters.exam_subject_id) {
+    query.exam_subject_id = filters.exam_subject_id;
+  } else if (subjectIds) {
+    query.exam_subject_id = { $in: subjectIds };
+  }
   if (filters.exam_session_id) query.exam_session_id = filters.exam_session_id;
   if (options?.publishedOnly) {
     query.is_published = true;
@@ -372,9 +393,14 @@ export async function listPapers(
   return enriched;
 }
 
-export async function getPaperById(id: string, user?: AuthUser) {
+export async function getPaperById(
+  id: string,
+  user?: AuthUser,
+  subjectScope?: ExamSubjectScope,
+) {
   const paper = await getPaperOrThrow(id);
   assertPaperReadable(paper, user);
+  assertExamSubjectAllowed(subjectScope ?? { mode: 'all' }, String(paper.exam_subject_id));
   const [subjectInfo, type, session] = await Promise.all([
     enrichSubject(paper.exam_subject_id),
     PaperType.findById(paper.paper_type_id),
@@ -393,8 +419,12 @@ export async function getPaperById(id: string, user?: AuthUser) {
   });
 }
 
-export async function getPaperCompose(id: string, user?: AuthUser) {
-  const paper = await getPaperById(id, user);
+export async function getPaperCompose(
+  id: string,
+  user?: AuthUser,
+  subjectScope?: ExamSubjectScope,
+) {
+  const paper = await getPaperById(id, user, subjectScope);
   const groups = await PaperGroup.find({ paper_id: id, is_active: true }).sort({ group_number: 1 });
   const questions = await PaperQuestion.find({ paper_id: id, is_active: true }).sort({ question_number: 1 });
   const pqIds = questions.map((q) => q._id);
@@ -572,8 +602,12 @@ export async function unpublishPaperExamWeek(id: string) {
   return getPaperById(id);
 }
 
-async function listVisibleExamWeekPapers(isAdmin: boolean) {
+async function listVisibleExamWeekPapers(isAdmin: boolean, subjectScope?: ExamSubjectScope) {
+  const subjectIds = subjectObjectIds(subjectScope ?? { mode: 'all' });
+  if (subjectIds && subjectIds.length === 0) return [];
+
   const query: Record<string, unknown> = { is_exam_of_week: true, is_active: true };
+  if (subjectIds) query.exam_subject_id = { $in: subjectIds };
   if (!isAdmin) {
     const today = todayStr();
     query.$or = [
@@ -584,8 +618,11 @@ async function listVisibleExamWeekPapers(isAdmin: boolean) {
   return PaperDetail.find(query).sort({ exam_week_date: -1 });
 }
 
-export async function listExamWeeks(isAdmin: boolean): Promise<ExamWeekSummary[]> {
-  const papers = await listVisibleExamWeekPapers(isAdmin);
+export async function listExamWeeks(
+  isAdmin: boolean,
+  subjectScope?: ExamSubjectScope,
+): Promise<ExamWeekSummary[]> {
+  const papers = await listVisibleExamWeekPapers(isAdmin, subjectScope);
   const buckets = new Map<string, ExamWeekSummary>();
   for (const p of papers) {
     if (!p.exam_week_date) continue;
@@ -597,9 +634,13 @@ export async function listExamWeeks(isAdmin: boolean): Promise<ExamWeekSummary[]
   return [...buckets.values()].sort((a, b) => b.week_start.localeCompare(a.week_start));
 }
 
-export async function listExamWeekPapersInWeek(weekStart: string, isAdmin: boolean) {
+export async function listExamWeekPapersInWeek(
+  weekStart: string,
+  isAdmin: boolean,
+  subjectScope?: ExamSubjectScope,
+) {
   const weekEnd = weekEndFor(weekStart);
-  const papers = (await listVisibleExamWeekPapers(isAdmin)).filter(
+  const papers = (await listVisibleExamWeekPapers(isAdmin, subjectScope)).filter(
     (p) => p.exam_week_date && p.exam_week_date >= weekStart && p.exam_week_date <= weekEnd,
   );
 

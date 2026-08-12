@@ -47,8 +47,50 @@ import { ExamSubject } from '../exams/models/ExamSubject.model.js';
 import { ExamPart } from '../exams/models/ExamPart.model.js';
 import { ExamName } from '../exams/models/ExamName.model.js';
 import { User } from '../users/models/User.model.js';
-import { notFound, badRequest } from '../../shared/errors/AppError.js';
-import { escapeRegex, normalizeQuestionText, queryWordMatchScore } from './question-similarity.js';
+import { notFound, badRequest, forbidden } from '../../shared/errors/AppError.js';
+import {
+  escapeRegex,
+  normalizeQuestionText,
+  queryWordMatchScore,
+  questionTextMatchScore,
+  wordMatchMongoOr,
+} from './question-similarity.js';
+import {
+  isExamSubjectAllowed,
+  subjectObjectIds,
+  type ExamSubjectScope,
+} from '../users/subject-access.service.js';
+
+/** Same pass bar as similar / link-search — ≥50% of query words found in the question text. */
+const QUESTION_SEARCH_MATCH_THRESHOLD = 0.5;
+
+async function questionIdsForSubjectScope(scope: ExamSubjectScope): Promise<mongoose.Types.ObjectId[] | null> {
+  const subjectIds = subjectObjectIds(scope);
+  if (subjectIds === null) return null;
+  if (subjectIds.length === 0) return [];
+  const links = await QuestionSubjectLink.find({
+    exam_subject_id: { $in: subjectIds },
+    is_active: true,
+  }).select('question_id');
+  return [...new Set(links.map((l) => String(l.question_id)))].map(
+    (id) => new mongoose.Types.ObjectId(id),
+  );
+}
+
+async function intersectIdFilter(
+  query: Record<string, unknown>,
+  allowedIds: mongoose.Types.ObjectId[],
+): Promise<boolean> {
+  const existingIdFilter = query._id as { $in?: mongoose.Types.ObjectId[] } | undefined;
+  if (existingIdFilter?.$in) {
+    const allow = new Set(allowedIds.map(String));
+    const next = existingIdFilter.$in.filter((id) => allow.has(String(id)));
+    query._id = { $in: next };
+    return next.length > 0;
+  }
+  query._id = { $in: allowedIds };
+  return allowedIds.length > 0;
+}
 
 const TF_OPTIONS = [
   { option_key: 'a' as const, option_text_en: 'True', option_text_bn: 'সঠিক' },
@@ -1135,16 +1177,30 @@ export async function listQuestions(
     limit: number;
     offset?: number;
   },
-  options?: { bypassCache?: boolean },
+  options?: { bypassCache?: boolean; subjectScope?: ExamSubjectScope },
 ) {
   const offset = Math.max(0, filters.offset ?? 0);
   const limit = filters.limit;
+  const subjectScope = options?.subjectScope ?? { mode: 'all' };
+  const scopedQuestionIds = await questionIdsForSubjectScope(subjectScope);
+  if (scopedQuestionIds && scopedQuestionIds.length === 0) {
+    return { items: [], total: 0, limit, offset };
+  }
+
+  if (
+    filters.exam_subject_id &&
+    subjectScope.mode === 'subset' &&
+    !subjectScope.ids.includes(filters.exam_subject_id)
+  ) {
+    return { items: [], total: 0, limit, offset };
+  }
 
   const canUsePublishedCache =
     !options?.bypassCache &&
     filters.is_published === true &&
     filters.trashed !== true &&
-    !filters.exam_subject_id;
+    !filters.exam_subject_id &&
+    !scopedQuestionIds;
 
   if (canUsePublishedCache) {
     const { cachedPublishedQuestions } = await import('../content-cache/content-cache.service.js');
@@ -1188,14 +1244,19 @@ export async function listQuestions(
         if (filters.book_info_id) list = list.filter((q) => q.book_id === filters.book_info_id);
       }
       if (filters.q?.trim()) {
-        const q = filters.q.trim().toLowerCase();
-        list = list.filter(
-          (row) =>
-            (row.body_en ?? '').toLowerCase().includes(q) ||
-            (row.body_bn ?? '').toLowerCase().includes(q),
-        );
+        const q = filters.q.trim();
+        // Same word-match standard as similar questions / link-search (not full-string substring).
+        list = list
+          .map((row) => ({
+            row,
+            score: questionTextMatchScore(q, row.body_en, row.body_bn),
+          }))
+          .filter((item) => item.score >= QUESTION_SEARCH_MATCH_THRESHOLD)
+          .sort((a, b) => b.score - a.score)
+          .map((item) => item.row);
+      } else {
+        list = sortCachedQuestions(list, filters.sort);
       }
-      list = sortCachedQuestions(list, filters.sort);
       const total = list.length;
       const items = list.slice(offset, offset + limit);
       return { items, total, limit, offset };
@@ -1240,25 +1301,38 @@ export async function listQuestions(
     if (taggedIds.length === 0) {
       return { items: [], total: 0, limit, offset };
     }
-    const existingIdFilter = query._id as { $in?: mongoose.Types.ObjectId[] } | undefined;
-    if (existingIdFilter?.$in) {
-      const allow = new Set(taggedIds.map(String));
-      query._id = { $in: existingIdFilter.$in.filter((id) => allow.has(String(id))) };
-    } else {
-      query._id = { $in: taggedIds };
-    }
+    const ok = await intersectIdFilter(query, taggedIds);
+    if (!ok) return { items: [], total: 0, limit, offset };
+  } else if (scopedQuestionIds) {
+    const ok = await intersectIdFilter(query, scopedQuestionIds);
+    if (!ok) return { items: [], total: 0, limit, offset };
   }
 
-  if (filters.q?.trim()) {
-    const q = filters.q.trim();
-    query.$or = [{ body_en: { $regex: q, $options: 'i' } }, { body_bn: { $regex: q, $options: 'i' } }];
-  }
+  const searchText = filters.q?.trim() ?? '';
+  let total: number;
+  let items: InstanceType<typeof Question>[];
 
-  const [total, items] = await Promise.all([
-    Question.countDocuments(query),
-    // _id tiebreaker so skip/offset pages do not overlap or repeat
-    Question.find(query).sort(questionMongoSort(filters.sort)).skip(offset).limit(limit),
-  ]);
+  if (searchText) {
+    // Word prefilter + ≥50% query-word score — same standard as GET /questions/similar.
+    const wordOr = wordMatchMongoOr(searchText);
+    if (wordOr) query.$or = wordOr;
+    const candidates = await Question.find(query).sort(questionMongoSort(filters.sort));
+    const matched = candidates
+      .map((doc) => ({
+        doc,
+        score: questionTextMatchScore(searchText, doc.body_en, doc.body_bn),
+      }))
+      .filter((item) => item.score >= QUESTION_SEARCH_MATCH_THRESHOLD)
+      .sort((a, b) => b.score - a.score);
+    total = matched.length;
+    items = matched.slice(offset, offset + limit).map((item) => item.doc);
+  } else {
+    [total, items] = await Promise.all([
+      Question.countDocuments(query),
+      // _id tiebreaker so skip/offset pages do not overlap or repeat
+      Question.find(query).sort(questionMongoSort(filters.sort)).skip(offset).limit(limit),
+    ]);
+  }
 
   const typeIds = [...new Set(items.map((q) => String(q.question_type_id)))];
   const types = typeIds.length > 0 ? await QuestionType.find({ _id: { $in: typeIds } }) : [];
@@ -1361,11 +1435,23 @@ export async function listMarathonReview(
   };
   if (filters.q?.trim()) {
     const q = filters.q.trim();
-    query.$or = [{ body_en: { $regex: q, $options: 'i' } }, { body_bn: { $regex: q, $options: 'i' } }];
+    const wordOr = wordMatchMongoOr(q);
+    if (wordOr) query.$or = wordOr;
   }
 
   // Stable order so offset pages do not shuffle between requests.
-  const questions = await Question.find(query).sort({ _id: 1 });
+  let questions = await Question.find(query).sort({ _id: 1 });
+  if (filters.q?.trim()) {
+    const q = filters.q.trim();
+    questions = questions
+      .map((doc) => ({
+        doc,
+        score: questionTextMatchScore(q, doc.body_en, doc.body_bn),
+      }))
+      .filter((item) => item.score >= QUESTION_SEARCH_MATCH_THRESHOLD)
+      .sort((a, b) => b.score - a.score)
+      .map((item) => item.doc);
+  }
   if (questions.length === 0) {
     return { items: [], total: 0, limit, offset };
   }
@@ -1485,8 +1571,23 @@ export async function listMarathonReview(
   return { items, total, limit, offset };
 }
 
-export async function getQuestionById(id: string) {
-  return loadQuestionDetail(id);
+export async function getQuestionById(
+  id: string,
+  options?: { subjectScope?: ExamSubjectScope },
+) {
+  const detail = await loadQuestionDetail(id);
+  const scope = options?.subjectScope;
+  if (scope && scope.mode !== 'all') {
+    const links = await QuestionSubjectLink.find({
+      question_id: id,
+      is_active: true,
+    }).select('exam_subject_id');
+    const ok = links.some((l) => isExamSubjectAllowed(scope, String(l.exam_subject_id)));
+    if (!ok) {
+      throw forbidden('This content is not available for your allowed subjects.');
+    }
+  }
+  return detail;
 }
 
 export async function createQuestion(dto: CreateQuestionDto, createdBy: string) {
@@ -1601,10 +1702,16 @@ export type QuestionSubjectTag = {
   exam_part_name?: string;
 };
 
-export async function listQuestionSubjectCatalog(): Promise<
-  Array<{ id: string; name: string; name_bn?: string; label: string; exam_name?: string }>
-> {
-  const subjects = await ExamSubject.find({ is_active: true }).sort({ name: 1 });
+export async function listQuestionSubjectCatalog(
+  subjectScope?: ExamSubjectScope,
+): Promise<Array<{ id: string; name: string; name_bn?: string; label: string; exam_name?: string }>> {
+  const subjectIds = subjectObjectIds(subjectScope ?? { mode: 'all' });
+  if (subjectIds && subjectIds.length === 0) return [];
+
+  const subjects = await ExamSubject.find({
+    is_active: true,
+    ...(subjectIds ? { _id: { $in: subjectIds } } : {}),
+  }).sort({ name: 1 });
   if (subjects.length === 0) return [];
 
   const partIds = [...new Set(subjects.map((s) => String(s.exam_part_id)))];
@@ -2514,11 +2621,14 @@ async function resolveDifferencesQuestionType(questionTypeId?: string) {
  * the client to hide them); `deletions` covers hard deletes only, via the QuestionDeletion tombstone
  * (see permanentlyDeleteQuestion) since those otherwise vanish from the query with no trace.
  */
-export async function listQuestionsSync(filters: {
-  since?: Date;
-  cursor?: string;
-  limit?: number;
-}): Promise<{
+export async function listQuestionsSync(
+  filters: {
+    since?: Date;
+    cursor?: string;
+    limit?: number;
+  },
+  syncOptions?: { subjectScope?: ExamSubjectScope },
+): Promise<{
   data: QuestionSyncRow[];
   deletions: QuestionSyncDeletion[];
   has_more: boolean;
@@ -2526,16 +2636,33 @@ export async function listQuestionsSync(filters: {
   synced_at: string;
 }> {
   const limit = Math.min(500, Math.max(1, filters.limit ?? 200));
+  const scopedQuestionIds = await questionIdsForSubjectScope(syncOptions?.subjectScope ?? { mode: 'all' });
+  if (scopedQuestionIds && scopedQuestionIds.length === 0) {
+    return {
+      data: [],
+      deletions: [],
+      has_more: false,
+      synced_at: new Date().toISOString(),
+    };
+  }
 
   const seekFilter: Record<string, unknown> = {};
+  if (scopedQuestionIds) {
+    seekFilter._id = { $in: scopedQuestionIds };
+  }
   if (filters.cursor) {
     const [cursorTs, cursorId] = filters.cursor.split('|');
     const cursorDate = cursorTs ? new Date(cursorTs) : undefined;
     if (cursorDate && !Number.isNaN(cursorDate.getTime()) && cursorId) {
-      seekFilter.$or = [
-        { updated_at: { $gt: cursorDate } },
-        { updated_at: cursorDate, _id: { $gt: new mongoose.Types.ObjectId(cursorId) } },
-      ];
+      const cursorClause = {
+        $or: [
+          { updated_at: { $gt: cursorDate } },
+          { updated_at: cursorDate, _id: { $gt: new mongoose.Types.ObjectId(cursorId) } },
+        ],
+      };
+      seekFilter.$and = seekFilter.$and
+        ? [...(seekFilter.$and as unknown[]), cursorClause]
+        : [cursorClause];
     }
   } else if (filters.since) {
     seekFilter.updated_at = { $gt: filters.since };

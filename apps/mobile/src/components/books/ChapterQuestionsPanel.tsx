@@ -93,7 +93,7 @@ export function ChapterQuestionsButton({
       accessibilityLabel="View tagged questions"
     >
       <Ionicons
-        name="help-circle-outline"
+        name="list-outline"
         size={16}
         color={highlighted ? colors.white : colors.primary}
       />

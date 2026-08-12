@@ -67,6 +67,9 @@ export type MeUser = AuthUser & {
   email_verified: boolean;
   phone_verified: boolean;
   module_access: ModuleAccessGrant[];
+  has_paid?: boolean;
+  all_exam_subjects?: boolean;
+  exam_subject_ids?: string[];
 };
 
 export async function loginRequest(email: string, password: string): Promise<LoginResponse> {

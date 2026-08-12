@@ -25,7 +25,7 @@ const MODULES: Array<{
     kind: 'question',
     title: 'Question Bank',
     subtitle: 'Saved practice questions',
-    icon: 'help-circle-outline',
+    icon: 'list-outline',
     color: '#7c3aed',
     href: '/(app)/saved/questions' as Href,
   },

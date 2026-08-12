@@ -21,6 +21,7 @@ import {
 import type { AuthRequest } from '../../middleware/auth.js';
 import { hasModulePermission } from '../users/module-access.service.js';
 import * as questionsService from './questions.service.js';
+import { getExamSubjectScopeForAuthUser } from '../users/subject-access.service.js';
 
 export async function createQuestionTypeHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = createQuestionTypeSchema.parse(req.body);
@@ -57,8 +58,11 @@ export async function listQuestionsHandler(req: AuthRequest, res: Response): Pro
   // Regular mobile Question Bank users only ever receive published questions; admins and
   // the mobile Question Update module (draft/quality_check/published review workflow) see all.
   const listFilters = canSeeAllStatuses ? filters : { ...filters, is_published: true as const };
+  const subjectScope = await getExamSubjectScopeForAuthUser(user);
 
-  const { items, total, limit, offset } = await questionsService.listQuestions(listFilters);
+  const { items, total, limit, offset } = await questionsService.listQuestions(listFilters, {
+    subjectScope,
+  });
   res.json({
     data: items,
     meta: {
@@ -106,7 +110,8 @@ export async function listMarathonReviewHandler(req: AuthRequest, res: Response)
 
 export async function questionsSyncHandler(req: AuthRequest, res: Response): Promise<void> {
   const filters = questionsSyncQuerySchema.parse(req.query);
-  const result = await questionsService.listQuestionsSync(filters);
+  const subjectScope = await getExamSubjectScopeForAuthUser(req.user);
+  const result = await questionsService.listQuestionsSync(filters, { subjectScope });
   res.json({ data: result });
 }
 
@@ -123,7 +128,8 @@ export async function linkQuestionSearchHandler(req: AuthRequest, res: Response)
 }
 
 export async function getQuestionHandler(req: AuthRequest, res: Response): Promise<void> {
-  const data = await questionsService.getQuestionById(String(req.params.id));
+  const subjectScope = await getExamSubjectScopeForAuthUser(req.user);
+  const data = await questionsService.getQuestionById(String(req.params.id), { subjectScope });
   res.json({ data });
 }
 
@@ -254,10 +260,11 @@ export async function deleteQuestionBookLinkHandler(req: AuthRequest, res: Respo
 }
 
 export async function listQuestionSubjectCatalogHandler(
-  _req: AuthRequest,
+  req: AuthRequest,
   res: Response,
 ): Promise<void> {
-  res.json({ data: await questionsService.listQuestionSubjectCatalog() });
+  const subjectScope = await getExamSubjectScopeForAuthUser(req.user);
+  res.json({ data: await questionsService.listQuestionSubjectCatalog(subjectScope) });
 }
 
 export async function listQuestionSubjectLinksHandler(req: AuthRequest, res: Response): Promise<void> {

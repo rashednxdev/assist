@@ -17,6 +17,7 @@ import {
   listAddressesHandler,
   createAddressHandler,
   listActivityHandler,
+  listExamSubjectOptionsHandler,
 } from './users.controller.js';
 
 export const usersRouter = Router();
@@ -43,6 +44,7 @@ const userWrite = requireModulePermission([
 
 usersRouter.use(authenticate, rejectApplicants);
 
+usersRouter.get('/exam-subject-options', userRead, asyncHandler(listExamSubjectOptionsHandler));
 usersRouter.get('/', userRead, asyncHandler(listUsersHandler));
 usersRouter.post('/', userWrite, asyncHandler(createUserHandler));
 usersRouter.get('/:id', userRead, asyncHandler(getUserHandler));

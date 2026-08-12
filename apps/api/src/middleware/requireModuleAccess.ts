@@ -1,8 +1,10 @@
 import type { Response, NextFunction, RequestHandler } from 'express';
+import { isFreeModuleCode } from '@ibas/shared-constants';
 import type { AuthRequest } from './auth.js';
 import { forbidden, unauthorized } from '../shared/errors/AppError.js';
 import { UserModuleAccess } from '../domains/users/models/UserModuleAccess.model.js';
 import { Module } from '../domains/setup/models/Module.model.js';
+import { User } from '../domains/users/models/User.model.js';
 
 /** Admins bypass module grants entirely — mirrors requireAdmin's own check. */
 function isAdmin(user: AuthRequest['user']): boolean {
@@ -41,6 +43,19 @@ async function hasBypassStopGrant(userId: string, moduleCodes: string[]): Promis
   return Boolean(grant);
 }
 
+async function assertPaidIfNeeded(userId: string, moduleCodes: string[]): Promise<void> {
+  if (moduleCodes.every((code) => isFreeModuleCode(code))) return;
+  const user = await User.findById(userId).select('amount_received user_type is_super_admin');
+  if (!user) {
+    throw unauthorized();
+  }
+  if (user.is_super_admin || user.user_type === 'system_admin' || user.user_type === 'admin') return;
+  if (Number(user.amount_received ?? 0) > 0) return;
+  throw forbidden('Pay to Get Access Module');
+}
+
+export { assertPaidIfNeeded };
+
 /** Gate a read route behind an active, granted UserModuleAccess row for the given module code. */
 export function requireModuleAccess(moduleCode: string): RequestHandler {
   return async (req: AuthRequest, _res: Response, next: NextFunction): Promise<void> => {
@@ -57,26 +72,37 @@ export function requireModuleAccess(moduleCode: string): RequestHandler {
       return;
     }
 
-    const stopped = await findAllStoppedModule([moduleCode]);
-    if (stopped) {
-      const bypass = await hasBypassStopGrant(req.user.id, [moduleCode]);
-      if (!bypass) {
-        next(forbidden(stopped.stopped_reason || 'This module is temporarily unavailable.'));
+    try {
+      const stopped = await findAllStoppedModule([moduleCode]);
+      if (stopped) {
+        const bypass = await hasBypassStopGrant(req.user.id, [moduleCode]);
+        if (!bypass) {
+          next(forbidden(stopped.stopped_reason || 'This module is temporarily unavailable.'));
+          return;
+        }
+      }
+
+      if (isFreeModuleCode(moduleCode)) {
+        next();
         return;
       }
-    }
 
-    const grant = await UserModuleAccess.findOne({
-      user_id: req.user.id,
-      module_code: moduleCode,
-      is_active: true,
-      can_read: true,
-    });
-    if (!grant) {
-      next(forbidden('You do not have access to this module. Ask an admin to grant access.'));
-      return;
+      await assertPaidIfNeeded(req.user.id, [moduleCode]);
+
+      const grant = await UserModuleAccess.findOne({
+        user_id: req.user.id,
+        module_code: moduleCode,
+        is_active: true,
+        can_read: true,
+      });
+      if (!grant) {
+        next(forbidden('You do not have access to this module. Ask an admin to grant access.'));
+        return;
+      }
+      next();
+    } catch (err) {
+      next(err);
     }
-    next();
   };
 }
 
@@ -98,25 +124,36 @@ export function requireModuleAccessAny(...moduleCodes: string[]): RequestHandler
       return;
     }
 
-    const stopped = await findAllStoppedModule(moduleCodes);
-    if (stopped) {
-      const bypass = await hasBypassStopGrant(req.user.id, moduleCodes);
-      if (!bypass) {
-        next(forbidden(stopped.stopped_reason || 'This module is temporarily unavailable.'));
+    try {
+      const stopped = await findAllStoppedModule(moduleCodes);
+      if (stopped) {
+        const bypass = await hasBypassStopGrant(req.user.id, moduleCodes);
+        if (!bypass) {
+          next(forbidden(stopped.stopped_reason || 'This module is temporarily unavailable.'));
+          return;
+        }
+      }
+
+      if (moduleCodes.some((code) => isFreeModuleCode(code))) {
+        next();
         return;
       }
-    }
 
-    const grant = await UserModuleAccess.findOne({
-      user_id: req.user.id,
-      module_code: { $in: moduleCodes },
-      is_active: true,
-      can_read: true,
-    });
-    if (!grant) {
-      next(forbidden('You do not have access to this module. Ask an admin to grant access.'));
-      return;
+      await assertPaidIfNeeded(req.user.id, moduleCodes);
+
+      const grant = await UserModuleAccess.findOne({
+        user_id: req.user.id,
+        module_code: { $in: moduleCodes },
+        is_active: true,
+        can_read: true,
+      });
+      if (!grant) {
+        next(forbidden('You do not have access to this module. Ask an admin to grant access.'));
+        return;
+      }
+      next();
+    } catch (err) {
+      next(err);
     }
-    next();
   };
 }

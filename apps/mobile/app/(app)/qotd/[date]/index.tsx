@@ -4,13 +4,27 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BookLoading, BookEmpty, BookError } from '@/components/books/BookStates';
 import { fetchQotdDateDetail, type QotdDateDetail } from '@/lib/qotd-api';
-import { formatDdMmYyyy } from '@/lib/date-format';
+import { formatDayName, parseIsoDate, toIsoDate } from '@/lib/date-format';
 import { questionDetailHref } from '@/lib/question-routes';
-import { qotdColors } from '@/lib/qotd-theme';
 import { colors, spacing } from '@/theme';
 
 function truncate(text: string, len = 140) {
   return text.length > len ? `${text.slice(0, len)}…` : text;
+}
+
+function headingFor(iso: string) {
+  const today = toIsoDate(new Date());
+  const date = parseIsoDate(iso);
+  const long = date
+    ? date.toLocaleDateString(undefined, {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      })
+    : iso;
+  if (iso === today) return { kicker: 'Today', title: long };
+  return { kicker: formatDayName(iso), title: long };
 }
 
 export default function QotdDateDetailScreen() {
@@ -33,31 +47,46 @@ export default function QotdDateDetailScreen() {
   if (error) return <BookError message={error} />;
   if (!detail || detail.groups.length === 0) return <BookEmpty title="No questions for this date" />;
 
+  const heading = headingFor(detail.date);
+  const totalQuestions = detail.groups.reduce((sum, g) => sum + g.questions.length, 0);
+
   return (
     <ScrollView contentContainerStyle={styles.list}>
-      <Text style={styles.dateLabel}>{formatDdMmYyyy(detail.date)}</Text>
+      <View style={styles.header}>
+        {heading.kicker ? <Text style={styles.kicker}>{heading.kicker}</Text> : null}
+        <Text style={styles.dateLabel}>{heading.title}</Text>
+        <Text style={styles.summary}>
+          {detail.groups.length} subject{detail.groups.length === 1 ? '' : 's'} · {totalQuestions}{' '}
+          question{totalQuestions === 1 ? '' : 's'}
+        </Text>
+      </View>
 
       {detail.groups.map((group) => (
         <View key={group.entry_id} style={styles.subjectBlock}>
-          <Text style={styles.subjectName}>{group.subject_name}</Text>
+          <View style={styles.subjectHead}>
+            <Text style={styles.subjectName}>{group.subject_name}</Text>
+            <Text style={styles.subjectCount}>
+              {group.questions.length} {group.questions.length === 1 ? 'question' : 'questions'}
+            </Text>
+          </View>
           {group.questions.map((q, i) => (
             <Pressable
               key={q.id}
               style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
               onPress={() => router.push(questionDetailHref(q.id))}
             >
-              <View style={styles.numberWrap}>
-                <Text style={styles.numberText}>{i + 1}</Text>
-              </View>
+              <Text style={styles.index}>{i + 1}</Text>
               <View style={styles.cardBody}>
                 <Text style={styles.title} numberOfLines={3}>
                   {truncate(q.body_en || q.body_bn || '')}
                 </Text>
                 <Text style={styles.sub}>
-                  {q.question_type_code} · {q.marks}m{q.book_name ? ` · ${q.book_name}` : ''}
+                  {q.question_type_code}
+                  {q.marks ? ` · ${q.marks}m` : ''}
+                  {q.book_name ? ` · ${q.book_name}` : ''}
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color={qotdColors.accent} />
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
             </Pressable>
           ))}
         </View>
@@ -72,20 +101,46 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
     paddingBottom: spacing.xl,
   },
-  dateLabel: {
-    fontSize: 18,
+  header: {
+    gap: 4,
+  },
+  kicker: {
+    fontSize: 12,
     fontWeight: '800',
-    color: qotdColors.accentDark,
+    color: colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  dateLabel: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  summary: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textMuted,
   },
   subjectBlock: {
     gap: spacing.sm,
   },
+  subjectHead: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    paddingHorizontal: 2,
+  },
   subjectName: {
-    fontSize: 15,
+    flex: 1,
+    fontSize: 14,
     fontWeight: '800',
     color: colors.text,
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
+  },
+  subjectCount: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textMuted,
   },
   card: {
     flexDirection: 'row',
@@ -94,25 +149,18 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: qotdColors.accentBorder,
+    borderColor: colors.border,
     padding: spacing.md,
   },
   cardPressed: {
     opacity: 0.92,
   },
-  numberWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: qotdColors.accentLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
-  },
-  numberText: {
-    fontSize: 12,
+  index: {
+    width: 20,
+    fontSize: 13,
     fontWeight: '800',
-    color: qotdColors.accentDark,
+    color: colors.textMuted,
+    marginTop: 1,
   },
   cardBody: {
     flex: 1,

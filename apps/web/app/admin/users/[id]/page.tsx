@@ -29,7 +29,18 @@ interface UserDetail {
   bound_device_at?: string | null;
   bound_device_label?: string | null;
   amount_received?: number;
+  all_exam_subjects?: boolean;
+  exam_subject_ids?: string[];
+  exam_subjects?: Array<{ id: string; name: string; name_bn?: string }>;
   workflow_roles: Array<{ role_code: string; is_active: boolean; role_id: string }>;
+}
+
+interface ExamSubjectOption {
+  id: string;
+  name: string;
+  name_bn?: string;
+  label: string;
+  exam_name?: string;
 }
 
 interface RoleItem {
@@ -118,6 +129,7 @@ export default function EditUserPage() {
 
   const [selectedRole, setSelectedRole] = useState('');
   const [accessDraft, setAccessDraft] = useState<Record<string, Partial<ModuleAccess>>>({});
+  const [subjectOptions, setSubjectOptions] = useState<ExamSubjectOption[]>([]);
 
   const [addrForm, setAddrForm] = useState({
     address_type: 'present' as 'permanent' | 'present' | 'office',
@@ -138,6 +150,9 @@ export default function EditUserPage() {
       loadUser(),
       apiFetch<{ data: RoleItem[] }>('/setup/roles').then((r) => setRoles(r.data)),
       apiFetch<{ data: ModuleItem[] }>('/setup/modules?all=true').then((r) => setModules(r.data)),
+      apiFetch<{ data: ExamSubjectOption[] }>('/users/exam-subject-options')
+        .then((r) => setSubjectOptions(r.data))
+        .catch(() => setSubjectOptions([])),
     ])
       .catch(() => setError('Failed to load user'))
       .finally(() => setLoading(false));
@@ -175,6 +190,9 @@ export default function EditUserPage() {
           is_super_admin: user.is_super_admin,
           allow_multi_device: user.allow_multi_device ?? false,
           amount_received: Number(user.amount_received ?? 0),
+          all_exam_subjects: user.all_exam_subjects !== false,
+          exam_subject_ids:
+            user.all_exam_subjects === false ? (user.exam_subject_ids ?? []) : [],
         }),
       });
       setMessage('Profile saved');
@@ -388,7 +406,57 @@ export default function EditUserPage() {
                     })
                   }
                 />
-                <p className="text-xs text-muted">Admin only — not shown on the user&apos;s own profile.</p>
+                <p className="text-xs text-muted">
+                  0 = unpaid — mobile shows &quot;Pay to Get Access Module&quot; for paid modules.
+                </p>
+              </div>
+              <div className="space-y-3 rounded-lg border border-border p-4">
+                <p className="text-sm font-medium">Exam subject access</p>
+                <p className="text-xs text-muted">
+                  Limits Exam Papers, Question Bank, Exam of the Week, and Questions of the Day to the
+                  selected subjects. Questions of the Day and Exam Routine stay open for all users.
+                </p>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={user.all_exam_subjects !== false}
+                    onChange={(e) =>
+                      setUser({
+                        ...user,
+                        all_exam_subjects: e.target.checked,
+                        exam_subject_ids: e.target.checked ? [] : (user.exam_subject_ids ?? []),
+                      })
+                    }
+                  />
+                  Allow all exam subjects
+                </label>
+                {user.all_exam_subjects === false ? (
+                  <div className="max-h-56 space-y-2 overflow-y-auto rounded border border-border p-3">
+                    {subjectOptions.length === 0 ? (
+                      <p className="text-xs text-muted">No exam subjects found.</p>
+                    ) : (
+                      subjectOptions.map((s) => {
+                        const checked = (user.exam_subject_ids ?? []).includes(s.id);
+                        return (
+                          <label key={s.id} className="flex items-start gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              className="mt-0.5"
+                              checked={checked}
+                              onChange={() => {
+                                const current = new Set(user.exam_subject_ids ?? []);
+                                if (checked) current.delete(s.id);
+                                else current.add(s.id);
+                                setUser({ ...user, exam_subject_ids: [...current] });
+                              }}
+                            />
+                            <span>{s.label}</span>
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
+                ) : null}
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">

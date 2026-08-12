@@ -167,9 +167,6 @@ export default function SavedQuestionsScreen() {
                   style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
                   onPress={() => router.push(questionDetailHref(item.id, { fromSaved: true }))}
                 >
-                  <View style={styles.iconWrap}>
-                    <Ionicons name="help-circle-outline" size={22} color="#7c3aed" />
-                  </View>
                   <View style={styles.body}>
                     <View style={styles.titleRow}>
                       <Text style={[styles.title, styles.titleText]} numberOfLines={3}>
@@ -286,14 +283,6 @@ const styles = StyleSheet.create({
   },
   rowPressed: {
     opacity: 0.92,
-  },
-  iconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: '#f3e8ff',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   body: {
     flex: 1,

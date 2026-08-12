@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
 import { requireAdmin } from '../../middleware/requireAdmin.js';
-import { requireModuleAccess } from '../../middleware/requireModuleAccess.js';
 import { asyncHandler } from '../../shared/asyncHandler.js';
 import {
   listDatesHandler,
@@ -20,11 +19,10 @@ export const qotdRouter = Router();
 
 qotdRouter.use(authenticate);
 
-const readAccess = requireModuleAccess('QOTD');
-
-qotdRouter.get('/dates', readAccess, asyncHandler(listDatesHandler));
-qotdRouter.get('/dates/:date', readAccess, asyncHandler(getDateDetailHandler));
-qotdRouter.get('/settings', readAccess, asyncHandler(getSettingsHandler));
+// QOTD learner reads are open to every authenticated user (still subject-filtered in the service).
+qotdRouter.get('/dates', asyncHandler(listDatesHandler));
+qotdRouter.get('/dates/:date', asyncHandler(getDateDetailHandler));
+qotdRouter.get('/settings', asyncHandler(getSettingsHandler));
 
 qotdRouter.get('/admin/dates', requireAdmin, asyncHandler(listAdminDatesHandler));
 qotdRouter.get('/admin/dates/:date', requireAdmin, asyncHandler(getAdminDateDetailHandler));

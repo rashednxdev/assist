@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
 import { requireAdmin } from '../../middleware/requireAdmin.js';
-import { requireModuleAccess } from '../../middleware/requireModuleAccess.js';
 import { asyncHandler } from '../../shared/asyncHandler.js';
 import {
   listMobileRoutinesHandler,
@@ -19,10 +18,9 @@ export const examRoutineRouter = Router();
 
 examRoutineRouter.use(authenticate);
 
-const readAccess = requireModuleAccess('EXAM_ROUTINE');
-
-examRoutineRouter.get('/list', readAccess, asyncHandler(listMobileRoutinesHandler));
-examRoutineRouter.get('/names/:examNameId', readAccess, asyncHandler(getRoutineByExamNameHandler));
+// Exam Routine learner reads are open to every authenticated user.
+examRoutineRouter.get('/list', asyncHandler(listMobileRoutinesHandler));
+examRoutineRouter.get('/names/:examNameId', asyncHandler(getRoutineByExamNameHandler));
 
 examRoutineRouter.get('/admin', requireAdmin, asyncHandler(listAdminRoutinesHandler));
 examRoutineRouter.get('/admin/:id', requireAdmin, asyncHandler(getAdminRoutineHandler));

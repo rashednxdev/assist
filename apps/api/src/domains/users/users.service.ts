@@ -4,12 +4,27 @@ import { hashPassword } from '../auth/auth.service.js';
 import { User } from './models/User.model.js';
 import { Credentials } from './models/Credentials.model.js';
 import { Role } from '../workflow/models/Role.model.js';
+import { ExamSubject } from '../exams/models/ExamSubject.model.js';
 import { notFound, badRequest } from '../../shared/errors/AppError.js';
+import { serializeExamSubjectAccess } from './subject-access.service.js';
+
+async function normalizeExamSubjectIds(ids: string[] | undefined): Promise<mongoose.Types.ObjectId[]> {
+  const unique = [...new Set((ids ?? []).map(String).filter(Boolean))];
+  if (unique.length === 0) return [];
+  const found = await ExamSubject.find({ _id: { $in: unique }, is_active: true }).select('_id');
+  const foundSet = new Set(found.map((s) => String(s._id)));
+  const missing = unique.filter((id) => !foundSet.has(id));
+  if (missing.length > 0) {
+    throw badRequest(`Unknown or inactive exam subject: ${missing[0]}`);
+  }
+  return unique.map((id) => new mongoose.Types.ObjectId(id));
+}
 
 async function serializeUser(user: InstanceType<typeof User>) {
   const credentials = await Credentials.findOne({ user_id: user._id }).select(
     'allow_multi_device bound_device_id bound_device_at bound_device_label',
   );
+  const subjectAccess = await serializeExamSubjectAccess(user);
   return {
     id: String(user._id),
     employee_id: user.employee_id,
@@ -23,6 +38,9 @@ async function serializeUser(user: InstanceType<typeof User>) {
     is_verified: user.is_verified,
     is_super_admin: user.is_super_admin,
     amount_received: Number(user.amount_received ?? 0),
+    all_exam_subjects: subjectAccess.all_exam_subjects,
+    exam_subject_ids: subjectAccess.exam_subject_ids,
+    exam_subjects: subjectAccess.exam_subjects,
     workflow_roles: user.workflow_roles,
     allow_multi_device: Boolean(credentials?.allow_multi_device),
     bound_device_id: credentials?.bound_device_id ?? null,
@@ -93,6 +111,11 @@ export async function createUser(dto: CreateUserDto, createdBy: string, creatorI
     phone_verified: true,
     is_super_admin: dto.is_super_admin ?? false,
     amount_received: dto.amount_received ?? 0,
+    all_exam_subjects: dto.all_exam_subjects !== false,
+    exam_subject_ids:
+      dto.all_exam_subjects === false
+        ? await normalizeExamSubjectIds(dto.exam_subject_ids)
+        : [],
     created_by: new mongoose.Types.ObjectId(createdBy),
   });
 
@@ -134,6 +157,21 @@ export async function updateUser(id: string, dto: UpdateUserDto) {
   if (dto.is_verified !== undefined) user.is_verified = dto.is_verified;
   if (dto.is_super_admin !== undefined) user.is_super_admin = dto.is_super_admin;
   if (dto.amount_received !== undefined) user.amount_received = dto.amount_received;
+
+  if (dto.all_exam_subjects !== undefined || dto.exam_subject_ids !== undefined) {
+    const nextAll =
+      dto.all_exam_subjects !== undefined ? dto.all_exam_subjects : user.all_exam_subjects !== false;
+    user.all_exam_subjects = nextAll;
+    if (nextAll) {
+      user.exam_subject_ids = [];
+    } else {
+      const sourceIds =
+        dto.exam_subject_ids !== undefined
+          ? dto.exam_subject_ids
+          : (user.exam_subject_ids ?? []).map(String);
+      user.exam_subject_ids = await normalizeExamSubjectIds(sourceIds);
+    }
+  }
 
   await user.save();
 

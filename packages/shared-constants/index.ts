@@ -32,6 +32,14 @@ export const MODULE_CODES = [
 ] as const;
 export type ModuleCode = (typeof MODULE_CODES)[number];
 
+/** Modules every authenticated user may open without a grant or payment. */
+export const FREE_MODULE_CODES = ['QOTD', 'EXAM_ROUTINE'] as const;
+export type FreeModuleCode = (typeof FREE_MODULE_CODES)[number];
+
+export function isFreeModuleCode(code: string): boolean {
+  return (FREE_MODULE_CODES as readonly string[]).includes(code);
+}
+
 export const DEFAULT_LOCALE = 'en' as const;
 export const SUPPORTED_LOCALES = ['en', 'bn'] as const;
 export type Locale = (typeof SUPPORTED_LOCALES)[number];

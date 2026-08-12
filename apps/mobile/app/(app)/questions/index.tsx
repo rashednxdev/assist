@@ -686,9 +686,6 @@ export default function QuestionsScreen() {
                 style={({ pressed }) => [styles.card, pressed && styles.pressed]}
                 onPress={() => openQuestion(item)}
               >
-                <View style={styles.cardIcon}>
-                  <Ionicons name="help-circle-outline" size={20} color="#7c3aed" />
-                </View>
                 <View style={styles.cardBody}>
                   <Text style={styles.cardText} numberOfLines={4}>
                     {item.body_en}
@@ -1005,14 +1002,6 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: spacing.md,
     marginBottom: spacing.sm,
-  },
-  cardIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: '#f3e8ff',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   cardBody: {
     flex: 1,

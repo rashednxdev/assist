@@ -16,6 +16,7 @@ import { useAuth } from '@/lib/auth-context';
 import {
   canManageUsers,
   fetchAdminUser,
+  fetchExamSubjectOptions,
   fetchSetupModules,
   fetchUserModuleAccess,
   MOBILE_MODULE_CODES,
@@ -24,6 +25,7 @@ import {
   updateAdminUser,
   upsertUserModuleAccess,
   type AdminUserDetail,
+  type ExamSubjectOption,
   type ModuleCatalogItem,
   type UserModuleAccessRow,
 } from '@/lib/users-api';
@@ -53,6 +55,7 @@ export default function UserDetailScreen() {
   const [tab, setTab] = useState<Tab>('profile');
   const [detail, setDetail] = useState<AdminUserDetail | null>(null);
   const [modules, setModules] = useState<ModuleCatalogItem[]>([]);
+  const [subjectOptions, setSubjectOptions] = useState<ExamSubjectOption[]>([]);
   const [access, setAccess] = useState<UserModuleAccessRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -71,9 +74,14 @@ export default function UserDetailScreen() {
     if (!id) return;
     setError('');
     try {
-      const [u, mods] = await Promise.all([fetchAdminUser(id), fetchSetupModules()]);
+      const [u, mods, subjects] = await Promise.all([
+        fetchAdminUser(id),
+        fetchSetupModules(),
+        fetchExamSubjectOptions().catch(() => [] as ExamSubjectOption[]),
+      ]);
       setDetail(u);
       setModules(mods);
+      setSubjectOptions(subjects);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load user');
     } finally {
@@ -113,6 +121,8 @@ export default function UserDetailScreen() {
         is_super_admin: detail.is_super_admin,
         allow_multi_device: detail.allow_multi_device ?? false,
         amount_received: Number(detail.amount_received ?? 0),
+        all_exam_subjects: detail.all_exam_subjects !== false,
+        exam_subject_ids: detail.all_exam_subjects === false ? (detail.exam_subject_ids ?? []) : [],
       });
       setDetail(updated.data);
       setMessage('Profile saved');
@@ -296,6 +306,49 @@ export default function UserDetailScreen() {
               }}
               keyboardType="decimal-pad"
             />
+            <View style={styles.switchRow}>
+              <Text style={styles.switchLabel}>Allow all exam subjects</Text>
+              <Switch
+                value={detail.all_exam_subjects !== false}
+                onValueChange={(v) =>
+                  setDetail({
+                    ...detail,
+                    all_exam_subjects: v,
+                    exam_subject_ids: v ? [] : (detail.exam_subject_ids ?? []),
+                  })
+                }
+              />
+            </View>
+            {detail.all_exam_subjects === false ? (
+              <View style={styles.subjectBox}>
+                <Text style={styles.label}>Allowed subjects</Text>
+                <Text style={styles.hint}>
+                  User only sees Exam Papers, Question Bank, Exam of the Week, and Questions of the Day
+                  for these subjects.
+                </Text>
+                <View style={styles.chips}>
+                  {subjectOptions.map((s) => {
+                    const selected = (detail.exam_subject_ids ?? []).includes(s.id);
+                    return (
+                      <Pressable
+                        key={s.id}
+                        style={[styles.chip, selected && styles.chipActive]}
+                        onPress={() => {
+                          const current = new Set(detail.exam_subject_ids ?? []);
+                          if (selected) current.delete(s.id);
+                          else current.add(s.id);
+                          setDetail({ ...detail, exam_subject_ids: [...current] });
+                        }}
+                      >
+                        <Text style={[styles.chipText, selected && styles.chipTextActive]}>
+                          {s.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            ) : null}
             <Text style={styles.label}>User type</Text>
             <View style={styles.chips}>
               {USER_TYPES.map((t) => (
@@ -508,6 +561,14 @@ const styles = StyleSheet.create({
   },
   switchLabel: { fontSize: 14, fontWeight: '600', color: colors.text },
   hint: { fontSize: 12, color: colors.textMuted, lineHeight: 18 },
+  subjectBox: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: spacing.sm,
+    gap: 8,
+    backgroundColor: colors.surface,
+  },
   message: { fontSize: 13, color: '#059669', fontWeight: '600' },
   error: { fontSize: 13, color: colors.error },
   accessCard: {

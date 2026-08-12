@@ -20,6 +20,17 @@ export interface AdminUserDetail extends AdminUserRow {
   bound_device_at?: string | null;
   bound_device_label?: string | null;
   workflow_roles?: Array<{ role_code: string; is_active: boolean; role_id: string }>;
+  all_exam_subjects?: boolean;
+  exam_subject_ids?: string[];
+  exam_subjects?: Array<{ id: string; name: string; name_bn?: string }>;
+}
+
+export interface ExamSubjectOption {
+  id: string;
+  name: string;
+  name_bn?: string;
+  label: string;
+  exam_name?: string;
 }
 
 export interface ModuleCatalogItem {
@@ -114,12 +125,19 @@ export async function updateAdminUser(
     clear_bound_device: boolean;
     force_logout: boolean;
     amount_received: number;
+    all_exam_subjects: boolean;
+    exam_subject_ids: string[];
   }>,
 ) {
   return apiFetch<{ data: AdminUserDetail }>(`/users/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(body),
   });
+}
+
+export async function fetchExamSubjectOptions() {
+  const res = await apiFetch<{ data: ExamSubjectOption[] }>('/users/exam-subject-options');
+  return res.data;
 }
 
 export async function fetchSetupModules() {

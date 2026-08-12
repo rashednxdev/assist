@@ -20,7 +20,7 @@ import { AccessRequiredScreen, type AccessRequiredVariant } from '@/components/h
 import { useAuth } from '@/lib/auth-context';
 import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
 import { useAnswerHistory } from '@/hooks/useAnswerHistory';
-import { hasLearningModule, findModuleStop, isModuleEffectivelyStopped } from '@/lib/api';
+import { hasLearningModule, findModuleStop, isModuleEffectivelyStopped, isFreeLearningModule } from '@/lib/api';
 import { canManageUsers } from '@/lib/users-api';
 import {
   fetchProgressDashboard,
@@ -48,7 +48,7 @@ const MODULES: Array<{
   subtitle: string;
   icon:
     | 'library-outline'
-    | 'help-circle-outline'
+    | 'list-outline'
     | 'school-outline'
     | 'document-text-outline'
     | 'calculator-outline'
@@ -91,7 +91,7 @@ const MODULES: Array<{
     code: 'QUESTIONS' as const,
     title: 'Question Bank',
     subtitle: 'Browse & practice questions',
-    icon: 'help-circle-outline' as const,
+    icon: 'list-outline' as const,
     color: '#7c3aed',
     href: '/(app)/questions',
   },
@@ -178,6 +178,17 @@ export default function HomeScreen() {
         });
         return;
       }
+
+      if (isFreeLearningModule(module.code)) {
+        router.push(module.href);
+        return;
+      }
+
+      if (user && user.has_paid === false) {
+        setAccessScreen({ variant: 'unpaid', moduleTitle: module.title });
+        return;
+      }
+
       if (hasLearningModule(user?.module_access ?? [], module.code)) {
         router.push(module.href);
         return;
@@ -195,6 +206,14 @@ export default function HomeScreen() {
           });
           return;
         }
+        if (isFreeLearningModule(module.code)) {
+          router.push(module.href);
+          return;
+        }
+        if (me.has_paid === false) {
+          setAccessScreen({ variant: 'unpaid', moduleTitle: module.title });
+          return;
+        }
         if (hasLearningModule(me.module_access ?? [], module.code)) {
           router.push(module.href);
           return;
@@ -206,7 +225,7 @@ export default function HomeScreen() {
         setCheckingModuleId(null);
       }
     },
-    [refreshUser, router, user?.module_access, user?.module_stops],
+    [refreshUser, router, user],
   );
 
   const loadData = useCallback(async () => {

@@ -73,7 +73,7 @@ export default function QotdAdminPage() {
     <div className="space-y-6">
       <PageHeader
         title="Questions of the Day"
-        description="Pick a date, then add one or more subjects' questions to it. Users browse by date first, seeing every subject's questions for that day."
+        description="Pick a date, then add questions tagged to each subject. A Books & Tools link is not required."
       />
 
       {error && <Alert variant="error">{error}</Alert>}

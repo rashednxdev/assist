@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
 import { BookBadge } from '@/components/books/BookBadge';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
@@ -17,13 +17,14 @@ export default function ExamDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
+  const load = useCallback(() => {
     if (!id) return;
     setLoading(true);
     fetchExamTree(id)
       .then((data) => {
         setTree(data);
         navigation.setOptions({ title: data.exam.short_name || data.exam.name });
+        setError('');
       })
       .catch((err) => {
         setTree(null);
@@ -31,6 +32,12 @@ export default function ExamDetailScreen() {
       })
       .finally(() => setLoading(false));
   }, [id, navigation]);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
 
   if (loading) return <BookLoading />;
   if (error) return <BookError message={error} />;

@@ -24,6 +24,11 @@ import { ExamSubject } from './models/ExamSubject.model.js';
 import { ExamSession } from './models/ExamSession.model.js';
 import { PaperDetail } from '../papers/models/PaperDetail.model.js';
 import { notFound, badRequest } from '../../shared/errors/AppError.js';
+import {
+  assertExamSubjectAllowed,
+  filterByExamSubjectScope,
+  type ExamSubjectScope,
+} from '../users/subject-access.service.js';
 
 function idStr(v: mongoose.Types.ObjectId | string | undefined) {
   return v ? String(v) : undefined;
@@ -217,8 +222,27 @@ export async function deleteAuthority(id: string) {
 
 // --- Exam names ---
 
-export async function listExamNames(authorityId?: string, options?: { bypassCache?: boolean }) {
-  if (!options?.bypassCache) {
+async function examNameIdsForSubjectScope(scope: ExamSubjectScope): Promise<Set<string> | null> {
+  if (scope.mode === 'all') return null;
+  if (scope.mode === 'none') return new Set();
+  const subjects = await ExamSubject.find({ _id: { $in: scope.ids }, is_active: true }).select('exam_part_id');
+  const partIds = [...new Set(subjects.map((s) => String(s.exam_part_id)))];
+  if (partIds.length === 0) return new Set();
+  const parts = await ExamPart.find({ _id: { $in: partIds } }).select('exam_name_id');
+  return new Set(parts.map((p) => String(p.exam_name_id)));
+}
+
+export async function listExamNames(
+  authorityId?: string,
+  options?: { bypassCache?: boolean; subjectScope?: ExamSubjectScope },
+) {
+  const scope = options?.subjectScope ?? { mode: 'all' };
+  if (scope.mode === 'none') return [];
+
+  const allowedExamIds = await examNameIdsForSubjectScope(scope);
+  const useCache = !options?.bypassCache && allowedExamIds === null;
+
+  if (useCache) {
     const { cachedExamNames } = await import('../content-cache/content-cache.service.js');
     const cached = cachedExamNames<{
       id: string;
@@ -238,7 +262,9 @@ export async function listExamNames(authorityId?: string, options?: { bypassCach
   const authIds = [...new Set(items.map((e) => String(e.authority_id)))];
   const auths = await Authority.find({ _id: { $in: authIds } });
   const authMap = new Map(auths.map((a) => [String(a._id), a.name]));
-  return items.map((e) => serializeExamName(e, authMap.get(String(e.authority_id))));
+  const rows = items.map((e) => serializeExamName(e, authMap.get(String(e.authority_id))));
+  if (!allowedExamIds) return rows;
+  return rows.filter((e) => allowedExamIds.has(e.id));
 }
 
 export async function getExamNameById(id: string) {
@@ -287,7 +313,7 @@ export async function deleteExamName(id: string) {
   return { deleted: true };
 }
 
-export async function getExamTree(examNameId: string) {
+export async function getExamTree(examNameId: string, subjectScope: ExamSubjectScope = { mode: 'all' }) {
   const exam = await ExamName.findById(examNameId);
   if (!exam || !exam.is_active) throw notFound('Exam not found');
 
@@ -306,9 +332,13 @@ export async function getExamTree(examNameId: string) {
 
   const partsWithSubjects = parts.map((p) => ({
     ...serializeExamPart(p),
-    subjects: subjects
-      .filter((s) => String(s.exam_part_id) === String(p._id))
-      .map((s) => serializeExamSubject(s, typeMap.get(String(s.exam_type_id)))),
+    subjects: filterByExamSubjectScope(
+      subjects
+        .filter((s) => String(s.exam_part_id) === String(p._id))
+        .map((s) => serializeExamSubject(s, typeMap.get(String(s.exam_type_id)))),
+      (s) => s.id,
+      subjectScope,
+    ),
   }));
 
   return {
@@ -488,17 +518,22 @@ export async function deleteExamType(id: string) {
 
 // --- Exam subjects ---
 
-export async function listExamSubjects(examPartId: string) {
+export async function listExamSubjects(examPartId: string, subjectScope: ExamSubjectScope = { mode: 'all' }) {
   const items = await ExamSubject.find({ exam_part_id: examPartId, is_active: true });
   const typeIds = [...new Set(items.map((s) => String(s.exam_type_id)))];
   const types = await ExamType.find({ _id: { $in: typeIds } });
   const typeMap = new Map(types.map((t) => [String(t._id), t.name]));
-  return items.map((s) => serializeExamSubject(s, typeMap.get(String(s.exam_type_id))));
+  return filterByExamSubjectScope(
+    items.map((s) => serializeExamSubject(s, typeMap.get(String(s.exam_type_id)))),
+    (s) => s.id,
+    subjectScope,
+  );
 }
 
-export async function getExamSubjectById(id: string) {
+export async function getExamSubjectById(id: string, subjectScope: ExamSubjectScope = { mode: 'all' }) {
   const s = await ExamSubject.findById(id);
   if (!s || !s.is_active) throw notFound('Exam subject not found');
+  assertExamSubjectAllowed(subjectScope, String(s._id));
   const [type, part] = await Promise.all([
     ExamType.findById(s.exam_type_id),
     ExamPart.findById(s.exam_part_id),

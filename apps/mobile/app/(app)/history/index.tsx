@@ -8,10 +8,13 @@ import { useAnswerHistory } from '@/hooks/useAnswerHistory';
 import {
   formatRelativeTime,
   groupAnswerHistoryByDate,
+  groupAnswerHistoryBySubject,
   HISTORY_DATE_FILTERS,
+  HISTORY_SORTS,
   matchesDateFilter,
   removeAnswerHistoryEntry,
   type AnswerHistoryDateFilter,
+  type AnswerHistorySort,
 } from '@/lib/answer-history';
 import { questionDetailHref } from '@/lib/question-routes';
 import { colors, spacing } from '@/theme';
@@ -21,11 +24,18 @@ export default function AnswerHistoryScreen() {
   const { items, ready } = useAnswerHistory();
   const [query, setQuery] = useState('');
   const [dateFilter, setDateFilter] = useState<AnswerHistoryDateFilter>('all');
+  const [sort, setSort] = useState<AnswerHistorySort>('date');
   const [source, setSource] = useState('');
+  const [subject, setSubject] = useState('');
 
   const sources = useMemo(() => {
     const names = [...new Set(items.map((row) => row.subtitle?.trim()).filter((v): v is string => Boolean(v)))];
     return names.sort((a, b) => a.localeCompare(b));
+  }, [items]);
+
+  const subjects = useMemo(() => {
+    const names = [...new Set(items.map((row) => row.subject?.trim()).filter((v): v is string => Boolean(v)))];
+    return names.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   }, [items]);
 
   const visible = useMemo(() => {
@@ -33,15 +43,20 @@ export default function AnswerHistoryScreen() {
     return items.filter((row) => {
       if (!matchesDateFilter(row.viewed_at, dateFilter)) return false;
       if (source && (row.subtitle ?? '') !== source) return false;
+      if (subject && (row.subject ?? '') !== subject) return false;
       if (!q) return true;
       return (
         row.title.toLowerCase().includes(q) ||
-        (row.subtitle ?? '').toLowerCase().includes(q)
+        (row.subtitle ?? '').toLowerCase().includes(q) ||
+        (row.subject ?? '').toLowerCase().includes(q)
       );
     });
-  }, [items, query, dateFilter, source]);
+  }, [items, query, dateFilter, source, subject]);
 
-  const groups = useMemo(() => groupAnswerHistoryByDate(visible), [visible]);
+  const groups = useMemo(
+    () => (sort === 'subject' ? groupAnswerHistoryBySubject(visible) : groupAnswerHistoryByDate(visible)),
+    [visible, sort],
+  );
 
   if (!ready) return <BookLoading />;
 
@@ -73,52 +88,116 @@ export default function AnswerHistoryScreen() {
         ) : null}
       </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.chips}
-      >
-        {HISTORY_DATE_FILTERS.map((item) => {
-          const active = dateFilter === item.id;
-          return (
-            <Pressable
-              key={item.id}
-              style={[styles.chip, active && styles.chipActive]}
-              onPress={() => setDateFilter(item.id)}
-            >
-              <Text style={[styles.chipText, active && styles.chipTextActive]}>{item.label}</Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
-
-      {sources.length > 1 ? (
+      <View style={styles.chipBar}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chips}
+          contentContainerStyle={styles.chipRow}
         >
-          <Pressable
-            style={[styles.chip, !source && styles.chipActive]}
-            onPress={() => setSource('')}
-          >
-            <Text style={[styles.chipText, !source && styles.chipTextActive]}>All sources</Text>
-          </Pressable>
-          {sources.map((name) => {
-            const active = source === name;
+          {HISTORY_DATE_FILTERS.map((item) => {
+            const active = dateFilter === item.id;
             return (
               <Pressable
-                key={name}
+                key={item.id}
                 style={[styles.chip, active && styles.chipActive]}
-                onPress={() => setSource(active ? '' : name)}
+                onPress={() => setDateFilter(item.id)}
               >
                 <Text style={[styles.chipText, active && styles.chipTextActive]} numberOfLines={1}>
-                  {name}
+                  {item.label}
                 </Text>
               </Pressable>
             );
           })}
         </ScrollView>
+      </View>
+
+      <View style={styles.chipBar}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chipRow}
+        >
+          {HISTORY_SORTS.map((item) => {
+            const active = sort === item.id;
+            return (
+              <Pressable
+                key={item.id}
+                style={[styles.chip, active && styles.chipActive]}
+                onPress={() => setSort(item.id)}
+              >
+                <Text style={[styles.chipText, active && styles.chipTextActive]} numberOfLines={1}>
+                  {item.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {subjects.length > 1 ? (
+        <View style={styles.chipBar}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipRow}
+          >
+            <Pressable
+              style={[styles.chip, !subject && styles.chipActive]}
+              onPress={() => setSubject('')}
+            >
+              <Text style={[styles.chipText, !subject && styles.chipTextActive]} numberOfLines={1}>
+                All subjects
+              </Text>
+            </Pressable>
+            {subjects.map((name) => {
+              const active = subject === name;
+              return (
+                <Pressable
+                  key={name}
+                  style={[styles.chip, active && styles.chipActive]}
+                  onPress={() => setSubject(active ? '' : name)}
+                >
+                  <Text style={[styles.chipText, active && styles.chipTextActive]} numberOfLines={1}>
+                    {name}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      ) : null}
+
+      {sources.length > 1 ? (
+        <View style={styles.chipBar}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipRow}
+          >
+            <Pressable
+              style={[styles.chip, !source && styles.chipActive]}
+              onPress={() => setSource('')}
+            >
+              <Text style={[styles.chipText, !source && styles.chipTextActive]} numberOfLines={1}>
+                All sources
+              </Text>
+            </Pressable>
+            {sources.map((name) => {
+              const active = source === name;
+              return (
+                <Pressable
+                  key={name}
+                  style={[styles.chip, active && styles.chipActive]}
+                  onPress={() => setSource(active ? '' : name)}
+                >
+                  <Text style={[styles.chipText, active && styles.chipTextActive]} numberOfLines={1}>
+                    {name}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
       ) : null}
 
       <Text style={styles.countLabel}>
@@ -156,11 +235,9 @@ export default function AnswerHistoryScreen() {
                         {item.title}
                       </Text>
                       <View style={styles.metaRow}>
-                        {item.subtitle ? (
-                          <Text style={styles.subtitle} numberOfLines={1}>
-                            {item.subtitle}
-                          </Text>
-                        ) : null}
+                        <Text style={styles.subtitle} numberOfLines={1}>
+                          {[item.subject, item.subtitle].filter(Boolean).join(' · ') || ' '}
+                        </Text>
                         <Text style={styles.time}>{formatRelativeTime(item.viewed_at)}</Text>
                       </View>
                     </View>
@@ -199,10 +276,15 @@ const styles = StyleSheet.create({
     color: colors.text,
     padding: 0,
   },
-  chips: {
+  chipBar: {
+    flexGrow: 0,
+    flexShrink: 0,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
-    gap: 8,
   },
   chip: {
     borderWidth: 1,
@@ -211,6 +293,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 999,
+    marginRight: 8,
+    flexGrow: 0,
+    flexShrink: 0,
+    maxWidth: 168,
+    alignSelf: 'center',
   },
   chipActive: {
     backgroundColor: colors.primary,

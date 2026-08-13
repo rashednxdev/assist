@@ -11,6 +11,7 @@ import {
   type NativeSyntheticEvent,
   type NativeScrollEvent,
 } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
 import { BookRichText } from '@/components/books/BookRichText';
@@ -24,6 +25,8 @@ import {
 } from '@/lib/marathon-progress';
 import { getCachedMarathonItems } from '@/lib/questions-db';
 import { subscribeQuestionsSync, syncQuestions } from '@/lib/questions-sync';
+import { questionCacheScopeKey } from '@/lib/subject-scope';
+import { useAuth } from '@/lib/auth-context';
 import { questionMatchScore } from '@/lib/question-search';
 import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
 import { SaveButton } from '@/components/ui/SaveButton';
@@ -129,6 +132,7 @@ function AnswerBlocks({
 }
 
 export default function MarathonReviewScreen() {
+  const { user, refreshUser } = useAuth();
   const { isSaved, toggle } = useSavedShortcuts();
   const [items, setItems] = useState<MarathonReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -183,7 +187,9 @@ export default function MarathonReviewScreen() {
   const runSync = useCallback(async () => {
     setSyncing(true);
     try {
-      await syncQuestions();
+      const me = await refreshUser().catch(() => user);
+      await syncQuestions(questionCacheScopeKey(me));
+      refreshFromCache();
     } catch (err) {
       if (itemsRef.current.length === 0) {
         setError(err instanceof Error ? err.message : 'Failed to sync marathon review');
@@ -191,11 +197,13 @@ export default function MarathonReviewScreen() {
     } finally {
       setSyncing(false);
     }
-  }, []);
+  }, [refreshFromCache, refreshUser, user]);
 
-  useEffect(() => {
-    void runSync();
-  }, [runSync]);
+  useFocusEffect(
+    useCallback(() => {
+      void runSync();
+    }, [runSync]),
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

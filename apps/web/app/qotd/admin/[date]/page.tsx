@@ -288,7 +288,7 @@ export default function QotdDatePage() {
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search syllabus-linked questions..."
+                placeholder="Search questions tagged with this subject..."
                 className="max-w-sm"
               />
 
@@ -296,7 +296,8 @@ export default function QotdDatePage() {
                 <p className="text-sm text-muted">Loading questions...</p>
               ) : bankFetched && bank.length === 0 ? (
                 <p className="text-sm text-muted">
-                  No published questions are linked to this subject&apos;s syllabus yet.
+                  No published questions are tagged with this subject yet. Tag questions in Question
+                  Bank — a Books &amp; Tools link is not required.
                 </p>
               ) : (
                 <div className="max-h-96 space-y-4 overflow-y-auto">

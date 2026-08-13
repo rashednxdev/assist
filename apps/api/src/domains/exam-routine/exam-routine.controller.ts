@@ -8,14 +8,17 @@ import {
 import type { AuthRequest } from '../../middleware/auth.js';
 import { parsePagination } from '../../shared/pagination.js';
 import * as examRoutineService from './exam-routine.service.js';
+import { getExamSubjectScopeForAuthUser } from '../users/subject-access.service.js';
 
-export async function listMobileRoutinesHandler(_req: AuthRequest, res: Response): Promise<void> {
-  const data = await examRoutineService.listRoutinesForMobile();
+export async function listMobileRoutinesHandler(req: AuthRequest, res: Response): Promise<void> {
+  const subjectScope = await getExamSubjectScopeForAuthUser(req.user);
+  const data = await examRoutineService.listRoutinesForMobile(subjectScope);
   res.json({ data });
 }
 
 export async function getRoutineByExamNameHandler(req: AuthRequest, res: Response): Promise<void> {
-  const data = await examRoutineService.getRoutineByExamName(String(req.params.examNameId));
+  const subjectScope = await getExamSubjectScopeForAuthUser(req.user);
+  const data = await examRoutineService.getRoutineByExamName(String(req.params.examNameId), subjectScope);
   res.json({ data });
 }
 

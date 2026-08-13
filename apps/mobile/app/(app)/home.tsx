@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -166,6 +166,23 @@ export default function HomeScreen() {
     moduleTitle?: string;
     stoppedReason?: string;
   } | null>(null);
+
+  const homeModules = useMemo(() => {
+    const grants = user?.module_access ?? [];
+    const stops = user?.module_stops ?? [];
+    const hasPaidModule = MODULES.some((m) => {
+      if (isFreeLearningModule(m.code) || m.code === 'QUESTION_EDIT') return false;
+      return (
+        hasLearningModule(grants, m.code) &&
+        !isModuleEffectivelyStopped(stops, grants, m.code) &&
+        user?.has_paid !== false
+      );
+    });
+    if (hasPaidModule) return MODULES;
+    const qotd = MODULES.find((m) => m.code === 'QOTD');
+    if (!qotd) return MODULES;
+    return [qotd, ...MODULES.filter((m) => m.id !== qotd.id)];
+  }, [user?.module_access, user?.module_stops, user?.has_paid]);
 
   const openModule = useCallback(
     async (module: (typeof MODULES)[number]) => {
@@ -388,7 +405,7 @@ export default function HomeScreen() {
 
         <Text style={styles.sectionTitle}>Learning modules</Text>
         <View style={styles.grid}>
-          {MODULES.map((m) => {
+          {homeModules.map((m) => {
             const enabled =
               canAccess(m.code) &&
               !isModuleEffectivelyStopped(user?.module_stops ?? [], user?.module_access ?? [], m.code);

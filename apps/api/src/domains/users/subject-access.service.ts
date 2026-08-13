@@ -67,6 +67,17 @@ export function assertExamSubjectAllowed(scope: ExamSubjectScope, examSubjectId:
   }
 }
 
+export function filterByExamSubjectScope<T>(
+  items: T[],
+  getId: (item: T) => string,
+  scope: ExamSubjectScope,
+): T[] {
+  if (scope.mode === 'all') return items;
+  if (scope.mode === 'none') return [];
+  const allow = new Set(scope.ids);
+  return items.filter((item) => allow.has(getId(item)));
+}
+
 /** Serialize subject allow-list for admin user APIs and /auth/me. */
 export async function serializeExamSubjectAccess(user: {
   all_exam_subjects?: boolean;

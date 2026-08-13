@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
-import { requireAdmin } from '../../middleware/requireAdmin.js';
 import { requireModulePermission } from '../../middleware/requireModulePermission.js';
 import { asyncHandler } from '../../shared/asyncHandler.js';
 import {
@@ -11,6 +10,8 @@ import {
   markAllNotificationsReadHandler,
   registerDeviceHandler,
   unregisterDeviceHandler,
+  stopRemainingDeliveryHandler,
+  removeNotificationHandler,
 } from './notifications.controller.js';
 
 export const adminNotificationsRouter = Router();
@@ -30,4 +31,6 @@ const notifySendAccess = requireModulePermission([
 ]);
 
 adminNotificationsRouter.post('/', notifySendAccess, asyncHandler(sendNotificationHandler));
-adminNotificationsRouter.get('/', requireAdmin, asyncHandler(listSentNotificationsHandler));
+adminNotificationsRouter.get('/', notifySendAccess, asyncHandler(listSentNotificationsHandler));
+adminNotificationsRouter.post('/:id/stop', notifySendAccess, asyncHandler(stopRemainingDeliveryHandler));
+adminNotificationsRouter.delete('/:id', notifySendAccess, asyncHandler(removeNotificationHandler));

@@ -5,12 +5,14 @@ import { ExamSubject } from '../exams/models/ExamSubject.model.js';
 import { User } from '../users/models/User.model.js';
 import { Question } from '../questions/models/Question.model.js';
 import { notFound, badRequest } from '../../shared/errors/AppError.js';
+import { assertExamSubjectAllowed, getExamSubjectScopeForUserId } from '../users/subject-access.service.js';
 
 const MAX_SUBMISSIONS_PER_SUBJECT = 10;
 
 export async function submitUserQuestion(userId: string, dto: SubmitUserQuestionDto) {
   const subject = await ExamSubject.findById(dto.exam_subject_id);
   if (!subject || !subject.is_active) throw notFound('Exam subject not found');
+  assertExamSubjectAllowed(await getExamSubjectScopeForUserId(userId), dto.exam_subject_id);
 
   const count = await SubmittedQuestion.countDocuments({
     user_id: userId,

@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import type { SendNotificationDto, RegisterDeviceTokenDto } from '@ibas/shared-types';
 import { User } from '../users/models/User.model.js';
 import { AdminNotification } from './models/AdminNotification.model.js';
@@ -8,7 +9,10 @@ import { notFound, badRequest } from '../../shared/errors/AppError.js';
 
 const RECIPIENT_INSERT_CHUNK_SIZE = 1000;
 
-function serializeNotification(row: InstanceType<typeof AdminNotification>) {
+function serializeNotification(
+  row: InstanceType<typeof AdminNotification>,
+  remainingUnreadCount = 0,
+) {
   return {
     id: String(row._id),
     title: row.title,
@@ -20,6 +24,10 @@ function serializeNotification(row: InstanceType<typeof AdminNotification>) {
     push_failed_count: row.push_failed_count,
     created_by: String(row.created_by),
     sent_at: row.sent_at.toISOString(),
+    status: row.status ?? 'sent',
+    remaining_unread_count: remainingUnreadCount,
+    removed_unread_count: row.removed_unread_count ?? 0,
+    revoked_at: row.revoked_at?.toISOString(),
   };
 }
 
@@ -58,6 +66,7 @@ export async function sendNotification(dto: SendNotificationDto, createdBy: stri
     created_by: createdBy,
     sent_at: new Date(),
     recipient_count: userIds.length,
+    status: 'sent',
   });
 
   for (let i = 0; i < userIds.length; i += RECIPIENT_INSERT_CHUNK_SIZE) {
@@ -78,12 +87,72 @@ export async function sendNotification(dto: SendNotificationDto, createdBy: stri
   return serializeNotification(notification);
 }
 
+async function unreadCountsByNotification(ids: InstanceType<typeof AdminNotification>['_id'][]) {
+  if (ids.length === 0) return new Map<string, number>();
+  const rows = await NotificationRecipient.aggregate<{ _id: unknown; count: number }>([
+    { $match: { notification_id: { $in: ids }, is_read: false } },
+    { $group: { _id: '$notification_id', count: { $sum: 1 } } },
+  ]);
+  return new Map(rows.map((row) => [String(row._id), row.count]));
+}
+
 export async function listSentNotifications(limit: number, offset: number) {
   const [items, total] = await Promise.all([
     AdminNotification.find().sort({ sent_at: -1 }).skip(offset).limit(limit),
     AdminNotification.countDocuments(),
   ]);
-  return { items: items.map(serializeNotification), total };
+  const unreadMap = await unreadCountsByNotification(items.map((row) => row._id));
+  return {
+    items: items.map((row) => serializeNotification(row, unreadMap.get(String(row._id)) ?? 0)),
+    total,
+  };
+}
+
+export async function stopRemainingDelivery(id: string, revokedBy: string) {
+  const notification = await AdminNotification.findById(id);
+  if (!notification) throw notFound('Notification not found');
+  const current = notification.status ?? 'sent';
+  if (current === 'removed') {
+    throw badRequest('This notification has already been removed');
+  }
+  if (current === 'stopped') {
+    throw badRequest('Delivery to remaining users is already stopped');
+  }
+
+  const result = await NotificationRecipient.deleteMany({
+    notification_id: notification._id,
+    is_read: false,
+  });
+
+  notification.status = 'stopped';
+  notification.revoked_at = new Date();
+  notification.revoked_by = new mongoose.Types.ObjectId(revokedBy);
+  notification.removed_unread_count = result.deletedCount ?? 0;
+  await notification.save();
+
+  return serializeNotification(notification, 0);
+}
+
+export async function removeNotification(id: string, revokedBy: string) {
+  const notification = await AdminNotification.findById(id);
+  if (!notification) throw notFound('Notification not found');
+  if ((notification.status ?? 'sent') === 'removed') {
+    throw badRequest('This notification has already been removed');
+  }
+
+  const unreadLeft = await NotificationRecipient.countDocuments({
+    notification_id: notification._id,
+    is_read: false,
+  });
+  await NotificationRecipient.deleteMany({ notification_id: notification._id });
+
+  notification.status = 'removed';
+  notification.revoked_at = new Date();
+  notification.revoked_by = new mongoose.Types.ObjectId(revokedBy);
+  notification.removed_unread_count = (notification.removed_unread_count ?? 0) + unreadLeft;
+  await notification.save();
+
+  return serializeNotification(notification, 0);
 }
 
 export async function listMyNotifications(
@@ -99,9 +168,10 @@ export async function listMyNotifications(
   ]);
 
   const notificationIds = [...new Set(rows.map((r) => String(r.notification_id)))];
-  const notifications = await AdminNotification.find({ _id: { $in: notificationIds } }).select(
-    'title message',
-  );
+  const notifications = await AdminNotification.find({
+    _id: { $in: notificationIds },
+    status: { $ne: 'removed' },
+  }).select('title message');
   const notificationMap = new Map(notifications.map((n) => [String(n._id), n]));
 
   const items = rows
@@ -112,7 +182,19 @@ export async function listMyNotifications(
     })
     .filter((row): row is NonNullable<typeof row> => row !== null);
 
-  const unreadCount = await NotificationRecipient.countDocuments({ user_id: userId, is_read: false });
+  const unreadRows = await NotificationRecipient.find({ user_id: userId, is_read: false }).select(
+    'notification_id',
+  );
+  const unreadParentIds = [...new Set(unreadRows.map((r) => String(r.notification_id)))];
+  const visibleUnreadParents =
+    unreadParentIds.length === 0
+      ? []
+      : await AdminNotification.find({
+          _id: { $in: unreadParentIds },
+          status: { $ne: 'removed' },
+        }).select('_id');
+  const visibleUnreadSet = new Set(visibleUnreadParents.map((n) => String(n._id)));
+  const unreadCount = unreadRows.filter((r) => visibleUnreadSet.has(String(r.notification_id))).length;
 
   return { items, total, unread_count: unreadCount };
 }

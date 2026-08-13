@@ -50,3 +50,13 @@ export async function unregisterDeviceHandler(req: AuthRequest, res: Response): 
   const data = await notificationsService.unregisterDeviceToken(req.user!.id, String(req.params.deviceId));
   res.json({ data });
 }
+
+export async function stopRemainingDeliveryHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await notificationsService.stopRemainingDelivery(String(req.params.id), req.user!.id);
+  res.json({ data });
+}
+
+export async function removeNotificationHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await notificationsService.removeNotification(String(req.params.id), req.user!.id);
+  res.json({ data });
+}

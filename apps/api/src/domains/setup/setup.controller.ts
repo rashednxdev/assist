@@ -22,7 +22,13 @@ export async function listThanasHandler(req: AuthRequest, res: Response): Promis
 export async function listModulesHandler(req: AuthRequest, res: Response): Promise<void> {
   const all = req.query.all === 'true';
   const data = await setupService.listModules(all);
-  res.json({ data });
+  res.json({
+    data: data.map((m) => ({
+      ...m,
+      id: String(m._id),
+      _id: String(m._id),
+    })),
+  });
 }
 
 export async function updateModuleHandler(req: AuthRequest, res: Response): Promise<void> {

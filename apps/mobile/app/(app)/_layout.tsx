@@ -4,6 +4,7 @@ import { Redirect, Stack } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
 import { syncQuestions } from '@/lib/questions-sync';
 import { getCachedQuestionCount } from '@/lib/questions-db';
+import { questionCacheScopeKey } from '@/lib/subject-scope';
 import { registerForPushNotifications } from '@/lib/push-notifications';
 import { colors } from '@/theme';
 
@@ -14,12 +15,13 @@ export default function AppLayout() {
   // (fresh login/register or cleared cache), kick sync immediately in the background.
   useEffect(() => {
     if (!user) return;
+    const scopeKey = questionCacheScopeKey(user);
     if (getCachedQuestionCount() === 0) {
-      void syncQuestions();
+      void syncQuestions(scopeKey);
       return;
     }
-    void syncQuestions();
-  }, [user?.id]);
+    void syncQuestions(scopeKey);
+  }, [user?.id, user?.all_exam_subjects, user?.exam_subject_ids]);
 
   useEffect(() => {
     if (!user) return;

@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, RefreshControl } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import {
   fetchMyNotifications,
@@ -8,6 +8,8 @@ import {
   markAllNotificationsRead,
   type NotificationRecipientRecord,
 } from '@/lib/notifications-api';
+import { useAuth } from '@/lib/auth-context';
+import { canManageUsers } from '@/lib/users-api';
 import { colors, spacing } from '@/theme';
 
 function formatDate(iso: string): string {
@@ -21,6 +23,9 @@ function formatDate(iso: string): string {
 }
 
 export default function NotificationsScreen() {
+  const router = useRouter();
+  const { user } = useAuth();
+  const canManageSent = canManageUsers(user);
   const [items, setItems] = useState<NotificationRecipientRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -69,6 +74,17 @@ export default function NotificationsScreen() {
 
   const unreadCount = items.filter((i) => !i.is_read).length;
 
+  const manageSentBar = canManageSent ? (
+    <Pressable
+      style={({ pressed }) => [styles.manageSent, pressed && styles.cardPressed]}
+      onPress={() => router.push('/(app)/notifications/sent' as Href)}
+    >
+      <Ionicons name="stop-circle-outline" size={18} color={colors.primary} />
+      <Text style={styles.manageSentText}>Stop or remove sent notifications</Text>
+      <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+    </Pressable>
+  ) : null;
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -79,15 +95,19 @@ export default function NotificationsScreen() {
 
   if (items.length === 0) {
     return (
-      <View style={styles.center}>
-        <Ionicons name="notifications-off-outline" size={40} color={colors.textMuted} />
-        <Text style={styles.emptyTitle}>No notifications yet</Text>
+      <View style={styles.emptyWrap}>
+        {manageSentBar}
+        <View style={styles.center}>
+          <Ionicons name="notifications-off-outline" size={40} color={colors.textMuted} />
+          <Text style={styles.emptyTitle}>No notifications yet</Text>
+        </View>
       </View>
     );
   }
 
   return (
     <View style={styles.root}>
+      {manageSentBar}
       {unreadCount > 0 && (
         <View style={styles.toolbar}>
           <Text style={styles.unreadLabel}>{unreadCount} unread</Text>
@@ -127,6 +147,29 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  emptyWrap: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  manageSent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  manageSentText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.primary,
   },
   center: {
     flex: 1,

@@ -14,20 +14,22 @@ export function AnswerDwellRecorder({
   bodyEn,
   bodyBn,
   subtitle,
+  subject,
 }: {
   id: string;
   bodyEn?: string;
   bodyBn?: string;
   subtitle?: string;
+  subject?: string;
 }) {
   useEffect(() => {
     const title = stripHtml(bodyEn?.trim() || bodyBn || '').slice(0, 120);
     if (!title) return;
     const timer = setTimeout(() => {
-      void recordAnswerHistory({ id, title, subtitle });
+      void recordAnswerHistory({ id, title, subtitle, subject });
     }, DWELL_MS);
     return () => clearTimeout(timer);
-  }, [id, bodyEn, bodyBn, subtitle]);
+  }, [id, bodyEn, bodyBn, subtitle, subject]);
 
   return null;
 }

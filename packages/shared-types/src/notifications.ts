@@ -44,6 +44,8 @@ export type RegisterDeviceTokenDto = z.infer<typeof registerDeviceTokenSchema>;
 export type ListNotificationsQuery = z.infer<typeof listNotificationsQuerySchema>;
 export type ListUsersForPickerQuery = z.infer<typeof listUsersForPickerQuerySchema>;
 
+export type AdminNotificationStatus = 'sent' | 'stopped' | 'removed';
+
 export interface AdminNotificationRecord {
   id: string;
   title: string;
@@ -55,6 +57,10 @@ export interface AdminNotificationRecord {
   push_failed_count: number;
   created_by: string;
   sent_at: string;
+  status: AdminNotificationStatus;
+  remaining_unread_count: number;
+  removed_unread_count: number;
+  revoked_at?: string;
 }
 
 export interface NotificationRecipientRecord {

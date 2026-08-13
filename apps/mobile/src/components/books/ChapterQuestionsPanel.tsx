@@ -26,7 +26,12 @@ import {
   type QuestionEvaluationRecord,
 } from '@/lib/evaluation-api';
 import { fetchQuestionDetail } from '@/lib/questions-api';
-import { getCachedBookQuestions, getCachedChapterQuestions, getCachedMcqDetail } from '@/lib/questions-db';
+import {
+  getCachedBookQuestions,
+  getCachedChapterQuestions,
+  getCachedMcqDetail,
+  getCachedQuestionSubjectLabel,
+} from '@/lib/questions-db';
 import { subscribeQuestionsSync } from '@/lib/questions-sync';
 import { stripHtml } from '@/lib/book-display';
 import { bilingualQuestionText } from '@/lib/question-display';
@@ -484,6 +489,7 @@ export function ChapterQuestionsPanel({
                       bodyEn={question.body_en}
                       bodyBn={question.body_bn}
                       subtitle={bookName ?? chapterTitle}
+                      subject={getCachedQuestionSubjectLabel(question.id)}
                     />
                   ) : null}
 

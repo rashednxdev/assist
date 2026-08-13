@@ -17,6 +17,7 @@ import {
 } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
 import * as examsService from './exams.service.js';
+import { getExamSubjectScopeForAuthUser } from '../users/subject-access.service.js';
 
 export async function listDepartmentsHandler(_req: AuthRequest, res: Response): Promise<void> {
   res.json({ data: await examsService.listDepartments() });
@@ -65,7 +66,8 @@ export async function getAuthorityHandler(req: AuthRequest, res: Response): Prom
 
 export async function listExamNamesHandler(req: AuthRequest, res: Response): Promise<void> {
   const authorityId = req.query.authority_id ? String(req.query.authority_id) : undefined;
-  res.json({ data: await examsService.listExamNames(authorityId) });
+  const subjectScope = await getExamSubjectScopeForAuthUser(req.user);
+  res.json({ data: await examsService.listExamNames(authorityId, { subjectScope }) });
 }
 
 export async function getExamNameHandler(req: AuthRequest, res: Response): Promise<void> {
@@ -73,7 +75,8 @@ export async function getExamNameHandler(req: AuthRequest, res: Response): Promi
 }
 
 export async function getExamTreeHandler(req: AuthRequest, res: Response): Promise<void> {
-  res.json({ data: await examsService.getExamTree(String(req.params.id)) });
+  const subjectScope = await getExamSubjectScopeForAuthUser(req.user);
+  res.json({ data: await examsService.getExamTree(String(req.params.id), subjectScope) });
 }
 
 export async function createExamNameHandler(req: AuthRequest, res: Response): Promise<void> {
@@ -157,11 +160,13 @@ export async function getExamTypeHandler(req: AuthRequest, res: Response): Promi
 }
 
 export async function listExamSubjectsHandler(req: AuthRequest, res: Response): Promise<void> {
-  res.json({ data: await examsService.listExamSubjects(String(req.params.partId)) });
+  const subjectScope = await getExamSubjectScopeForAuthUser(req.user);
+  res.json({ data: await examsService.listExamSubjects(String(req.params.partId), subjectScope) });
 }
 
 export async function getExamSubjectHandler(req: AuthRequest, res: Response): Promise<void> {
-  res.json({ data: await examsService.getExamSubjectById(String(req.params.id)) });
+  const subjectScope = await getExamSubjectScopeForAuthUser(req.user);
+  res.json({ data: await examsService.getExamSubjectById(String(req.params.id), subjectScope) });
 }
 
 export async function createExamSubjectHandler(req: AuthRequest, res: Response): Promise<void> {

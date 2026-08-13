@@ -1,14 +1,17 @@
 import * as SecureStore from 'expo-secure-store';
 import * as SQLite from 'expo-sqlite';
+import { getCachedQuestionSubjectLabel } from './questions-db';
 
 export interface AnswerHistoryEntry {
   id: string;
   title: string;
   subtitle?: string;
+  subject?: string;
   viewed_at: string;
 }
 
 export type AnswerHistoryDateFilter = 'all' | 'today' | 'yesterday' | 'week' | 'older';
+export type AnswerHistorySort = 'date' | 'subject';
 
 export interface AnswerHistoryDateGroup {
   key: string;
@@ -36,10 +39,16 @@ function getDb(): SQLite.SQLiteDatabase {
       id TEXT PRIMARY KEY NOT NULL,
       title TEXT NOT NULL,
       subtitle TEXT,
+      subject TEXT,
       viewed_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_answer_history_viewed_at ON answer_history(viewed_at);
   `);
+  try {
+    db.execSync('ALTER TABLE answer_history ADD COLUMN subject TEXT');
+  } catch {
+    // column already exists
+  }
   return db;
 }
 
@@ -62,14 +71,41 @@ function readAllFromDb(): AnswerHistoryEntry[] {
     id: string;
     title: string;
     subtitle: string | null;
+    subject: string | null;
     viewed_at: string;
-  }>('SELECT id, title, subtitle, viewed_at FROM answer_history ORDER BY viewed_at DESC');
-  return rows.map((row) => ({
-    id: row.id,
-    title: row.title,
-    subtitle: row.subtitle || undefined,
-    viewed_at: row.viewed_at,
-  }));
+  }>('SELECT id, title, subtitle, subject, viewed_at FROM answer_history ORDER BY viewed_at DESC');
+  return enrichSubjects(
+    rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      subtitle: row.subtitle || undefined,
+      subject: row.subject || undefined,
+      viewed_at: row.viewed_at,
+    })),
+  );
+}
+
+function enrichSubjects(rows: AnswerHistoryEntry[]): AnswerHistoryEntry[] {
+  let dirty = false;
+  const next = rows.map((row) => {
+    if (row.subject?.trim()) return row;
+    const subject = getCachedQuestionSubjectLabel(row.id);
+    if (!subject) return row;
+    dirty = true;
+    return { ...row, subject };
+  });
+  if (!dirty) return next;
+  const database = getDb();
+  database.withTransactionSync(() => {
+    for (const row of next) {
+      if (!row.subject) continue;
+      database.runSync(
+        `UPDATE answer_history SET subject = ? WHERE id = ? AND (subject IS NULL OR subject = '')`,
+        [row.subject, row.id],
+      );
+    }
+  });
+  return next;
 }
 
 async function migrateFromSecureStore() {
@@ -88,8 +124,8 @@ async function migrateFromSecureStore() {
     database.withTransactionSync(() => {
       for (const row of legacy) {
         database.runSync(
-          `INSERT OR REPLACE INTO answer_history (id, title, subtitle, viewed_at) VALUES (?, ?, ?, ?)`,
-          [row.id, row.title, row.subtitle ?? null, row.viewed_at],
+          `INSERT OR REPLACE INTO answer_history (id, title, subtitle, subject, viewed_at) VALUES (?, ?, ?, ?, ?)`,
+          [row.id, row.title, row.subtitle ?? null, row.subject ?? null, row.viewed_at],
         );
       }
     });
@@ -107,9 +143,9 @@ export function subscribeAnswerHistory(listener: () => void) {
 }
 
 export async function loadAnswerHistory(): Promise<AnswerHistoryEntry[]> {
-  if (memory) return memory;
   await migrateFromSecureStore();
-  memory = readAllFromDb();
+  if (!memory) memory = readAllFromDb();
+  else memory = enrichSubjects(memory);
   return memory;
 }
 
@@ -122,9 +158,13 @@ function persistFromDb() {
 export async function recordAnswerHistory(entry: Omit<AnswerHistoryEntry, 'viewed_at'>) {
   await migrateFromSecureStore();
   getDb().runSync(
-    `INSERT INTO answer_history (id, title, subtitle, viewed_at) VALUES (?, ?, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET title = excluded.title, subtitle = excluded.subtitle, viewed_at = excluded.viewed_at`,
-    [entry.id, entry.title, entry.subtitle ?? null, new Date().toISOString()],
+    `INSERT INTO answer_history (id, title, subtitle, subject, viewed_at) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       title = excluded.title,
+       subtitle = excluded.subtitle,
+       subject = excluded.subject,
+       viewed_at = excluded.viewed_at`,
+    [entry.id, entry.title, entry.subtitle ?? null, entry.subject ?? null, new Date().toISOString()],
   );
   persistFromDb();
 }
@@ -216,6 +256,34 @@ export function groupAnswerHistoryByDate(items: AnswerHistoryEntry[]): AnswerHis
       items: groupItems,
     }));
 }
+
+const UNCATEGORIZED_SUBJECT = 'No subject';
+
+export function groupAnswerHistoryBySubject(items: AnswerHistoryEntry[]): AnswerHistoryDateGroup[] {
+  const groups = new Map<string, AnswerHistoryEntry[]>();
+  for (const item of items) {
+    const key = item.subject?.trim() || UNCATEGORIZED_SUBJECT;
+    const list = groups.get(key) ?? [];
+    list.push(item);
+    groups.set(key, list);
+  }
+  return [...groups.entries()]
+    .sort((a, b) => {
+      if (a[0] === UNCATEGORIZED_SUBJECT) return 1;
+      if (b[0] === UNCATEGORIZED_SUBJECT) return -1;
+      return a[0].localeCompare(b[0], undefined, { sensitivity: 'base' });
+    })
+    .map(([key, groupItems]) => ({
+      key,
+      label: key,
+      items: groupItems,
+    }));
+}
+
+export const HISTORY_SORTS: Array<{ id: AnswerHistorySort; label: string }> = [
+  { id: 'date', label: 'By date' },
+  { id: 'subject', label: 'By subject' },
+];
 
 export const HISTORY_DATE_FILTERS: Array<{ id: AnswerHistoryDateFilter; label: string }> = [
   { id: 'all', label: 'All' },

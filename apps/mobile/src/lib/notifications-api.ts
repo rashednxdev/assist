@@ -1,7 +1,25 @@
 import { apiFetch } from './api';
-import type { NotificationRecipientRecord } from '@ibas/shared-types';
+import type { AdminNotificationRecord, NotificationRecipientRecord } from '@ibas/shared-types';
 
-export type { NotificationRecipientRecord };
+export type { AdminNotificationRecord, NotificationRecipientRecord };
+
+export async function fetchSentNotifications() {
+  return apiFetch<{ data: AdminNotificationRecord[]; meta: { total: number } }>(
+    '/admin-notifications?limit=50',
+  );
+}
+
+export async function stopRemainingNotification(id: string) {
+  return apiFetch<{ data: AdminNotificationRecord }>(`/admin-notifications/${id}/stop`, {
+    method: 'POST',
+  });
+}
+
+export async function removeSentNotification(id: string) {
+  return apiFetch<{ data: AdminNotificationRecord }>(`/admin-notifications/${id}`, {
+    method: 'DELETE',
+  });
+}
 
 export async function fetchMyNotifications(unreadOnly = false) {
   const params = new URLSearchParams({ limit: '50' });

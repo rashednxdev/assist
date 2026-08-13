@@ -11,7 +11,7 @@ import {
   Switch,
   ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { QUESTION_DIFFICULTIES } from '@ibas/shared-constants';
 import { BookBadge } from '@/components/books/BookBadge';
@@ -21,6 +21,7 @@ import { fetchQuestionEvaluationsBatchChunked, type QuestionEvalBrief } from '@/
 import { fetchQuestionTypes, fetchQuestionSubjectCatalog, fetchQuestionsBySubject } from '@/lib/questions-api';
 import { getCachedQuestionListItems, mergeCachedQuestionSubjects } from '@/lib/questions-db';
 import { subscribeQuestionsSync, syncQuestions } from '@/lib/questions-sync';
+import { questionCacheScopeKey } from '@/lib/subject-scope';
 import { searchQuestionsByText } from '@/lib/question-search';
 import { questionDetailHref } from '@/lib/question-routes';
 import { saveQuestionBankLastQuestion } from '@/lib/question-bank-progress';
@@ -93,7 +94,7 @@ function buildBankRows(items: QuestionListItem[]): BankRow[] {
 
 export default function QuestionsScreen() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const isAdmin =
     user?.is_super_admin || user?.user_type === 'system_admin' || user?.user_type === 'admin';
   const { isSaved, toggle } = useSavedShortcuts();
@@ -286,20 +287,25 @@ export default function QuestionsScreen() {
         // Non-fatal — type chips fall back to raw type code.
       });
 
-    fetchQuestionSubjectCatalog()
-      .then((rows) =>
-        setSubjectCatalog(
-          rows.map((r) => ({
-            id: r.id,
-            name: r.name_bn?.trim() || r.name,
-            label: r.label,
-          })),
-        ),
-      )
-      .catch(() => setSubjectCatalog([]));
-
     return subscribeQuestionsSync(refreshFromCache);
   }, [refreshFromCache]);
+
+  const loadSubjectCatalog = useCallback(async () => {
+    try {
+      const rows = await fetchQuestionSubjectCatalog();
+      setSubjectCatalog(
+        rows.map((r) => ({
+          id: r.id,
+          name: r.name_bn?.trim() || r.name,
+          label: r.label,
+        })),
+      );
+      return rows;
+    } catch {
+      setSubjectCatalog([]);
+      return [] as Array<{ id: string }>;
+    }
+  }, []);
 
   useEffect(() => {
     if (!selectedSubjectId) {
@@ -338,7 +344,13 @@ export default function QuestionsScreen() {
   const runSync = useCallback(async () => {
     setSyncing(true);
     try {
-      await syncQuestions();
+      const me = await refreshUser().catch(() => user);
+      await syncQuestions(questionCacheScopeKey(me));
+      const catalog = await loadSubjectCatalog();
+      setSelectedSubjectId((current) =>
+        current && catalog.some((row) => row.id === current) ? current : null,
+      );
+      refreshFromCache();
     } catch (err) {
       if (itemsRef.current.length === 0) {
         setError(err instanceof Error ? err.message : 'Failed to sync questions');
@@ -346,11 +358,13 @@ export default function QuestionsScreen() {
     } finally {
       setSyncing(false);
     }
-  }, []);
+  }, [loadSubjectCatalog, refreshFromCache, refreshUser, user]);
 
-  useEffect(() => {
-    void runSync();
-  }, [runSync]);
+  useFocusEffect(
+    useCallback(() => {
+      void runSync();
+    }, [runSync]),
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -364,7 +378,7 @@ export default function QuestionsScreen() {
   function submitSearch() {
     setAppliedQuery(query.trim());
     // Keep searching the full local bank; also nudge a background sync for fresher hits.
-    void syncQuestions();
+    void syncQuestions(questionCacheScopeKey(user));
   }
 
   function clearSearch() {

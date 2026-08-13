@@ -4,8 +4,8 @@ import { QotdEntry } from './models/QotdEntry.model.js';
 import { QotdSettings } from './models/QotdSettings.model.js';
 import { ExamSubject } from '../exams/models/ExamSubject.model.js';
 import { Question } from '../questions/models/Question.model.js';
+import { QuestionSubjectLink } from '../questions/models/QuestionSubjectLink.model.js';
 import { BookChapter } from '../books/models/BookChapter.model.js';
-import { getSyllabusTree } from '../syllabus/syllabus.service.js';
 import { notFound, badRequest } from '../../shared/errors/AppError.js';
 import { bdToday as todayStr, bdCutoff as cutoffStr, bdNowTime as nowTimeStr } from '../../shared/bd-time.js';
 import {
@@ -43,48 +43,13 @@ async function visibilityFilter(isAdmin: boolean): Promise<Record<string, unknow
   };
 }
 
-/**
- * Walks a subject's syllabus tree and returns a Mongo match condition selecting every question
- * linked at or below the most specific level each reference points to (rule > chapter > book) —
- * mirrors the "most specific wins" resolution already used to store syllabus references.
- */
-async function syllabusQuestionMatch(examSubjectId: string): Promise<Record<string, unknown> | null> {
-  const tree = await getSyllabusTree(examSubjectId);
-  const allTopics = [...tree.groups.flatMap((g) => g.topics), ...tree.subject_topics];
-  const references = allTopics.flatMap((t) => t.references);
-  if (references.length === 0) return null;
-
-  const bookTopicIds = new Set<string>();
-  const regulationIds = new Set<string>();
-  const chapterIds = new Set<string>();
-  const bookOnlyIds = new Set<string>();
-
-  for (const ref of references) {
-    if (ref.book_topic_id) {
-      bookTopicIds.add(ref.book_topic_id);
-    } else if (ref.regulation_id) {
-      regulationIds.add(ref.regulation_id);
-    } else if (ref.book_chapter_id) {
-      chapterIds.add(ref.book_chapter_id);
-    } else if (ref.book_info_id) {
-      bookOnlyIds.add(ref.book_info_id);
-    }
-  }
-
-  if (bookOnlyIds.size > 0) {
-    const chapters = await BookChapter.find({
-      book_info_id: { $in: [...bookOnlyIds] },
-      is_active: true,
-    }).select('_id');
-    for (const c of chapters) chapterIds.add(String(c._id));
-  }
-
-  const or: Record<string, unknown>[] = [];
-  if (bookTopicIds.size > 0) or.push({ book_topic_id: { $in: [...bookTopicIds] } });
-  if (regulationIds.size > 0) or.push({ regulation_id: { $in: [...regulationIds] } });
-  if (chapterIds.size > 0) or.push({ book_chapter_id: { $in: [...chapterIds] } });
-
-  return or.length > 0 ? { $or: or } : null;
+/** Published questions tagged to this exam subject — no Books & Tools / syllabus link required. */
+async function questionIdsTaggedToSubject(examSubjectId: string): Promise<string[]> {
+  const links = await QuestionSubjectLink.find({
+    exam_subject_id: examSubjectId,
+    is_active: true,
+  }).select('question_id');
+  return [...new Set(links.map((l) => String(l.question_id)))];
 }
 
 export async function listSyllabusQuestions(
@@ -94,10 +59,14 @@ export async function listSyllabusQuestions(
   const subject = await ExamSubject.findById(examSubjectId);
   if (!subject || !subject.is_active) throw notFound('Exam subject not found');
 
-  const match = await syllabusQuestionMatch(examSubjectId);
-  if (!match) return { items: [], total: 0, has_more: false };
+  const taggedIds = await questionIdsTaggedToSubject(examSubjectId);
+  if (taggedIds.length === 0) return { items: [], total: 0, has_more: false };
 
-  const query: Record<string, unknown> = { ...match, is_published: true, is_active: true };
+  const query: Record<string, unknown> = {
+    _id: { $in: taggedIds },
+    is_published: true,
+    is_active: true,
+  };
   if (filters.q?.trim()) {
     const q = filters.q.trim();
     query.$and = [{ $or: [{ body_en: { $regex: q, $options: 'i' } }, { body_bn: { $regex: q, $options: 'i' } }] }];
@@ -134,6 +103,11 @@ export async function listSyllabusQuestions(
 export async function createQotdEntry(dto: CreateQotdEntryDto, createdBy: string) {
   const subject = await ExamSubject.findById(dto.exam_subject_id);
   if (!subject || !subject.is_active) throw notFound('Exam subject not found');
+
+  const taggedIds = new Set(await questionIdsTaggedToSubject(dto.exam_subject_id));
+  if (dto.question_ids.some((id) => !taggedIds.has(id))) {
+    throw badRequest('Every selected question must be tagged with this subject');
+  }
 
   const validCount = await Question.countDocuments({
     _id: { $in: dto.question_ids },
@@ -173,6 +147,10 @@ export async function updateQotdEntry(id: string, dto: UpdateQotdEntryDto) {
   if (!entry) throw notFound('Question entry not found');
 
   if (dto.question_ids) {
+    const taggedIds = new Set(await questionIdsTaggedToSubject(String(entry.exam_subject_id)));
+    if (dto.question_ids.some((id) => !taggedIds.has(id))) {
+      throw badRequest('Every selected question must be tagged with this subject');
+    }
     const validCount = await Question.countDocuments({
       _id: { $in: dto.question_ids },
       is_published: true,

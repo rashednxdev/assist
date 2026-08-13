@@ -1,5 +1,7 @@
 import mongoose, { Schema, type Document, type Types } from 'mongoose';
 
+export type AdminNotificationStatus = 'sent' | 'stopped' | 'removed';
+
 /** A broadcast sent by an admin — the message content itself, not per-user delivery state. */
 export interface IAdminNotification extends Document {
   title: string;
@@ -11,6 +13,10 @@ export interface IAdminNotification extends Document {
   recipient_count: number;
   push_sent_count: number;
   push_failed_count: number;
+  status: AdminNotificationStatus;
+  revoked_at?: Date;
+  revoked_by?: Types.ObjectId;
+  removed_unread_count: number;
 }
 
 const schema = new Schema<IAdminNotification>(
@@ -24,6 +30,10 @@ const schema = new Schema<IAdminNotification>(
     recipient_count: { type: Number, default: 0 },
     push_sent_count: { type: Number, default: 0 },
     push_failed_count: { type: Number, default: 0 },
+    status: { type: String, enum: ['sent', 'stopped', 'removed'], default: 'sent' },
+    revoked_at: { type: Date },
+    revoked_by: { type: Schema.Types.ObjectId, ref: 'User' },
+    removed_unread_count: { type: Number, default: 0 },
   },
   { timestamps: false },
 );

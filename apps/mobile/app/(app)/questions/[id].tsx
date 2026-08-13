@@ -10,7 +10,7 @@ import { BlockingLoader } from '@/components/ui/BlockingLoader';
 import { EvaluationCelebrate } from '@/components/evaluation/EvaluationCelebrate';
 import { RatingIndicator } from '@/components/evaluation/RatingIndicator';
 import { fetchQuestionDetail } from '@/lib/questions-api';
-import { getCachedMcqDetail } from '@/lib/questions-db';
+import { getCachedMcqDetail, getCachedQuestionSubjectLabel } from '@/lib/questions-db';
 import { formatEvaluationStatusLabel } from '@/lib/evaluation-display';
 import {
   fetchQuestionEvaluation,
@@ -290,6 +290,7 @@ export default function QuestionDetailScreen() {
           bodyEn={item.body_en}
           bodyBn={item.body_bn}
           subtitle={item.book_name}
+          subject={getCachedQuestionSubjectLabel(item.id)}
         />
       ) : null}
       {item.has_options ? (

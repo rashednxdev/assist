@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Send } from 'lucide-react';
+import { Ban, Send, Trash2 } from 'lucide-react';
 import type { AdminNotificationRecord } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { PageHeader } from '@/components/shared/page-header';
@@ -13,6 +13,10 @@ import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { UserPicker } from '@/components/users/user-picker';
 
+function statusOf(n: AdminNotificationRecord) {
+  return n.status ?? 'sent';
+}
+
 export default function NotificationsAdminPage() {
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
@@ -21,6 +25,7 @@ export default function NotificationsAdminPage() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const [history, setHistory] = useState<AdminNotificationRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,7 +33,7 @@ export default function NotificationsAdminPage() {
   async function loadHistory() {
     setLoading(true);
     try {
-      const res = await apiFetch<{ data: AdminNotificationRecord[] }>('/admin-notifications');
+      const res = await apiFetch<{ data: AdminNotificationRecord[] }>('/admin-notifications?limit=50');
       setHistory(res.data);
     } catch {
       // history load failure isn't fatal to the send form
@@ -79,11 +84,62 @@ export default function NotificationsAdminPage() {
     }
   }
 
+  async function handleStopRemaining(n: AdminNotificationRecord) {
+    const unread = n.remaining_unread_count ?? 0;
+    if (
+      !confirm(
+        unread > 0
+          ? `Stop delivery for ${unread} remaining user${unread === 1 ? '' : 's'} who have not opened this notice? Already-read copies stay. Push alerts already on phones cannot be recalled.`
+          : 'Mark this notice as stopped for remaining users? There are no unread inboxes left. Push alerts already on phones cannot be recalled.',
+      )
+    ) {
+      return;
+    }
+    setError('');
+    setSuccess('');
+    setBusyId(n.id);
+    try {
+      const res = await apiFetch<{ data: AdminNotificationRecord }>(`/admin-notifications/${n.id}/stop`, {
+        method: 'POST',
+      });
+      setSuccess(
+        `Stopped for remaining users. Removed from ${res.data.removed_unread_count} unread inbox${res.data.removed_unread_count === 1 ? '' : 'es'}.`,
+      );
+      await loadHistory();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to stop remaining delivery');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleRemove(n: AdminNotificationRecord) {
+    if (
+      !confirm(
+        'Remove this notice from every user inbox, including people who already opened it? Push alerts already on phones cannot be recalled.',
+      )
+    ) {
+      return;
+    }
+    setError('');
+    setSuccess('');
+    setBusyId(n.id);
+    try {
+      await apiFetch(`/admin-notifications/${n.id}`, { method: 'DELETE' });
+      setSuccess('Notification removed from all inboxes.');
+      await loadHistory();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove notification');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Notifications"
-        description="Send a broadcast or targeted notification to app users, with push delivery on Android."
+        description="Send a broadcast or targeted notification to app users. Stop remaining unread delivery, or remove a notice from every inbox."
       />
 
       <Card>
@@ -162,23 +218,63 @@ export default function NotificationsAdminPage() {
             <p className="text-sm text-muted">No notifications sent yet.</p>
           ) : (
             <div className="space-y-2">
-              {history.map((n) => (
-                <div key={n.id} className="rounded-md border border-border p-3 text-sm">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-medium">{n.title}</span>
-                    <Badge variant="secondary">
-                      {n.target_type === 'all' ? 'All users' : `${n.target_user_ids?.length ?? 0} users`}
-                    </Badge>
+              {history.map((n) => {
+                const status = statusOf(n);
+                const remaining = n.remaining_unread_count ?? 0;
+                const busy = busyId === n.id;
+                return (
+                  <div key={n.id} className="rounded-md border border-border p-3 text-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-medium">{n.title}</span>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge variant="secondary">
+                          {n.target_type === 'all' ? 'All users' : `${n.target_user_ids?.length ?? 0} users`}
+                        </Badge>
+                        {status === 'stopped' && <Badge variant="warning">Stopped remaining</Badge>}
+                        {status === 'removed' && <Badge variant="destructive">Removed</Badge>}
+                      </div>
+                    </div>
+                    <p className="mt-1 text-muted">{n.message}</p>
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+                      <span>{new Date(n.sent_at).toLocaleString()}</span>
+                      <span>{n.recipient_count} recipients</span>
+                      <span>{n.push_sent_count} push delivered</span>
+                      {n.push_failed_count > 0 && <span>{n.push_failed_count} push failed</span>}
+                      {status === 'sent' && <span>{remaining} unread remaining</span>}
+                      {status !== 'sent' && (n.removed_unread_count ?? 0) > 0 && (
+                        <span>{n.removed_unread_count} unread removed</span>
+                      )}
+                      {n.revoked_at && <span>{new Date(n.revoked_at).toLocaleString()}</span>}
+                    </div>
+                    {status !== 'removed' && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {status === 'sent' && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={busy}
+                            onClick={() => void handleStopRemaining(n)}
+                          >
+                            <Ban className="h-3.5 w-3.5" />
+                            {busy ? 'Stopping...' : 'Stop remaining'}
+                          </Button>
+                        )}
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => void handleRemove(n)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          {busy ? 'Removing...' : 'Remove from all'}
+                        </Button>
+                      </div>
+                    )}
                   </div>
-                  <p className="mt-1 text-muted">{n.message}</p>
-                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
-                    <span>{new Date(n.sent_at).toLocaleString()}</span>
-                    <span>{n.recipient_count} recipients</span>
-                    <span>{n.push_sent_count} push delivered</span>
-                    {n.push_failed_count > 0 && <span>{n.push_failed_count} push failed</span>}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>

@@ -34,9 +34,14 @@ export interface ExamSubjectOption {
 }
 
 export interface ModuleCatalogItem {
-  _id: string;
+  _id?: string;
+  id?: string;
   code: string;
   name_en: string;
+}
+
+export function catalogModuleId(mod: ModuleCatalogItem): string {
+  return String(mod._id ?? mod.id ?? '');
 }
 
 export interface UserModuleAccessRow {

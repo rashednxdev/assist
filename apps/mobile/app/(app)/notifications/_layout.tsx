@@ -12,6 +12,7 @@ export default function NotificationsLayout() {
       }}
     >
       <Stack.Screen name="index" options={{ title: 'Notifications' }} />
+      <Stack.Screen name="sent" options={{ title: 'Sent notifications' }} />
     </Stack>
   );
 }

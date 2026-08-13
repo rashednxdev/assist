@@ -49,12 +49,18 @@ function getDb(): SQLite.SQLiteDatabase {
     );
     CREATE TABLE IF NOT EXISTS sync_state (
       id INTEGER PRIMARY KEY CHECK (id = 1),
-      last_synced_at TEXT
+      last_synced_at TEXT,
+      subject_scope_key TEXT
     );
   `);
   // Older installs — add subject_links when missing.
   try {
     db.execSync('ALTER TABLE questions ADD COLUMN subject_links TEXT');
+  } catch {
+    // column already exists
+  }
+  try {
+    db.execSync('ALTER TABLE sync_state ADD COLUMN subject_scope_key TEXT');
   } catch {
     // column already exists
   }
@@ -104,6 +110,51 @@ export function setLastSyncedAt(value: string): void {
      ON CONFLICT(id) DO UPDATE SET last_synced_at = excluded.last_synced_at`,
     [value],
   );
+}
+
+export function getCachedSubjectScopeKey(): string | null {
+  const row = getDb().getFirstSync<{ subject_scope_key: string | null }>(
+    'SELECT subject_scope_key FROM sync_state WHERE id = 1',
+  );
+  return row?.subject_scope_key ?? null;
+}
+
+export function setCachedSubjectScopeKey(value: string): void {
+  getDb().runSync(
+    `INSERT INTO sync_state (id, subject_scope_key) VALUES (1, ?)
+     ON CONFLICT(id) DO UPDATE SET subject_scope_key = excluded.subject_scope_key`,
+    [value],
+  );
+}
+
+/** Wipe local questions so a subject-allowlist (or user) change can full-sync from scratch. */
+export function clearQuestionCache(): void {
+  const database = getDb();
+  database.withTransactionSync(() => {
+    database.execSync('DELETE FROM questions');
+    database.execSync('DELETE FROM question_options');
+    database.execSync('DELETE FROM question_explanations');
+    database.runSync(
+      `INSERT INTO sync_state (id, last_synced_at) VALUES (1, NULL)
+       ON CONFLICT(id) DO UPDATE SET last_synced_at = NULL`,
+    );
+  });
+}
+
+function allowedIdsFromStoredScope(): string[] | null {
+  const key = getCachedSubjectScopeKey();
+  if (!key) return null;
+  const scope = key.includes(':') ? key.slice(key.indexOf(':') + 1) : key;
+  if (!scope || scope === 'all') return null;
+  if (scope === 'none') return [];
+  return scope.split(',').filter(Boolean);
+}
+
+function isRowInStoredSubjectScope(row: { subject_links: string | null }): boolean {
+  const allowed = allowedIdsFromStoredScope();
+  if (allowed === null) return true;
+  if (allowed.length === 0) return false;
+  return parseSubjects(row.subject_links).some((s) => allowed.includes(s.id));
 }
 
 export function getCachedQuestionCount(): number {
@@ -247,7 +298,7 @@ export function getCachedQuestionListItems(): QuestionListItem[] {
     `SELECT * FROM questions WHERE is_published = 1 AND is_active = 1 AND question_type_code != 'MCQ'
      ORDER BY updated_at DESC, id DESC`,
   );
-  return rows.map(toQuestionListItem);
+  return rows.filter(isRowInStoredSubjectScope).map(toQuestionListItem);
 }
 
 /** Merge server subject tags into already-cached question rows (does not insert missing questions). */
@@ -272,12 +323,14 @@ export function mergeCachedQuestionSubjects(
  * any persisted rank.
  */
 export function getCachedMarathonItems(): MarathonReviewItem[] {
-  const rows = getDb().getAllSync<QuestionRow>(
-    `SELECT * FROM questions
+  const rows = getDb()
+    .getAllSync<QuestionRow>(
+      `SELECT * FROM questions
      WHERE question_type_code = 'MCQ' AND is_published = 1 AND is_active = 1
        AND book_id IS NOT NULL AND book_name IS NOT NULL
      ORDER BY book_name COLLATE NOCASE ASC, chapter_number COLLATE NOCASE ASC, body_en COLLATE NOCASE ASC, id ASC`,
-  );
+    )
+    .filter(isRowInStoredSubjectScope);
 
   const ids = rows.map((r) => r.id);
   const explanationByQuestion = new Map<string, MarathonExplanationSection[]>();
@@ -326,12 +379,22 @@ export interface CachedQuestionBase {
 
 /** Base fields for any cached, still-active question — regardless of published state, matching
  * the server's own detail-view rule (unpublished-but-active questions can still be opened by id). */
+export function getCachedQuestionSubjectLabel(id: string): string | undefined {
+  const row = getDb().getFirstSync<{ subject_links: string | null }>(
+    'SELECT subject_links FROM questions WHERE id = ?',
+    [id],
+  );
+  const first = parseSubjects(row?.subject_links ?? null)[0];
+  if (!first) return undefined;
+  return first.name_bn?.trim() || first.name.trim() || undefined;
+}
+
 export function getCachedQuestionBase(id: string): CachedQuestionBase | null {
   const row = getDb().getFirstSync<QuestionRow>(
     'SELECT * FROM questions WHERE id = ? AND is_active = 1',
     [id],
   );
-  if (!row) return null;
+  if (!row || !isRowInStoredSubjectScope(row)) return null;
   return {
     id: row.id,
     question_type_code: row.question_type_code,
@@ -457,7 +520,7 @@ export function getCachedChapterQuestions(chapterId: string): ChapterQuestionBri
      ORDER BY question_type_code ASC, updated_at DESC`,
     [chapterId],
   );
-  return rows.map((row) => ({
+  return rows.filter(isRowInStoredSubjectScope).map((row) => ({
     id: row.id,
     question_type_code: row.question_type_code,
     body_en: row.body_en,
@@ -479,7 +542,7 @@ export function getCachedBookQuestions(bookId: string): ChapterQuestionBrief[] {
      ORDER BY question_type_code ASC, updated_at DESC`,
     [bookId],
   );
-  return rows.map((row) => ({
+  return rows.filter(isRowInStoredSubjectScope).map((row) => ({
     id: row.id,
     question_type_code: row.question_type_code,
     body_en: row.body_en,

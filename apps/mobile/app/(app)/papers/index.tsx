@@ -16,7 +16,7 @@ import { colors, spacing } from '@/theme';
 
 export default function PapersScreen() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const isAdmin =
     user?.is_super_admin || user?.user_type === 'system_admin' || user?.user_type === 'admin';
   const offlineToastShown = useRef(false);
@@ -102,13 +102,11 @@ export default function PapersScreen() {
   useFocusEffect(
     useCallback(() => {
       void notifyOffline();
-      if (items.length > 0) void loadProgress(items);
-    }, [items, loadProgress, notifyOffline]),
+      void refreshUser()
+        .catch(() => null)
+        .then(() => load());
+    }, [load, notifyOffline, refreshUser]),
   );
-
-  useEffect(() => {
-    void load();
-  }, [load]);
 
   const subjectOptions = useMemo(() => {
     const map = new Map<string, string>();

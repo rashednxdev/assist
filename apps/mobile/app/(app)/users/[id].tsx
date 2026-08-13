@@ -20,6 +20,7 @@ import {
   fetchSetupModules,
   fetchUserModuleAccess,
   MOBILE_MODULE_CODES,
+  catalogModuleId,
   revokeUserModuleAccess,
   sendNotificationToUser,
   updateAdminUser,
@@ -69,6 +70,8 @@ export default function UserDetailScreen() {
   const [drafts, setDrafts] = useState<
     Record<string, Partial<UserModuleAccessRow> & { bypass_stop?: boolean }>
   >({});
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [busyModuleId, setBusyModuleId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -94,16 +97,20 @@ export default function UserDetailScreen() {
   }, [load]);
 
   useEffect(() => {
-    if (tab !== 'access' || !id) return;
+    if (!id) return;
     void fetchUserModuleAccess(id)
       .then(setAccess)
       .catch(() => setAccess([]));
-  }, [tab, id]);
+  }, [id]);
 
-  const mobileModules = useMemo(
-    () => modules.filter((m) => (MOBILE_MODULE_CODES as readonly string[]).includes(m.code)),
-    [modules],
-  );
+  const mobileModules = useMemo(() => {
+    const allowed = modules.filter((m) => (MOBILE_MODULE_CODES as readonly string[]).includes(m.code));
+    return [...allowed].sort(
+      (a, b) =>
+        (MOBILE_MODULE_CODES as readonly string[]).indexOf(a.code) -
+        (MOBILE_MODULE_CODES as readonly string[]).indexOf(b.code),
+    );
+  }, [modules]);
 
   async function saveProfile() {
     if (!detail || !id) return;
@@ -160,10 +167,16 @@ export default function UserDetailScreen() {
     }
   }
 
+  function accessFor(mod: ModuleCatalogItem) {
+    const mid = catalogModuleId(mod);
+    return access.find((a) => a.module_id === mid || a.module_code === mod.code);
+  }
+
   function draftFor(mod: ModuleCatalogItem) {
-    const existing = access.find((a) => a.module_id === mod._id);
+    const mid = catalogModuleId(mod);
+    const existing = accessFor(mod);
     return (
-      drafts[mod._id] ??
+      drafts[mid] ??
       existing ?? {
         can_read: true,
         can_create: false,
@@ -176,15 +189,21 @@ export default function UserDetailScreen() {
     );
   }
 
-  async function saveAccess(mod: ModuleCatalogItem) {
+  async function grantAccess(mod: ModuleCatalogItem) {
     if (!id) return;
+    const mid = catalogModuleId(mod);
+    if (!mid) {
+      setError('Module id missing');
+      return;
+    }
     const draft = draftFor(mod);
-    setSaving(true);
+    setBusyModuleId(mid);
     setError('');
+    setMessage('');
     try {
       await upsertUserModuleAccess(id, {
-        module_id: mod._id,
-        can_read: Boolean(draft.can_read),
+        module_id: mid,
+        can_read: draft.can_read !== false,
         can_create: Boolean(draft.can_create),
         can_update: Boolean(draft.can_update),
         can_delete: Boolean(draft.can_delete),
@@ -194,25 +213,43 @@ export default function UserDetailScreen() {
       });
       const rows = await fetchUserModuleAccess(id);
       setAccess(rows);
-      setMessage(`Access saved for ${mod.code}`);
+      setDrafts((prev) => {
+        const next = { ...prev };
+        delete next[mid];
+        return next;
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save access');
+      setError(err instanceof Error ? err.message : 'Failed to grant access');
     } finally {
-      setSaving(false);
+      setBusyModuleId(null);
     }
+  }
+
+  async function saveAccessDetails(mod: ModuleCatalogItem) {
+    await grantAccess(mod);
   }
 
   async function revokeAccess(mod: ModuleCatalogItem) {
     if (!id) return;
-    setSaving(true);
+    const mid = catalogModuleId(mod);
+    const existing = accessFor(mod);
+    const revokeId = existing?.module_id || mid;
+    if (!revokeId) return;
+    setBusyModuleId(mid);
+    setError('');
+    setMessage('');
     try {
-      await revokeUserModuleAccess(id, mod._id);
-      setAccess((prev) => prev.filter((a) => a.module_id !== mod._id));
-      setMessage(`Access revoked for ${mod.code}`);
+      await revokeUserModuleAccess(id, revokeId);
+      setAccess((prev) => prev.filter((a) => a.module_id !== revokeId && a.module_code !== mod.code));
+      setDrafts((prev) => {
+        const next = { ...prev };
+        delete next[mid];
+        return next;
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Revoke failed');
     } finally {
-      setSaving(false);
+      setBusyModuleId(null);
     }
   }
 
@@ -416,76 +453,86 @@ export default function UserDetailScreen() {
         {tab === 'access' ? (
           <View style={styles.section}>
             <Text style={styles.hint}>
-              Grant mobile modules. Turn on &quot;Allow while stopped&quot; so this user keeps access
-              when a module is centrally stopped.
+              Grant or revoke one module at a time. Open details only if extra permissions are needed.
             </Text>
             {mobileModules.map((mod) => {
-              const existing = access.find((a) => a.module_id === mod._id);
+              const mid = catalogModuleId(mod);
+              const existing = accessFor(mod);
+              const granted = Boolean(existing);
+              const expanded = expandedId === mid;
               const draft = draftFor(mod);
+              const busy = busyModuleId === mid;
               return (
-                <View key={mod._id} style={styles.accessCard}>
-                  <Text style={styles.accessTitle}>{mod.name_en}</Text>
-                  <Text style={styles.accessCode}>{mod.code}</Text>
-                  <View style={styles.permGrid}>
-                    {PERM_FLAGS.map((flag) => (
+                <View key={mid || mod.code} style={[styles.accessRow, granted && styles.accessRowGranted]}>
+                  <View style={styles.accessMain}>
+                    <View style={styles.accessInfo}>
+                      <Text style={styles.accessTitle}>{mod.name_en}</Text>
+                    </View>
+                    <View style={styles.accessActions}>
+                      {granted ? (
+                        <Pressable
+                          style={[styles.actionBtn, busy && styles.actionBtnDisabled]}
+                          onPress={() => void revokeAccess(mod)}
+                          disabled={busy}
+                        >
+                          <Text style={styles.actionBtnText}>{busy ? '…' : 'Revoke'}</Text>
+                        </Pressable>
+                      ) : (
+                        <Pressable
+                          style={[styles.actionBtn, busy && styles.actionBtnDisabled]}
+                          onPress={() => void grantAccess(mod)}
+                          disabled={busy}
+                        >
+                          <Text style={styles.actionBtnText}>{busy ? '…' : 'Grant'}</Text>
+                        </Pressable>
+                      )}
                       <Pressable
-                        key={flag}
-                        style={styles.permRow}
-                        onPress={() =>
-                          setDrafts((prev) => ({
-                            ...prev,
-                            [mod._id]: { ...draft, [flag]: !draft[flag as PermFlag] },
-                          }))
-                        }
+                        style={styles.actionBtn}
+                        onPress={() => setExpandedId(expanded ? null : mid)}
                       >
-                        <Text style={styles.permLabel}>{flag.replace('can_', '')}</Text>
+                        <Text style={styles.actionBtnText}>{expanded ? 'Hide' : 'Details'}</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                  {expanded ? (
+                    <View style={styles.accessDetails}>
+                      {PERM_FLAGS.map((flag) => (
+                        <View key={flag} style={styles.permRow}>
+                          <Text style={styles.permLabel}>{flag.replace('can_', '')}</Text>
+                          <Switch
+                            value={Boolean(draft[flag as PermFlag])}
+                            onValueChange={(v) =>
+                              setDrafts((prev) => ({
+                                ...prev,
+                                [mid]: { ...draft, [flag]: v },
+                              }))
+                            }
+                          />
+                        </View>
+                      ))}
+                      <View style={styles.permRow}>
+                        <Text style={styles.permLabel}>Allow while stopped</Text>
                         <Switch
-                          value={Boolean(draft[flag as PermFlag])}
+                          value={Boolean(draft.bypass_stop)}
                           onValueChange={(v) =>
                             setDrafts((prev) => ({
                               ...prev,
-                              [mod._id]: { ...draft, [flag]: v },
+                              [mid]: { ...draft, bypass_stop: v },
                             }))
                           }
                         />
+                      </View>
+                      <Pressable
+                        style={[styles.actionBtn, styles.saveDetailsBtn, busy && styles.actionBtnDisabled]}
+                        onPress={() => void saveAccessDetails(mod)}
+                        disabled={busy}
+                      >
+                        <Text style={styles.actionBtnText}>
+                          {busy ? 'Saving…' : granted ? 'Save permissions' : 'Grant with these permissions'}
+                        </Text>
                       </Pressable>
-                    ))}
-                    <Pressable
-                      style={styles.permRow}
-                      onPress={() =>
-                        setDrafts((prev) => ({
-                          ...prev,
-                          [mod._id]: { ...draft, bypass_stop: !draft.bypass_stop },
-                        }))
-                      }
-                    >
-                      <Text style={styles.permLabel}>Allow while stopped</Text>
-                      <Switch
-                        value={Boolean(draft.bypass_stop)}
-                        onValueChange={(v) =>
-                          setDrafts((prev) => ({
-                            ...prev,
-                            [mod._id]: { ...draft, bypass_stop: v },
-                          }))
-                        }
-                      />
-                    </Pressable>
-                  </View>
-                  <View style={styles.accessActions}>
-                    <Button
-                      title={existing ? 'Update' : 'Grant'}
-                      onPress={() => void saveAccess(mod)}
-                      loading={saving}
-                    />
-                    {existing ? (
-                      <Button
-                        title="Revoke"
-                        variant="secondary"
-                        onPress={() => void revokeAccess(mod)}
-                        disabled={saving}
-                      />
-                    ) : null}
-                  </View>
+                    </View>
+                  ) : null}
                 </View>
               );
             })}
@@ -495,8 +542,8 @@ export default function UserDetailScreen() {
         {tab === 'notify' ? (
           <View style={styles.section}>
             <Text style={styles.hint}>
-              Sends a push/in-app notification to {detail.full_name_en} only (same as Notifications
-              admin → specific users).
+              Sends a push/in-app notification to {detail.full_name_en} only. To stop remaining unread
+              delivery or remove a notice, open Notifications → Stop or remove sent notifications.
             </Text>
             <TextField
               label="Title"
@@ -571,22 +618,59 @@ const styles = StyleSheet.create({
   },
   message: { fontSize: 13, color: '#059669', fontWeight: '600' },
   error: { fontSize: 13, color: colors.error },
-  accessCard: {
+  accessRow: {
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
-    padding: spacing.sm,
-    gap: 6,
+    borderRadius: 14,
+    padding: spacing.md,
     backgroundColor: colors.surface,
+    gap: 8,
   },
-  accessTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
-  accessCode: { fontSize: 11, color: colors.textMuted, marginBottom: 4 },
-  permGrid: { gap: 4 },
+  accessRowGranted: {
+    backgroundColor: '#f7fbf8',
+  },
+  accessMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  accessInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  accessTitle: { fontSize: 16, fontWeight: '700', color: colors.text },
+  accessActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
+  },
+  actionBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionBtnDisabled: { opacity: 0.55 },
+  actionBtnText: { fontSize: 12, fontWeight: '700', color: colors.text },
+  accessDetails: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: spacing.sm,
+    gap: 4,
+  },
   permRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   permLabel: { fontSize: 13, color: colors.text, textTransform: 'capitalize' },
-  accessActions: { flexDirection: 'row', gap: 8, marginTop: 6 },
+  saveDetailsBtn: {
+    marginTop: 6,
+    alignSelf: 'flex-start',
+  },
 });

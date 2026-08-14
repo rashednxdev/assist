@@ -156,7 +156,11 @@ export default function MarathonReviewScreen() {
   const bookOffsets = useRef<Record<string, number>>({});
   const didResume = useRef(false);
   const itemsRef = useRef<MarathonReviewItem[]>([]);
+  const userRef = useRef(user);
+  const refreshUserRef = useRef(refreshUser);
   itemsRef.current = items;
+  userRef.current = user;
+  refreshUserRef.current = refreshUser;
 
   const refreshFromCache = useCallback(() => {
     setItems(getCachedMarathonItems());
@@ -187,7 +191,7 @@ export default function MarathonReviewScreen() {
   const runSync = useCallback(async () => {
     setSyncing(true);
     try {
-      const me = await refreshUser().catch(() => user);
+      const me = await refreshUserRef.current().catch(() => userRef.current);
       await syncQuestions(questionCacheScopeKey(me));
       refreshFromCache();
     } catch (err) {
@@ -197,12 +201,32 @@ export default function MarathonReviewScreen() {
     } finally {
       setSyncing(false);
     }
-  }, [refreshFromCache, refreshUser, user]);
+  }, [refreshFromCache]);
 
+  // Sync once on enter — avoid re-running when refreshUser updates `user` while focused.
   useFocusEffect(
     useCallback(() => {
-      void runSync();
-    }, [runSync]),
+      let cancelled = false;
+      (async () => {
+        setSyncing(true);
+        try {
+          const me = await refreshUserRef.current().catch(() => userRef.current);
+          if (cancelled) return;
+          await syncQuestions(questionCacheScopeKey(me));
+          if (cancelled) return;
+          refreshFromCache();
+        } catch (err) {
+          if (!cancelled && itemsRef.current.length === 0) {
+            setError(err instanceof Error ? err.message : 'Failed to sync marathon review');
+          }
+        } finally {
+          if (!cancelled) setSyncing(false);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [refreshFromCache]),
   );
 
   const onRefresh = useCallback(async () => {

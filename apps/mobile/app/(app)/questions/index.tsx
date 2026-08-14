@@ -123,6 +123,10 @@ export default function QuestionsScreen() {
 
   const itemsRef = useRef<QuestionListItem[]>([]);
   const filteredRef = useRef<QuestionListItem[]>([]);
+  const userRef = useRef(user);
+  const refreshUserRef = useRef(refreshUser);
+  userRef.current = user;
+  refreshUserRef.current = refreshUser;
 
   const typeNameMap = useMemo(() => new Map(types.map((t) => [t.code, t.name])), [types]);
 
@@ -170,7 +174,7 @@ export default function QuestionsScreen() {
       groupByBooks,
   );
 
-  /** Chip/book filters over the full local cache (synced in background). */
+  /** Chip/book filters over the local cache (refreshed when you open this module). */
   const chipFilteredItems = useMemo(() => {
     return items.filter((item) => {
       if (selectedBookId && item.book_id !== selectedBookId) return false;
@@ -344,7 +348,7 @@ export default function QuestionsScreen() {
   const runSync = useCallback(async () => {
     setSyncing(true);
     try {
-      const me = await refreshUser().catch(() => user);
+      const me = await refreshUserRef.current().catch(() => userRef.current);
       await syncQuestions(questionCacheScopeKey(me));
       const catalog = await loadSubjectCatalog();
       setSelectedSubjectId((current) =>
@@ -358,12 +362,38 @@ export default function QuestionsScreen() {
     } finally {
       setSyncing(false);
     }
-  }, [loadSubjectCatalog, refreshFromCache, refreshUser, user]);
+  }, [loadSubjectCatalog, refreshFromCache]);
 
+  // Sync once when entering Question Bank — do not re-run when refreshUser updates `user`
+  // (that would loop sync every second while the screen stays focused).
   useFocusEffect(
     useCallback(() => {
-      void runSync();
-    }, [runSync]),
+      let cancelled = false;
+      (async () => {
+        setSyncing(true);
+        try {
+          const me = await refreshUserRef.current().catch(() => userRef.current);
+          if (cancelled) return;
+          await syncQuestions(questionCacheScopeKey(me));
+          if (cancelled) return;
+          const catalog = await loadSubjectCatalog();
+          if (cancelled) return;
+          setSelectedSubjectId((current) =>
+            current && catalog.some((row) => row.id === current) ? current : null,
+          );
+          refreshFromCache();
+        } catch (err) {
+          if (!cancelled && itemsRef.current.length === 0) {
+            setError(err instanceof Error ? err.message : 'Failed to sync questions');
+          }
+        } finally {
+          if (!cancelled) setSyncing(false);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [loadSubjectCatalog, refreshFromCache]),
   );
 
   const onRefresh = useCallback(async () => {
@@ -377,8 +407,6 @@ export default function QuestionsScreen() {
 
   function submitSearch() {
     setAppliedQuery(query.trim());
-    // Keep searching the full local bank; also nudge a background sync for fresher hits.
-    void syncQuestions(questionCacheScopeKey(user));
   }
 
   function clearSearch() {

@@ -361,6 +361,23 @@ export const batchQuestionSubjectLinksSchema = z.object({
 
 export type BatchQuestionSubjectLinksDto = z.infer<typeof batchQuestionSubjectLinksSchema>;
 
+/** Link a question to a book's first chapter (Books & Tools quick-tag). */
+export const questionBookFirstChapterLinkInputSchema = z.object({
+  book_info_id: mongoId,
+});
+
+export type QuestionBookFirstChapterLinkInput = z.infer<typeof questionBookFirstChapterLinkInputSchema>;
+
+/** Tag many questions with books via each book's first chapter (add-only). */
+export const batchQuestionBookFirstChapterLinksSchema = z.object({
+  ids: z.array(mongoId).min(1, 'Select at least one question').max(100),
+  book_info_ids: z.array(mongoId).min(1, 'Select at least one book').max(50),
+});
+
+export type BatchQuestionBookFirstChapterLinksDto = z.infer<
+  typeof batchQuestionBookFirstChapterLinksSchema
+>;
+
 /** Make this question a "prototype" that shares its model answer from a "mother" question. */
 export const setMotherQuestionSchema = z.object({
   mother_question_id: mongoId,

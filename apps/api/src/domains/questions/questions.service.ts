@@ -3,9 +3,11 @@ import type {
   BatchDescriptiveImportDto,
   BatchDifferencesImportDto,
   BatchMcqImportDto,
+  BatchQuestionBookFirstChapterLinksDto,
   BatchQuestionSubjectLinksDto,
   CreateQuestionDto,
   CreateQuestionTypeDto,
+  QuestionBookFirstChapterLinkInput,
   QuestionBookLinkInput,
   QuestionSubjectLinkInput,
   QuestionSyncDeletion,
@@ -534,6 +536,7 @@ function serializeQuestionListItem(
     book_name: undefined as string | undefined,
     book_link_count: 0,
     subjects: [] as Array<{ id: string; name: string; name_bn?: string }>,
+    book_tags: [] as Array<{ id: string; name: string; chapter_id: string }>,
     option_count: optionCount,
     used_in_papers: [] as QuestionUsedInPaper[],
     created_at: q.created_at,
@@ -1350,7 +1353,8 @@ export async function listQuestions(
   );
 
   const questionIds = items.map((q) => q._id);
-  const [linkCounts, optionCounts, usedInPapersByQuestion, subjectLinks] = await Promise.all([
+  const [linkCounts, optionCounts, usedInPapersByQuestion, subjectLinks, chapterBookLinks] =
+    await Promise.all([
     questionIds.length
       ? QuestionBookLink.aggregate<{ _id: mongoose.Types.ObjectId; count: number }>([
           { $match: { question_id: { $in: questionIds }, is_active: true } },
@@ -1368,6 +1372,13 @@ export async function listQuestions(
       ? QuestionSubjectLink.find({ question_id: { $in: questionIds }, is_active: true }).sort({
           sort_order: 1,
         })
+      : Promise.resolve([]),
+    questionIds.length
+      ? QuestionBookLink.find({
+          question_id: { $in: questionIds },
+          is_active: true,
+          link_level: 'chapter',
+        }).select('question_id book_chapter_id')
       : Promise.resolve([]),
   ]);
   const linkCountMap = new Map(linkCounts.map((c) => [String(c._id), c.count]));
@@ -1387,6 +1398,53 @@ export async function listQuestions(
     const list = subjectsByQuestion.get(key) ?? [];
     list.push(meta);
     subjectsByQuestion.set(key, list);
+  }
+
+  const linkedChapterIds = [
+    ...new Set(chapterBookLinks.map((l) => String(l.book_chapter_id)).filter(Boolean)),
+  ];
+  const linkedChapters =
+    linkedChapterIds.length > 0 ? await BookChapter.find({ _id: { $in: linkedChapterIds } }) : [];
+  const chapterToBookId = new Map(
+    linkedChapters.map((c) => [String(c._id), String(c.book_info_id)]),
+  );
+  const bookIdsFromLinks = [...new Set([...chapterToBookId.values()].filter(Boolean))];
+  const firstChapterByBook = new Map<string, string>();
+  if (bookIdsFromLinks.length > 0) {
+    const firstRows = await BookChapter.aggregate<{ _id: mongoose.Types.ObjectId; firstId: mongoose.Types.ObjectId }>([
+      {
+        $match: {
+          book_info_id: { $in: bookIdsFromLinks.map((id) => new mongoose.Types.ObjectId(id)) },
+          is_active: true,
+        },
+      },
+      { $sort: { sort_order: 1 } },
+      { $group: { _id: '$book_info_id', firstId: { $first: '$_id' } } },
+    ]);
+    for (const row of firstRows) {
+      firstChapterByBook.set(String(row._id), String(row.firstId));
+    }
+  }
+  const booksForTags =
+    bookIdsFromLinks.length > 0 ? await BookInfo.find({ _id: { $in: bookIdsFromLinks } }) : [];
+  const bookNameByIdForTags = new Map(booksForTags.map((b) => [String(b._id), b.name]));
+  const bookTagsByQuestion = new Map<
+    string,
+    Array<{ id: string; name: string; chapter_id: string }>
+  >();
+  for (const link of chapterBookLinks) {
+    const chapterId = String(link.book_chapter_id);
+    const bookId = chapterToBookId.get(chapterId);
+    if (!bookId) continue;
+    const firstChapterId = firstChapterByBook.get(bookId);
+    if (!firstChapterId || firstChapterId !== chapterId) continue;
+    const bookName = bookNameByIdForTags.get(bookId);
+    if (!bookName) continue;
+    const key = String(link.question_id);
+    const list = bookTagsByQuestion.get(key) ?? [];
+    if (list.some((t) => t.id === bookId)) continue;
+    list.push({ id: bookId, name: bookName, chapter_id: chapterId });
+    bookTagsByQuestion.set(key, list);
   }
 
   const chapterIds = [
@@ -1409,6 +1467,7 @@ export async function listQuestions(
     const storedCount = linkCountMap.get(String(q._id)) ?? 0;
     item.book_link_count = storedCount > 0 ? storedCount : q.book_chapter_id ? 1 : 0;
     item.subjects = subjectsByQuestion.get(String(q._id)) ?? [];
+    item.book_tags = bookTagsByQuestion.get(String(q._id)) ?? [];
     item.used_in_papers = usedInPapersByQuestion.get(String(q._id)) ?? [];
     const chapterId = idStr(q.book_chapter_id);
     const bookId = chapterId ? chapterBookId.get(chapterId) : undefined;
@@ -1876,6 +1935,107 @@ export async function batchAddQuestionSubjectLinks(dto: BatchQuestionSubjectLink
     }
   }
   return { updated: questions.length, added };
+}
+
+async function resolveFirstChapter(bookInfoId: string) {
+  const book = await BookInfo.findById(bookInfoId);
+  if (!book || !book.is_active) throw notFound('Book not found');
+  const chapter = await BookChapter.findOne({
+    book_info_id: book._id,
+    is_active: true,
+  })
+    .sort({ sort_order: 1 })
+    .select('_id chapter_number name');
+  if (!chapter) throw badRequest('This book has no chapters yet — add a chapter in Books & Tools first');
+  return { book, chapter };
+}
+
+/** Quick-tag: link question to a book's first chapter only. */
+export async function addQuestionBookFirstChapterLink(
+  questionId: string,
+  dto: QuestionBookFirstChapterLinkInput,
+) {
+  const { book, chapter } = await resolveFirstChapter(dto.book_info_id);
+  const chapterId = String(chapter._id);
+
+  const existing = await QuestionBookLink.findOne({
+    question_id: questionId,
+    link_level: 'chapter',
+    book_chapter_id: chapter._id,
+    is_active: true,
+  });
+  if (existing) {
+    return {
+      id: String(book._id),
+      name: book.name,
+      chapter_id: chapterId,
+      link_id: String(existing._id),
+    };
+  }
+
+  const link = await addQuestionBookLink(questionId, {
+    link_level: 'chapter',
+    book_chapter_id: chapterId,
+  });
+  return {
+    id: String(book._id),
+    name: book.name,
+    chapter_id: chapterId,
+    link_id: link.id,
+  };
+}
+
+export async function deleteQuestionBookFirstChapterLink(questionId: string, bookInfoId: string) {
+  const { chapter } = await resolveFirstChapter(bookInfoId);
+  const link = await QuestionBookLink.findOne({
+    question_id: questionId,
+    link_level: 'chapter',
+    book_chapter_id: chapter._id,
+    is_active: true,
+  });
+  if (!link) throw notFound('Book first-chapter tag not found');
+  await deleteQuestionBookLink(questionId, String(link._id));
+  return { deleted: true };
+}
+
+export async function batchAddQuestionBookFirstChapterLinks(dto: BatchQuestionBookFirstChapterLinksDto) {
+  const questions = await Question.find({
+    _id: { $in: dto.ids },
+    is_active: true,
+  }).select('_id');
+  if (questions.length === 0) throw badRequest('No active questions selected');
+
+  const books = await BookInfo.find({
+    _id: { $in: dto.book_info_ids },
+    is_active: true,
+  }).select('_id');
+  if (books.length === 0) throw badRequest('No active books selected');
+
+  let added = 0;
+  for (const q of questions) {
+    for (const book of books) {
+      const { chapter } = await resolveFirstChapter(String(book._id));
+      const before = await QuestionBookLink.findOne({
+        question_id: q._id,
+        link_level: 'chapter',
+        book_chapter_id: chapter._id,
+        is_active: true,
+      });
+      if (before) continue;
+      await addQuestionBookFirstChapterLink(String(q._id), { book_info_id: String(book._id) });
+      added += 1;
+    }
+  }
+  return { updated: questions.length, added };
+}
+
+export async function listQuestionBookCatalog(): Promise<Array<{ id: string; name: string; label: string }>> {
+  const books = await BookInfo.find({ is_active: true, is_superseded: false }).sort({ name: 1 });
+  return books.map((b) => ({
+    id: String(b._id),
+    name: b.name,
+    label: b.short_name?.trim() ? `${b.short_name} · ${b.name}` : b.name,
+  }));
 }
 
 export async function updateQuestion(id: string, dto: UpdateQuestionDto) {

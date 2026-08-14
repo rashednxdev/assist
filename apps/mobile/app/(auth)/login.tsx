@@ -7,8 +7,6 @@ import { Button } from '@/components/ui/Button';
 import { login } from '@/lib/auth-api';
 import { useAuth } from '@/lib/auth-context';
 import { ApiError } from '@/lib/api';
-import { syncQuestions } from '@/lib/questions-sync';
-import { questionCacheScopeKey } from '@/lib/subject-scope';
 import { colors, spacing } from '@/theme';
 
 export default function LoginScreen() {
@@ -28,8 +26,7 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       await login(email.trim(), password);
-      const me = await refreshUser();
-      void syncQuestions(questionCacheScopeKey(me));
+      await refreshUser();
       router.replace('/(app)/home');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Sign in failed. Please try again.');

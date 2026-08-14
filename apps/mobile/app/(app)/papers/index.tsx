@@ -20,6 +20,8 @@ export default function PapersScreen() {
   const isAdmin =
     user?.is_super_admin || user?.user_type === 'system_admin' || user?.user_type === 'admin';
   const offlineToastShown = useRef(false);
+  const refreshUserRef = useRef(refreshUser);
+  refreshUserRef.current = refreshUser;
 
   const [items, setItems] = useState<PaperItem[]>([]);
   const [types, setTypes] = useState<PaperType[]>([]);
@@ -99,14 +101,33 @@ export default function PapersScreen() {
     }
   }, [status, loadProgress, notifyOffline]);
 
+  const loadRef = useRef(load);
+  loadRef.current = load;
+  const hasEnteredPapers = useRef(false);
+
+  // Load once when entering Papers — do not depend on `load`/`user` or refreshUser will loop.
   useFocusEffect(
     useCallback(() => {
+      let cancelled = false;
+      hasEnteredPapers.current = true;
       void notifyOffline();
-      void refreshUser()
+      void refreshUserRef
+        .current()
         .catch(() => null)
-        .then(() => load());
-    }, [load, notifyOffline, refreshUser]),
+        .then(() => {
+          if (!cancelled) return loadRef.current();
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [notifyOffline]),
   );
+
+  // Re-fetch when the published filter changes while staying on this screen.
+  useEffect(() => {
+    if (!hasEnteredPapers.current) return;
+    void load();
+  }, [status]);
 
   const subjectOptions = useMemo(() => {
     const map = new Map<string, string>();

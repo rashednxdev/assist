@@ -1,27 +1,12 @@
-import { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { Redirect, Stack } from 'expo-router';
+import { useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { syncQuestions } from '@/lib/questions-sync';
-import { getCachedQuestionCount } from '@/lib/questions-db';
-import { questionCacheScopeKey } from '@/lib/subject-scope';
 import { registerForPushNotifications } from '@/lib/push-notifications';
 import { colors } from '@/theme';
 
 export default function AppLayout() {
   const { user, loading } = useAuth();
-
-  // Warm the local question cache as soon as a session is active. If the bank is empty
-  // (fresh login/register or cleared cache), kick sync immediately in the background.
-  useEffect(() => {
-    if (!user) return;
-    const scopeKey = questionCacheScopeKey(user);
-    if (getCachedQuestionCount() === 0) {
-      void syncQuestions(scopeKey);
-      return;
-    }
-    void syncQuestions(scopeKey);
-  }, [user?.id, user?.all_exam_subjects, user?.exam_subject_ids]);
 
   useEffect(() => {
     if (!user) return;

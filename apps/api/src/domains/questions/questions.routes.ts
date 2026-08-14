@@ -40,6 +40,10 @@ import {
   addQuestionSubjectLinkHandler,
   deleteQuestionSubjectLinkHandler,
   batchAddQuestionSubjectLinksHandler,
+  listQuestionBookCatalogHandler,
+  addQuestionBookFirstChapterLinkHandler,
+  deleteQuestionBookFirstChapterLinkHandler,
+  batchAddQuestionBookFirstChapterLinksHandler,
   setMotherQuestionHandler,
   removeMotherQuestionHandler,
 } from './questions.controller.js';
@@ -63,6 +67,7 @@ questionsRouter.delete('/types/:id', requireAdmin, asyncHandler(deleteQuestionTy
 questionsRouter.get('/', canBrowseQuestions, asyncHandler(listQuestionsHandler));
 questionsRouter.get('/trashed', requireAdmin, asyncHandler(listTrashedQuestionsHandler));
 questionsRouter.get('/subject-catalog', canBrowseQuestions, asyncHandler(listQuestionSubjectCatalogHandler));
+questionsRouter.get('/book-catalog', canBrowseQuestions, asyncHandler(listQuestionBookCatalogHandler));
 questionsRouter.get('/marathon-review', requireModuleAccess('QUESTIONS'), asyncHandler(listMarathonReviewHandler));
 questionsRouter.get('/sync', requireModuleAccess('QUESTIONS'), asyncHandler(questionsSyncHandler));
 questionsRouter.get('/similar', requireModuleAccess('QUESTIONS'), asyncHandler(similarQuestionsHandler));
@@ -98,6 +103,11 @@ questionsRouter.post(
   requireAdmin,
   asyncHandler(batchAddQuestionSubjectLinksHandler),
 );
+questionsRouter.post(
+  '/batch-book-first-chapter-links',
+  requireAdmin,
+  asyncHandler(batchAddQuestionBookFirstChapterLinksHandler),
+);
 questionsRouter.post('/', requireAdmin, asyncHandler(createQuestionHandler));
 questionsRouter.patch('/:id', canEditQuestions, asyncHandler(updateQuestionHandler));
 questionsRouter.post('/:id/restore', requireAdmin, asyncHandler(restoreQuestionHandler));
@@ -123,6 +133,16 @@ questionsRouter.delete(
   '/:id/subject-links/:examSubjectId',
   requireAdmin,
   asyncHandler(deleteQuestionSubjectLinkHandler),
+);
+questionsRouter.post(
+  '/:id/book-first-chapter-links',
+  requireAdmin,
+  asyncHandler(addQuestionBookFirstChapterLinkHandler),
+);
+questionsRouter.delete(
+  '/:id/book-first-chapter-links/:bookInfoId',
+  requireAdmin,
+  asyncHandler(deleteQuestionBookFirstChapterLinkHandler),
 );
 questionsRouter.post('/:id/mother-question', canEditQuestions, asyncHandler(setMotherQuestionHandler));
 questionsRouter.delete('/:id/mother-question', canEditQuestions, asyncHandler(removeMotherQuestionHandler));

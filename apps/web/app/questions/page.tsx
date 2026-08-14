@@ -26,6 +26,11 @@ import {
   type QuestionSubjectTag,
   type SubjectCatalogItem,
 } from '@/components/questions/question-subject-tags';
+import {
+  QuestionBookTags,
+  type QuestionBookTag,
+  type BookCatalogItem,
+} from '@/components/questions/question-book-tags';
 import { ReviewStatusActions, ReviewStatusBadge, type ReviewStatus } from '@/components/questions/review-status';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -63,6 +68,7 @@ interface QuestionItem {
   book_sub_topic_id?: string;
   book_link_count?: number;
   subjects?: QuestionSubjectTag[];
+  book_tags?: QuestionBookTag[];
   option_count: number;
   used_in_papers?: Array<{
     id: string;
@@ -144,7 +150,9 @@ export default function QuestionsPage() {
   const [filterChapterId, setFilterChapterId] = useState('');
   const [filterSubjectId, setFilterSubjectId] = useState('');
   const [subjectCatalog, setSubjectCatalog] = useState<SubjectCatalogItem[]>([]);
+  const [bookCatalog, setBookCatalog] = useState<BookCatalogItem[]>([]);
   const [batchSubjectId, setBatchSubjectId] = useState('');
+  const [batchBookId, setBatchBookId] = useState('');
   const [sortOption, setSortOption] = useState<QuestionSortOption>('updated_desc');
 
   const PAGE_SIZE = 50;
@@ -195,6 +203,9 @@ export default function QuestionsPage() {
     apiFetch<{ data: SubjectCatalogItem[] }>('/questions/subject-catalog')
       .then((r) => setSubjectCatalog(r.data))
       .catch(() => setSubjectCatalog([]));
+    apiFetch<{ data: BookCatalogItem[] }>('/questions/book-catalog')
+      .then((r) => setBookCatalog(r.data))
+      .catch(() => setBookCatalog([]));
   }, []);
 
   useEffect(() => {
@@ -499,6 +510,35 @@ export default function QuestionsPage() {
       load();
     } catch (err) {
       setListErr(err instanceof Error ? err.message : 'Batch subject tagging failed');
+    } finally {
+      setBatchBusy(false);
+    }
+  }
+
+  async function batchTagBooks() {
+    if (selectedIds.length === 0 || !batchBookId) return;
+    setListErr('');
+    setListMsg('');
+    setBatchBusy(true);
+    try {
+      const res = await apiFetch<{ data: { updated: number; added: number } }>(
+        '/questions/batch-book-first-chapter-links',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            ids: selectedIds,
+            book_info_ids: [batchBookId],
+          }),
+        },
+      );
+      setListMsg(
+        `Book-tagged ${res.data.updated} question${res.data.updated === 1 ? '' : 's'} (+${res.data.added} first-chapter links)`,
+      );
+      setBatchBookId('');
+      setSelectedIds([]);
+      load();
+    } catch (err) {
+      setListErr(err instanceof Error ? err.message : 'Batch book tagging failed');
     } finally {
       setBatchBusy(false);
     }
@@ -899,6 +939,29 @@ export default function QuestionsPage() {
               >
                 Apply subject
               </Button>
+              <select
+                className="h-9 max-w-[240px] rounded-md border border-input bg-background px-2 text-sm"
+                value={batchBookId}
+                disabled={selectedIds.length === 0 || batchBusy}
+                onChange={(e) => setBatchBookId(e.target.value)}
+                aria-label="Book to tag on selected questions (first chapter)"
+              >
+                <option value="">Tag book…</option>
+                {bookCatalog.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.label}
+                  </option>
+                ))}
+              </select>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={selectedIds.length === 0 || !batchBookId || batchBusy}
+                onClick={() => void batchTagBooks()}
+              >
+                Apply book
+              </Button>
             </div>
           )}
           {loading ? (
@@ -988,12 +1051,29 @@ export default function QuestionsPage() {
                               )
                             }
                           />
+                          <QuestionBookTags
+                            questionId={item.id}
+                            books={item.book_tags ?? []}
+                            catalog={bookCatalog}
+                            onChange={(book_tags) =>
+                              setItems((prev) =>
+                                prev.map((row) =>
+                                  row.id === item.id ? { ...row, book_tags } : row,
+                                ),
+                              )
+                            }
+                          />
                         </div>
-                      ) : (item.subjects ?? []).length > 0 ? (
+                      ) : (item.subjects ?? []).length > 0 || (item.book_tags ?? []).length > 0 ? (
                         <div className="mt-2 flex flex-wrap gap-1.5 pl-[52px]">
                           {(item.subjects ?? []).map((s) => (
                             <Badge key={s.id} variant="secondary">
                               {s.name_bn?.trim() || s.name}
+                            </Badge>
+                          ))}
+                          {(item.book_tags ?? []).map((b) => (
+                            <Badge key={b.id} variant="outline">
+                              {b.name}
                             </Badge>
                           ))}
                         </div>

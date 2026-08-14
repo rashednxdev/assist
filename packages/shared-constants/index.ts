@@ -275,6 +275,47 @@ function hasDotMarkerBoundaries(text: string, start: number, end: number): boole
   return beforeOk && afterOk;
 }
 
+/**
+ * Strip paired `*bold*` markers for list-marker scanning only.
+ * `toOriginal[i]` is the index in the source string for `plain[i]`.
+ * Keeps number/bullet/( )/। newline rules working inside bold spans.
+ */
+function unwrapBoldMarkers(text: string): { plain: string; toOriginal: number[] } {
+  const chars: string[] = [];
+  const toOriginal: number[] = [];
+  let i = 0;
+  while (i < text.length) {
+    if (text.charAt(i) === '*') {
+      let j = i + 1;
+      while (j < text.length && text.charAt(j) !== '*') j += 1;
+      if (j < text.length && j > i + 1) {
+        for (let k = i + 1; k < j; k += 1) {
+          chars.push(text.charAt(k));
+          toOriginal.push(k);
+        }
+        i = j + 1;
+        continue;
+      }
+    }
+    chars.push(text.charAt(i));
+    toOriginal.push(i);
+    i += 1;
+  }
+  return { plain: chars.join(''), toOriginal };
+}
+
+function mapMarkersToOriginal(
+  text: string,
+  toOriginal: number[],
+  markers: TextMarker[],
+): TextMarker[] {
+  return markers.map((m) => {
+    const start = toOriginal[m.start] ?? 0;
+    const end = (toOriginal[m.end - 1] ?? start) + 1;
+    return { start, end, match: text.slice(start, end) };
+  });
+}
+
 function findSpacedShortBrackets(text: string): TextMarker[] {
   const re = shortBracketRegex();
   const found: TextMarker[] = [];
@@ -313,7 +354,8 @@ function insertMarkersAsLineBreaks(
     const plainForCount = parts
       .filter((part) => !(part.startsWith('<') && part.endsWith('>')))
       .join('');
-    if (findMarkers(plainForCount).length < 2) {
+    // Count markers with bold wrappers removed so *1. a 2. b* still qualifies.
+    if (findMarkers(unwrapBoldMarkers(plainForCount).plain).length < 2) {
       return text;
     }
 
@@ -321,7 +363,8 @@ function insertMarkersAsLineBreaks(
       .map((part) => {
         if (part.startsWith('<') && part.endsWith('>')) return part;
 
-        const markers = findMarkers(part);
+        const { plain, toOriginal } = unwrapBoldMarkers(part);
+        const markers = mapMarkersToOriginal(part, toOriginal, findMarkers(plain));
         if (markers.length === 0) return part;
 
         let result = '';
@@ -406,5 +449,20 @@ export const BOOK_TEXT_MARKUP_HELP = [
   {
     marker: 'left[]right',
     description: 'Split a line: text before [] is left-aligned, text after [] is right-aligned.',
+  },
+  {
+    marker: '1. 2. / a. b. / ক. খ.',
+    description:
+      'Auto new line for number or letter bullets ending with a period. Needs at least two markers with spaces around them (e.g. 1. first 2. second). Also works inside *bold*.',
+  },
+  {
+    marker: '১। ২। / ক। খ।',
+    description:
+      'Auto new line for Bangla dari (।) list markers, same rules as number/letter bullets. Also works inside *bold*.',
+  },
+  {
+    marker: '(ক) (খ) / (a) (1)',
+    description:
+      'Auto new line for short parenthetical markers (1–2 characters inside). Needs spaces before and after each ( ), and at least two markers. Longer phrases like (বেতন ও ভাতাদি) are ignored. Also works inside *bold*.',
   },
 ] as const;

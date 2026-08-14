@@ -88,6 +88,22 @@ function hasBoldMarkup(text: string) {
 }
 
 /** Render plain text with optional *bold* segments as nested Text nodes. */
+function renderInlineParts(text: string) {
+  if (!hasBoldMarkup(text)) return text;
+  const parts = text.split(/(\*[^*]+\*)/g);
+  return parts.map((part, i) => {
+    const bold = part.match(/^\*([^*]+)\*$/);
+    if (bold) {
+      return (
+        <Text key={i} style={styles.bold}>
+          {bold[1]}
+        </Text>
+      );
+    }
+    return part ? <Text key={i}>{part}</Text> : null;
+  });
+}
+
 function InlineMarkup({
   text,
   style,
@@ -98,7 +114,8 @@ function InlineMarkup({
   style?: StyleProp<TextStyle>;
   alignStyle?: StyleProp<TextStyle>;
 } & Omit<TextProps, 'children' | 'style'>) {
-  if (!hasBoldMarkup(text)) {
+  // Keep list-marker `\n` breaks (1. / (ক) / ।) even when bold spans the line.
+  if (!hasBoldMarkup(text) && !text.includes('\n')) {
     return (
       <Text style={[styles.plain, style, alignStyle]} {...rest}>
         {text}
@@ -106,20 +123,9 @@ function InlineMarkup({
     );
   }
 
-  const parts = text.split(/(\*[^*]+\*)/g);
   return (
     <Text style={[styles.plain, style, alignStyle]} {...rest}>
-      {parts.map((part, i) => {
-        const bold = part.match(/^\*([^*]+)\*$/);
-        if (bold) {
-          return (
-            <Text key={i} style={styles.bold}>
-              {bold[1]}
-            </Text>
-          );
-        }
-        return part ? <Text key={i}>{part}</Text> : null;
-      })}
+      {renderInlineParts(text)}
     </Text>
   );
 }
@@ -256,15 +262,15 @@ const styles = StyleSheet.create({
   ruleLine: {
     alignSelf: 'stretch',
     width: '100%',
-    height: StyleSheet.hairlineWidth * 2,
+    height: 2,
     marginVertical: 10,
-    backgroundColor: colors.border,
+    backgroundColor: colors.text,
   },
   ruleLineRightHalf: {
     width: '50%',
     alignSelf: 'flex-end',
-    height: StyleSheet.hairlineWidth * 2,
+    height: 2,
     marginVertical: 10,
-    backgroundColor: colors.border,
+    backgroundColor: colors.text,
   },
 });

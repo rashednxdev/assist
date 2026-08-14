@@ -76,8 +76,32 @@ function InlineMarkup({ text }: { text: string }) {
     <>
       {parts.map((part, i) => {
         const bold = part.match(/^\*([^*]+)\*$/);
-        if (bold) return <strong key={i}>{bold[1]}</strong>;
-        return part ? <span key={i}>{part}</span> : null;
+        if (bold) {
+          // Preserve list-marker newlines that were inserted inside a bold span.
+          const chunks = bold[1].split('\n');
+          return (
+            <strong key={i}>
+              {chunks.map((chunk, j) => (
+                <span key={j}>
+                  {j > 0 ? <br /> : null}
+                  {chunk}
+                </span>
+              ))}
+            </strong>
+          );
+        }
+        if (!part) return null;
+        const chunks = part.split('\n');
+        return (
+          <span key={i}>
+            {chunks.map((chunk, j) => (
+              <span key={j}>
+                {j > 0 ? <br /> : null}
+                {chunk}
+              </span>
+            ))}
+          </span>
+        );
       })}
     </>
   );
@@ -85,10 +109,10 @@ function InlineMarkup({ text }: { text: string }) {
 
 function LineContent({ line }: { line: MarkupLine }) {
   if (line.align === 'rule') {
-    return <hr className="my-2.5 w-full border-0 border-t border-border" />;
+    return <hr className="my-2.5 w-full border-0 border-t-2 border-foreground" />;
   }
   if (line.align === 'ruleRightHalf') {
-    return <hr className="my-2.5 ml-auto w-1/2 border-0 border-t border-border" />;
+    return <hr className="my-2.5 ml-auto w-1/2 border-0 border-t-2 border-foreground" />;
   }
   if (!line.text) return <div className="h-6" />;
 

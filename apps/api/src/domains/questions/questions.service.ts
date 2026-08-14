@@ -1524,7 +1524,7 @@ export async function listMarathonReview(
       book_name: book.name,
       chapter_id: chapterId,
       chapter_number: chapter.chapter_number ?? '',
-      chapter_name: chapter.name,
+      chapter_name: chapter.name ?? '',
       chapter_sort_order: chapter.sort_order ?? 0,
       book_sort_key: book.name,
     });

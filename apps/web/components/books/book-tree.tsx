@@ -328,7 +328,12 @@ export function BookTree({
               <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
               <span className="min-w-0">
                 <span className="font-medium text-foreground">
-                  {node.chapter_number && <span className="text-muted">Ch. {node.chapter_number} · </span>}
+                  {node.chapter_number && (
+                    <span className="text-muted">
+                      Ch. {node.chapter_number}
+                      {treeNodeLabel(node) ? ' · ' : ''}
+                    </span>
+                  )}
                   {treeNodeLabel(node)}
                 </span>
                 {node.sub_name && <span className="ml-1 text-xs text-muted">({node.sub_name})</span>}
@@ -365,7 +370,9 @@ export function BookTree({
       return (
         <div className="space-y-4">
           <h3 className="text-lg font-semibold">
-            {ch.chapter_number ? `Chapter ${ch.chapter_number}: ${ch.name}` : ch.name}
+            {ch.chapter_number
+              ? `Chapter ${ch.chapter_number}${ch.name?.trim() ? `: ${ch.name}` : ''}`
+              : ch.name?.trim() || 'Chapter'}
           </h3>
           {ch.sub_name && <p className="text-sm text-muted">{ch.sub_name}</p>}
           <DetailsBlock html={ch.description} />

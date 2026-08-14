@@ -1,6 +1,9 @@
-export function chapterHeading(chapter: { chapter_number?: string; name: string }) {
+export function chapterHeading(chapter: { chapter_number?: string; name?: string }) {
   const no = chapter.chapter_number?.trim();
-  return no ? `Chapter ${no}: ${chapter.name}` : chapter.name;
+  const title = chapter.name?.trim();
+  if (no && title) return `Chapter ${no}: ${title}`;
+  if (no) return `Chapter ${no}`;
+  return title || 'Chapter';
 }
 
 export function ruleHeading(rule: { rule_number?: string; name?: string }) {

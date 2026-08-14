@@ -1,5 +1,7 @@
 'use client';
 
+import { MarkupText } from '@/components/shared/markup-text';
+
 export interface ProcessStepPreview {
   title?: string;
   description?: string;
@@ -33,10 +35,14 @@ export function ProcessFlowPreview({ steps }: { steps: ProcessStepPreview[] }) {
               </span>
             )}
             {step.title?.trim() ? (
-              <div className="font-semibold text-foreground">{step.title}</div>
+              <div className="font-semibold text-foreground">
+                <MarkupText text={step.title} />
+              </div>
             ) : null}
             {step.description?.trim() && (
-              <p className="mt-0.5 text-sm text-muted">{step.description}</p>
+              <div className="mt-0.5 text-sm text-muted">
+                <MarkupText text={step.description} />
+              </div>
             )}
           </div>
         </div>

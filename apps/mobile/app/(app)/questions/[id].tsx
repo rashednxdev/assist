@@ -398,10 +398,11 @@ export default function QuestionDetailScreen() {
 
       {showAnswer && allProcesses.length > 0 ? (
         <View style={styles.panel}>
-          <Text style={styles.sectionTitle}>Process</Text>
           {allProcesses.map((proc, idx) => (
             <View key={idx} style={styles.processGroupBlock}>
-              {proc.title?.trim() ? <Text style={styles.subsectionTitle}>{proc.title}</Text> : null}
+              {proc.title?.trim() && proc.title.trim().toLowerCase() !== 'process' ? (
+                <Text style={styles.subsectionTitle}>{proc.title}</Text>
+              ) : null}
               {proc.details?.trim() ? (
                 <BookRichText html={proc.details} style={styles.sectionText} />
               ) : null}

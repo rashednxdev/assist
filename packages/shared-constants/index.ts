@@ -376,3 +376,35 @@ export function insertBookListMarkerLineBreaks(
     lineBreak,
   );
 }
+
+/** Inline / line markup available in question & book plain-text fields (mobile + web). */
+export const BOOK_TEXT_MARKUP_HELP = [
+  {
+    marker: '//',
+    description: 'Start a new line (justified). Use consecutive // for blank lines.',
+  },
+  {
+    marker: '///',
+    description: 'Start a new centered line.',
+  },
+  {
+    marker: '////',
+    description: 'Start a new line centered in the right half of the screen.',
+  },
+  {
+    marker: '/--',
+    description: 'Horizontal line across the right half of the screen.',
+  },
+  {
+    marker: '/---',
+    description: 'Full-width horizontal line.',
+  },
+  {
+    marker: '*text*',
+    description: 'Make the word or sentence between asterisks bold.',
+  },
+  {
+    marker: 'left[]right',
+    description: 'Split a line: text before [] is left-aligned, text after [] is right-aligned.',
+  },
+] as const;

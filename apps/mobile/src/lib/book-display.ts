@@ -5,10 +5,11 @@ export function cleanBookLabel(value?: string | null) {
     .trim();
 }
 
-export function chapterHeading(chapter: { chapter_number?: string; name: string }) {
+export function chapterHeading(chapter: { chapter_number?: string; name?: string }) {
   const no = cleanBookLabel(chapter.chapter_number);
-  const name = cleanBookLabel(chapter.name) || chapter.name.trim();
-  return no ? `${no}: ${name}` : name;
+  const name = cleanBookLabel(chapter.name);
+  if (no && name) return `${no}: ${name}`;
+  return no || name || 'Chapter';
 }
 
 export function ruleHeading(rule: { rule_number?: string; name?: string }) {

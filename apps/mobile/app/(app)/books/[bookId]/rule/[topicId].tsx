@@ -89,7 +89,9 @@ export default function BookRuleScreen() {
 
         {(topic.processes ?? []).map((p) => (
           <View key={p.id} style={styles.subRuleCard}>
-            <Text style={styles.subRuleTitle}>{p.title}</Text>
+            {p.title?.trim() && p.title.trim().toLowerCase() !== 'process' ? (
+              <Text style={styles.subRuleTitle}>{p.title}</Text>
+            ) : null}
             {p.details?.trim() ? <BookRichText html={p.details} /> : null}
             <View style={styles.processStepsWrap}>
               <ProcessFlowPreview steps={p.steps} />

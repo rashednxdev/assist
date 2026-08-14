@@ -76,8 +76,8 @@ export function ChapterInlineEdit({
   });
 
   async function save() {
-    if (!form.chapter_number.trim() || !form.name.trim()) {
-      setError('Chapter number and name are required');
+    if (!form.chapter_number.trim()) {
+      setError('Chapter number is required');
       return;
     }
     setBusy(true);
@@ -110,7 +110,7 @@ export function ChapterInlineEdit({
             onChange={(e) => setForm({ ...form, chapter_number: e.target.value })}
           />
         </Field>
-        <Field label="Name">
+        <Field label="Title (optional)">
           <Input
             disabled={busy}
             value={form.name}

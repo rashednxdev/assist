@@ -277,14 +277,14 @@ export function BookContentEditor({
   }
 
   async function addChapter() {
-    if (!chapterForm.name.trim() || !chapterForm.chapter_number.trim()) return;
+    if (!chapterForm.chapter_number.trim()) return;
     clearFeedback();
     setBusy(true);
     try {
       const res = await apiFetch<{ data: Omit<ChapterRow, 'topic_count'> }>(`/books/${bookId}/chapters`, {
         method: 'POST',
         body: JSON.stringify({
-          name: chapterForm.name.trim(),
+          name: chapterForm.name.trim() || undefined,
           chapter_number: chapterForm.chapter_number.trim(),
           sub_name: chapterForm.sub_name.trim() || undefined,
           description: chapterForm.description.trim() ? wrapHtml(chapterForm.description) : undefined,
@@ -304,7 +304,7 @@ export function BookContentEditor({
   }
 
   async function saveChapterEdit() {
-    if (!editChapterId) return;
+    if (!editChapterId || !editChapterForm.chapter_number.trim()) return;
     clearFeedback();
     setBusy(true);
     try {
@@ -815,7 +815,10 @@ export function BookContentEditor({
                       setSelectedTopicId(null);
                     }
                   }}>
-                    <span className="font-medium">{c.chapter_number} — {c.name}</span>
+                    <span className="font-medium">
+                      {c.chapter_number}
+                      {c.name?.trim() ? ` — ${c.name}` : ''}
+                    </span>
                     <span className="ml-1 text-xs text-muted">({c.topic_count} rules)</span>
                   </button>
                   <div className="mt-1 flex gap-1">
@@ -837,7 +840,7 @@ export function BookContentEditor({
               <div className="rounded-lg border border-dashed p-3 space-y-2">
                 <p className="text-xs font-semibold text-muted">Edit chapter</p>
                 <Input disabled={busy} value={editChapterForm.chapter_number} placeholder="Chapter no." onChange={(e) => setEditChapterForm({ ...editChapterForm, chapter_number: e.target.value })} />
-                <Input disabled={busy} value={editChapterForm.name} placeholder="Name" onChange={(e) => setEditChapterForm({ ...editChapterForm, name: e.target.value })} />
+                <Input disabled={busy} value={editChapterForm.name} placeholder="Title (optional)" onChange={(e) => setEditChapterForm({ ...editChapterForm, name: e.target.value })} />
                 <textarea className="ibas-textarea text-sm" disabled={busy} value={editChapterForm.description} placeholder="Description" onChange={(e) => setEditChapterForm({ ...editChapterForm, description: e.target.value })} />
                 <div className="flex gap-2">
                   <Button size="sm" disabled={busy} onClick={saveChapterEdit}>Save</Button>
@@ -848,7 +851,7 @@ export function BookContentEditor({
             <div className="rounded-lg border border-dashed p-3 space-y-2">
               <p className="text-xs font-semibold text-muted">Add chapter</p>
               <Input disabled={busy} value={chapterForm.chapter_number} placeholder="e.g. IV" onChange={(e) => setChapterForm({ ...chapterForm, chapter_number: e.target.value })} />
-              <Input disabled={busy} value={chapterForm.name} placeholder="Chapter title" onChange={(e) => setChapterForm({ ...chapterForm, name: e.target.value })} />
+              <Input disabled={busy} value={chapterForm.name} placeholder="Chapter title (optional)" onChange={(e) => setChapterForm({ ...chapterForm, name: e.target.value })} />
               <textarea className="ibas-textarea text-sm" disabled={busy} value={chapterForm.description} placeholder="Description (optional)" onChange={(e) => setChapterForm({ ...chapterForm, description: e.target.value })} />
               <Button size="sm" disabled={busy} onClick={addChapter}>Add chapter</Button>
             </div>

@@ -383,7 +383,7 @@ export async function getTopicDetail(topicId: string) {
     content_link: topic.content_link,
     table: topic.table,
     is_amended: topic.is_amended,
-    chapter: chapter ? { id: String(chapter._id), name: chapter.name, chapter_number: chapter.chapter_number } : null,
+    chapter: chapter ? { id: String(chapter._id), name: chapter.name ?? '', chapter_number: chapter.chapter_number } : null,
     details: details.map((d) => ({ id: String(d._id), detail_text: d.detail_text })),
     sub_topics: subTopics.map((st) => ({
       id: String(st._id),
@@ -621,7 +621,7 @@ function serializeChapter(chapter: InstanceType<typeof BookChapter>) {
     id: String(chapter._id),
     book_info_id: String(chapter.book_info_id),
     book_parts_id: idStr(chapter.book_parts_id),
-    name: chapter.name,
+    name: chapter.name ?? '',
     sub_name: chapter.sub_name,
     chapter_number: chapter.chapter_number,
     description: chapter.description,
@@ -791,7 +791,7 @@ export async function createChapter(bookId: string, dto: CreateBookChapterDto) {
   const chapter = await BookChapter.create({
     book_info_id: book._id,
     book_parts_id: dto.book_parts_id ? new mongoose.Types.ObjectId(dto.book_parts_id) : undefined,
-    name: dto.name,
+    name: dto.name?.trim() ?? '',
     sub_name: dto.sub_name,
     chapter_number: dto.chapter_number,
     description: dto.description,
@@ -804,7 +804,7 @@ export async function createChapter(bookId: string, dto: CreateBookChapterDto) {
 export async function updateChapter(chapterId: string, dto: UpdateBookChapterDto) {
   const chapter = await BookChapter.findById(chapterId);
   if (!chapter) throw notFound('Chapter not found');
-  if (dto.name !== undefined) chapter.name = dto.name;
+  if (dto.name !== undefined) chapter.name = dto.name.trim();
   if (dto.sub_name !== undefined) chapter.sub_name = dto.sub_name;
   if (dto.chapter_number !== undefined) chapter.chapter_number = dto.chapter_number;
   if (dto.description !== undefined) chapter.description = dto.description;

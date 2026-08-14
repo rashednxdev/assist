@@ -15,6 +15,10 @@ import { ExplanationSectionsEditor } from '@/components/questions/explanation-se
 import { ComparisonTableEditor } from '@/components/questions/comparison-table-editor';
 import { ModelAnswerLinkPanel } from '@/components/questions/model-answer-link';
 import { MotherQuestionSearch } from '@/components/questions/mother-question-search';
+import {
+  MarkupInstructionsButton,
+  MarkupInstructionsModal,
+} from '@/components/shared/markup-instructions-modal';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -220,6 +224,7 @@ export function QuestionEditor({
 }: QuestionEditorProps) {
   const [similarQuestions, setSimilarQuestions] = useState<SimilarQuestion[]>([]);
   const [similarLoading, setSimilarLoading] = useState(false);
+  const [showMarkupHelp, setShowMarkupHelp] = useState(false);
 
   const selectedType = useMemo(
     () => questionTypes.find((t) => t.id === value.question_type_id),
@@ -303,6 +308,11 @@ export function QuestionEditor({
   return (
     <form onSubmit={onSubmit} className="space-y-6">
       {error && <Alert variant="error">{error}</Alert>}
+
+      <div className="flex justify-end">
+        <MarkupInstructionsButton onClick={() => setShowMarkupHelp(true)} />
+      </div>
+      <MarkupInstructionsModal open={showMarkupHelp} onClose={() => setShowMarkupHelp(false)} />
 
       <Card>
         <CardHeader>

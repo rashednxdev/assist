@@ -17,6 +17,7 @@ import { ComparisonTableAnswer } from '@/components/questions/ComparisonTableAns
 import { emptyExplanationProcess } from '@/components/questions/ProcessStepsEditor';
 import { ProcessEditorModal } from '@/components/questions/ProcessEditorModal';
 import { ProcessFlowPreview } from '@/components/books/ProcessFlowPreview';
+import { MarkupInstructionsModal } from '@/components/questions/MarkupInstructionsModal';
 import { ModelAnswerLinkPanel } from '@/components/questions/ModelAnswerLinkPanel';
 import { TextField } from '@/components/ui/TextField';
 import { Button } from '@/components/ui/Button';
@@ -124,17 +125,17 @@ function renderSectionPreview(sections: SectionRow[]) {
 }
 
 /** Every process across a list of sections, shown together at the end of the answer preview —
- * matching how Question Bank presents them (one dedicated "Process" block, not scattered per
- * section) rather than per-section. */
+ * matching how Question Bank presents them (steps block, not scattered per section). */
 function renderProcessesPreview(sections: SectionRow[]) {
   const processes = sections.map((s) => s.process).filter((p) => hasProcessContent(p));
   if (processes.length === 0) return null;
   return (
     <View style={previewStyles.block}>
-      <Text style={previewStyles.heading}>Process</Text>
       {processes.map((proc, idx) => (
         <View key={idx} style={previewStyles.subBlock}>
-          {proc?.title?.trim() ? <Text style={previewStyles.subHeading}>{proc.title}</Text> : null}
+          {proc?.title?.trim() && proc.title.trim().toLowerCase() !== 'process' ? (
+            <Text style={previewStyles.subHeading}>{proc.title}</Text>
+          ) : null}
           {proc?.details?.trim() ? <BookRichText html={proc.details} style={previewStyles.text} /> : null}
           <ProcessFlowPreview steps={proc?.steps ?? []} />
         </View>
@@ -308,6 +309,7 @@ function QuestionUpdateEditBody() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
+  const [showMarkupHelp, setShowMarkupHelp] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
   const [trashing, setTrashing] = useState(false);
 
@@ -535,6 +537,11 @@ function QuestionUpdateEditBody() {
           return <BookBadge key={paper.id} label={label} variant="muted" />;
         })}
       </View>
+
+      <Pressable style={styles.markupGuideBtn} onPress={() => setShowMarkupHelp(true)}>
+        <Ionicons name="book-outline" size={16} color={colors.primary} />
+        <Text style={styles.markupGuideBtnText}>Markup guide</Text>
+      </Pressable>
 
       {!editable ? (
         <View style={styles.noticeBanner}>
@@ -1095,6 +1102,7 @@ function QuestionUpdateEditBody() {
       onClose={() => setEditingProcess(null)}
       disabled={!editable || busy}
     />
+    <MarkupInstructionsModal visible={showMarkupHelp} onClose={() => setShowMarkupHelp(false)} />
     </>
   );
 }
@@ -1132,6 +1140,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+  },
+  markupGuideBtn: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  markupGuideBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
   },
   noticeBanner: {
     backgroundColor: '#fef3c7',

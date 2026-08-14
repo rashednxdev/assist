@@ -1,9 +1,9 @@
-import { insertBookListMarkerLineBreaks } from '@ibas/shared-constants';
 import type { ComparisonTable, ExplanationSection } from '@ibas/shared-types';
 import { hasComparisonTableContent, hasExplanationContent, hasProcessContent } from '@ibas/shared-types';
 import { Badge } from '@/components/ui/badge';
 import { ComparisonTableView } from '@/components/questions/comparison-table-view';
 import { ProcessFlowPreview } from '@/components/books/process-flow-preview';
+import { MarkupText } from '@/components/shared/markup-text';
 
 interface QuestionOptionView {
   id?: string;
@@ -25,11 +25,6 @@ interface QuestionAnswerViewProps {
   showAnswer: boolean;
 }
 
-function formatQuestionText(text?: string) {
-  if (!text?.trim()) return '';
-  return insertBookListMarkerLineBreaks(text.trim(), '\n');
-}
-
 function TextBlock({
   text,
   className = '',
@@ -37,14 +32,11 @@ function TextBlock({
   text?: string;
   className?: string;
 }) {
-  const formatted = formatQuestionText(text);
-  if (!formatted) return null;
+  if (!text?.trim()) return null;
   return (
-    <p
-      className={`whitespace-pre-wrap text-justify text-sm leading-relaxed text-foreground ${className}`}
-    >
-      {formatted}
-    </p>
+    <div className={`text-sm leading-relaxed text-foreground ${className}`}>
+      <MarkupText text={text} />
+    </div>
   );
 }
 

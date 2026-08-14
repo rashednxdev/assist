@@ -3,7 +3,7 @@ import mongoose, { Schema, type Document, type Types } from 'mongoose';
 export interface IBookChapter extends Document {
   book_info_id: Types.ObjectId;
   book_parts_id?: Types.ObjectId;
-  name: string;
+  name?: string;
   sub_name?: string;
   chapter_number: string;
   description?: string;
@@ -15,7 +15,7 @@ const schema = new Schema<IBookChapter>(
   {
     book_info_id: { type: Schema.Types.ObjectId, required: true, ref: 'BookInfo' },
     book_parts_id: { type: Schema.Types.ObjectId, ref: 'BookPart' },
-    name: { type: String, required: true },
+    name: { type: String, default: '' },
     sub_name: { type: String },
     chapter_number: { type: String, required: true },
     description: { type: String },

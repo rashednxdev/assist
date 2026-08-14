@@ -39,9 +39,9 @@ export function BookContentsFull({
               {cleanBookLabel(chapter.chapter_number) ? (
                 <Text style={styles.chapterNumber}>{cleanBookLabel(chapter.chapter_number)}</Text>
               ) : null}
-              <Text style={styles.chapterTitle}>
-                {cleanBookLabel(chapter.name) || chapter.name.trim()}
-              </Text>
+              {cleanBookLabel(chapter.name) ? (
+                <Text style={styles.chapterTitle}>{cleanBookLabel(chapter.name)}</Text>
+              ) : null}
               {chapter.sub_name?.trim() ? (
                 <Text style={styles.chapterSubName}>{chapter.sub_name}</Text>
               ) : null}
@@ -71,7 +71,9 @@ export function BookContentsFull({
 
               {(topic.processes ?? []).map((p) => (
                 <View key={p.id} style={styles.processPanel}>
-                  <Text style={styles.processTitle}>{p.title}</Text>
+                  {p.title?.trim() && p.title.trim().toLowerCase() !== 'process' ? (
+                    <Text style={styles.processTitle}>{p.title}</Text>
+                  ) : null}
                   {p.details?.trim() ? <BookRichText html={p.details} /> : null}
                   <View style={styles.processSteps}>
                     <ProcessFlowPreview steps={p.steps} />

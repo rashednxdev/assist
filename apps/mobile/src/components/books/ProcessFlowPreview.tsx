@@ -1,5 +1,6 @@
 import { View, Text, StyleSheet } from 'react-native';
 import type { ProcessStep } from '@/types/books';
+import { BookRichText } from '@/components/books/BookRichText';
 import { colors, spacing } from '@/theme';
 
 // Matches the web app's `--color-primary` family (app/globals.css), which is what both the
@@ -33,9 +34,11 @@ export function ProcessFlowPreview({ steps }: { steps: ProcessStep[] }) {
                 <Text style={styles.rolePillText}>{step.role.trim()}</Text>
               </View>
             ) : null}
-            {step.title?.trim() ? <Text style={styles.stepTitle}>{step.title}</Text> : null}
+            {step.title?.trim() ? (
+              <BookRichText html={step.title} style={styles.stepTitle} />
+            ) : null}
             {step.description?.trim() ? (
-              <Text style={styles.stepDescription}>{step.description}</Text>
+              <BookRichText html={step.description} style={styles.stepDescription} />
             ) : null}
           </View>
         </View>

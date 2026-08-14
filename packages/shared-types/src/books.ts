@@ -45,7 +45,7 @@ export const createBookPartSchema = z.object({
 
 export const createBookChapterSchema = z.object({
   book_parts_id: z.string().regex(/^[a-f\d]{24}$/i).optional(),
-  name: z.string().min(1),
+  name: z.string().optional(),
   sub_name: z.string().optional(),
   chapter_number: z.string().min(1),
   description: z.string().optional(),

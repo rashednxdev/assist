@@ -532,7 +532,7 @@ export default function QuestionsPage() {
         },
       );
       setListMsg(
-        `Book-tagged ${res.data.updated} question${res.data.updated === 1 ? '' : 's'} (+${res.data.added} first-chapter links)`,
+        `Book-tagged ${res.data.updated} question${res.data.updated === 1 ? '' : 's'} (+${res.data.added} new chapter links)`,
       );
       setBatchBookId('');
       setSelectedIds([]);

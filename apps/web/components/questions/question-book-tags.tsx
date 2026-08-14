@@ -25,7 +25,7 @@ interface QuestionBookTagsProps {
   onChange: (books: QuestionBookTag[]) => void;
 }
 
-/** Inline book tags — links the question to each book's first chapter only. */
+/** Inline book tags — links onto the book's first chapter by default (same as chapter questions). */
 export function QuestionBookTags({
   questionId,
   books,
@@ -111,7 +111,7 @@ export function QuestionBookTags({
             e.target.value = '';
             void addBook(id);
           }}
-          aria-label="Add book tag (first chapter)"
+          aria-label="Add book (links to first chapter by default)"
         >
           <option value="">+ Book…</option>
           {available.map((b) => (

@@ -1377,7 +1377,6 @@ export async function listQuestions(
       ? QuestionBookLink.find({
           question_id: { $in: questionIds },
           is_active: true,
-          link_level: 'chapter',
         }).select('question_id book_chapter_id')
       : Promise.resolve([]),
   ]);
@@ -1400,8 +1399,12 @@ export async function listQuestions(
     subjectsByQuestion.set(key, list);
   }
 
+  // Book tags = membership on a Books & Tools book (any chapter / rule / sub-rule link, or primary).
   const linkedChapterIds = [
-    ...new Set(chapterBookLinks.map((l) => String(l.book_chapter_id)).filter(Boolean)),
+    ...new Set([
+      ...chapterBookLinks.map((l) => String(l.book_chapter_id)).filter(Boolean),
+      ...items.map((q) => idStr(q.book_chapter_id)).filter((id): id is string => Boolean(id)),
+    ]),
   ];
   const linkedChapters =
     linkedChapterIds.length > 0 ? await BookChapter.find({ _id: { $in: linkedChapterIds } }) : [];
@@ -1409,22 +1412,6 @@ export async function listQuestions(
     linkedChapters.map((c) => [String(c._id), String(c.book_info_id)]),
   );
   const bookIdsFromLinks = [...new Set([...chapterToBookId.values()].filter(Boolean))];
-  const firstChapterByBook = new Map<string, string>();
-  if (bookIdsFromLinks.length > 0) {
-    const firstRows = await BookChapter.aggregate<{ _id: mongoose.Types.ObjectId; firstId: mongoose.Types.ObjectId }>([
-      {
-        $match: {
-          book_info_id: { $in: bookIdsFromLinks.map((id) => new mongoose.Types.ObjectId(id)) },
-          is_active: true,
-        },
-      },
-      { $sort: { sort_order: 1 } },
-      { $group: { _id: '$book_info_id', firstId: { $first: '$_id' } } },
-    ]);
-    for (const row of firstRows) {
-      firstChapterByBook.set(String(row._id), String(row.firstId));
-    }
-  }
   const booksForTags =
     bookIdsFromLinks.length > 0 ? await BookInfo.find({ _id: { $in: bookIdsFromLinks } }) : [];
   const bookNameByIdForTags = new Map(booksForTags.map((b) => [String(b._id), b.name]));
@@ -1432,19 +1419,27 @@ export async function listQuestions(
     string,
     Array<{ id: string; name: string; chapter_id: string }>
   >();
+
+  function pushBookTag(questionKey: string, chapterId: string) {
+    const bookId = chapterToBookId.get(chapterId);
+    if (!bookId) return;
+    const bookName = bookNameByIdForTags.get(bookId);
+    if (!bookName) return;
+    const list = bookTagsByQuestion.get(questionKey) ?? [];
+    if (list.some((t) => t.id === bookId)) return;
+    list.push({ id: bookId, name: bookName, chapter_id: chapterId });
+    bookTagsByQuestion.set(questionKey, list);
+  }
+
   for (const link of chapterBookLinks) {
     const chapterId = String(link.book_chapter_id);
-    const bookId = chapterToBookId.get(chapterId);
-    if (!bookId) continue;
-    const firstChapterId = firstChapterByBook.get(bookId);
-    if (!firstChapterId || firstChapterId !== chapterId) continue;
-    const bookName = bookNameByIdForTags.get(bookId);
-    if (!bookName) continue;
-    const key = String(link.question_id);
-    const list = bookTagsByQuestion.get(key) ?? [];
-    if (list.some((t) => t.id === bookId)) continue;
-    list.push({ id: bookId, name: bookName, chapter_id: chapterId });
-    bookTagsByQuestion.set(key, list);
+    if (!chapterId) continue;
+    pushBookTag(String(link.question_id), chapterId);
+  }
+  for (const q of items) {
+    const chapterId = idStr(q.book_chapter_id);
+    if (!chapterId) continue;
+    pushBookTag(String(q._id), chapterId);
   }
 
   const chapterIds = [
@@ -1950,29 +1945,55 @@ async function resolveFirstChapter(bookInfoId: string) {
   return { book, chapter };
 }
 
-/** Quick-tag: link question to a book's first chapter only. */
+/** Any active link (or primary chapter) that belongs to this book. */
+async function findExistingBookMembership(questionId: string, bookInfoId: string) {
+  const chapters = await BookChapter.find({
+    book_info_id: bookInfoId,
+    is_active: true,
+  }).select('_id');
+  const chapterIds = chapters.map((c) => c._id);
+  if (chapterIds.length === 0) return null;
+
+  const link = await QuestionBookLink.findOne({
+    question_id: questionId,
+    book_chapter_id: { $in: chapterIds },
+    is_active: true,
+  }).sort({ sort_order: 1 });
+  if (link?.book_chapter_id) {
+    return {
+      chapter_id: String(link.book_chapter_id),
+      link_id: String(link._id),
+    };
+  }
+
+  const question = await Question.findById(questionId).select('book_chapter_id');
+  if (!question?.book_chapter_id) return null;
+  const primaryId = String(question.book_chapter_id);
+  if (!chapterIds.some((id) => String(id) === primaryId)) return null;
+  return { chapter_id: primaryId, link_id: undefined as string | undefined };
+}
+
+/**
+ * Quick-tag from Question Bank: link the question onto the book's first chapter
+ * (same as "add question on a chapter" in Books & Tools). If already linked to
+ * any chapter of that book, leave it and return existing membership.
+ */
 export async function addQuestionBookFirstChapterLink(
   questionId: string,
   dto: QuestionBookFirstChapterLinkInput,
 ) {
   const { book, chapter } = await resolveFirstChapter(dto.book_info_id);
-  const chapterId = String(chapter._id);
-
-  const existing = await QuestionBookLink.findOne({
-    question_id: questionId,
-    link_level: 'chapter',
-    book_chapter_id: chapter._id,
-    is_active: true,
-  });
+  const existing = await findExistingBookMembership(questionId, String(book._id));
   if (existing) {
     return {
       id: String(book._id),
       name: book.name,
-      chapter_id: chapterId,
-      link_id: String(existing._id),
+      chapter_id: existing.chapter_id,
+      link_id: existing.link_id,
     };
   }
 
+  const chapterId = String(chapter._id);
   const link = await addQuestionBookLink(questionId, {
     link_level: 'chapter',
     book_chapter_id: chapterId,
@@ -1985,17 +2006,57 @@ export async function addQuestionBookFirstChapterLink(
   };
 }
 
+/** Untag book: remove all chapter/rule/sub-rule links for that book. */
 export async function deleteQuestionBookFirstChapterLink(questionId: string, bookInfoId: string) {
-  const { chapter } = await resolveFirstChapter(bookInfoId);
-  const link = await QuestionBookLink.findOne({
+  const book = await BookInfo.findById(bookInfoId);
+  if (!book || !book.is_active) throw notFound('Book not found');
+
+  const chapters = await BookChapter.find({
+    book_info_id: book._id,
+    is_active: true,
+  }).select('_id');
+  const chapterIds = chapters.map((c) => c._id);
+  if (chapterIds.length === 0) throw notFound('Book tag not found');
+
+  const links = await QuestionBookLink.find({
     question_id: questionId,
-    link_level: 'chapter',
-    book_chapter_id: chapter._id,
+    book_chapter_id: { $in: chapterIds },
     is_active: true,
   });
-  if (!link) throw notFound('Book first-chapter tag not found');
-  await deleteQuestionBookLink(questionId, String(link._id));
-  return { deleted: true };
+
+  const question = await Question.findById(questionId);
+  if (!question || !question.is_active) throw notFound('Question not found');
+
+  const primaryOnBook =
+    question.book_chapter_id &&
+    chapterIds.some((id) => String(id) === String(question.book_chapter_id));
+
+  if (links.length === 0 && !primaryOnBook) throw notFound('Book tag not found');
+
+  for (const link of links) {
+    link.is_active = false;
+    await link.save();
+  }
+
+  const first = await QuestionBookLink.findOne({
+    question_id: question._id,
+    is_active: true,
+  }).sort({ sort_order: 1 });
+  syncPrimaryBookFields(
+    question,
+    first
+      ? {
+          link_level: first.link_level,
+          book_chapter_id: String(first.book_chapter_id),
+          book_topic_id: idStr(first.book_topic_id),
+          book_sub_topic_id: idStr(first.book_sub_topic_id),
+          regulation_id: idStr(first.regulation_id),
+        }
+      : null,
+  );
+  await question.save();
+
+  return { deleted: true, removed_links: links.length };
 }
 
 export async function batchAddQuestionBookFirstChapterLinks(dto: BatchQuestionBookFirstChapterLinksDto) {
@@ -2014,13 +2075,7 @@ export async function batchAddQuestionBookFirstChapterLinks(dto: BatchQuestionBo
   let added = 0;
   for (const q of questions) {
     for (const book of books) {
-      const { chapter } = await resolveFirstChapter(String(book._id));
-      const before = await QuestionBookLink.findOne({
-        question_id: q._id,
-        link_level: 'chapter',
-        book_chapter_id: chapter._id,
-        is_active: true,
-      });
+      const before = await findExistingBookMembership(String(q._id), String(book._id));
       if (before) continue;
       await addQuestionBookFirstChapterLink(String(q._id), { book_info_id: String(book._id) });
       added += 1;

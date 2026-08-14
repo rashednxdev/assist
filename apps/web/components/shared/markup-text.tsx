@@ -37,20 +37,18 @@ function splitMarkupLines(text: string): MarkupLine[] {
   }
   lines.push({ text: buffer.trim(), align });
 
-  while (
-    lines.length > 0 &&
-    lines[0].text.length === 0 &&
-    lines[0].align !== 'rule' &&
-    lines[0].align !== 'ruleRightHalf'
-  ) {
+  while (lines.length > 0) {
+    const first = lines[0];
+    if (!first || first.text.length > 0 || first.align === 'rule' || first.align === 'ruleRightHalf') {
+      break;
+    }
     lines.shift();
   }
-  while (
-    lines.length > 0 &&
-    lines[lines.length - 1].text.length === 0 &&
-    lines[lines.length - 1].align !== 'rule' &&
-    lines[lines.length - 1].align !== 'ruleRightHalf'
-  ) {
+  while (lines.length > 0) {
+    const last = lines[lines.length - 1];
+    if (!last || last.text.length > 0 || last.align === 'rule' || last.align === 'ruleRightHalf') {
+      break;
+    }
     lines.pop();
   }
   return lines;
@@ -78,7 +76,8 @@ function InlineMarkup({ text }: { text: string }) {
         const bold = part.match(/^\*([^*]+)\*$/);
         if (bold) {
           // Preserve list-marker newlines that were inserted inside a bold span.
-          const chunks = bold[1].split('\n');
+          const boldText = bold[1] ?? '';
+          const chunks = boldText.split('\n');
           return (
             <strong key={i}>
               {chunks.map((chunk, j) => (
@@ -178,10 +177,11 @@ export function MarkupText({
     );
   }
 
-  if (lines.length === 1 && lines[0].align === 'justify' && !lines[0].text.includes('[]')) {
+  const only = lines.length === 1 ? lines[0] : undefined;
+  if (only && only.align === 'justify' && !only.text.includes('[]')) {
     return (
       <span className={`whitespace-pre-wrap ${className}`.trim()}>
-        <InlineMarkup text={lines[0].text} />
+        <InlineMarkup text={only.text} />
       </span>
     );
   }

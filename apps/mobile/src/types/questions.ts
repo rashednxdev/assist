@@ -34,6 +34,8 @@ export interface QuestionListItem {
   book_link_count?: number;
   /** Exam subjects tagged on this question (from sync cache or live list). */
   subjects?: Array<{ id: string; name: string; name_bn?: string }>;
+  /** Books this question is linked to (any chapter). Quick-add defaults to first chapter. */
+  book_tags?: Array<{ id: string; name: string; chapter_id: string }>;
   option_count: number;
   created_at: string;
   updated_at: string;

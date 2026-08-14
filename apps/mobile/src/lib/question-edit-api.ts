@@ -1,6 +1,48 @@
 import type { QuestionSortOption } from '@ibas/shared-constants';
 import { apiFetch } from './api';
 import type { ExplanationSection, QuestionDetail, QuestionListItem, ReviewStatus } from '@/types/questions';
+import type { SubjectCatalogItem } from './questions-api';
+
+export type { SubjectCatalogItem };
+
+export interface BookCatalogItem {
+  id: string;
+  name: string;
+  label: string;
+}
+
+export async function fetchQuestionBookCatalog() {
+  const res = await apiFetch<{ data: BookCatalogItem[] }>('/questions/book-catalog');
+  return res.data;
+}
+
+export async function addQuestionSubjectTag(questionId: string, examSubjectId: string) {
+  const res = await apiFetch<{
+    data: { exam_subject_id: string; name: string; name_bn?: string };
+  }>(`/questions/${questionId}/subject-links`, {
+    method: 'POST',
+    body: JSON.stringify({ exam_subject_id: examSubjectId }),
+  });
+  return res.data;
+}
+
+export async function removeQuestionSubjectTag(questionId: string, examSubjectId: string) {
+  await apiFetch(`/questions/${questionId}/subject-links/${examSubjectId}`, { method: 'DELETE' });
+}
+
+export async function addQuestionBookFirstChapterTag(questionId: string, bookInfoId: string) {
+  const res = await apiFetch<{
+    data: { id: string; name: string; chapter_id: string };
+  }>(`/questions/${questionId}/book-first-chapter-links`, {
+    method: 'POST',
+    body: JSON.stringify({ book_info_id: bookInfoId }),
+  });
+  return res.data;
+}
+
+export async function removeQuestionBookFirstChapterTag(questionId: string, bookInfoId: string) {
+  await apiFetch(`/questions/${questionId}/book-first-chapter-links/${bookInfoId}`, { method: 'DELETE' });
+}
 
 export interface QuestionEditListParams {
   q?: string;

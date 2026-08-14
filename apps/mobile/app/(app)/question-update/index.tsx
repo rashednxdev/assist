@@ -6,12 +6,11 @@ import { QUESTION_REVIEW_STATUSES, QUESTION_SORT_OPTIONS } from '@ibas/shared-co
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
 import { BookBadge } from '@/components/books/BookBadge';
 import { ReviewStatusBadge } from '@/components/questions/ReviewStatusBadge';
-import { fetchQuestionTypes } from '@/lib/questions-api';
 import { fetchQuestionForEdit, fetchQuestionsForEdit } from '@/lib/question-edit-api';
-import { fetchBooks } from '@/lib/books-api';
+import { useAuth } from '@/lib/auth-context';
+import { useQuestionUpdateCatalogs } from '@/lib/question-update-catalogs';
+import { QuestionQuickTags } from '@/components/questions/QuestionQuickTags';
 import type { QuestionListItem, ReviewStatus } from '@/types/questions';
-import type { QuestionType } from '@/types/questions';
-import type { BookListItem } from '@/types/books';
 import { colors, spacing } from '@/theme';
 
 const PAGE_SIZE = 20;
@@ -35,9 +34,12 @@ const STATUS_LABEL: Record<ReviewStatus, string> = {
 
 export default function QuestionUpdateListScreen() {
   const router = useRouter();
+  const { user, canUpdate } = useAuth();
+  const canTag =
+    canUpdate('QUESTION_EDIT') ||
+    Boolean(user?.is_super_admin || user?.user_type === 'system_admin' || user?.user_type === 'admin');
+  const { types, subjectCatalog, bookCatalog, catalogsReady } = useQuestionUpdateCatalogs();
   const [items, setItems] = useState<QuestionListItem[]>([]);
-  const [types, setTypes] = useState<QuestionType[]>([]);
-  const [books, setBooks] = useState<BookListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -91,15 +93,6 @@ export default function QuestionUpdateListScreen() {
     void load(0, false);
   }, [load]);
 
-  useEffect(() => {
-    fetchQuestionTypes()
-      .then(setTypes)
-      .catch(() => {});
-    fetchBooks()
-      .then(setBooks)
-      .catch(() => {});
-  }, []);
-
   const lastOpenedIdRef = useRef<string | null>(null);
 
   useFocusEffect(
@@ -140,10 +133,12 @@ export default function QuestionUpdateListScreen() {
   }
 
   const bookOptions = useMemo(
-    () => [...books].sort((a, b) => a.name.localeCompare(b.name)),
-    [books],
+    () => [...bookCatalog].sort((a, b) => a.label.localeCompare(b.label)),
+    [bookCatalog],
   );
-  const selectedBookName = bookId ? bookOptions.find((b) => b.id === bookId)?.name : null;
+  const selectedBookName = bookId
+    ? bookOptions.find((b) => b.id === bookId)?.label ?? bookOptions.find((b) => b.id === bookId)?.name
+    : null;
 
   function submitSearch() {
     setAppliedQuery(query.trim());
@@ -214,7 +209,9 @@ export default function QuestionUpdateListScreen() {
               </Text>
             </Pressable>
             {bookOptions.length === 0 ? (
-              <Text style={styles.bookMenuEmpty}>No books loaded yet.</Text>
+              <Text style={styles.bookMenuEmpty}>
+                {catalogsReady ? 'No books in catalog.' : 'Loading books…'}
+              </Text>
             ) : (
               bookOptions.map((book) => {
                 const active = bookId === book.id;
@@ -228,7 +225,7 @@ export default function QuestionUpdateListScreen() {
                       style={[styles.bookMenuItemText, active && styles.bookMenuItemTextActive]}
                       numberOfLines={2}
                     >
-                      {book.name}
+                      {book.label}
                     </Text>
                   </Pressable>
                 );
@@ -339,35 +336,57 @@ export default function QuestionUpdateListScreen() {
             ) : null
           }
           renderItem={({ item }) => (
-            <Pressable
-              style={({ pressed }) => [styles.card, pressed && styles.pressed]}
-              onPress={() => openQuestion(item.id)}
-            >
-              <View style={styles.cardBody}>
-                <Text style={styles.cardText} numberOfLines={3}>
-                  {item.body_en}
-                </Text>
-                <View style={styles.badges}>
-                  <BookBadge
-                    label={item.question_type_name ?? item.question_type_code}
-                    variant="muted"
-                  />
-                  <BookBadge label={item.difficulty} variant="muted" />
-                  <BookBadge label={`${item.marks} marks`} variant="muted" />
-                  <ReviewStatusBadge status={item.review_status ?? 'draft'} by={item.status_by_name} />
-                  {(item.used_in_papers ?? []).map((paper) => {
-                    const session =
-                      paper.session_label_en?.trim() ||
-                      paper.session_year?.trim() ||
-                      paper.session_label_bn?.trim() ||
-                      '';
-                    const label = session ? `${session} · ${paper.name}` : paper.name;
-                    return <BookBadge key={paper.id} label={label} variant="muted" />;
-                  })}
+            <View style={styles.card}>
+              <Pressable
+                style={({ pressed }) => [styles.cardTop, pressed && styles.pressed]}
+                onPress={() => openQuestion(item.id)}
+              >
+                <View style={styles.cardBody}>
+                  <Text style={styles.cardText} numberOfLines={3}>
+                    {item.body_en}
+                  </Text>
+                  <View style={styles.badges}>
+                    <BookBadge
+                      label={item.question_type_name ?? item.question_type_code}
+                      variant="muted"
+                    />
+                    <BookBadge label={item.difficulty} variant="muted" />
+                    <BookBadge label={`${item.marks} marks`} variant="muted" />
+                    <ReviewStatusBadge status={item.review_status ?? 'draft'} by={item.status_by_name} />
+                    {(item.used_in_papers ?? []).map((paper) => {
+                      const session =
+                        paper.session_label_en?.trim() ||
+                        paper.session_year?.trim() ||
+                        paper.session_label_bn?.trim() ||
+                        '';
+                      const label = session ? `${session} · ${paper.name}` : paper.name;
+                      return <BookBadge key={paper.id} label={label} variant="muted" />;
+                    })}
+                  </View>
                 </View>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-            </Pressable>
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              </Pressable>
+              {canTag || (item.subjects ?? []).length > 0 || (item.book_tags ?? []).length > 0 ? (
+              <QuestionQuickTags
+                questionId={item.id}
+                subjects={item.subjects ?? []}
+                books={item.book_tags ?? []}
+                subjectCatalog={subjectCatalog}
+                bookCatalog={bookCatalog}
+                disabled={!canTag}
+                onSubjectsChange={(subjects) =>
+                  setItems((prev) =>
+                    prev.map((row) => (row.id === item.id ? { ...row, subjects } : row)),
+                  )
+                }
+                onBooksChange={(book_tags) =>
+                  setItems((prev) =>
+                    prev.map((row) => (row.id === item.id ? { ...row, book_tags } : row)),
+                  )
+                }
+              />
+              ) : null}
+            </View>
           )}
         />
       )}
@@ -567,15 +586,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
     backgroundColor: colors.surface,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.md,
     marginBottom: spacing.sm,
+    gap: 8,
+  },
+  cardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
   },
   cardBody: {
     flex: 1,

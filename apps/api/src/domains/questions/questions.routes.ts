@@ -128,20 +128,20 @@ questionsRouter.post('/:id/unpublish', canEditQuestions, asyncHandler(unpublishQ
 questionsRouter.post('/:id/book-links', requireAdmin, asyncHandler(addQuestionBookLinkHandler));
 questionsRouter.delete('/:id/book-links/:linkId', requireAdmin, asyncHandler(deleteQuestionBookLinkHandler));
 questionsRouter.get('/:id/subject-links', canBrowseQuestions, asyncHandler(listQuestionSubjectLinksHandler));
-questionsRouter.post('/:id/subject-links', requireAdmin, asyncHandler(addQuestionSubjectLinkHandler));
+questionsRouter.post('/:id/subject-links', canEditQuestions, asyncHandler(addQuestionSubjectLinkHandler));
 questionsRouter.delete(
   '/:id/subject-links/:examSubjectId',
-  requireAdmin,
+  canEditQuestions,
   asyncHandler(deleteQuestionSubjectLinkHandler),
 );
 questionsRouter.post(
   '/:id/book-first-chapter-links',
-  requireAdmin,
+  canEditQuestions,
   asyncHandler(addQuestionBookFirstChapterLinkHandler),
 );
 questionsRouter.delete(
   '/:id/book-first-chapter-links/:bookInfoId',
-  requireAdmin,
+  canEditQuestions,
   asyncHandler(deleteQuestionBookFirstChapterLinkHandler),
 );
 questionsRouter.post('/:id/mother-question', canEditQuestions, asyncHandler(setMotherQuestionHandler));

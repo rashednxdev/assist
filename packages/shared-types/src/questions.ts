@@ -385,8 +385,8 @@ export const setMotherQuestionSchema = z.object({
 
 export type SetMotherQuestionDto = z.infer<typeof setMotherQuestionSchema>;
 
-/** Page size for answer PDF export — half_a4 uses ~65% font size (35% reduced). */
-export const answerPdfPageSizeSchema = z.enum(['a4', 'half_a4']);
+/** Page size for answer PDF export — both landscape; pocket is 5″×8″ digest. */
+export const answerPdfPageSizeSchema = z.enum(['a4', 'pocket']);
 export type AnswerPdfPageSize = z.infer<typeof answerPdfPageSizeSchema>;
 
 export const answerPdfRequestSchema = z.object({

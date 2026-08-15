@@ -63,13 +63,13 @@ export const MOBILE_MODULE_CODES = [
   'QUESTIONS',
   'EXAM',
   'PAPER',
-  'OCR',
   'PENSION',
-  'QUESTION_EDIT',
   'QOTD',
   'EXAM_ROUTINE',
   'EXAM_WEEK',
   'USER_QUESTIONS',
+  'ANSWER_PDF',
+  'QUESTION_EDIT',
   'USER',
 ] as const;
 

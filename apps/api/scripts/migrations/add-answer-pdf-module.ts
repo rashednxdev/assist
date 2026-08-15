@@ -23,7 +23,7 @@ async function main() {
         code: 'ANSWER_PDF',
         name_en: 'Answer PDF download',
         description_en:
-          'Download question answers as PDF from Question Bank and Answer Reading History (A4 or half-A4)',
+          'Download question answers as PDF from Question Bank and Answer Reading History (A4 or Pocket 5″×8″, landscape)',
         color: '#1D4ED8',
         sort_order: 28,
         is_active: true,

@@ -348,14 +348,14 @@ function sendPdf(
   res.send(result.buffer);
 }
 
-/** Batch answer PDF — body: { question_ids, page_size: 'a4' | 'half_a4' }. */
+/** Batch answer PDF — body: { question_ids, page_size: 'a4' | 'pocket' }. */
 export async function exportAnswerPdfHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = answerPdfRequestSchema.parse(req.body);
   const result = await answerPdfService.buildAnswerPdf(dto);
   sendPdf(res, result);
 }
 
-/** Single-question answer PDF — query: page_size=a4|half_a4. */
+/** Single-question answer PDF — query: page_size=a4|pocket. */
 export async function exportSingleAnswerPdfHandler(req: AuthRequest, res: Response): Promise<void> {
   const page_size = answerPdfPageSizeSchema.catch('a4').parse(req.query.page_size ?? 'a4');
   const result = await answerPdfService.buildAnswerPdf({

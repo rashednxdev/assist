@@ -22,7 +22,7 @@ interface AnswerPdfDownloadSheetProps {
   onClose: () => void;
 }
 
-/** Choose A4 / half-A4 then download + share the answer PDF. */
+/** Choose A4 or Digest 5" × 8" (both landscape) then download + share the answer PDF. */
 export function AnswerPdfDownloadSheet({
   visible,
   questionIds,
@@ -58,7 +58,7 @@ export function AnswerPdfDownloadSheet({
             <Text style={styles.title}>Download answers as PDF</Text>
             <Text style={styles.sub}>{scopeLabel}</Text>
 
-            <Text style={styles.label}>Page size</Text>
+            <Text style={styles.label}>Page size (landscape)</Text>
             <View style={styles.row}>
               <Pressable
                 style={[styles.option, pageSize === 'a4' && styles.optionActive]}
@@ -67,26 +67,26 @@ export function AnswerPdfDownloadSheet({
               >
                 <Text style={[styles.optionTitle, pageSize === 'a4' && styles.optionTitleActive]}>A4</Text>
                 <Text style={[styles.optionSub, pageSize === 'a4' && styles.optionSubActive]}>
-                  Standard font
+                  Horizontal · standard font
                 </Text>
               </Pressable>
               <Pressable
-                style={[styles.option, pageSize === 'half_a4' && styles.optionActive]}
-                onPress={() => setPageSize('half_a4')}
+                style={[styles.option, pageSize === 'pocket' && styles.optionActive]}
+                onPress={() => setPageSize('pocket')}
                 disabled={busy}
               >
-                <Text style={[styles.optionTitle, pageSize === 'half_a4' && styles.optionTitleActive]}>
-                  Half A4
+                <Text style={[styles.optionTitle, pageSize === 'pocket' && styles.optionTitleActive]}>
+                  {`Digest 5" × 8"`}
                 </Text>
-                <Text style={[styles.optionSub, pageSize === 'half_a4' && styles.optionSubActive]}>
-                  Font −35%
+                <Text style={[styles.optionSub, pageSize === 'pocket' && styles.optionSubActive]}>
+                  Horizontal · font −35%
                 </Text>
               </Pressable>
             </View>
 
             <Text style={styles.hint}>
-              Layout matches the mobile answer view (question, options / model answer, tables,
-              processes). Max 40 questions per file.
+              Both sizes are landscape. Layout matches the mobile answer view. Max 40 questions per
+              file.
             </Text>
 
             <Pressable

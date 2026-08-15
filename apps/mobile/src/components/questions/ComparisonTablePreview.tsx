@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { visibleComparisonTable } from '@ibas/shared-types';
 import { ComparisonTableAnswer } from '@/components/questions/ComparisonTableAnswer';
+import { BookRichText } from '@/components/books/BookRichText';
 import { useDifferencesLandscape } from '@/hooks/useDifferencesLandscape';
 import type { ComparisonTable } from '@/types/questions';
 import { colors, spacing } from '@/theme';
@@ -29,15 +30,16 @@ export function ComparisonTablePreview({
 
   const featureHeader = visible.feature_header?.trim() || 'Feature';
   const cardLabel = visible.title?.trim() || featureHeader;
+  const modalHeading = title?.trim() || visible.title?.trim() || featureHeader;
 
   return (
     <>
       <View style={styles.previewWrap}>
         <View style={styles.previewHeader}>
           <Ionicons name="grid-outline" size={14} color={colors.primary} />
-          <Text style={styles.previewTitle} numberOfLines={1}>
-            {cardLabel}
-          </Text>
+          <View style={styles.previewTitleWrap}>
+            <BookRichText html={cardLabel} style={styles.previewTitle} />
+          </View>
           <Text style={styles.previewSub}>
             {rows.length} row{rows.length === 1 ? '' : 's'} · {columns.length} column
             {columns.length === 1 ? '' : 's'}
@@ -65,9 +67,7 @@ export function ComparisonTablePreview({
         <SafeAreaView style={styles.modalRoot} edges={['top', 'bottom']}>
           <View style={styles.modalHeader}>
             <View style={styles.modalTitleWrap}>
-              <Text style={styles.modalTitle} numberOfLines={1}>
-                {title?.trim() || featureHeader}
-              </Text>
+              <BookRichText html={modalHeading} style={styles.modalTitle} />
             </View>
             <Pressable style={styles.closeBtn} onPress={() => setOpen(false)} hitSlop={8}>
               <Ionicons name="close" size={22} color={colors.text} />
@@ -96,6 +96,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     flexWrap: 'wrap',
+  },
+  previewTitleWrap: {
+    flexShrink: 1,
+    maxWidth: '55%',
   },
   previewTitle: {
     fontSize: 12,

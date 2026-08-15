@@ -18,8 +18,11 @@ import {
   regulationSearchSchema,
   createProcessSchema,
   updateProcessSchema,
+  bookSubjectLinkInputSchema,
+  updateBookSubjectLinkSchema,
 } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
+import { getExamSubjectScopeForAuthUser } from '../users/subject-access.service.js';
 import * as booksService from './books.service.js';
 
 export async function listBookTypesHandler(_req: AuthRequest, res: Response): Promise<void> {
@@ -47,13 +50,54 @@ export async function deleteBookTypeHandler(req: AuthRequest, res: Response): Pr
 export async function listBooksHandler(req: AuthRequest, res: Response): Promise<void> {
   const book_type_id = typeof req.query.book_type_id === 'string' ? req.query.book_type_id : undefined;
   const q = typeof req.query.q === 'string' ? req.query.q : undefined;
+  const exam_subject_id =
+    typeof req.query.exam_subject_id === 'string' ? req.query.exam_subject_id : undefined;
   const user = req.user;
   const isAdmin =
     Boolean(user?.is_super_admin) ||
     user?.user_type === 'system_admin' ||
     user?.user_type === 'admin';
-  // Non-admins (e.g. mobile Book library) only ever see published books.
-  const data = await booksService.listBooks({ book_type_id, q, ...(isAdmin ? {} : { is_published: true }) });
+  const subjectScope = await getExamSubjectScopeForAuthUser(user);
+  // Non-admins (e.g. mobile Book library) only ever see published books, scoped to their subjects.
+  const data = await booksService.listBooks(
+    { book_type_id, q, exam_subject_id, ...(isAdmin ? {} : { is_published: true }) },
+    { subjectScope },
+  );
+  res.json({ data });
+}
+
+export async function listBookSubjectCatalogHandler(req: AuthRequest, res: Response): Promise<void> {
+  const subjectScope = await getExamSubjectScopeForAuthUser(req.user);
+  const data = await booksService.listBookSubjectCatalog(subjectScope);
+  res.json({ data });
+}
+
+export async function listBookSubjectLinksHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await booksService.listBookSubjectLinks(String(req.params.id));
+  res.json({ data });
+}
+
+export async function addBookSubjectLinkHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = bookSubjectLinkInputSchema.parse(req.body);
+  const data = await booksService.addBookSubjectLink(String(req.params.id), dto);
+  res.status(201).json({ data });
+}
+
+export async function updateBookSubjectLinkHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = updateBookSubjectLinkSchema.parse(req.body);
+  const data = await booksService.updateBookSubjectLinkSort(
+    String(req.params.id),
+    String(req.params.examSubjectId),
+    dto,
+  );
+  res.json({ data });
+}
+
+export async function removeBookSubjectLinkHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await booksService.removeBookSubjectLink(
+    String(req.params.id),
+    String(req.params.examSubjectId),
+  );
   res.json({ data });
 }
 
@@ -68,7 +112,16 @@ export async function unpublishBookHandler(req: AuthRequest, res: Response): Pro
 }
 
 export async function getBookHandler(req: AuthRequest, res: Response): Promise<void> {
-  const data = await booksService.getBookById(String(req.params.id));
+  const user = req.user;
+  const isAdmin =
+    Boolean(user?.is_super_admin) ||
+    user?.user_type === 'system_admin' ||
+    user?.user_type === 'admin';
+  const subjectScope = await getExamSubjectScopeForAuthUser(user);
+  const data = await booksService.getBookById(String(req.params.id), {
+    subjectScope,
+    requirePublished: !isAdmin,
+  });
   res.json({ data });
 }
 

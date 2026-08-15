@@ -23,6 +23,8 @@ export interface BookListItem {
   effective_date?: string;
   language: string;
   tags: string[];
+  subjects?: Array<{ id: string; name: string; name_bn?: string; sort_order: number }>;
+  subject_sort_order?: number;
 }
 
 export interface ReaderChapterTopic {

@@ -1,5 +1,6 @@
 import type { ComparisonTable } from '@ibas/shared-types';
 import { visibleComparisonTable } from '@ibas/shared-types';
+import { MarkupText } from '@/components/shared/markup-text';
 
 export function ComparisonTableView({
   table,
@@ -27,20 +28,20 @@ export function ComparisonTableView({
                   colSpan={visible.columns.length + 1}
                   className="border-b border-border px-3 py-2.5 text-center font-semibold text-foreground"
                 >
-                  {visible.title}
+                  <MarkupText text={visible.title} className="text-center font-semibold" />
                 </th>
               </tr>
             )}
             <tr className="bg-slate-50">
               <th className="border-b border-border px-3 py-2.5 text-left font-semibold text-foreground">
-                {visible.feature_header || 'Feature'}
+                <MarkupText text={visible.feature_header || 'Feature'} className="font-semibold" />
               </th>
               {visible.columns.map((col, i) => (
                 <th
                   key={i}
                   className="border-b border-l border-border px-3 py-2.5 text-left font-semibold text-foreground"
                 >
-                  {col}
+                  <MarkupText text={col} className="font-semibold" />
                 </th>
               ))}
             </tr>
@@ -49,14 +50,14 @@ export function ComparisonTableView({
             {visible.rows.map((row, ri) => (
               <tr key={ri} className="align-top">
                 <td className="border-b border-border px-3 py-2.5 font-medium text-foreground">
-                  {row.feature}
+                  <MarkupText text={row.feature} className="font-medium" />
                 </td>
                 {visible.columns.map((_, ci) => (
                   <td
                     key={ci}
                     className="border-b border-l border-border px-3 py-2.5 whitespace-pre-wrap text-foreground"
                   >
-                    {row.values[ci] ?? ''}
+                    <MarkupText text={row.values[ci] ?? ''} />
                   </td>
                 ))}
               </tr>

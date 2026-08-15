@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { BookOpen, Search, Plus } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
@@ -13,6 +13,11 @@ import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/shared/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { bookTheme } from '@/lib/book-theme';
+import {
+  BookSubjectTags,
+  type BookSubjectTag,
+  type SubjectCatalogItem,
+} from '@/components/books/book-subject-tags';
 
 interface BookItem {
   id: string;
@@ -24,6 +29,8 @@ interface BookItem {
   edition?: string;
   language: string;
   tags: string[];
+  subjects?: BookSubjectTag[];
+  subject_sort_order?: number;
 }
 
 export default function BooksPage() {
@@ -31,25 +38,38 @@ export default function BooksPage() {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [subjectCatalog, setSubjectCatalog] = useState<SubjectCatalogItem[]>([]);
+  const [filterSubjectId, setFilterSubjectId] = useState('');
 
-  function load(search?: string) {
+  const load = useCallback((search?: string, examSubjectId?: string) => {
     setLoading(true);
-    const params = search ? `?q=${encodeURIComponent(search)}` : '';
-    apiFetch<{ data: BookItem[] }>(`/books${params}`)
+    const params = new URLSearchParams();
+    if (search?.trim()) params.set('q', search.trim());
+    if (examSubjectId) params.set('exam_subject_id', examSubjectId);
+    const qs = params.toString();
+    apiFetch<{ data: BookItem[] }>(`/books${qs ? `?${qs}` : ''}`)
       .then((r) => setBooks(r.data))
       .finally(() => setLoading(false));
-  }
+  }, []);
 
   useEffect(() => {
     load();
     fetchMe()
       .then((res) => {
-        setIsAdmin(
-          res.data.is_super_admin || res.data.user_type === 'system_admin' || res.data.user_type === 'admin',
+        const admin =
+          res.data.is_super_admin || res.data.user_type === 'system_admin' || res.data.user_type === 'admin';
+        setIsAdmin(admin);
+        return apiFetch<{ data: SubjectCatalogItem[] }>('/books/subject-catalog').then((r) =>
+          setSubjectCatalog(r.data),
         );
       })
       .catch(() => {});
-  }, []);
+  }, [load]);
+
+  useEffect(() => {
+    load(q, filterSubjectId || undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- search is applied explicitly via form
+  }, [filterSubjectId, load]);
 
   return (
     <div className="space-y-6">
@@ -80,23 +100,38 @@ export default function BooksPage() {
         <CardHeader className={`border-b pb-4 ${bookTheme.divider}`}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-lg">Library</CardTitle>
-            <form
-              className="flex gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                load(q);
-              }}
-            >
-              <Input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Search by title or tag..."
-                className="w-full sm:w-64"
-              />
-              <Button type="submit" size="sm" variant="outline">
-                Search
-              </Button>
-            </form>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <select
+                className="h-9 max-w-full rounded-md border border-input bg-background px-2 text-sm sm:w-56"
+                value={filterSubjectId}
+                onChange={(e) => setFilterSubjectId(e.target.value)}
+                aria-label="Filter by subject"
+              >
+                <option value="">All subjects</option>
+                {subjectCatalog.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+              <form
+                className="flex gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  load(q, filterSubjectId || undefined);
+                }}
+              >
+                <Input
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Search by title or tag..."
+                  className="w-full sm:w-64"
+                />
+                <Button type="submit" size="sm" variant="outline">
+                  Search
+                </Button>
+              </form>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-4">
@@ -110,19 +145,15 @@ export default function BooksPage() {
               title="No books found"
               description={
                 isAdmin
-                  ? 'Add a book from Book admin, or run pnpm seed for sample GFR data.'
-                  : 'No publications are available yet.'
+                  ? 'Add a book from Book admin, link subjects, or run pnpm seed for sample GFR data.'
+                  : 'No publications are available for your allowed subjects yet.'
               }
             />
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
               {books.map((b) => (
-                <Link
-                  key={b.id}
-                  href={`/books/${b.id}`}
-                  className={`group block p-4 ${bookTheme.linkCard}`}
-                >
-                  <div className="flex items-start gap-3">
+                <div key={b.id} className={`group block p-4 ${bookTheme.linkCard}`}>
+                  <Link href={`/books/${b.id}`} className="flex items-start gap-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-amber-900/10 bg-amber-50 text-amber-900">
                       <BookOpen className="h-5 w-5" />
                     </div>
@@ -133,6 +164,9 @@ export default function BooksPage() {
                         {b.short_name && <Badge variant="outline">{b.short_name}</Badge>}
                         {b.book_type_name && <Badge variant="secondary">{b.book_type_name}</Badge>}
                         {b.edition && <Badge variant="outline">{b.edition}</Badge>}
+                        {filterSubjectId && b.subject_sort_order != null && b.subject_sort_order < 1e12 ? (
+                          <Badge variant="outline">Sort #{b.subject_sort_order}</Badge>
+                        ) : null}
                       </div>
                       {b.description?.trim() && (
                         <p className="mt-2 line-clamp-2 text-sm text-muted">
@@ -140,8 +174,26 @@ export default function BooksPage() {
                         </p>
                       )}
                     </div>
-                  </div>
-                </Link>
+                  </Link>
+                  {isAdmin ? (
+                    <BookSubjectTags
+                      bookId={b.id}
+                      subjects={b.subjects ?? []}
+                      catalog={subjectCatalog}
+                      onChange={(subjects) =>
+                        setBooks((prev) => prev.map((row) => (row.id === b.id ? { ...row, subjects } : row)))
+                      }
+                    />
+                  ) : (b.subjects ?? []).length > 0 ? (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {(b.subjects ?? []).map((s) => (
+                        <Badge key={s.id} variant="outline">
+                          {s.name_bn?.trim() || s.name}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
               ))}
             </div>
           )}

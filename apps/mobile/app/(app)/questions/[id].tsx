@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { SELF_RATING_PROGRESS } from '@ibas/shared-constants';
-import { hasComparisonTableContent } from '@ibas/shared-types';
+import { hasComparisonTableContent, hasProcessContent } from '@ibas/shared-types';
 import { BookEmpty, BookError } from '@/components/books/BookStates';
 import { BlockingLoader } from '@/components/ui/BlockingLoader';
 import { EvaluationCelebrate } from '@/components/evaluation/EvaluationCelebrate';
@@ -509,14 +509,7 @@ function sectionHasTable(sec: ExplanationSection) {
 }
 
 function sectionHasProcessContent(process?: ExplanationSection['process']) {
-  return Boolean(
-    process &&
-      (process.title?.trim() ||
-        process.details?.trim() ||
-        process.steps.some(
-          (s) => s.title?.trim() || s.description?.trim() || s.role?.trim(),
-        )),
-  );
+  return hasProcessContent(process);
 }
 
 /** Every process across a list of sections — used to show all of a question's processes together

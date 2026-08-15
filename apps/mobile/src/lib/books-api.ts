@@ -31,12 +31,24 @@ async function fetchTopicDetailRaw(topicId: string) {
   return res.data;
 }
 
-export async function fetchBooks(params?: { q?: string; book_type_id?: string }) {
+export async function fetchBooks(params?: {
+  q?: string;
+  book_type_id?: string;
+  exam_subject_id?: string;
+}) {
   const search = new URLSearchParams();
   if (params?.q?.trim()) search.set('q', params.q.trim());
   if (params?.book_type_id) search.set('book_type_id', params.book_type_id);
+  if (params?.exam_subject_id) search.set('exam_subject_id', params.exam_subject_id);
   const qs = search.toString();
   const res = await apiFetch<{ data: BookListItem[] }>(`/books${qs ? `?${qs}` : ''}`);
+  return res.data;
+}
+
+export async function fetchBookSubjectCatalog() {
+  const res = await apiFetch<{
+    data: Array<{ id: string; name: string; name_bn?: string; label: string }>;
+  }>('/books/subject-catalog');
   return res.data;
 }
 

@@ -1,6 +1,8 @@
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { TextField } from '@/components/ui/TextField';
+import { ComparisonTableAnswer } from '@/components/questions/ComparisonTableAnswer';
+import { hasComparisonTableContent } from '@ibas/shared-types';
 import type { ComparisonTable } from '@/types/questions';
 import { colors, spacing } from '@/theme';
 
@@ -81,7 +83,7 @@ export function ComparisonTableEditor({ value, onChange, disabled }: ComparisonT
         label="Table title (optional)"
         value={table.title ?? ''}
         onChangeText={(v) => patch({ title: v })}
-        placeholder="Shown centered above the columns"
+        placeholder="Shown centered above the columns — markup like *bold* and // works"
         editable={!disabled}
       />
 
@@ -92,6 +94,13 @@ export function ComparisonTableEditor({ value, onChange, disabled }: ComparisonT
         placeholder="Feature"
         editable={!disabled}
       />
+
+      {hasComparisonTableContent(table) ? (
+        <View style={styles.livePreview}>
+          <Text style={styles.livePreviewLabel}>Live preview</Text>
+          <ComparisonTableAnswer table={table} />
+        </View>
+      ) : null}
 
       <Text style={styles.groupLabel}>Compared columns</Text>
       {table.columns.map((col, ci) => (
@@ -186,6 +195,21 @@ export function ComparisonTableEditor({ value, onChange, disabled }: ComparisonT
 const styles = StyleSheet.create({
   wrap: {
     gap: spacing.sm,
+  },
+  livePreview: {
+    gap: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    padding: spacing.sm,
+    backgroundColor: colors.surface,
+  },
+  livePreviewLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   groupLabel: {
     fontSize: 12,

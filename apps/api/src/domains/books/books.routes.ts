@@ -24,6 +24,11 @@ import {
   deleteBookHandler,
   publishBookHandler,
   unpublishBookHandler,
+  listBookSubjectCatalogHandler,
+  listBookSubjectLinksHandler,
+  addBookSubjectLinkHandler,
+  updateBookSubjectLinkHandler,
+  removeBookSubjectLinkHandler,
   createChapterHandler,
   updateChapterHandler,
   deleteChapterHandler,
@@ -56,6 +61,7 @@ booksRouter.get('/types', requireModuleAccess('BOOKS'), asyncHandler(listBookTyp
 booksRouter.post('/types', requireAdmin, asyncHandler(createBookTypeHandler));
 booksRouter.patch('/types/:id', requireAdmin, asyncHandler(updateBookTypeHandler));
 booksRouter.delete('/types/:id', requireAdmin, asyncHandler(deleteBookTypeHandler));
+booksRouter.get('/subject-catalog', requireModuleAccess('BOOKS'), asyncHandler(listBookSubjectCatalogHandler));
 booksRouter.get('/regulations/search', requireModuleAccess('BOOKS'), asyncHandler(searchRegulationsHandler));
 booksRouter.get('/regulations/:id', requireModuleAccess('BOOKS'), asyncHandler(getRegulationHandler));
 booksRouter.get('/regulations/:id/amendments', requireModuleAccess('BOOKS'), asyncHandler(listAmendmentsHandler));
@@ -67,6 +73,18 @@ booksRouter.get('/sub-topics/:subTopicId', requireModuleAccess('BOOKS'), asyncHa
 booksRouter.get('/children', requireModuleAccess('BOOKS'), asyncHandler(getBookChildrenHandler));
 
 booksRouter.get('/', requireModuleAccess('BOOKS'), asyncHandler(listBooksHandler));
+booksRouter.get('/:id/subject-links', requireModuleAccess('BOOKS'), asyncHandler(listBookSubjectLinksHandler));
+booksRouter.post('/:id/subject-links', requireAdmin, asyncHandler(addBookSubjectLinkHandler));
+booksRouter.patch(
+  '/:id/subject-links/:examSubjectId',
+  requireAdmin,
+  asyncHandler(updateBookSubjectLinkHandler),
+);
+booksRouter.delete(
+  '/:id/subject-links/:examSubjectId',
+  requireAdmin,
+  asyncHandler(removeBookSubjectLinkHandler),
+);
 booksRouter.get('/:id/chapters', requireModuleAccess('BOOKS'), asyncHandler(listChaptersHandler));
 booksRouter.get('/:id/reader-outline', requireModuleAccess('BOOKS'), asyncHandler(getBookReaderOutlineHandler));
 booksRouter.get('/:id/reader-full', requireModuleAccess('BOOKS'), asyncHandler(getBookReaderFullHandler));

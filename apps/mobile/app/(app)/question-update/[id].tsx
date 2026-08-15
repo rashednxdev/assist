@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { OPTION_KEYS } from '@ibas/shared-constants';
-import { hasComparisonTableContent } from '@ibas/shared-types';
+import { hasComparisonTableContent, hasProcessContent } from '@ibas/shared-types';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
 import { BookBadge } from '@/components/books/BookBadge';
 import { BookRichText } from '@/components/books/BookRichText';
@@ -85,24 +85,29 @@ function toSectionRows(sections?: ExplanationSection[]): SectionRow[] {
       details: sub.details ?? '',
       note: sub.note,
     })),
-    table: s.table,
-    process: s.process,
+    // Legacy / partial API payloads may omit columns/rows/steps — normalize so edit + preview never crash.
+    table: s.table
+      ? {
+          ...s.table,
+          columns: s.table.columns ?? [],
+          rows: (s.table.rows ?? []).map((row) => ({
+            feature: row.feature ?? '',
+            values: row.values ?? [],
+          })),
+        }
+      : undefined,
+    process: s.process
+      ? {
+          title: s.process.title,
+          details: s.process.details,
+          steps: s.process.steps ?? [],
+        }
+      : undefined,
   }));
 }
 
 function hasTableContent(table?: ComparisonTable) {
   return hasComparisonTableContent(table);
-}
-
-function hasProcessContent(process?: ExplanationProcess) {
-  return Boolean(
-    process &&
-      (process.title?.trim() ||
-        process.details?.trim() ||
-        process.steps.some(
-          (s) => s.title?.trim() || s.description?.trim() || s.role?.trim(),
-        )),
-  );
 }
 
 /** Read-only render matching how Question Bank shows a model answer / explanation to end users. */
@@ -361,7 +366,11 @@ function QuestionUpdateEditBody() {
 
   const isMcq = item?.question_type_code === 'MCQ';
   const isTf = item?.question_type_code === 'TF';
-  const isDifferences = item?.question_type_code === 'DIFFERENCES';
+  // API may return comparison-only answers (DIFFERENCES, or any type with model_answer_comparison)
+  // without model_answer_sections — treat those like differences so we show the table, not an empty editor.
+  const hasComparisonAnswer = hasTableContent(item?.model_answer_comparison);
+  const isDifferences =
+    item?.question_type_code === 'DIFFERENCES' || hasComparisonAnswer;
   const isUnsupportedOptions = Boolean(item?.has_options) && !isMcq && !isTf;
   const isDescriptiveLike = !!item && !item.has_options && !isDifferences;
 
@@ -694,7 +703,8 @@ function QuestionUpdateEditBody() {
                       <View style={styles.tableSummaryInfo}>
                         <Ionicons name="grid-outline" size={16} color={colors.primary} />
                         <Text style={styles.tableSummaryText}>
-                          Comparison table • {sec.table.columns.length} cols, {sec.table.rows.length} rows
+                          Comparison table • {(sec.table.columns ?? []).length} cols,{' '}
+                          {(sec.table.rows ?? []).length} rows
                         </Text>
                       </View>
                       {editable ? (
@@ -734,7 +744,8 @@ function QuestionUpdateEditBody() {
                       <View style={styles.tableSummaryInfo}>
                         <Ionicons name="list-outline" size={16} color={colors.primary} />
                         <Text style={styles.tableSummaryText}>
-                          Process • {sec.process.steps.length} step{sec.process.steps.length === 1 ? '' : 's'}
+                          Process • {(sec.process.steps ?? []).length} step
+                          {(sec.process.steps ?? []).length === 1 ? '' : 's'}
                         </Text>
                       </View>
                       {editable ? (
@@ -884,7 +895,8 @@ function QuestionUpdateEditBody() {
                       <View style={styles.tableSummaryInfo}>
                         <Ionicons name="grid-outline" size={16} color={colors.primary} />
                         <Text style={styles.tableSummaryText}>
-                          Comparison table • {sec.table.columns.length} cols, {sec.table.rows.length} rows
+                          Comparison table • {(sec.table.columns ?? []).length} cols,{' '}
+                          {(sec.table.rows ?? []).length} rows
                         </Text>
                       </View>
                       {editable ? (
@@ -924,7 +936,8 @@ function QuestionUpdateEditBody() {
                       <View style={styles.tableSummaryInfo}>
                         <Ionicons name="list-outline" size={16} color={colors.primary} />
                         <Text style={styles.tableSummaryText}>
-                          Process • {sec.process.steps.length} step{sec.process.steps.length === 1 ? '' : 's'}
+                          Process • {(sec.process.steps ?? []).length} step
+                          {(sec.process.steps ?? []).length === 1 ? '' : 's'}
                         </Text>
                       </View>
                       {editable ? (
@@ -1007,7 +1020,12 @@ function QuestionUpdateEditBody() {
 
       {isDifferences ? (
         <CollapsibleSection title="Comparison table">
-          <Text style={styles.mutedText}>
+          {hasComparisonAnswer ? (
+            <ComparisonTableAnswer table={item.model_answer_comparison} />
+          ) : (
+            <Text style={styles.mutedText}>No comparison table data on this question.</Text>
+          )}
+          <Text style={[styles.mutedText, { marginTop: spacing.sm }]}>
             The comparison table for DIFFERENCES questions can only be edited from the web admin. You can
             still edit the question text above and change its review status below.
           </Text>

@@ -111,13 +111,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#eef4f8',
   },
   titleRow: {
+    width: '100%',
     paddingHorizontal: 6,
     paddingVertical: 6,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
     backgroundColor: '#e2ecf2',
+    alignItems: 'stretch',
   },
   titleText: {
+    width: '100%',
+    alignSelf: 'stretch',
     fontSize: 12,
     fontWeight: '700',
     color: colors.text,

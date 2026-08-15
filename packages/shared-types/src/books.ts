@@ -170,3 +170,21 @@ export type UpdateBookSubTopicDto = z.infer<typeof updateBookSubTopicSchema>;
 export type CreateRegulationDto = z.infer<typeof createRegulationSchema>;
 export type UpdateRegulationDto = z.infer<typeof updateRegulationSchema>;
 export type CreateAmendmentDto = z.infer<typeof createAmendmentSchema>;
+
+const mongoId = z.string().regex(/^[a-f\d]{24}$/i);
+
+/** Tag a Rule Library book with an exam subject (same idea as Question Bank subject tags). */
+export const bookSubjectLinkInputSchema = z.object({
+  exam_subject_id: mongoId,
+  /** Optional order among books for this subject (lower first). Defaults to end of list. */
+  sort_order: z.number().int().min(0).max(99999).optional(),
+});
+
+export type BookSubjectLinkInput = z.infer<typeof bookSubjectLinkInputSchema>;
+
+/** Update sort order of an existing book↔subject link. */
+export const updateBookSubjectLinkSchema = z.object({
+  sort_order: z.number().int().min(0).max(99999),
+});
+
+export type UpdateBookSubjectLinkDto = z.infer<typeof updateBookSubjectLinkSchema>;

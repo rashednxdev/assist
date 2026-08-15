@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Pencil, Send, Upload } from 'lucide-react';
 import { ProgressLinkButton } from '@/components/evaluation/progress-link-button';
@@ -15,6 +14,11 @@ import { RichTextView } from '@/components/books/rich-text-view';
 import { BookContents } from '@/components/books/book-contents';
 import { BookReaderGate, useBookReader } from '@/components/books/book-reader-context';
 import { BookContentEditor } from '@/components/books/book-content-editor';
+import {
+  BookSubjectTags,
+  type BookSubjectTag,
+  type SubjectCatalogItem,
+} from '@/components/books/book-subject-tags';
 import { bookTheme } from '@/lib/book-theme';
 
 function BookDetailBody({
@@ -30,6 +34,22 @@ function BookDetailBody({
   const book = outline?.book;
   const [publishBusy, setPublishBusy] = useState(false);
   const [publishError, setPublishError] = useState('');
+  const [subjects, setSubjects] = useState<BookSubjectTag[]>([]);
+  const [subjectCatalog, setSubjectCatalog] = useState<SubjectCatalogItem[]>([]);
+
+  useEffect(() => {
+    if (!bookId) return;
+    apiFetch<{ data: BookSubjectTag[] }>(`/books/${bookId}/subject-links`)
+      .then((r) => setSubjects(r.data))
+      .catch(() => setSubjects([]));
+  }, [bookId]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    apiFetch<{ data: SubjectCatalogItem[] }>('/books/subject-catalog')
+      .then((r) => setSubjectCatalog(r.data))
+      .catch(() => setSubjectCatalog([]));
+  }, [isAdmin]);
 
   if (!book) return null;
 
@@ -91,6 +111,31 @@ function BookDetailBody({
           </Badge>
         )}
       </div>
+
+      {(isAdmin || subjects.length > 0) && (
+        <div className={`${bookTheme.panel} p-4`}>
+          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Exam subjects
+          </div>
+          {isAdmin ? (
+            <BookSubjectTags
+              bookId={bookId}
+              subjects={subjects}
+              catalog={subjectCatalog}
+              onChange={setSubjects}
+            />
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {subjects.map((s) => (
+                <Badge key={s.id} variant="secondary">
+                  {s.name_bn?.trim() || s.name}
+                  <span className="ml-1 text-[10px] opacity-70">#{s.sort_order}</span>
+                </Badge>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {!editMode && book.description?.trim() && (
         <div className={`${bookTheme.panel} p-5`}>

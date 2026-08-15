@@ -15,6 +15,8 @@ import type {
   CreateAmendmentDto,
   CreateProcessDto,
   UpdateProcessDto,
+  BookSubjectLinkInput,
+  UpdateBookSubjectLinkDto,
 } from '@ibas/shared-types';
 import { BookType } from './models/BookType.model.js';
 import { BookInfo } from './models/BookInfo.model.js';
@@ -27,11 +29,19 @@ import { BookSubTopicDetail } from './models/BookSubTopicDetail.model.js';
 import { Regulation } from './models/Regulation.model.js';
 import { RegulationAmendment } from './models/RegulationAmendment.model.js';
 import { Process } from './models/Process.model.js';
+import { BookSubjectLink } from './models/BookSubjectLink.model.js';
 import { Question } from '../questions/models/Question.model.js';
 import { QuestionBookLink } from '../questions/models/QuestionBookLink.model.js';
 import { QuestionType } from '../questions/models/QuestionType.model.js';
+import { ExamSubject } from '../exams/models/ExamSubject.model.js';
+import { ExamPart } from '../exams/models/ExamPart.model.js';
+import { ExamName } from '../exams/models/ExamName.model.js';
 import { cachedBooksList } from '../content-cache/content-cache.service.js';
-import { notFound, badRequest } from '../../shared/errors/AppError.js';
+import {
+  subjectObjectIds,
+  type ExamSubjectScope,
+} from '../users/subject-access.service.js';
+import { notFound, badRequest, forbidden } from '../../shared/errors/AppError.js';
 import { cleanComparisonTable } from '@ibas/shared-types';
 
 function idStr(v: mongoose.Types.ObjectId | string | undefined) {
@@ -73,6 +83,19 @@ function serializeBook(doc: InstanceType<typeof BookInfo>, typeName?: string) {
     updated_at: doc.updated_at,
   };
 }
+
+export type BookSubjectTag = {
+  id: string;
+  name: string;
+  name_bn?: string;
+  sort_order: number;
+};
+
+type BookListItem = ReturnType<typeof serializeBook> & {
+  subjects?: BookSubjectTag[];
+  /** Best sort key for the current list context (subject filter or user scope). */
+  subject_sort_order?: number;
+};
 
 function serializeRegulation(doc: InstanceType<typeof Regulation>) {
   return {
@@ -228,7 +251,101 @@ export async function deleteRegulation(id: string) {
   return { deleted: true };
 }
 
-type BookListItem = Awaited<ReturnType<typeof listBooksFromDb>>[number];
+async function loadSubjectsByBookId(
+  bookIds: Array<string | mongoose.Types.ObjectId>,
+): Promise<Map<string, BookSubjectTag[]>> {
+  const map = new Map<string, BookSubjectTag[]>();
+  if (bookIds.length === 0) return map;
+
+  const links = await BookSubjectLink.find({
+    book_info_id: { $in: bookIds },
+    is_active: true,
+  }).sort({ sort_order: 1, created_at: 1 });
+  if (links.length === 0) return map;
+
+  const subjectIds = [...new Set(links.map((l) => String(l.exam_subject_id)))];
+  const subjects = await ExamSubject.find({ _id: { $in: subjectIds } });
+  const subjectMeta = new Map(subjects.map((s) => [String(s._id), s]));
+
+  for (const link of links) {
+    const subject = subjectMeta.get(String(link.exam_subject_id));
+    if (!subject) continue;
+    const bookId = String(link.book_info_id);
+    const list = map.get(bookId) ?? [];
+    list.push({
+      id: String(link.exam_subject_id),
+      name: subject.name,
+      name_bn: subject.name_bn,
+      sort_order: link.sort_order ?? 0,
+    });
+    map.set(bookId, list);
+  }
+  return map;
+}
+
+async function attachSubjectsToBooks(books: ReturnType<typeof serializeBook>[]): Promise<BookListItem[]> {
+  const subjectsByBook = await loadSubjectsByBookId(books.map((b) => b.id));
+  return books.map((b) => ({
+    ...b,
+    subjects: subjectsByBook.get(b.id) ?? [],
+  }));
+}
+
+function sortKeyForBook(
+  book: BookListItem,
+  opts: { exam_subject_id?: string; allowedSubjectIds?: string[] | null },
+): number {
+  const subjects = book.subjects ?? [];
+  if (opts.exam_subject_id) {
+    const hit = subjects.find((s) => s.id === opts.exam_subject_id);
+    return hit?.sort_order ?? Number.MAX_SAFE_INTEGER;
+  }
+  if (opts.allowedSubjectIds && opts.allowedSubjectIds.length > 0) {
+    const allow = new Set(opts.allowedSubjectIds);
+    const ranks = subjects.filter((s) => allow.has(s.id)).map((s) => s.sort_order);
+    if (ranks.length > 0) return Math.min(...ranks);
+  }
+  if (subjects.length > 0) return Math.min(...subjects.map((s) => s.sort_order));
+  return Number.MAX_SAFE_INTEGER;
+}
+
+function applySubjectScopeAndSort(
+  books: BookListItem[],
+  subjectScope: ExamSubjectScope,
+  exam_subject_id?: string,
+): BookListItem[] {
+  const allowedIds = subjectObjectIds(subjectScope);
+  let list = books;
+
+  if (exam_subject_id) {
+    if (allowedIds && !allowedIds.some((id) => String(id) === exam_subject_id)) {
+      return [];
+    }
+    list = list.filter((b) => (b.subjects ?? []).some((s) => s.id === exam_subject_id));
+  } else if (allowedIds) {
+    if (allowedIds.length === 0) return [];
+    const allow = new Set(allowedIds.map(String));
+    // Restricted users only see books tagged to at least one of their subjects.
+    list = list.filter((b) => (b.subjects ?? []).some((s) => allow.has(s.id)));
+  }
+
+  const sortOpts = {
+    exam_subject_id,
+    allowedSubjectIds: allowedIds ? allowedIds.map(String) : null,
+  };
+
+  return list
+    .map((b) => ({
+      ...b,
+      subject_sort_order: sortKeyForBook(b, sortOpts),
+    }))
+    .sort((a, b) => {
+      const ao = a.subject_sort_order ?? Number.MAX_SAFE_INTEGER;
+      const bo = b.subject_sort_order ?? Number.MAX_SAFE_INTEGER;
+      if (ao !== bo) return ao - bo;
+      return (a.name ?? '').localeCompare(b.name ?? '');
+    });
+}
 
 async function listBooksFromDb(filters: { book_type_id?: string; q?: string; is_published?: boolean }) {
   const query: Record<string, unknown> = { is_active: true, is_superseded: false };
@@ -248,7 +365,7 @@ async function listBooksFromDb(filters: { book_type_id?: string; q?: string; is_
   const types = await BookType.find({ _id: { $in: typeIds } });
   const typeMap = Object.fromEntries(types.map((t) => [String(t._id), t.name]));
 
-  return books.map((b) => serializeBook(b, typeMap[String(b.book_type_id)]));
+  return attachSubjectsToBooks(books.map((b) => serializeBook(b, typeMap[String(b.book_type_id)])));
 }
 
 function filterCachedBooks(
@@ -278,21 +395,204 @@ function filterCachedBooks(
 }
 
 export async function listBooks(
-  filters: { book_type_id?: string; q?: string; is_published?: boolean },
-  options?: { bypassCache?: boolean },
+  filters: {
+    book_type_id?: string;
+    q?: string;
+    is_published?: boolean;
+    exam_subject_id?: string;
+  },
+  options?: { bypassCache?: boolean; subjectScope?: ExamSubjectScope },
 ) {
+  const subjectScope = options?.subjectScope ?? { mode: 'all' as const };
+  let books: BookListItem[];
   if (!options?.bypassCache) {
     const cached = cachedBooksList<BookListItem>();
-    if (cached) return filterCachedBooks(cached, filters);
+    if (cached) {
+      // Cache may predate subject tags — refresh attachments when missing.
+      const needsSubjects = cached.some((b) => !Array.isArray(b.subjects));
+      books = needsSubjects
+        ? await attachSubjectsToBooks(filterCachedBooks(cached, filters))
+        : filterCachedBooks(cached, filters);
+      return applySubjectScopeAndSort(books, subjectScope, filters.exam_subject_id);
+    }
   }
-  return listBooksFromDb(filters);
+  books = await listBooksFromDb(filters);
+  return applySubjectScopeAndSort(books, subjectScope, filters.exam_subject_id);
 }
 
-export async function getBookById(id: string) {
-  const book = await BookInfo.findById(id);
-  if (!book) throw notFound('Book not found');
+export async function listBookSubjectCatalog(subjectScope: ExamSubjectScope = { mode: 'all' }) {
+  const subjectIds = subjectObjectIds(subjectScope);
+  if (subjectIds && subjectIds.length === 0) return [];
+
+  const subjects = await ExamSubject.find({
+    is_active: true,
+    ...(subjectIds ? { _id: { $in: subjectIds } } : {}),
+  }).sort({ name: 1 });
+  if (subjects.length === 0) return [];
+
+  const partIds = [...new Set(subjects.map((s) => String(s.exam_part_id)))];
+  const parts = await ExamPart.find({ _id: { $in: partIds } });
+  const partMap = new Map(parts.map((p) => [String(p._id), p]));
+  const examIds = [...new Set(parts.map((p) => String(p.exam_name_id)))];
+  const exams = examIds.length ? await ExamName.find({ _id: { $in: examIds } }) : [];
+  const examMap = new Map(exams.map((e) => [String(e._id), e]));
+
+  return subjects.map((s) => {
+    const part = partMap.get(String(s.exam_part_id));
+    const exam = part ? examMap.get(String(part.exam_name_id)) : undefined;
+    const examLabel = exam?.short_name?.trim() || exam?.name?.trim() || '';
+    const subjectLabel = s.name_bn?.trim() || s.name;
+    const label = examLabel ? `${examLabel} · ${subjectLabel}` : subjectLabel;
+    return {
+      id: String(s._id),
+      name: s.name,
+      name_bn: s.name_bn,
+      exam_name: exam?.name,
+      label,
+    };
+  });
+}
+
+export async function listBookSubjectLinks(bookId: string) {
+  const book = await BookInfo.findById(bookId);
+  if (!book || !book.is_active) throw notFound('Book not found');
+  const map = await loadSubjectsByBookId([book._id]);
+  return map.get(String(book._id)) ?? [];
+}
+
+export async function addBookSubjectLink(bookId: string, dto: BookSubjectLinkInput) {
+  const book = await BookInfo.findById(bookId);
+  if (!book || !book.is_active) throw notFound('Book not found');
+
+  const subject = await ExamSubject.findById(dto.exam_subject_id);
+  if (!subject || !subject.is_active) throw notFound('Exam subject not found');
+
+  const existing = await BookSubjectLink.findOne({
+    book_info_id: book._id,
+    exam_subject_id: subject._id,
+    is_active: true,
+  });
+  if (existing) {
+    if (dto.sort_order !== undefined && existing.sort_order !== dto.sort_order) {
+      existing.sort_order = dto.sort_order;
+      await existing.save();
+    }
+    return {
+      id: String(subject._id),
+      name: subject.name,
+      name_bn: subject.name_bn,
+      sort_order: existing.sort_order,
+    };
+  }
+
+  const inactive = await BookSubjectLink.findOne({
+    book_info_id: book._id,
+    exam_subject_id: subject._id,
+    is_active: false,
+  });
+
+  let sortOrder = dto.sort_order;
+  if (sortOrder === undefined) {
+    const last = await BookSubjectLink.findOne({
+      exam_subject_id: subject._id,
+      is_active: true,
+    })
+      .sort({ sort_order: -1 })
+      .select('sort_order');
+    sortOrder = (last?.sort_order ?? -1) + 1;
+  }
+
+  if (inactive) {
+    inactive.is_active = true;
+    inactive.sort_order = sortOrder;
+    await inactive.save();
+    return {
+      id: String(subject._id),
+      name: subject.name,
+      name_bn: subject.name_bn,
+      sort_order: inactive.sort_order,
+    };
+  }
+
+  const created = await BookSubjectLink.create({
+    book_info_id: book._id,
+    exam_subject_id: subject._id,
+    sort_order: sortOrder,
+    is_active: true,
+  });
+
+  return {
+    id: String(subject._id),
+    name: subject.name,
+    name_bn: subject.name_bn,
+    sort_order: created.sort_order,
+  };
+}
+
+export async function updateBookSubjectLinkSort(
+  bookId: string,
+  examSubjectId: string,
+  dto: UpdateBookSubjectLinkDto,
+) {
+  const link = await BookSubjectLink.findOne({
+    book_info_id: bookId,
+    exam_subject_id: examSubjectId,
+    is_active: true,
+  });
+  if (!link) throw notFound('Book subject link not found');
+  link.sort_order = dto.sort_order;
+  await link.save();
+  const subject = await ExamSubject.findById(examSubjectId);
+  return {
+    id: String(examSubjectId),
+    name: subject?.name ?? '',
+    name_bn: subject?.name_bn,
+    sort_order: link.sort_order,
+  };
+}
+
+export async function removeBookSubjectLink(bookId: string, examSubjectId: string) {
+  const link = await BookSubjectLink.findOne({
+    book_info_id: bookId,
+    exam_subject_id: examSubjectId,
+    is_active: true,
+  });
+  if (!link) throw notFound('Book subject link not found');
+  link.is_active = false;
+  await link.save();
+  return { deleted: true };
+}
+
+async function assertBookReadable(
+  bookId: string,
+  options?: { subjectScope?: ExamSubjectScope; requirePublished?: boolean },
+) {
+  const book = await BookInfo.findById(bookId);
+  if (!book || !book.is_active) throw notFound('Book not found');
+  if (options?.requirePublished && !book.is_published) throw notFound('Book not found');
+
+  const scope = options?.subjectScope ?? { mode: 'all' as const };
+  const allowedIds = subjectObjectIds(scope);
+  if (allowedIds) {
+    if (allowedIds.length === 0) throw forbidden('This book is not available for your allowed subjects.');
+    const ok = await BookSubjectLink.exists({
+      book_info_id: book._id,
+      exam_subject_id: { $in: allowedIds },
+      is_active: true,
+    });
+    if (!ok) throw forbidden('This book is not available for your allowed subjects.');
+  }
+  return book;
+}
+
+export async function getBookById(
+  id: string,
+  options?: { subjectScope?: ExamSubjectScope; requirePublished?: boolean },
+) {
+  const book = await assertBookReadable(id, options);
   const bookType = await BookType.findById(book.book_type_id);
-  return serializeBook(book, bookType?.name);
+  const [serialized] = await attachSubjectsToBooks([serializeBook(book, bookType?.name)]);
+  return serialized;
 }
 
 export async function getBookTree(bookId: string, depth = 2) {

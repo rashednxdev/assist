@@ -20,28 +20,30 @@ interface ProcessStepsEditorProps {
 
 /** Mobile editor for a Process nested under a model-answer/explanation section — mirrors the web admin's process editor, laid out vertically for phone screens. */
 export function ProcessStepsEditor({ value, onChange, disabled }: ProcessStepsEditorProps) {
+  const steps = value.steps ?? [];
+
   function patch(partial: Partial<ExplanationProcess>) {
-    onChange({ ...value, ...partial });
+    onChange({ ...value, steps, ...partial });
   }
 
   function updateStep(index: number, stepPatch: Partial<ProcessStep>) {
-    patch({ steps: value.steps.map((s, i) => (i === index ? { ...s, ...stepPatch } : s)) });
+    patch({ steps: steps.map((s, i) => (i === index ? { ...s, ...stepPatch } : s)) });
   }
 
   function addStep() {
-    patch({ steps: [...value.steps, emptyStep()] });
+    patch({ steps: [...steps, emptyStep()] });
   }
 
   function removeStep(index: number) {
-    patch({ steps: value.steps.filter((_, i) => i !== index) });
+    patch({ steps: steps.filter((_, i) => i !== index) });
   }
 
   function moveStep(index: number, dir: -1 | 1) {
     const target = index + dir;
-    if (target < 0 || target >= value.steps.length) return;
-    const steps = [...value.steps];
-    [steps[index], steps[target]] = [steps[target]!, steps[index]!];
-    patch({ steps });
+    if (target < 0 || target >= steps.length) return;
+    const next = [...steps];
+    [next[index], next[target]] = [next[target]!, next[index]!];
+    patch({ steps: next });
   }
 
   return (
@@ -64,7 +66,7 @@ export function ProcessStepsEditor({ value, onChange, disabled }: ProcessStepsEd
       />
 
       <Text style={styles.groupLabel}>Steps</Text>
-      {value.steps.map((step, i) => (
+      {steps.map((step, i) => (
         <View key={i} style={styles.stepBlock}>
           <View style={styles.stepBlockHeader}>
             <Text style={styles.stepBlockLabel}>Step {i + 1}</Text>
@@ -79,12 +81,12 @@ export function ProcessStepsEditor({ value, onChange, disabled }: ProcessStepsEd
               <Pressable
                 onPress={() => moveStep(i, 1)}
                 hitSlop={8}
-                disabled={disabled || i === value.steps.length - 1}
+                disabled={disabled || i === steps.length - 1}
               >
                 <Ionicons
                   name="chevron-down-circle-outline"
                   size={20}
-                  color={i === value.steps.length - 1 ? colors.border : colors.primary}
+                  color={i === steps.length - 1 ? colors.border : colors.primary}
                 />
               </Pressable>
               <Pressable onPress={() => removeStep(i)} hitSlop={8} disabled={disabled}>

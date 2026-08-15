@@ -13,15 +13,19 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BookCard } from '@/components/books/BookCard';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
-import { fetchBooks } from '@/lib/books-api';
+import { fetchBooks, fetchBookSubjectCatalog } from '@/lib/books-api';
 import { bookDetailHref } from '@/lib/book-routes';
 import { loadLastReadBookId, pinLastReadBook } from '@/lib/last-read-book';
 import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
+import { useAuth } from '@/lib/auth-context';
 import type { BookListItem } from '@/types/books';
 import { colors, spacing } from '@/theme';
 
+type SubjectOption = { id: string; name: string; name_bn?: string; label: string };
+
 export default function BooksLibraryScreen() {
   const router = useRouter();
+  const { canAccess } = useAuth();
   const [books, setBooks] = useState<BookListItem[]>([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
@@ -29,13 +33,18 @@ export default function BooksLibraryScreen() {
   const [error, setError] = useState('');
   const [bookMenuOpen, setBookMenuOpen] = useState(false);
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
+  const [subjectFilterId, setSubjectFilterId] = useState('');
+  const [subjectCatalog, setSubjectCatalog] = useState<SubjectOption[]>([]);
   const [lastReadBookId, setLastReadBookId] = useState<string | null>(null);
   const { isSaved, toggle } = useSavedShortcuts();
 
-  const load = useCallback(async (search?: string) => {
+  const load = useCallback(async (search?: string, examSubjectId?: string) => {
     setError('');
     try {
-      const data = await fetchBooks({ q: search });
+      const data = await fetchBooks({
+        q: search,
+        exam_subject_id: examSubjectId || undefined,
+      });
       setBooks(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load books');
@@ -43,9 +52,19 @@ export default function BooksLibraryScreen() {
   }, []);
 
   useEffect(() => {
+    if (!canAccess('BOOKS')) {
+      setLoading(false);
+      setError('You do not have access to Books & Tools.');
+      return;
+    }
     setLoading(true);
-    void load().finally(() => setLoading(false));
-  }, [load]);
+    void Promise.all([
+      load(undefined, subjectFilterId || undefined),
+      fetchBookSubjectCatalog()
+        .then(setSubjectCatalog)
+        .catch(() => setSubjectCatalog([])),
+    ]).finally(() => setLoading(false));
+  }, [canAccess, load, subjectFilterId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -55,16 +74,23 @@ export default function BooksLibraryScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([load(query), loadLastReadBookId().then(setLastReadBookId)]);
+    await Promise.all([
+      load(query, subjectFilterId || undefined),
+      loadLastReadBookId().then(setLastReadBookId),
+      fetchBookSubjectCatalog()
+        .then(setSubjectCatalog)
+        .catch(() => undefined),
+    ]);
     setRefreshing(false);
-  }, [load, query]);
+  }, [load, query, subjectFilterId]);
 
   const onSearch = useCallback(() => {
     setLoading(true);
     setBookMenuOpen(false);
-    void load(query).finally(() => setLoading(false));
-  }, [load, query]);
+    void load(query, subjectFilterId || undefined).finally(() => setLoading(false));
+  }, [load, query, subjectFilterId]);
 
+  // API already returns subject-sorted books; only pin last-read to the top.
   const orderedBooks = useMemo(
     () => pinLastReadBook(books, lastReadBookId),
     [books, lastReadBookId],
@@ -72,11 +98,11 @@ export default function BooksLibraryScreen() {
 
   const bookOptions = useMemo(
     () =>
-      pinLastReadBook(
-        [...books].sort((a, b) => a.name.localeCompare(b.name)),
-        lastReadBookId,
-      ).map((b) => ({ id: b.id, name: b.name })),
-    [books, lastReadBookId],
+      orderedBooks.map((b) => ({
+        id: b.id,
+        name: b.name,
+      })),
+    [orderedBooks],
   );
 
   const visibleBooks = useMemo(
@@ -86,6 +112,10 @@ export default function BooksLibraryScreen() {
 
   const selectedBookName = selectedBookId
     ? bookOptions.find((b) => b.id === selectedBookId)?.name
+    : null;
+
+  const selectedSubjectLabel = subjectFilterId
+    ? subjectCatalog.find((s) => s.id === subjectFilterId)?.label
     : null;
 
   function toggleBookMenu() {
@@ -100,6 +130,14 @@ export default function BooksLibraryScreen() {
   function openBook(bookId: string) {
     setLastReadBookId(bookId);
     router.push(bookDetailHref(bookId));
+  }
+
+  if (!canAccess('BOOKS') && !loading) {
+    return (
+      <View style={styles.root}>
+        <BookError message={error || 'You do not have access to Books & Tools.'} />
+      </View>
+    );
   }
 
   return (
@@ -134,10 +172,43 @@ export default function BooksLibraryScreen() {
         </Pressable>
       </View>
 
+      {subjectCatalog.length > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.subjectChips}
+        >
+          <Pressable
+            style={[styles.chip, !subjectFilterId && styles.chipActive]}
+            onPress={() => setSubjectFilterId('')}
+          >
+            <Text style={[styles.chipText, !subjectFilterId && styles.chipTextActive]}>All subjects</Text>
+          </Pressable>
+          {subjectCatalog.map((s) => {
+            const active = subjectFilterId === s.id;
+            return (
+              <Pressable
+                key={s.id}
+                style={[styles.chip, active && styles.chipActive]}
+                onPress={() => setSubjectFilterId(s.id)}
+              >
+                <Text style={[styles.chipText, active && styles.chipTextActive]} numberOfLines={1}>
+                  {s.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      ) : null}
+
       {bookMenuOpen ? (
         <View style={styles.bookMenu}>
           <Text style={styles.bookMenuTitle}>Books &amp; Tools</Text>
-          <Text style={styles.bookMenuSub}>Quick access — jump to a book</Text>
+          <Text style={styles.bookMenuSub}>
+            {selectedSubjectLabel
+              ? `Sorted for ${selectedSubjectLabel}`
+              : 'Ordered by subject sort · your allowed subjects only'}
+          </Text>
           <ScrollView nestedScrollEnabled style={{ maxHeight: 220 }} contentContainerStyle={styles.bookMenuList}>
             <Pressable
               style={[styles.bookMenuItem, !selectedBookId && styles.bookMenuItemActive]}
@@ -151,7 +222,7 @@ export default function BooksLibraryScreen() {
               <Text style={styles.bookMenuCount}>{books.length}</Text>
             </Pressable>
             {bookOptions.length === 0 ? (
-              <Text style={styles.bookMenuEmpty}>No books loaded yet.</Text>
+              <Text style={styles.bookMenuEmpty}>No books for your subjects yet.</Text>
             ) : (
               bookOptions.map((book) => {
                 const active = selectedBookId === book.id;
@@ -175,16 +246,32 @@ export default function BooksLibraryScreen() {
         </View>
       ) : null}
 
-      {selectedBookName ? (
+      {selectedBookName || selectedSubjectLabel ? (
         <View style={styles.filterChipRow}>
-          <View style={styles.filterChip}>
-            <Text style={styles.filterChipText} numberOfLines={1}>
-              {selectedBookName}
-            </Text>
-            <Pressable onPress={() => selectBook(null)} hitSlop={8} accessibilityLabel="Clear book filter">
-              <Ionicons name="close-circle" size={16} color={colors.primary} />
-            </Pressable>
-          </View>
+          {selectedSubjectLabel ? (
+            <View style={styles.filterChip}>
+              <Text style={styles.filterChipText} numberOfLines={1}>
+                {selectedSubjectLabel}
+              </Text>
+              <Pressable
+                onPress={() => setSubjectFilterId('')}
+                hitSlop={8}
+                accessibilityLabel="Clear subject filter"
+              >
+                <Ionicons name="close-circle" size={16} color={colors.primary} />
+              </Pressable>
+            </View>
+          ) : null}
+          {selectedBookName ? (
+            <View style={styles.filterChip}>
+              <Text style={styles.filterChipText} numberOfLines={1}>
+                {selectedBookName}
+              </Text>
+              <Pressable onPress={() => selectBook(null)} hitSlop={8} accessibilityLabel="Clear book filter">
+                <Ionicons name="close-circle" size={16} color={colors.primary} />
+              </Pressable>
+            </View>
+          ) : null}
         </View>
       ) : null}
 
@@ -204,7 +291,9 @@ export default function BooksLibraryScreen() {
               subtitle={
                 selectedBookId
                   ? 'Pick another book from the ⋮ menu.'
-                  : 'Try a different search or check back later.'
+                  : subjectFilterId
+                    ? 'No books linked to this subject for your account.'
+                    : 'No books are available for your allowed subjects yet.'
               }
             />
           }
@@ -285,6 +374,32 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
+  subjectChips: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+    gap: 8,
+  },
+  chip: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    maxWidth: 220,
+  },
+  chipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  chipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textMuted,
+  },
+  chipTextActive: {
+    color: colors.white,
+  },
   bookMenu: {
     marginHorizontal: spacing.md,
     marginBottom: spacing.sm,
@@ -342,6 +457,9 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   filterChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
   },

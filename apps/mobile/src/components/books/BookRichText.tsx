@@ -187,6 +187,16 @@ export function BookRichText({
   if (!stripped) return null;
   const plain = insertBookListMarkerLineBreaks(stripped, '\n');
 
+  // Truncated list/card previews must stay a single Text. Multi-line markup returns a View,
+  // which FlatList rows often fail to measure — so some question titles appear blank.
+  if (numberOfLines != null) {
+    return (
+      <Text style={[styles.plain, style]} {...textProps}>
+        {plain}
+      </Text>
+    );
+  }
+
   const needsMarkup =
     plain.includes('//') ||
     plain.includes('/--') ||
@@ -221,7 +231,7 @@ export function BookRichText({
     return <InlineMarkup text={lines[0].text} style={style} {...rest} />;
   }
 
-  return <View>{lines.map((line, i) => renderLineContent(line, style, rest, i))}</View>;
+  return <View style={{ width: '100%' }}>{lines.map((line, i) => renderLineContent(line, style, rest, i))}</View>;
 }
 
 const styles = StyleSheet.create({

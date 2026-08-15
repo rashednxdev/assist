@@ -6,6 +6,7 @@ import { emptyComparisonTable } from '@ibas/shared-types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { MarkupText } from '@/components/shared/markup-text';
 
 export function ComparisonTableEditor({
   value,
@@ -85,7 +86,7 @@ export function ComparisonTableEditor({
           disabled={disabled}
           value={table.title ?? ''}
           onChange={(e) => patch({ title: e.target.value })}
-          placeholder="Shown centered above the columns, spanning the full table width"
+          placeholder="Shown centered above the columns — markup like *bold* and // works"
         />
       </div>
 
@@ -108,7 +109,7 @@ export function ComparisonTableEditor({
                   colSpan={table.columns.length + 1}
                   className="border-b border-border px-2 py-2 text-center font-semibold"
                 >
-                  {table.title}
+                  <MarkupText text={table.title} className="text-center font-semibold" />
                 </th>
               </tr>
             )}

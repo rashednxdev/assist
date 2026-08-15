@@ -136,10 +136,14 @@ export function QuestionAnswerView({
   const explanation = explanation_sections ?? [];
   const modelAnswer = model_answer_sections ?? [];
   const showStructuredExplanation = showAnswer && has_options && hasExplanationContent(explanation);
+  const hasNestedComparison = modelAnswer.some((s) => hasComparisonTableContent(s.table));
   const showComparisonModel =
-    showAnswer && !has_options && hasComparisonTableContent(model_answer_comparison);
+    showAnswer &&
+    !has_options &&
+    !hasNestedComparison &&
+    hasComparisonTableContent(model_answer_comparison);
   const showStructuredModelAnswer =
-    showAnswer && !has_options && !showComparisonModel && hasExplanationContent(modelAnswer);
+    showAnswer && !has_options && hasExplanationContent(modelAnswer);
 
   return (
     <div className="space-y-6">

@@ -15,6 +15,21 @@ export function emptyComparisonTable(columnCount = 2): ComparisonTable {
   };
 }
 
+function normalizeEditorTable(value: ComparisonTable): ComparisonTable {
+  const columns = value.columns ?? [];
+  const rows = (value.rows ?? []).map((row) => ({
+    feature: row.feature ?? '',
+    values: row.values ?? [],
+  }));
+  if (columns.length < 2) return emptyComparisonTable(2);
+  return {
+    title: value.title,
+    feature_header: value.feature_header?.trim() || 'Feature',
+    columns,
+    rows: rows.length > 0 ? rows : [{ feature: '', values: columns.map(() => '') }],
+  };
+}
+
 interface ComparisonTableEditorProps {
   value: ComparisonTable;
   onChange: (next: ComparisonTable) => void;
@@ -23,7 +38,7 @@ interface ComparisonTableEditorProps {
 
 /** Mobile editor for a Differences-style comparison table — mirrors the web admin's editor, laid out vertically for phone screens. */
 export function ComparisonTableEditor({ value, onChange, disabled }: ComparisonTableEditorProps) {
-  const table = value.columns.length >= 2 ? value : emptyComparisonTable(2);
+  const table = normalizeEditorTable(value);
 
   function patch(partial: Partial<ComparisonTable>) {
     onChange({ ...table, ...partial });
@@ -89,7 +104,7 @@ export function ComparisonTableEditor({ value, onChange, disabled }: ComparisonT
 
       <TextField
         label="Feature column header"
-        value={table.feature_header}
+        value={table.feature_header ?? 'Feature'}
         onChangeText={(v) => patch({ feature_header: v })}
         placeholder="Feature"
         editable={!disabled}

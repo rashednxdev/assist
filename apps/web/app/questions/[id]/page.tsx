@@ -207,7 +207,7 @@ export default function QuestionDetailPage() {
   const link = linkLabel(question.link_level);
   const bookLinks = question.book_links ?? [];
   const usedInPapers = question.used_in_papers ?? [];
-  const isTextAnswerType = !question.has_options && question.question_type_code !== 'DIFFERENCES';
+  const isTextAnswerType = !question.has_options;
 
   return (
     <div className="space-y-6">

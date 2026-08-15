@@ -1,7 +1,7 @@
 import { View, Text, Pressable, ScrollView, StyleSheet, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { ComparisonTableEditor } from '@/components/questions/ComparisonTableEditor';
+import { ComparisonTableEditor, emptyComparisonTable } from '@/components/questions/ComparisonTableEditor';
 import { useDifferencesLandscape } from '@/hooks/useDifferencesLandscape';
 import type { ComparisonTable } from '@/types/questions';
 import { colors, spacing } from '@/theme';
@@ -23,6 +23,7 @@ export function ComparisonTableEditorModal({
   disabled,
 }: ComparisonTableEditorModalProps) {
   useDifferencesLandscape(visible);
+  const editorValue = value ?? emptyComparisonTable();
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} presentationStyle="fullScreen">
@@ -35,8 +36,8 @@ export function ComparisonTableEditorModal({
           </Pressable>
         </View>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          {value ? (
-            <ComparisonTableEditor value={value} onChange={onChange} disabled={disabled} />
+          {visible ? (
+            <ComparisonTableEditor value={editorValue} onChange={onChange} disabled={disabled} />
           ) : null}
         </ScrollView>
       </SafeAreaView>

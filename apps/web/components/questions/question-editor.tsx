@@ -12,7 +12,6 @@ import {
   type QuestionBookLinkForm,
 } from '@/components/questions/question-book-links-editor';
 import { ExplanationSectionsEditor } from '@/components/questions/explanation-sections-editor';
-import { ComparisonTableEditor } from '@/components/questions/comparison-table-editor';
 import { ModelAnswerLinkPanel } from '@/components/questions/model-answer-link';
 import { MotherQuestionSearch } from '@/components/questions/mother-question-search';
 import {
@@ -284,13 +283,22 @@ export function QuestionEditor({
     if (!t.has_options) {
       next.negative_marks = 0;
       next.explanation_sections = [];
+      // DIFFERENCES uses the same general model-answer sections as descriptive; fold any
+      // leftover standalone comparison table into a nested section table so nothing is lost.
       if (t.code === 'DIFFERENCES') {
-        next.model_answer_sections = [];
-        next.model_answer_comparison = value.model_answer_comparison?.columns?.length
-          ? value.model_answer_comparison
-          : emptyComparisonTable(2);
-      } else {
-        next.model_answer_comparison = emptyComparisonTable(2);
+        const hasNestedTable = (value.model_answer_sections ?? []).some((s) => s.table?.columns?.length);
+        if (!hasNestedTable && value.model_answer_comparison?.columns?.length) {
+          next.model_answer_sections = [
+            ...(value.model_answer_sections ?? []),
+            {
+              title: '',
+              details: '',
+              note: '',
+              subsections: [],
+              table: value.model_answer_comparison,
+            },
+          ];
+        }
       }
     } else {
       next.model_answer_sections = [];
@@ -520,56 +528,39 @@ export function QuestionEditor({
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">
-              {isDifferences
-                ? 'Model answer — differences table'
-                : isShortNote
-                  ? 'Model short answer (optional)'
-                  : 'Model answer (optional)'}
+              {isShortNote ? 'Model short answer (optional)' : 'Model answer (optional)'}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {isDifferences ? (
-              <>
-                <p className="text-xs text-muted">
-                  Build a comparison table: Feature column plus columns for each item being compared
-                  (e.g. Data vs Information).
-                </p>
-                <ComparisonTableEditor
-                  value={value.model_answer_comparison}
-                  onChange={(model_answer_comparison) => patch({ model_answer_comparison })}
-                  disabled={busy}
-                />
-              </>
+            {questionId ? (
+              <ModelAnswerLinkPanel
+                questionId={questionId}
+                motherQuestionId={motherQuestionId}
+                motherQuestionLabel={motherQuestionLabel}
+                prototypeQuestions={prototypeQuestions}
+                disabled={busy}
+                onChange={() => onMotherQuestionChange?.()}
+              />
             ) : (
-              <>
-                {questionId ? (
-                  <ModelAnswerLinkPanel
-                    questionId={questionId}
-                    motherQuestionId={motherQuestionId}
-                    motherQuestionLabel={motherQuestionLabel}
-                    prototypeQuestions={prototypeQuestions}
-                    disabled={busy}
-                    onChange={() => onMotherQuestionChange?.()}
-                  />
-                ) : (
-                  <PendingMotherQuestionPicker
-                    motherQuestionId={value.mother_question_id}
-                    motherQuestionLabel={value.mother_question_label}
-                    disabled={busy}
-                    onPick={(q) => patch({ mother_question_id: q.id, mother_question_label: q.label })}
-                    onRemove={() => patch({ mother_question_id: undefined, mother_question_label: undefined })}
-                  />
-                )}
-                <p className="text-xs text-muted">
-                  Add one or more titles. Under each title you can add sub-titles with their own details and notes.
-                </p>
-                <ExplanationSectionsEditor
-                  sections={value.model_answer_sections}
-                  onChange={(model_answer_sections) => patch({ model_answer_sections })}
-                  disabled={busy || Boolean(!questionId && value.mother_question_id)}
-                />
-              </>
+              <PendingMotherQuestionPicker
+                motherQuestionId={value.mother_question_id}
+                motherQuestionLabel={value.mother_question_label}
+                disabled={busy}
+                onPick={(q) => patch({ mother_question_id: q.id, mother_question_label: q.label })}
+                onRemove={() => patch({ mother_question_id: undefined, mother_question_label: undefined })}
+              />
             )}
+            <p className="text-xs text-muted">
+              {isDifferences
+                ? 'Same format as descriptive answers — add titles, details, and optional comparison tables or processes under each section. Legacy DIFFERENCES tables are kept as a nested table.'
+                : 'Add one or more titles. Under each title you can add sub-titles, a comparison table, or a process.'}{' '}
+              You can link this answer to another question of any type.
+            </p>
+            <ExplanationSectionsEditor
+              sections={value.model_answer_sections}
+              onChange={(model_answer_sections) => patch({ model_answer_sections })}
+              disabled={busy || Boolean(!questionId && value.mother_question_id)}
+            />
           </CardContent>
         </Card>
       )}
@@ -674,11 +665,10 @@ export function questionFormToPayload(
       }));
     payload.correct_option_key = form.correct_option_key;
     payload.explanation_sections = form.explanation_sections;
-  } else if (form.question_type_code === 'DIFFERENCES') {
-    payload.model_answer_comparison = form.model_answer_comparison;
-    payload.model_answer_sections = [];
   } else if (!form.has_options) {
+    // Descriptive, DIFFERENCES, short note, etc. — one general model-answer format.
     payload.model_answer_sections = form.model_answer_sections;
+    payload.model_answer_comparison = null;
   }
 
   return payload;

@@ -153,6 +153,9 @@ export function MotherQuestionSearch({
           {results.map((r) => (
             <li key={r.id} className="flex items-center justify-between gap-2 rounded-md border border-border px-2.5 py-2 text-sm">
               <span className="line-clamp-2 flex-1">
+                <span className="mr-1.5 whitespace-nowrap text-[10px] font-semibold uppercase tracking-wide text-muted">
+                  {r.question_type_code}
+                </span>
                 {r.body_bn || r.body_en}
                 {typeof r.match === 'number' && (
                   <span className="ml-2 whitespace-nowrap text-xs font-medium text-muted">{r.match}% match</span>

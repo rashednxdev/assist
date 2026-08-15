@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { comparisonTableSchema, cleanComparisonTable, hasComparisonTableContent } from './comparison-table.js';
+import {
+  comparisonTableSchema,
+  cleanComparisonTable,
+  hasComparisonTableContent,
+  type ComparisonTable,
+} from './comparison-table.js';
 import { processStepSchema } from './process.js';
 
 export const explanationSubsectionSchema = z.object({
@@ -130,4 +135,32 @@ export function serializeExplanationSections(
     table: section.table,
     process: section.process,
   }));
+}
+
+/**
+ * Fold a legacy top-level DIFFERENCES `model_answer_comparison` into the general
+ * model-answer sections format (a section that carries `table`), without duplicating
+ * a table that is already nested under a section.
+ */
+export function mergeComparisonIntoModelAnswerSections(
+  sections?: ExplanationSection[] | null,
+  comparison?: ComparisonTable | null,
+): ExplanationSection[] {
+  const base = serializeExplanationSections(sections);
+  if (!hasComparisonTableContent(comparison)) {
+    return cleanExplanationSections(base);
+  }
+  if (base.some((section) => hasComparisonTableContent(section.table))) {
+    return cleanExplanationSections(base);
+  }
+  return cleanExplanationSections([
+    ...base,
+    {
+      title: '',
+      details: '',
+      note: '',
+      subsections: [],
+      table: comparison!,
+    },
+  ]);
 }

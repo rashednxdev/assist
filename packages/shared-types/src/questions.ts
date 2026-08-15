@@ -43,8 +43,8 @@ const questionFieldsSchema = z.object({
   language: z.enum(BOOK_LANGUAGES).default('both'),
   explanation_sections: z.array(explanationSectionSchema).optional(),
   model_answer_sections: z.array(explanationSectionSchema).optional(),
-  /** Comparison table model answer for DIFFERENCES question type. */
-  model_answer_comparison: comparisonTableSchema.optional(),
+  /** Legacy top-level comparison; prefer nested `section.table`. Null clears the legacy field. */
+  model_answer_comparison: comparisonTableSchema.nullish(),
   model_answer: z.string().optional(),
   note: z.string().optional(),
   reference_regulation_id: mongoId.optional(),

@@ -19,6 +19,8 @@ import {
   cleanExplanationSections,
   cleanComparisonTable,
   hasComparisonTableContent,
+  hasExplanationContent,
+  mergeComparisonIntoModelAnswerSections,
   parseLegacyExplanation,
   serializeComparisonTable,
   serializeExplanationSections,
@@ -109,10 +111,6 @@ function isTrueFalseType(code: string) {
 
 function isMcqOrTf(code: string) {
   return code === 'MCQ' || code === 'TF';
-}
-
-function isDifferencesType(code: string) {
-  return code === 'DIFFERENCES';
 }
 
 /** Papers that include this bank question (direct slot or composite child part). */
@@ -577,7 +575,6 @@ async function loadQuestionDetail(questionId: string) {
     question._id,
     detail as IQuestionAnswerDetail | null,
   );
-  const differences = isDifferencesType(typeCode) || Boolean(comparison);
 
   // Mother/prototype model answer sharing: a "prototype" question shares its model answer from
   // a "mother" question instead of owning its own — resolve to the mother's content, and surface
@@ -608,6 +605,23 @@ async function loadQuestionDetail(questionId: string) {
     label: p.body_en.slice(0, 160),
   }));
   const used_in_papers = await loadUsedInPapers(questionId);
+
+  // Non-MCQ text answers (descriptive, DIFFERENCES, short note, etc.) all use the same
+  // model_answer_sections shape. Legacy DIFFERENCES top-level comparison tables are folded in.
+  const usesGeneralModelAnswer = Boolean(qType && !qType.has_options);
+  let modelAnswerSections: ExplanationSection[] | undefined;
+  let resolvedComparison = comparison;
+  if (usesGeneralModelAnswer) {
+    const motherComparison =
+      modelAnswerQuestionId !== question._id
+        ? await loadComparisonTable(modelAnswerQuestionId, modelAnswerDetail)
+        : comparison;
+    resolvedComparison = motherComparison ?? comparison;
+    modelAnswerSections = mergeComparisonIntoModelAnswerSections(
+      await loadModelAnswerSections(modelAnswerQuestionId, modelAnswerDetail),
+      resolvedComparison,
+    );
+  }
 
   return {
     id: String(question._id),
@@ -654,14 +668,12 @@ async function loadQuestionDetail(questionId: string) {
           ? 'true'
           : 'false'
         : undefined,
-    model_answer_sections:
-      qType && !qType.has_options && !differences
-        ? await loadModelAnswerSections(modelAnswerQuestionId, modelAnswerDetail)
-        : undefined,
+    model_answer_sections: modelAnswerSections,
     mother_question_id: motherQuestionId,
     mother_question_label: motherQuestionLabel,
     prototype_questions: prototypeQuestions,
-    model_answer_comparison: comparison,
+    // Keep legacy field for older clients; new UI reads nested section.table from model_answer_sections.
+    model_answer_comparison: resolvedComparison,
     explanation_sections:
       qType?.has_options && isMcqOrTf(typeCode)
         ? await loadExplanationSections(question._id, detail as IQuestionAnswerDetail | null)
@@ -889,38 +901,41 @@ async function applyAnswerPayload(
 
   if (qType.has_options) return;
 
-  if (isDifferencesType(qType.code)) {
-    if (
-      comparisonTable !== undefined ||
-      dto.note !== undefined ||
-      dto.reference_regulation_id !== undefined
-    ) {
-      await QuestionOption.deleteMany({ question_id: questionId });
-      await QuestionAnswer.deleteMany({ question_id: questionId });
-      await saveAnswerDetail(questionId, {
-        model_answer_sections: [],
-        explanation_sections: [],
-        ...(comparisonTable !== undefined ? { model_answer_comparison: comparisonTable } : {}),
-        note: dto.note,
-        reference_regulation_id: dto.reference_regulation_id,
-      });
-    }
+  // Descriptive, DIFFERENCES, short-note, and any other non-option type share one model-answer
+  // shape (sections, optionally with nested comparison tables / processes).
+  // Legacy DIFFERENCES payloads that only send model_answer_comparison are folded into sections.
+  const hasModelPayload =
+    modelAnswerSections !== undefined ||
+    comparisonTable !== undefined ||
+    dto.note !== undefined ||
+    dto.reference_regulation_id !== undefined;
+
+  if (!hasModelPayload) return;
+
+  let sectionsToWrite = modelAnswerSections;
+  if (sectionsToWrite === undefined && comparisonTable) {
+    sectionsToWrite = mergeComparisonIntoModelAnswerSections([], comparisonTable);
+  } else if (sectionsToWrite !== undefined && comparisonTable) {
+    sectionsToWrite = mergeComparisonIntoModelAnswerSections(sectionsToWrite, comparisonTable);
+  }
+
+  if (sectionsToWrite !== undefined) {
+    await replaceTextAnswer(
+      questionId,
+      sectionsToWrite,
+      dto.note,
+      dto.reference_regulation_id,
+      // Nested tables live inside sections; clear legacy top-level comparison after merge.
+      null,
+    );
     return;
   }
 
-  if (
-    modelAnswerSections !== undefined ||
-    dto.note !== undefined ||
-    dto.reference_regulation_id !== undefined
-  ) {
-    await replaceTextAnswer(
-      questionId,
-      modelAnswerSections,
-      dto.note,
-      dto.reference_regulation_id,
-      null,
-    );
-  }
+  // Note / reference-only update — leave existing model answer intact.
+  await saveAnswerDetail(questionId, {
+    note: dto.note,
+    reference_regulation_id: dto.reference_regulation_id,
+  });
 }
 
 export async function listQuestionTypes() {
@@ -2131,12 +2146,26 @@ export async function updateQuestion(id: string, dto: UpdateQuestionDto) {
     dto.explanation_sections !== undefined;
 
   if (hasAnswerUpdate) {
-    if (question.mother_question_id && dto.model_answer_sections !== undefined) {
-      // This question is a prototype — the model answer belongs to the mother question.
-      // Editing it "normally" here edits the mother's copy, which every prototype resolves to.
-      await saveAnswerDetail(question.mother_question_id, {
-        model_answer_sections: dto.model_answer_sections,
-      });
+    if (
+      question.mother_question_id &&
+      !qType.has_options &&
+      (dto.model_answer_sections !== undefined || dto.model_answer_comparison !== undefined)
+    ) {
+      // Prototype — model answer lives on the mother. Route through the same non-option
+      // save path so legacy top-level comparison is folded/cleared and nothing is lost.
+      const mother = await Question.findById(question.mother_question_id);
+      const motherType = mother
+        ? ((await QuestionType.findById(mother.question_type_id)) ?? qType)
+        : qType;
+      // Prefer mother's type when it is also non-option; otherwise keep child's type so
+      // applyAnswerPayload still writes general model-answer sections onto the mother id.
+      const answerType =
+        motherType && !motherType.has_options ? motherType : qType;
+      await applyAnswerPayload(
+        question.mother_question_id,
+        answerType,
+        dto as CreateQuestionDto,
+      );
       await Question.updateMany(
         {
           $or: [
@@ -2219,10 +2248,15 @@ export async function removeMotherQuestion(id: string) {
   const mother = await Question.findById(question.mother_question_id);
   if (mother) {
     const motherDetail = await QuestionAnswerDetail.findOne({ question_id: mother._id }).lean();
-    const sections = serializeExplanationSections(
+    const comparison = comparisonFromUnknown(motherDetail?.model_answer_comparison);
+    const sections = mergeComparisonIntoModelAnswerSections(
       motherDetail?.model_answer_sections as ExplanationSection[] | undefined,
+      comparison,
     );
-    await saveAnswerDetail(question._id, { model_answer_sections: sections });
+    await saveAnswerDetail(question._id, {
+      model_answer_sections: sections,
+      model_answer_comparison: null,
+    });
   }
 
   question.mother_question_id = undefined;
@@ -2450,8 +2484,8 @@ export async function returnQuestionToDraft(id: string, userId: string) {
 
 /**
  * Quality_check -> published. Requires the question to have already passed through quality check
- * (drafts can't publish directly) and to have real content (options+correct answer for MCQ/TF, a
- * comparison table for DIFFERENCES, a model answer for everything else).
+ * (drafts can't publish directly) and to have real content (options+correct answer for MCQ/TF,
+ * a general model answer — sections and/or nested comparison table — for everything else).
  */
 export async function publishQuestion(id: string, reviewerId: string) {
   const question = await Question.findById(id);
@@ -2474,25 +2508,22 @@ export async function publishQuestion(id: string, reviewerId: string) {
     // Prototype questions borrow their model answer from a "mother" question instead of owning
     // one themselves — their own QuestionAnswerDetail is intentionally empty. Resolve to the
     // mother's detail before checking, mirroring the same resolution loadQuestionDetail already
-    // does for display (see ~line 408 above), so a valid prototype can actually be published.
+    // does for display, so a valid prototype can actually be published.
     if (question.mother_question_id) {
       const mother = await Question.findById(question.mother_question_id);
       if (mother && mother.is_active) {
         detail = await QuestionAnswerDetail.findOne({ question_id: mother._id });
       }
     }
-    if (isDifferencesType(qType.code)) {
-      if (!hasComparisonTableContent(detail?.model_answer_comparison as ComparisonTable | undefined)) {
-        throw badRequest('Comparison table model answer is required before publishing');
-      }
-    } else {
-      const modelSections = serializeExplanationSections(detail?.model_answer_sections);
-      const hasModelAnswer =
-        modelSections.length > 0 ||
-        (typeof detail?.model_answer === 'string' && detail.model_answer.trim().length > 0);
-      if (!hasModelAnswer) {
-        throw badRequest('Model answer is required before publishing this question type');
-      }
+    const merged = mergeComparisonIntoModelAnswerSections(
+      detail?.model_answer_sections as ExplanationSection[] | undefined,
+      comparisonFromUnknown(detail?.model_answer_comparison),
+    );
+    const hasModelAnswer =
+      hasExplanationContent(merged) ||
+      (typeof detail?.model_answer === 'string' && detail.model_answer.trim().length > 0);
+    if (!hasModelAnswer) {
+      throw badRequest('Model answer is required before publishing this question type');
     }
   }
 
@@ -2755,8 +2786,8 @@ export async function batchImportDifferencesQuestions(
         negative_marks: dto.negative_marks,
         time_seconds: dto.time_seconds,
         language: dto.language,
-        model_answer_comparison: comparison,
-        model_answer_sections: [],
+        model_answer_sections: mergeComparisonIntoModelAnswerSections([], comparison),
+        model_answer_comparison: null,
         explanation_sections: [],
         book_links: chapter
           ? [
@@ -2790,7 +2821,7 @@ export async function batchImportDifferencesQuestions(
 
 /**
  * Prefer an existing DIFFERENCES type — never create one.
- * Order: explicit id → code DIFFERENCES (exact, so `isDifferencesType` matches downstream) →
+ * Order: explicit id → code DIFFERENCES (exact) →
  * name DIFFERENCES as a last resort. Code is checked as its own query first — a combined
  * code-or-name query has no priority ordering and can match an unrelated legacy code (e.g. a
  * dormant "DF" type whose name also happens to be "Differences").

@@ -4,14 +4,23 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { OPTION_KEYS } from '@ibas/shared-constants';
-import { hasComparisonTableContent, hasProcessContent } from '@ibas/shared-types';
+import {
+  hasComparisonTableContent,
+  hasProcessContent,
+  mergeComparisonIntoModelAnswerSections,
+  type ComparisonTable as SharedComparisonTable,
+  type ExplanationSection as SharedExplanationSection,
+} from '@ibas/shared-types';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
 import { BookBadge } from '@/components/books/BookBadge';
 import { BookRichText } from '@/components/books/BookRichText';
 import { ReviewStatusBadge } from '@/components/questions/ReviewStatusBadge';
 import { CollapsibleSection } from '@/components/questions/CollapsibleSection';
 import { EditableLabel } from '@/components/questions/EditableLabel';
-import { emptyComparisonTable } from '@/components/questions/ComparisonTableEditor';
+import {
+  ComparisonTableEditor,
+  emptyComparisonTable,
+} from '@/components/questions/ComparisonTableEditor';
 import { ComparisonTableEditorModal } from '@/components/questions/ComparisonTableEditorModal';
 import { ComparisonTableAnswer } from '@/components/questions/ComparisonTableAnswer';
 import { emptyExplanationProcess } from '@/components/questions/ProcessStepsEditor';
@@ -108,6 +117,59 @@ function toSectionRows(sections?: ExplanationSection[]): SectionRow[] {
 
 function hasTableContent(table?: ComparisonTable) {
   return hasComparisonTableContent(table);
+}
+
+/** Inline comparison-table editor for Question Update (same fields as web). */
+function SectionComparisonTableBlock({
+  table,
+  editable,
+  busy,
+  onChange,
+  onRemove,
+  onExpand,
+}: {
+  table?: ComparisonTable;
+  editable: boolean;
+  busy: boolean;
+  onChange: (table: ComparisonTable) => void;
+  onRemove: () => void;
+  onExpand: () => void;
+}) {
+  if (!table) {
+    if (!editable) return null;
+    return (
+      <Pressable
+        style={styles.addBtn}
+        onPress={() => onChange(emptyComparisonTable())}
+        disabled={busy}
+      >
+        <Ionicons name="grid-outline" size={16} color={colors.primary} />
+        <Text style={styles.addBtnText}>Add comparison table</Text>
+      </Pressable>
+    );
+  }
+
+  return (
+    <View style={styles.tableEditorBlock}>
+      <View style={styles.tableSummaryRow}>
+        <View style={styles.tableSummaryInfo}>
+          <Ionicons name="grid-outline" size={16} color={colors.primary} />
+          <Text style={styles.tableSummaryText}>Comparison table</Text>
+        </View>
+        {editable ? (
+          <View style={styles.tableSummaryActions}>
+            <Pressable onPress={onExpand} hitSlop={8} disabled={busy} accessibilityLabel="Edit table full screen">
+              <Ionicons name="expand-outline" size={20} color={colors.primary} />
+            </Pressable>
+            <Pressable onPress={onRemove} hitSlop={8} disabled={busy} accessibilityLabel="Remove table">
+              <Ionicons name="trash-outline" size={20} color={colors.error} />
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
+      <ComparisonTableEditor value={table} onChange={onChange} disabled={!editable || busy} />
+    </View>
+  );
 }
 
 /** Read-only render matching how Question Bank shows a model answer / explanation to end users. */
@@ -298,6 +360,28 @@ function QuestionUpdateEditBody() {
     handlers.setTable(editingTable.index, table);
   }
 
+  // If full-screen table opens before the section has a table row, seed an empty one so edits persist.
+  useEffect(() => {
+    if (!editingTable) return;
+    if (editingTable.scope === 'model') {
+      setSections((prev) => {
+        const cur = prev[editingTable.index];
+        if (!cur || cur.table) return prev;
+        return prev.map((s, i) =>
+          i === editingTable.index ? { ...s, table: emptyComparisonTable() } : s,
+        );
+      });
+      return;
+    }
+    setExplanationSections((prev) => {
+      const cur = prev[editingTable.index];
+      if (!cur || cur.table) return prev;
+      return prev.map((s, i) =>
+        i === editingTable.index ? { ...s, table: emptyComparisonTable() } : s,
+      );
+    });
+  }, [editingTable]);
+
   const editingProcessValue =
     editingProcess?.scope === 'model'
       ? sections[editingProcess.index]?.process
@@ -329,7 +413,14 @@ function QuestionUpdateEditBody() {
         setOptions(toOptionRows(data));
         setCorrectOptionKey(data.correct_option_key ?? 'a');
         setCorrectTrueFalse(data.correct_true_false ?? 'true');
-        setSections(toSectionRows(data.model_answer_sections));
+        setSections(
+          toSectionRows(
+            mergeComparisonIntoModelAnswerSections(
+              data.model_answer_sections as SharedExplanationSection[] | undefined,
+              data.model_answer_comparison as SharedComparisonTable | undefined,
+            ),
+          ),
+        );
         setExplanationSections(toSectionRows(data.explanation_sections));
       })
       .catch((err) => setLoadError(err instanceof Error ? err.message : 'Failed to load question'))
@@ -366,13 +457,9 @@ function QuestionUpdateEditBody() {
 
   const isMcq = item?.question_type_code === 'MCQ';
   const isTf = item?.question_type_code === 'TF';
-  // API may return comparison-only answers (DIFFERENCES, or any type with model_answer_comparison)
-  // without model_answer_sections — treat those like differences so we show the table, not an empty editor.
-  const hasComparisonAnswer = hasTableContent(item?.model_answer_comparison);
-  const isDifferences =
-    item?.question_type_code === 'DIFFERENCES' || hasComparisonAnswer;
   const isUnsupportedOptions = Boolean(item?.has_options) && !isMcq && !isTf;
-  const isDescriptiveLike = !!item && !item.has_options && !isDifferences;
+  // Every non-option type (descriptive, DIFFERENCES, short note, …) uses the same model-answer editor.
+  const isDescriptiveLike = !!item && !item.has_options;
 
   function updateOption(index: number, field: 'option_text_en' | 'option_text_bn', value: string) {
     setOptions((prev) => prev.map((o, i) => (i === index ? { ...o, [field]: value } : o)));
@@ -698,47 +785,17 @@ function QuestionUpdateEditBody() {
                     numberOfLines={6}
                     editable={editable && !busy}
                   />
-                  {sec.table ? (
-                    <View style={styles.tableSummaryRow}>
-                      <View style={styles.tableSummaryInfo}>
-                        <Ionicons name="grid-outline" size={16} color={colors.primary} />
-                        <Text style={styles.tableSummaryText}>
-                          Comparison table • {(sec.table.columns ?? []).length} cols,{' '}
-                          {(sec.table.rows ?? []).length} rows
-                        </Text>
-                      </View>
-                      {editable ? (
-                        <View style={styles.tableSummaryActions}>
-                          <Pressable
-                            onPress={() => setEditingTable({ scope: 'explanation', index })}
-                            hitSlop={8}
-                            disabled={busy}
-                          >
-                            <Ionicons name="create-outline" size={20} color={colors.primary} />
-                          </Pressable>
-                          <Pressable
-                            onPress={() => explanationHandlers.setTable(index, undefined)}
-                            hitSlop={8}
-                            disabled={busy}
-                          >
-                            <Ionicons name="trash-outline" size={20} color={colors.error} />
-                          </Pressable>
-                        </View>
-                      ) : null}
-                    </View>
-                  ) : editable ? (
-                    <Pressable
-                      style={styles.addBtn}
-                      onPress={() => {
-                        explanationHandlers.setTable(index, emptyComparisonTable());
-                        setEditingTable({ scope: 'explanation', index });
-                      }}
-                      disabled={busy}
-                    >
-                      <Ionicons name="grid-outline" size={16} color={colors.primary} />
-                      <Text style={styles.addBtnText}>Add comparison table</Text>
-                    </Pressable>
-                  ) : null}
+                  <SectionComparisonTableBlock
+                    table={sec.table}
+                    editable={editable}
+                    busy={busy}
+                    onChange={(table) => explanationHandlers.setTable(index, table)}
+                    onRemove={() => explanationHandlers.setTable(index, undefined)}
+                    onExpand={() => {
+                      if (!sec.table) explanationHandlers.setTable(index, emptyComparisonTable());
+                      setEditingTable({ scope: 'explanation', index });
+                    }}
+                  />
                   {sec.process ? (
                     <View style={styles.tableSummaryRow}>
                       <View style={styles.tableSummaryInfo}>
@@ -890,47 +947,17 @@ function QuestionUpdateEditBody() {
                     style={styles.modelAnswerInput}
                     editable={editable && !busy}
                   />
-                  {sec.table ? (
-                    <View style={styles.tableSummaryRow}>
-                      <View style={styles.tableSummaryInfo}>
-                        <Ionicons name="grid-outline" size={16} color={colors.primary} />
-                        <Text style={styles.tableSummaryText}>
-                          Comparison table • {(sec.table.columns ?? []).length} cols,{' '}
-                          {(sec.table.rows ?? []).length} rows
-                        </Text>
-                      </View>
-                      {editable ? (
-                        <View style={styles.tableSummaryActions}>
-                          <Pressable
-                            onPress={() => setEditingTable({ scope: 'model', index })}
-                            hitSlop={8}
-                            disabled={busy}
-                          >
-                            <Ionicons name="create-outline" size={20} color={colors.primary} />
-                          </Pressable>
-                          <Pressable
-                            onPress={() => modelAnswerHandlers.setTable(index, undefined)}
-                            hitSlop={8}
-                            disabled={busy}
-                          >
-                            <Ionicons name="trash-outline" size={20} color={colors.error} />
-                          </Pressable>
-                        </View>
-                      ) : null}
-                    </View>
-                  ) : editable ? (
-                    <Pressable
-                      style={styles.addBtn}
-                      onPress={() => {
-                        modelAnswerHandlers.setTable(index, emptyComparisonTable());
-                        setEditingTable({ scope: 'model', index });
-                      }}
-                      disabled={busy}
-                    >
-                      <Ionicons name="grid-outline" size={16} color={colors.primary} />
-                      <Text style={styles.addBtnText}>Add comparison table</Text>
-                    </Pressable>
-                  ) : null}
+                  <SectionComparisonTableBlock
+                    table={sec.table}
+                    editable={editable}
+                    busy={busy}
+                    onChange={(table) => modelAnswerHandlers.setTable(index, table)}
+                    onRemove={() => modelAnswerHandlers.setTable(index, undefined)}
+                    onExpand={() => {
+                      if (!sec.table) modelAnswerHandlers.setTable(index, emptyComparisonTable());
+                      setEditingTable({ scope: 'model', index });
+                    }}
+                  />
                   {sec.process ? (
                     <View style={styles.tableSummaryRow}>
                       <View style={styles.tableSummaryInfo}>
@@ -1015,20 +1042,6 @@ function QuestionUpdateEditBody() {
               ) : null}
             </>
           )}
-        </CollapsibleSection>
-      ) : null}
-
-      {isDifferences ? (
-        <CollapsibleSection title="Comparison table">
-          {hasComparisonAnswer ? (
-            <ComparisonTableAnswer table={item.model_answer_comparison} />
-          ) : (
-            <Text style={styles.mutedText}>No comparison table data on this question.</Text>
-          )}
-          <Text style={[styles.mutedText, { marginTop: spacing.sm }]}>
-            The comparison table for DIFFERENCES questions can only be edited from the web admin. You can
-            still edit the question text above and change its review status below.
-          </Text>
         </CollapsibleSection>
       ) : null}
 
@@ -1322,6 +1335,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: 10,
     backgroundColor: colors.background,
+  },
+  tableEditorBlock: {
+    gap: spacing.sm,
   },
   tableSummaryInfo: {
     flex: 1,

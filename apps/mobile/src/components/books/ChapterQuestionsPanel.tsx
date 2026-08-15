@@ -11,7 +11,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { hasComparisonTableContent } from '@ibas/shared-types';
+import {
+  hasComparisonTableContent,
+  mergeComparisonIntoModelAnswerSections,
+  type ComparisonTable as SharedComparisonTable,
+  type ExplanationSection as SharedExplanationSection,
+} from '@ibas/shared-types';
 import { BookBadge } from '@/components/books/BookBadge';
 import { BookLoading } from '@/components/books/BookStates';
 import { BookRichText } from '@/components/books/BookRichText';
@@ -172,7 +177,17 @@ export function ChapterQuestionsPanel({
     [displayedQuestions, selectedId],
   );
 
-  const hasComparison = hasComparisonTableContent(question?.model_answer_comparison);
+  const modelAnswerSections = useMemo(
+    () =>
+      mergeComparisonIntoModelAnswerSections(
+        question?.model_answer_sections as SharedExplanationSection[] | undefined,
+        question?.model_answer_comparison as SharedComparisonTable | undefined,
+      ),
+    [question?.model_answer_sections, question?.model_answer_comparison],
+  );
+  const hasNestedComparison = modelAnswerSections.some(sectionHasTable);
+  const hasLegacyComparison =
+    hasComparisonTableContent(question?.model_answer_comparison) && !hasNestedComparison;
 
   const questionStem = question
     ? bilingualQuestionText(question.body_en, question.body_bn)
@@ -495,19 +510,13 @@ export function ChapterQuestionsPanel({
 
                   {showAnswer ? (
                     <View style={styles.answerWrap}>
-                      {hasComparison ? (
+                      {hasLegacyComparison ? (
                         <ComparisonTablePreview table={question.model_answer_comparison} />
-                      ) : question.question_type_code === 'DIFFERENCES' ? (
+                      ) : null}
+                      {modelAnswerSections.length > 0 ? (
                         <>
                           <Text style={styles.sectionLabel}>Answer</Text>
-                          <Text style={styles.muted}>
-                            No comparison table is available for this question yet.
-                          </Text>
-                        </>
-                      ) : (question.model_answer_sections ?? []).length > 0 ? (
-                        <>
-                          <Text style={styles.sectionLabel}>Answer</Text>
-                          {(question.model_answer_sections ?? []).map(renderSection)}
+                          {modelAnswerSections.map(renderSection)}
                         </>
                       ) : null}
                       {(question.explanation_sections ?? []).map(renderSection)}

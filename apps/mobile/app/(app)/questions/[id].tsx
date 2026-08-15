@@ -4,7 +4,13 @@ import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { SELF_RATING_PROGRESS } from '@ibas/shared-constants';
-import { hasComparisonTableContent, hasProcessContent } from '@ibas/shared-types';
+import {
+  hasComparisonTableContent,
+  hasProcessContent,
+  mergeComparisonIntoModelAnswerSections,
+  type ComparisonTable as SharedComparisonTable,
+  type ExplanationSection as SharedExplanationSection,
+} from '@ibas/shared-types';
 import { BookEmpty, BookError } from '@/components/books/BookStates';
 import { BlockingLoader } from '@/components/ui/BlockingLoader';
 import { EvaluationCelebrate } from '@/components/evaluation/EvaluationCelebrate';
@@ -122,8 +128,14 @@ export default function QuestionDetailScreen() {
   }, [showAnswer, nextId]);
 
   const modelSections = useMemo(
-    () => normalizeSections(item?.model_answer_sections),
-    [item?.model_answer_sections],
+    () =>
+      normalizeSections(
+        mergeComparisonIntoModelAnswerSections(
+          item?.model_answer_sections as SharedExplanationSection[] | undefined,
+          item?.model_answer_comparison as SharedComparisonTable | undefined,
+        ),
+      ),
+    [item?.model_answer_sections, item?.model_answer_comparison],
   );
   const explanationSections = useMemo(
     () => normalizeSections(item?.explanation_sections),
@@ -136,11 +148,10 @@ export default function QuestionDetailScreen() {
     [item?.model_answer_sections, item?.explanation_sections],
   );
 
-  const isDifferences =
-    item?.question_type_code === 'DIFFERENCES' ||
-    Boolean(item?.model_answer_comparison?.columns?.length);
+  const hasNestedComparison = modelSections.some(sectionHasTable);
   const comparisonTable = item?.model_answer_comparison;
-  const hasComparison = hasComparisonTableContent(comparisonTable);
+  const hasLegacyComparison =
+    hasComparisonTableContent(comparisonTable) && !hasNestedComparison;
   useLayoutEffect(() => {
     const headerEval = showPreviousEval ? evaluation : null;
     navigation.setOptions({
@@ -363,21 +374,13 @@ export default function QuestionDetailScreen() {
         </View>
       ) : null}
 
-      {showAnswer && hasComparison ? (
+      {showAnswer && hasLegacyComparison ? (
         <View style={[styles.panel, styles.differencesPanel]}>
           <ComparisonTablePreview table={comparisonTable} />
         </View>
       ) : null}
 
-      {showAnswer && isDifferences && !hasComparison ? (
-        <View style={styles.panel}>
-          <Text style={styles.sectionText}>
-            No comparison table is available for this question yet.
-          </Text>
-        </View>
-      ) : null}
-
-      {showAnswer && !hasComparison && modelSections.length ? (
+      {showAnswer && modelSections.length ? (
         <View style={styles.panel}>
           {modelSections.map((sec, idx) => renderSection(sec, idx, 'model'))}
         </View>

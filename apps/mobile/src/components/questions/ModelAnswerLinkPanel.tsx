@@ -158,9 +158,14 @@ export function ModelAnswerLinkPanel({
               }
               renderItem={({ item }) => (
                 <View style={styles.resultRow}>
-                  <Text style={styles.resultText} numberOfLines={2}>
-                    {item.body_bn || item.body_en}
-                  </Text>
+                  <View style={styles.resultTextWrap}>
+                    {item.question_type_code ? (
+                      <Text style={styles.resultType}>{item.question_type_code}</Text>
+                    ) : null}
+                    <Text style={styles.resultText} numberOfLines={2}>
+                      {item.body_bn || item.body_en}
+                    </Text>
+                  </View>
                   <Pressable style={styles.useBtn} onPress={() => void linkTo(item.id)} disabled={busy}>
                     <Text style={styles.useBtnText}>Use this</Text>
                   </Pressable>
@@ -309,8 +314,17 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     marginBottom: 8,
   },
-  resultText: {
+  resultTextWrap: {
     flex: 1,
+    gap: 2,
+  },
+  resultType: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+  },
+  resultText: {
     fontSize: 13,
     color: colors.text,
   },

@@ -1,5 +1,6 @@
 import {
   emptyComparisonTable,
+  mergeComparisonIntoModelAnswerSections,
   serializeComparisonTable,
   serializeExplanationSections,
   type ComparisonTable,
@@ -59,7 +60,10 @@ export function questionDetailToForm(q: QuestionDetailForForm): QuestionFormValu
     options,
     correct_option_key: (q.correct_option_key ?? 'a') as QuestionFormValues['correct_option_key'],
     correct_true_false: q.correct_true_false ?? 'true',
-    model_answer_sections: serializeExplanationSections(q.model_answer_sections),
+    model_answer_sections: mergeComparisonIntoModelAnswerSections(
+      q.model_answer_sections,
+      q.model_answer_comparison,
+    ),
     model_answer_comparison:
       serializeComparisonTable(q.model_answer_comparison) ?? emptyComparisonTable(2),
     explanation_sections: serializeExplanationSections(q.explanation_sections),

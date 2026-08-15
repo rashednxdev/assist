@@ -178,11 +178,13 @@ function renderLineContent(
 export function BookRichText({
   html,
   style,
+  numberOfLines,
   ...rest
 }: {
   html?: string | null;
   style?: StyleProp<TextStyle>;
-} & Omit<TextProps, 'children' | 'style'>) {
+  numberOfLines?: number;
+} & Omit<TextProps, 'children' | 'style' | 'numberOfLines'>) {
   const stripped = stripHtml(html ?? undefined);
   if (!stripped) return null;
   const plain = insertBookListMarkerLineBreaks(stripped, '\n');
@@ -191,7 +193,7 @@ export function BookRichText({
   // which FlatList rows often fail to measure — so some question titles appear blank.
   if (numberOfLines != null) {
     return (
-      <Text style={[styles.plain, style]} {...textProps}>
+      <Text style={[styles.plain, style]} numberOfLines={numberOfLines} {...rest}>
         {plain}
       </Text>
     );

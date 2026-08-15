@@ -8,7 +8,6 @@ import type {
 import { ExamRoutine } from './models/ExamRoutine.model.js';
 import { ExamRoutineEntry } from './models/ExamRoutineEntry.model.js';
 import { ExamName } from '../exams/models/ExamName.model.js';
-import { ExamPart } from '../exams/models/ExamPart.model.js';
 import { ExamSubject } from '../exams/models/ExamSubject.model.js';
 import { notFound, badRequest } from '../../shared/errors/AppError.js';
 import {
@@ -125,28 +124,19 @@ export async function getRoutineByExamName(
   };
 }
 
-export async function listRoutinesForMobile(subjectScope: ExamSubjectScope = { mode: 'all' }) {
+export async function listRoutinesForMobile(_subjectScope: ExamSubjectScope = { mode: 'all' }) {
+  // Home countdown + routine list show every published exam start date.
+  // Subject scope still filters entries inside getRoutineByExamName — not the exam-level list.
   const routines = await ExamRoutine.find({ is_active: true }).sort({ start_date: 1 });
   const examIds = routines.map((r) => r.exam_name_id);
   const exams = examIds.length > 0 ? await ExamName.find({ _id: { $in: examIds } }) : [];
   const examNameById = new Map(exams.map((e) => [String(e._id), e.name]));
-  const items = routines.map((r) => ({
+  return routines.map((r) => ({
     exam_name_id: String(r.exam_name_id),
     exam_name: examNameById.get(String(r.exam_name_id)) ?? 'Unknown exam',
     start_date: r.start_date,
     start_date_note: r.start_date_note || undefined,
   }));
-  if (subjectScope.mode === 'all') return items;
-  if (subjectScope.mode === 'none') return [];
-  const allowedSubjects = await ExamSubject.find({
-    _id: { $in: subjectScope.ids },
-    is_active: true,
-  }).select('exam_part_id');
-  const partIds = [...new Set(allowedSubjects.map((s) => String(s.exam_part_id)))];
-  if (partIds.length === 0) return [];
-  const parts = await ExamPart.find({ _id: { $in: partIds } }).select('exam_name_id');
-  const allowedExamIds = new Set(parts.map((p) => String(p.exam_name_id)));
-  return items.filter((r) => allowedExamIds.has(r.exam_name_id));
 }
 
 export async function updateExamRoutine(id: string, dto: UpdateExamRoutineDto) {

@@ -4,11 +4,12 @@ import { useRouter, useFocusEffect, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BookLoading, BookEmpty, BookError } from '@/components/books/BookStates';
 import { fetchExamRoutineList, type ExamRoutineListItem } from '@/lib/exam-routine-api';
-import { formatDdMmYyyy, parseIsoDate } from '@/lib/date-format';
+import { formatDdMmYyyy, normalizeToIsoDate, parseIsoDate } from '@/lib/date-format';
 import { colors, spacing } from '@/theme';
 
 function daysUntil(iso: string): number {
-  const target = parseIsoDate(iso);
+  const normalized = normalizeToIsoDate(iso) ?? iso;
+  const target = parseIsoDate(normalized);
   if (!target) return 0;
   const today = new Date();
   today.setHours(0, 0, 0, 0);

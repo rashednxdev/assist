@@ -173,32 +173,34 @@ export default function BooksLibraryScreen() {
       </View>
 
       {subjectCatalog.length > 0 ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.subjectChips}
-        >
-          <Pressable
-            style={[styles.chip, !subjectFilterId && styles.chipActive]}
-            onPress={() => setSubjectFilterId('')}
+        <View style={styles.chipBar}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.subjectChips}
           >
-            <Text style={[styles.chipText, !subjectFilterId && styles.chipTextActive]}>All subjects</Text>
-          </Pressable>
-          {subjectCatalog.map((s) => {
-            const active = subjectFilterId === s.id;
-            return (
-              <Pressable
-                key={s.id}
-                style={[styles.chip, active && styles.chipActive]}
-                onPress={() => setSubjectFilterId(s.id)}
-              >
-                <Text style={[styles.chipText, active && styles.chipTextActive]} numberOfLines={1}>
-                  {s.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+            <Pressable
+              style={[styles.chip, !subjectFilterId && styles.chipActive]}
+              onPress={() => setSubjectFilterId('')}
+            >
+              <Text style={[styles.chipText, !subjectFilterId && styles.chipTextActive]}>All subjects</Text>
+            </Pressable>
+            {subjectCatalog.map((s) => {
+              const active = subjectFilterId === s.id;
+              return (
+                <Pressable
+                  key={s.id}
+                  style={[styles.chip, active && styles.chipActive]}
+                  onPress={() => setSubjectFilterId(s.id)}
+                >
+                  <Text style={[styles.chipText, active && styles.chipTextActive]} numberOfLines={1}>
+                    {s.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
       ) : null}
 
       {bookMenuOpen ? (
@@ -375,9 +377,15 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   subjectChips: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
     gap: 8,
+  },
+  chipBar: {
+    flexGrow: 0,
+    flexShrink: 0,
   },
   chip: {
     backgroundColor: colors.surface,
@@ -387,6 +395,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
     maxWidth: 220,
+    flexGrow: 0,
+    flexShrink: 0,
+    alignSelf: 'center',
   },
   chipActive: {
     backgroundColor: colors.primary,

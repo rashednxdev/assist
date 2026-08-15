@@ -44,7 +44,7 @@ export function emptyExplanationSection(): ExplanationSection {
 }
 
 function subsectionHasContent(sub: ExplanationSubsection): boolean {
-  return Boolean(sub.subtitle.trim() || sub.details?.trim() || sub.note?.trim());
+  return Boolean((sub.subtitle ?? '').trim() || sub.details?.trim() || sub.note?.trim());
 }
 
 function processStepHasContent(step: { title?: string; description?: string; role?: string }): boolean {
@@ -74,7 +74,7 @@ export function cleanExplanationProcess(process?: ExplanationProcess | null): Ex
 }
 
 function sectionHasContent(section: ExplanationSection): boolean {
-  if (section.title.trim() || section.details?.trim() || section.note?.trim()) return true;
+  if ((section.title ?? '').trim() || section.details?.trim() || section.note?.trim()) return true;
   if (hasComparisonTableContent(section.table)) return true;
   if (hasProcessContent(section.process)) return true;
   return (section.subsections ?? []).some(subsectionHasContent);
@@ -83,13 +83,13 @@ function sectionHasContent(section: ExplanationSection): boolean {
 export function cleanExplanationSections(sections: ExplanationSection[]): ExplanationSection[] {
   return sections
     .map((section) => ({
-      title: section.title.trim(),
+      title: (section.title ?? '').trim(),
       details: section.details?.trim() || undefined,
       note: section.note?.trim() || undefined,
       subsections: (section.subsections ?? [])
         .filter(subsectionHasContent)
         .map((sub) => ({
-          subtitle: sub.subtitle.trim(),
+          subtitle: (sub.subtitle ?? '').trim(),
           details: sub.details?.trim() || undefined,
           note: sub.note?.trim() || undefined,
         })),

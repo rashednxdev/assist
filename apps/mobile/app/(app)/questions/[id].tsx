@@ -311,7 +311,7 @@ export default function QuestionDetailScreen() {
           {evalMessage ? <Text style={styles.successText}>{evalMessage}</Text> : null}
 
           <View style={styles.optionSelectWrap}>
-            {item.options.map((opt) => {
+            {(item.options ?? []).map((opt) => {
               const selected = selectedOptionId === opt.id;
               const revealCorrect = showAnswer && opt.is_correct;
               return (
@@ -409,7 +409,7 @@ export default function QuestionDetailScreen() {
               {proc.details?.trim() ? (
                 <BookRichText html={proc.details} style={styles.sectionText} />
               ) : null}
-              <ProcessFlowPreview steps={proc.steps} />
+              <ProcessFlowPreview steps={proc.steps ?? []} />
             </View>
           ))}
         </View>

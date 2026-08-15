@@ -15,8 +15,8 @@ const PROCESS_ACCENT_MUTED = '#f0fdfa';
  * Read-only step timeline for a book Process — mirrors the web admin's numbered-circle
  * timeline (`process-flow-preview.tsx`, itself adapted from the Workflow feature's FlowPreview).
  */
-export function ProcessFlowPreview({ steps }: { steps: ProcessStep[] }) {
-  if (steps.length === 0) return null;
+export function ProcessFlowPreview({ steps }: { steps?: ProcessStep[] | null }) {
+  if (!steps?.length) return null;
 
   return (
     <View>

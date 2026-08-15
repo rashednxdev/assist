@@ -19,10 +19,13 @@ import {
   questionSubjectLinkInputSchema,
   questionBookFirstChapterLinkInputSchema,
   setMotherQuestionSchema,
+  answerPdfRequestSchema,
+  answerPdfPageSizeSchema,
 } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
 import { hasModulePermission } from '../users/module-access.service.js';
 import * as questionsService from './questions.service.js';
+import * as answerPdfService from './answer-pdf.service.js';
 import { getExamSubjectScopeForAuthUser } from '../users/subject-access.service.js';
 
 export async function createQuestionTypeHandler(req: AuthRequest, res: Response): Promise<void> {
@@ -333,4 +336,31 @@ export async function batchAddQuestionBookFirstChapterLinksHandler(
   const dto = batchQuestionBookFirstChapterLinksSchema.parse(req.body);
   const data = await questionsService.batchAddQuestionBookFirstChapterLinks(dto);
   res.json({ data });
+}
+
+function sendPdf(
+  res: Response,
+  result: { buffer: Buffer; filename: string; count: number },
+): void {
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(result.filename)}"`);
+  res.setHeader('X-Answer-Pdf-Count', String(result.count));
+  res.send(result.buffer);
+}
+
+/** Batch answer PDF — body: { question_ids, page_size: 'a4' | 'half_a4' }. */
+export async function exportAnswerPdfHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = answerPdfRequestSchema.parse(req.body);
+  const result = await answerPdfService.buildAnswerPdf(dto);
+  sendPdf(res, result);
+}
+
+/** Single-question answer PDF — query: page_size=a4|half_a4. */
+export async function exportSingleAnswerPdfHandler(req: AuthRequest, res: Response): Promise<void> {
+  const page_size = answerPdfPageSizeSchema.catch('a4').parse(req.query.page_size ?? 'a4');
+  const result = await answerPdfService.buildAnswerPdf({
+    question_ids: [String(req.params.id)],
+    page_size,
+  });
+  sendPdf(res, result);
 }

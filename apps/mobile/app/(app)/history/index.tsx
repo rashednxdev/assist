@@ -17,11 +17,18 @@ import {
   type AnswerHistorySort,
 } from '@/lib/answer-history';
 import { questionDetailHref } from '@/lib/question-routes';
+import { useAuth } from '@/lib/auth-context';
+import { AnswerPdfDownloadSheet } from '@/components/questions/AnswerPdfDownloadSheet';
 import { colors, spacing } from '@/theme';
 
 export default function AnswerHistoryScreen() {
   const router = useRouter();
   const { items, ready } = useAnswerHistory();
+  const { canAccess } = useAuth();
+  const canDownloadPdf = canAccess('ANSWER_PDF');
+  const [pdfOpen, setPdfOpen] = useState(false);
+  const [pdfIds, setPdfIds] = useState<string[]>([]);
+  const [pdfScopeLabel, setPdfScopeLabel] = useState('');
   const [query, setQuery] = useState('');
   const [dateFilter, setDateFilter] = useState<AnswerHistoryDateFilter>('all');
   const [sort, setSort] = useState<AnswerHistorySort>('date');
@@ -204,6 +211,22 @@ export default function AnswerHistoryScreen() {
         {visible.length} of {items.length} shown
       </Text>
 
+      {canDownloadPdf && visible.length > 0 ? (
+        <Pressable
+          style={styles.pdfBar}
+          onPress={() => {
+            setPdfIds(visible.map((row) => row.id));
+            setPdfScopeLabel(
+              `${Math.min(visible.length, 40)} of ${visible.length} in current history filter`,
+            );
+            setPdfOpen(true);
+          }}
+        >
+          <Ionicons name="download-outline" size={16} color={colors.primary} />
+          <Text style={styles.pdfBarText}>Download answers PDF (current list)</Text>
+        </Pressable>
+      ) : null}
+
       {visible.length === 0 ? (
         <BookEmpty title="No matches" subtitle="Try a different date filter or search term." />
       ) : (
@@ -226,6 +249,16 @@ export default function AnswerHistoryScreen() {
                   <Pressable
                     style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
                     onPress={() => router.push(questionDetailHref(item.id))}
+                    onLongPress={
+                      canDownloadPdf
+                        ? () => {
+                            setPdfIds([item.id]);
+                            setPdfScopeLabel('This history item');
+                            setPdfOpen(true);
+                          }
+                        : undefined
+                    }
+                    delayLongPress={350}
                   >
                     <View style={styles.iconWrap}>
                       <Ionicons name="time-outline" size={20} color="#0f5c8c" />
@@ -241,6 +274,19 @@ export default function AnswerHistoryScreen() {
                         <Text style={styles.time}>{formatRelativeTime(item.viewed_at)}</Text>
                       </View>
                     </View>
+                    {canDownloadPdf ? (
+                      <Pressable
+                        hitSlop={8}
+                        onPress={() => {
+                          setPdfIds([item.id]);
+                          setPdfScopeLabel('This history item');
+                          setPdfOpen(true);
+                        }}
+                        accessibilityLabel="Download answer PDF"
+                      >
+                        <Ionicons name="download-outline" size={18} color={colors.primary} />
+                      </Pressable>
+                    ) : null}
                   </Pressable>
                 </SwipeToRemove>
               ))}
@@ -248,6 +294,15 @@ export default function AnswerHistoryScreen() {
           ))}
         </ScrollView>
       )}
+
+      {canDownloadPdf ? (
+        <AnswerPdfDownloadSheet
+          visible={pdfOpen}
+          questionIds={pdfIds}
+          scopeLabel={pdfScopeLabel}
+          onClose={() => setPdfOpen(false)}
+        />
+      ) : null}
     </View>
   );
 }
@@ -317,6 +372,24 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginHorizontal: spacing.md,
     marginTop: spacing.sm,
+  },
+  pdfBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  pdfBarText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.primary,
   },
   list: {
     padding: spacing.md,

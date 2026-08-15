@@ -30,6 +30,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
 import { SaveButton } from '@/components/ui/SaveButton';
 import { BlockingLoader } from '@/components/ui/BlockingLoader';
+import { AnswerPdfDownloadSheet } from '@/components/questions/AnswerPdfDownloadSheet';
 import { cleanBookLabel, stripHtml } from '@/lib/book-display';
 import type { QuestionListItem, QuestionType } from '@/types/questions';
 import { colors, spacing } from '@/theme';
@@ -94,7 +95,9 @@ function buildBankRows(items: QuestionListItem[]): BankRow[] {
 
 export default function QuestionsScreen() {
   const router = useRouter();
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, canAccess } = useAuth();
+  const canDownloadPdf = canAccess('ANSWER_PDF');
+  const [pdfOpen, setPdfOpen] = useState(false);
   const isAdmin =
     user?.is_super_admin || user?.user_type === 'system_admin' || user?.user_type === 'admin';
   const { isSaved, toggle } = useSavedShortcuts();
@@ -475,6 +478,16 @@ export default function QuestionsScreen() {
         <Pressable style={styles.searchBtn} onPress={submitSearch}>
           <Text style={styles.searchBtnText}>Search</Text>
         </Pressable>
+        {canDownloadPdf && filteredAll.length > 0 ? (
+          <Pressable
+            style={styles.pdfIconBtn}
+            onPress={() => setPdfOpen(true)}
+            hitSlop={8}
+            accessibilityLabel="Download answers PDF for current list"
+          >
+            <Ionicons name="download-outline" size={20} color={colors.primary} />
+          </Pressable>
+        ) : null}
         <Pressable
           style={[styles.moreIconBtn, bookMenuOpen && styles.moreIconBtnActive]}
           onPress={() => setBookMenuOpen((v) => !v)}
@@ -787,6 +800,14 @@ export default function QuestionsScreen() {
           }}
         />
       )}
+      {canDownloadPdf ? (
+        <AnswerPdfDownloadSheet
+          visible={pdfOpen}
+          questionIds={filteredAll.map((q) => q.id)}
+          scopeLabel={`${Math.min(filteredAll.length, 40)} of ${filteredAll.length} in current sort/filter`}
+          onClose={() => setPdfOpen(false)}
+        />
+      ) : null}
     </View>
   );
 }
@@ -830,6 +851,17 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontWeight: '600',
     fontSize: 14,
+  },
+  pdfIconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    flexShrink: 0,
   },
   moreIconBtn: {
     width: 44,

@@ -15,6 +15,7 @@
     "migrate:review-status": "tsx scripts/migrations/migrate-review-status.ts",
     "migrate:book-published": "tsx scripts/migrations/migrate-book-published.ts",
     "migrate:question-edit-module": "tsx scripts/migrations/add-question-edit-module.ts",
+    "migrate:answer-pdf-module": "tsx scripts/migrations/add-answer-pdf-module.ts",
     "migrate:status-changed-by": "tsx scripts/migrations/migrate-status-changed-by.ts",
     "test:db": "tsx scripts/test-connection.ts"
   },
@@ -37,6 +38,7 @@
     "nodemailer": "^9.0.4",
     "pdf-parse": "^1.1.1",
     "pdfjs-dist": "^4.10.38",
+    "pdfkit": "^0.19.1",
     "pino": "^9.7.0",
     "pino-http": "^10.5.0",
     "tesseract.js": "^6.0.1",
@@ -52,6 +54,7 @@
     "@types/node": "^22.15.30",
     "@types/nodemailer": "^8.0.1",
     "@types/pdf-parse": "^1.1.5",
+    "@types/pdfkit": "^0.17.6",
     "pino-pretty": "^13.0.0",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3"

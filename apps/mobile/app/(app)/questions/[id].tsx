@@ -31,7 +31,9 @@ import { ComparisonTablePreview } from '@/components/questions/ComparisonTablePr
 import { AnswerDwellRecorder } from '@/components/questions/AnswerDwellRecorder';
 import { ProcessFlowPreview } from '@/components/books/ProcessFlowPreview';
 import { BookRichText } from '@/components/books/BookRichText';
+import { AnswerPdfDownloadSheet } from '@/components/questions/AnswerPdfDownloadSheet';
 import { bilingualQuestionText } from '@/lib/question-display';
+import { useAuth } from '@/lib/auth-context';
 import {
   loadQuestionBankLastQuestion,
   saveQuestionBankLastQuestion,
@@ -49,6 +51,9 @@ export default function QuestionDetailScreen() {
   const fromSaved = from === 'saved';
   const router = useRouter();
   const navigation = useNavigation();
+  const { canAccess } = useAuth();
+  const canDownloadPdf = canAccess('ANSWER_PDF');
+  const [pdfOpen, setPdfOpen] = useState(false);
   const [item, setItem] = useState<QuestionDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -198,15 +203,27 @@ export default function QuestionDetailScreen() {
           </View>
         ),
       headerRight: () => (
-        <Pressable
-          style={headerStyles.answerBtn}
-          onPress={() => setShowAnswer((value) => !value)}
-          hitSlop={8}
-        >
-          <Text style={headerStyles.answerBtnText}>
-            {showAnswer ? 'Hide answer' : 'Show answer'}
-          </Text>
-        </Pressable>
+        <View style={headerStyles.headerRightRow}>
+          {canDownloadPdf && id ? (
+            <Pressable
+              style={headerStyles.pdfBtn}
+              onPress={() => setPdfOpen(true)}
+              hitSlop={8}
+              accessibilityLabel="Download answer PDF"
+            >
+              <Ionicons name="download-outline" size={18} color={colors.white} />
+            </Pressable>
+          ) : null}
+          <Pressable
+            style={headerStyles.answerBtn}
+            onPress={() => setShowAnswer((value) => !value)}
+            hitSlop={8}
+          >
+            <Text style={headerStyles.answerBtnText}>
+              {showAnswer ? 'Hide answer' : 'Show answer'}
+            </Text>
+          </Pressable>
+        </View>
       ),
     });
   }, [
@@ -220,6 +237,8 @@ export default function QuestionDetailScreen() {
     item?.chapter_name,
     fromSaved,
     router,
+    canDownloadPdf,
+    id,
   ]);
 
   async function submitOption() {
@@ -491,6 +510,14 @@ export default function QuestionDetailScreen() {
       ) : null}
       </ScrollView>
       <EvaluationCelebrate visible={showCelebrate} onClose={() => setShowCelebrate(false)} />
+      {canDownloadPdf && id ? (
+        <AnswerPdfDownloadSheet
+          visible={pdfOpen}
+          questionIds={[id]}
+          scopeLabel="This question"
+          onClose={() => setPdfOpen(false)}
+        />
+      ) : null}
     </View>
   );
 }
@@ -582,6 +609,20 @@ const headerStyles = StyleSheet.create({
     fontSize: 11,
     textAlign: 'center',
     marginTop: 1,
+  },
+  headerRightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  pdfBtn: {
+    width: 34,
+    height: 30,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   answerBtn: {
     marginRight: spacing.sm,

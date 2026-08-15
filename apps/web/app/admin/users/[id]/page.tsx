@@ -101,6 +101,7 @@ const MOBILE_MODULE_CODES = [
   'EXAM_ROUTINE',
   'EXAM_WEEK',
   'USER_QUESTIONS',
+  'ANSWER_PDF',
   'USER',
 ];
 

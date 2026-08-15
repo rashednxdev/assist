@@ -20,6 +20,10 @@ export function setApiAccessToken(token: string | null) {
   accessToken = token;
 }
 
+export function getApiAccessToken(): string | null {
+  return accessToken;
+}
+
 /** Called when an authenticated request receives 401 (e.g. admin force logout). */
 export function setOnUnauthorized(handler: (() => void) | null) {
   onUnauthorized = handler;
@@ -81,6 +85,7 @@ export const LEARNING_MODULE_CODES = [
   'EXAM_ROUTINE',
   'USER_QUESTIONS',
   'EXAM_WEEK',
+  'ANSWER_PDF',
 ] as const;
 
 export type LearningModuleCode = (typeof LEARNING_MODULE_CODES)[number];

@@ -46,6 +46,8 @@ import {
   batchAddQuestionBookFirstChapterLinksHandler,
   setMotherQuestionHandler,
   removeMotherQuestionHandler,
+  exportAnswerPdfHandler,
+  exportSingleAnswerPdfHandler,
 } from './questions.controller.js';
 
 export const questionsRouter = Router();
@@ -58,6 +60,7 @@ const canBrowseQuestions = requireModulePermission([
 ]);
 const canEditQuestions = requireModulePermission([{ moduleCode: 'QUESTION_EDIT', permission: 'can_update' }]);
 const canTrashQuestions = requireModulePermission([{ moduleCode: 'QUESTION_EDIT', permission: 'can_delete' }]);
+const canDownloadAnswerPdf = requireModuleAccess('ANSWER_PDF');
 
 questionsRouter.get('/types', canBrowseQuestions, asyncHandler(listQuestionTypesHandler));
 questionsRouter.post('/types', requireAdmin, asyncHandler(createQuestionTypeHandler));
@@ -72,7 +75,9 @@ questionsRouter.get('/marathon-review', requireModuleAccess('QUESTIONS'), asyncH
 questionsRouter.get('/sync', requireModuleAccess('QUESTIONS'), asyncHandler(questionsSyncHandler));
 questionsRouter.get('/similar', requireModuleAccess('QUESTIONS'), asyncHandler(similarQuestionsHandler));
 questionsRouter.get('/link-search', canBrowseQuestions, asyncHandler(linkQuestionSearchHandler));
+questionsRouter.post('/answer-pdf', canDownloadAnswerPdf, asyncHandler(exportAnswerPdfHandler));
 questionsRouter.get('/:id', canBrowseQuestions, asyncHandler(getQuestionHandler));
+questionsRouter.get('/:id/answer-pdf', canDownloadAnswerPdf, asyncHandler(exportSingleAnswerPdfHandler));
 
 questionsRouter.post('/batch-import', requireAdmin, asyncHandler(batchImportMcqHandler));
 questionsRouter.post(

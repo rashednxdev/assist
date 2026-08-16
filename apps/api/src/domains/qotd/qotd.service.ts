@@ -268,3 +268,26 @@ export async function getEntriesForDate(
 
   return { date, groups };
 }
+
+/** True when this question is on a QOTD entry the learner can currently see (date window + subject scope). */
+export async function isQuestionVisibleInQotd(
+  questionId: string,
+  isAdmin: boolean,
+  subjectScope?: ExamSubjectScope,
+): Promise<boolean> {
+  if (!mongoose.Types.ObjectId.isValid(questionId)) return false;
+
+  const visibility = await visibilityFilter(isAdmin);
+  const subjectIds = subjectObjectIds(subjectScope ?? { mode: 'all' });
+  if (subjectIds && subjectIds.length === 0) return false;
+
+  const query: Record<string, unknown> = {
+    is_active: true,
+    question_ids: new mongoose.Types.ObjectId(questionId),
+    ...visibility,
+  };
+  if (subjectIds) query.exam_subject_id = { $in: subjectIds };
+
+  const found = await QotdEntry.exists(query);
+  return Boolean(found);
+}

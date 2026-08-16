@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { BookReaderGate, useBookReader } from '@/components/books/book-reader-context';
 import { BookDetailsBlock } from '@/components/books/book-details-block';
 import { ChapterTaggedQuestions } from '@/components/books/chapter-tagged-questions';
+import { MarkupText } from '@/components/shared/markup-text';
 import { chapterHeading, ruleHeading } from '@/lib/book-display';
 import { bookTheme } from '@/lib/book-theme';
 
@@ -38,7 +39,18 @@ export default function BookChapterReadPage() {
               <article className={bookTheme.panelPadded}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <h1 className="text-xl font-semibold">{chapterHeading(chapter)}</h1>
+                    <h1 className="text-xl font-semibold">
+                      {chapter.chapter_number?.trim() ? (
+                        <span className="mb-0.5 block text-base text-primary">
+                          {chapter.chapter_number.trim()}
+                        </span>
+                      ) : null}
+                      {chapter.name?.trim() ? (
+                        <MarkupText text={chapter.name} className="text-xl font-semibold" />
+                      ) : (
+                        chapterHeading(chapter)
+                      )}
+                    </h1>
                     {chapter.sub_name?.trim() && (
                       <p className="mt-1 text-sm text-muted">{chapter.sub_name}</p>
                     )}

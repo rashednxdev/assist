@@ -292,7 +292,7 @@ export default function HomeScreen() {
           <View style={styles.heroInner}>
             <View>
               <Text style={styles.greet}>ProAssist</Text>
-              <Text style={styles.heroSub}>Preparation Dashboard</Text>
+              <Text style={styles.heroSub}>Level up your services</Text>
             </View>
             <View style={styles.heroActions}>
               <Pressable
@@ -479,10 +479,6 @@ export default function HomeScreen() {
           </>
         )}
 
-        <Text style={styles.note}>
-          This app includes User account features and Learning modules only. More screens will be
-          added in the next phase.
-        </Text>
       </ScrollView>
 
       <AccessRequiredScreen
@@ -685,11 +681,5 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.md,
-  },
-  note: {
-    fontSize: 12,
-    color: colors.textMuted,
-    lineHeight: 18,
-    marginTop: spacing.sm,
   },
 });

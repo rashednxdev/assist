@@ -1306,7 +1306,22 @@ export async function listQuestions(
       if (chapterIds.length === 0) {
         return { items: [], total: 0, limit, offset };
       }
-      query.book_chapter_id = { $in: chapterIds };
+      const linked = await QuestionBookLink.find({
+        book_chapter_id: { $in: chapterIds },
+        is_active: true,
+      }).select('question_id');
+      const linkedIds = [...new Set(linked.map((l) => String(l.question_id)))].map(
+        (id) => new mongoose.Types.ObjectId(id),
+      );
+      const bookClause = {
+        $or: [
+          { book_chapter_id: { $in: chapterIds } },
+          ...(linkedIds.length > 0 ? [{ _id: { $in: linkedIds } }] : []),
+        ],
+      };
+      query.$and = query.$and
+        ? [...(query.$and as unknown[]), bookClause]
+        : [bookClause];
     }
   }
 
@@ -1723,8 +1738,10 @@ export async function addQuestionBookLink(questionId: string, dto: QuestionBookL
 
   if (!question.book_chapter_id) {
     syncPrimaryBookFields(question, dto);
-    await question.save();
   }
+  // Touch even when primary already set — sync clients key off updated_at.
+  question.updated_at = new Date();
+  await question.save();
 
   return serializeBookLink(link);
 }
@@ -2941,39 +2958,62 @@ export async function listQuestionsSync(
   }
   const detailByQuestion = new Map(details.map((d) => [String(d.question_id), d]));
 
-  // book_chapter_id lives directly on Question for most rows; older links-only questions
-  // (no legacy field set) fall back to their primary QuestionBookLink, same as listMarathonReview.
-  const missingChapterIds = page.filter((q) => !q.book_chapter_id).map((q) => q._id);
-  const fallbackLinks = missingChapterIds.length
+  const pageIds = page.map((q) => q._id);
+
+  // All active book memberships (secondary tags + primary-only rows without a link row).
+  const allBookLinks = pageIds.length
     ? await QuestionBookLink.find({
-        question_id: { $in: missingChapterIds },
+        question_id: { $in: pageIds },
         is_active: true,
       }).sort({ sort_order: 1 })
     : [];
-  const fallbackChapterByQuestion = new Map<string, string>();
-  for (const link of fallbackLinks) {
-    const key = String(link.question_id);
-    if (!fallbackChapterByQuestion.has(key) && link.book_chapter_id) {
-      fallbackChapterByQuestion.set(key, String(link.book_chapter_id));
-    }
-  }
-
-  const chapterIdByQuestion = new Map<string, string>();
-  for (const q of page) {
-    const qid = String(q._id);
-    const direct = idStr(q.book_chapter_id);
-    const chapterId = direct ?? fallbackChapterByQuestion.get(qid);
-    if (chapterId) chapterIdByQuestion.set(qid, chapterId);
-  }
-
-  const chapterIds = [...new Set([...chapterIdByQuestion.values()])];
-  const chapters = chapterIds.length ? await BookChapter.find({ _id: { $in: chapterIds } }) : [];
+  const chaptersFromLinks = [
+    ...new Set(allBookLinks.map((l) => idStr(l.book_chapter_id)).filter((id): id is string => Boolean(id))),
+  ];
+  const primaryChapterIds = [
+    ...new Set(page.map((q) => idStr(q.book_chapter_id)).filter((id): id is string => Boolean(id))),
+  ];
+  const allChapterIdsForSync = [...new Set([...chaptersFromLinks, ...primaryChapterIds])];
+  const chapters =
+    allChapterIdsForSync.length > 0
+      ? await BookChapter.find({ _id: { $in: allChapterIdsForSync } })
+      : [];
   const chapterMap = new Map(chapters.map((c) => [String(c._id), c]));
   const bookIds = [...new Set(chapters.map((c) => String(c.book_info_id)))];
   const books = bookIds.length ? await BookInfo.find({ _id: { $in: bookIds } }) : [];
   const bookMap = new Map(books.map((b) => [String(b._id), b]));
 
-  const pageIds = page.map((q) => q._id);
+  const bookLinksByQuestion = new Map<string, Array<{ book_id: string; book_chapter_id: string }>>();
+  function pushSyncBookLink(qid: string, chapterId: string) {
+    const chapter = chapterMap.get(chapterId);
+    if (!chapter) return;
+    const bookId = String(chapter.book_info_id);
+    const list = bookLinksByQuestion.get(qid) ?? [];
+    if (list.some((l) => l.book_id === bookId)) return;
+    list.push({ book_id: bookId, book_chapter_id: chapterId });
+    bookLinksByQuestion.set(qid, list);
+  }
+  for (const link of allBookLinks) {
+    const chapterId = idStr(link.book_chapter_id);
+    if (!chapterId) continue;
+    pushSyncBookLink(String(link.question_id), chapterId);
+  }
+  for (const q of page) {
+    const chapterId = idStr(q.book_chapter_id);
+    if (!chapterId) continue;
+    pushSyncBookLink(String(q._id), chapterId);
+  }
+
+  // Primary display fields: prefer Question.book_chapter_id, else first membership link.
+  const chapterIdByQuestion = new Map<string, string>();
+  for (const q of page) {
+    const qid = String(q._id);
+    const direct = idStr(q.book_chapter_id);
+    const fromLinks = bookLinksByQuestion.get(qid)?.[0]?.book_chapter_id;
+    const chapterId = direct ?? fromLinks;
+    if (chapterId) chapterIdByQuestion.set(qid, chapterId);
+  }
+
   const syncSubjectLinks = pageIds.length
     ? await QuestionSubjectLink.find({ question_id: { $in: pageIds }, is_active: true }).sort({
         sort_order: 1,
@@ -3006,6 +3046,7 @@ export async function listQuestionsSync(
     const chapterId = chapterIdByQuestion.get(qidForBook);
     const chapter = chapterId ? chapterMap.get(chapterId) : undefined;
     const book = chapter ? bookMap.get(String(chapter.book_info_id)) : undefined;
+    const memberships = bookLinksByQuestion.get(qidForBook) ?? [];
 
     const row: QuestionSyncRow = {
       id: String(q._id),
@@ -3017,7 +3058,7 @@ export async function listQuestionsSync(
       time_seconds: q.time_seconds,
       is_published: q.is_published,
       is_active: q.is_active,
-      book_chapter_id: idStr(q.book_chapter_id),
+      book_chapter_id: chapterId,
       book_topic_id: idStr(q.book_topic_id),
       book_sub_topic_id: idStr(q.book_sub_topic_id),
       regulation_id: idStr(q.regulation_id),
@@ -3025,6 +3066,7 @@ export async function listQuestionsSync(
       book_name: book?.name,
       chapter_number: chapter?.chapter_number ?? undefined,
       chapter_name: chapter?.name,
+      book_links: memberships,
       subjects: syncSubjectsByQuestion.get(qidForBook) ?? [],
       updated_at: q.updated_at.toISOString(),
     };

@@ -17,6 +17,11 @@ import {
   removeQuestionSubjectTag,
   type BookCatalogItem,
 } from '@/lib/question-edit-api';
+import {
+  removeCachedQuestionBookLink,
+  upsertCachedQuestionBookLink,
+} from '@/lib/questions-db';
+import { notifyQuestionsCacheChanged } from '@/lib/questions-sync';
 import type { SubjectCatalogItem } from '@/lib/questions-api';
 import { colors, spacing } from '@/theme';
 
@@ -110,6 +115,12 @@ export function QuestionQuickTags({
         { id: res.id, name: res.name, chapter_id: res.chapter_id },
       ];
       onBooksChange(next);
+      try {
+        upsertCachedQuestionBookLink(questionId, res.id, res.chapter_id);
+        notifyQuestionsCacheChanged();
+      } catch {
+        // Local cache optional — server tag already saved.
+      }
     } catch (err) {
       Alert.alert('Could not add book', err instanceof Error ? err.message : 'Try again.');
     } finally {
@@ -123,6 +134,12 @@ export function QuestionQuickTags({
     try {
       await removeQuestionBookFirstChapterTag(questionId, bookInfoId);
       onBooksChange(books.filter((b) => b.id !== bookInfoId));
+      try {
+        removeCachedQuestionBookLink(questionId, bookInfoId);
+        notifyQuestionsCacheChanged();
+      } catch {
+        // Local cache optional — server untag already saved.
+      }
     } catch (err) {
       Alert.alert('Could not remove book', err instanceof Error ? err.message : 'Try again.');
     } finally {
@@ -137,62 +154,60 @@ export function QuestionQuickTags({
       : availableBooks.map((b) => ({ id: b.id, label: b.label }));
 
   return (
-    <Pressable onPress={() => undefined}>
-      <View style={styles.wrap}>
-        {subjects.map((s) => (
-          <View key={`s-${s.id}`} style={[styles.chip, styles.subjectChip]}>
-            <Text style={styles.chipText} numberOfLines={1}>
-              {subjectLabel(s)}
-            </Text>
-            {!disabled ? (
-              <Pressable
-                hitSlop={6}
-                disabled={busy}
-                onPress={() => void removeSubject(s.id)}
-                accessibilityLabel={`Remove ${subjectLabel(s)}`}
-              >
-                <Ionicons name="close" size={12} color={colors.primary} />
-              </Pressable>
-            ) : null}
-          </View>
-        ))}
-        {books.map((b) => (
-          <View key={`b-${b.id}`} style={[styles.chip, styles.bookChip]}>
-            <Text style={styles.bookChipText} numberOfLines={1}>
-              {b.name}
-            </Text>
-            {!disabled ? (
-              <Pressable
-                hitSlop={6}
-                disabled={busy}
-                onPress={() => void removeBook(b.id)}
-                accessibilityLabel={`Remove book ${b.name}`}
-              >
-                <Ionicons name="close" size={12} color={colors.textMuted} />
-              </Pressable>
-            ) : null}
-          </View>
-        ))}
-        {!disabled && availableSubjects.length > 0 ? (
-          <Pressable
-            style={[styles.addChip, busy && styles.addChipDisabled]}
-            disabled={busy}
-            onPress={() => setPicker('subject')}
-          >
-            <Text style={styles.addChipText}>+ Subject</Text>
-          </Pressable>
-        ) : null}
-        {!disabled && availableBooks.length > 0 ? (
-          <Pressable
-            style={[styles.addChip, busy && styles.addChipDisabled]}
-            disabled={busy}
-            onPress={() => setPicker('book')}
-          >
-            <Text style={styles.addChipText}>+ Book</Text>
-          </Pressable>
-        ) : null}
-        {busy ? <ActivityIndicator size="small" color={colors.primary} /> : null}
-      </View>
+    <View style={styles.wrap} onStartShouldSetResponder={() => true}>
+      {subjects.map((s) => (
+        <View key={`s-${s.id}`} style={[styles.chip, styles.subjectChip]}>
+          <Text style={styles.chipText} numberOfLines={1}>
+            {subjectLabel(s)}
+          </Text>
+          {!disabled ? (
+            <Pressable
+              hitSlop={8}
+              disabled={busy}
+              onPress={() => void removeSubject(s.id)}
+              accessibilityLabel={`Remove ${subjectLabel(s)}`}
+            >
+              <Ionicons name="close" size={12} color={colors.primary} />
+            </Pressable>
+          ) : null}
+        </View>
+      ))}
+      {books.map((b) => (
+        <View key={`b-${b.id}`} style={[styles.chip, styles.bookChip]}>
+          <Text style={styles.bookChipText} numberOfLines={1}>
+            {b.name}
+          </Text>
+          {!disabled ? (
+            <Pressable
+              hitSlop={8}
+              disabled={busy}
+              onPress={() => void removeBook(b.id)}
+              accessibilityLabel={`Remove book ${b.name}`}
+            >
+              <Ionicons name="close" size={12} color={colors.textMuted} />
+            </Pressable>
+          ) : null}
+        </View>
+      ))}
+      {!disabled && availableSubjects.length > 0 ? (
+        <Pressable
+          style={[styles.addChip, busy && styles.addChipDisabled]}
+          disabled={busy}
+          onPress={() => setPicker('subject')}
+        >
+          <Text style={styles.addChipText}>+ Subject</Text>
+        </Pressable>
+      ) : null}
+      {!disabled && availableBooks.length > 0 ? (
+        <Pressable
+          style={[styles.addChip, busy && styles.addChipDisabled]}
+          disabled={busy}
+          onPress={() => setPicker('book')}
+        >
+          <Text style={styles.addChipText}>+ Book</Text>
+        </Pressable>
+      ) : null}
+      {busy ? <ActivityIndicator size="small" color={colors.primary} /> : null}
 
       <Modal
         visible={picker !== null}
@@ -232,7 +247,7 @@ export function QuestionQuickTags({
           </View>
         </View>
       </Modal>
-    </Pressable>
+    </View>
   );
 }
 
@@ -242,15 +257,18 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: 6,
-    marginTop: 4,
+    marginTop: 2,
+    paddingTop: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
   },
   chip: {
-    maxWidth: '100%',
+    maxWidth: '92%',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     borderRadius: 999,
-    paddingVertical: 4,
+    paddingVertical: 5,
     paddingLeft: 10,
     paddingRight: 6,
   },

@@ -52,6 +52,14 @@ function getDb(): SQLite.SQLiteDatabase {
       last_synced_at TEXT,
       subject_scope_key TEXT
     );
+    CREATE TABLE IF NOT EXISTS question_book_links (
+      question_id TEXT NOT NULL,
+      book_id TEXT NOT NULL,
+      book_chapter_id TEXT NOT NULL,
+      PRIMARY KEY (question_id, book_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_question_book_links_book_id ON question_book_links(book_id);
+    CREATE INDEX IF NOT EXISTS idx_question_book_links_chapter_id ON question_book_links(book_chapter_id);
   `);
   // Older installs — add subject_links when missing.
   try {
@@ -63,6 +71,21 @@ function getDb(): SQLite.SQLiteDatabase {
     db.execSync('ALTER TABLE sync_state ADD COLUMN subject_scope_key TEXT');
   } catch {
     // column already exists
+  }
+  // One-time: full resync so secondary book tags land in question_book_links.
+  try {
+    db.execSync('ALTER TABLE sync_state ADD COLUMN book_links_schema INTEGER');
+  } catch {
+    // column already exists
+  }
+  const schemaRow = db.getFirstSync<{ book_links_schema: number | null }>(
+    'SELECT book_links_schema FROM sync_state WHERE id = 1',
+  );
+  if (!schemaRow || (schemaRow.book_links_schema ?? 0) < 1) {
+    db.runSync(
+      `INSERT INTO sync_state (id, last_synced_at, book_links_schema) VALUES (1, NULL, 1)
+       ON CONFLICT(id) DO UPDATE SET last_synced_at = NULL, book_links_schema = 1`,
+    );
   }
   return db;
 }
@@ -134,6 +157,7 @@ export function clearQuestionCache(): void {
     database.execSync('DELETE FROM questions');
     database.execSync('DELETE FROM question_options');
     database.execSync('DELETE FROM question_explanations');
+    database.execSync('DELETE FROM question_book_links');
     database.runSync(
       `INSERT INTO sync_state (id, last_synced_at) VALUES (1, NULL)
        ON CONFLICT(id) DO UPDATE SET last_synced_at = NULL`,
@@ -221,6 +245,22 @@ export function applySyncBatch(rows: QuestionSyncRow[], deletedIds: string[]): v
 
       database.runSync('DELETE FROM question_options WHERE question_id = ?', [row.id]);
       database.runSync('DELETE FROM question_explanations WHERE question_id = ?', [row.id]);
+      database.runSync('DELETE FROM question_book_links WHERE question_id = ?', [row.id]);
+
+      const memberships =
+        row.book_links && row.book_links.length > 0
+          ? row.book_links
+          : row.book_id && row.book_chapter_id
+            ? [{ book_id: row.book_id, book_chapter_id: row.book_chapter_id }]
+            : [];
+      for (const link of memberships) {
+        if (!link.book_id || !link.book_chapter_id) continue;
+        database.runSync(
+          `INSERT OR REPLACE INTO question_book_links (question_id, book_id, book_chapter_id)
+           VALUES (?, ?, ?)`,
+          [row.id, link.book_id, link.book_chapter_id],
+        );
+      }
 
       if (row.question_type_code === 'MCQ') {
         for (const opt of row.options ?? []) {
@@ -244,6 +284,7 @@ export function applySyncBatch(rows: QuestionSyncRow[], deletedIds: string[]): v
       database.runSync('DELETE FROM questions WHERE id = ?', [id]);
       database.runSync('DELETE FROM question_options WHERE question_id = ?', [id]);
       database.runSync('DELETE FROM question_explanations WHERE question_id = ?', [id]);
+      database.runSync('DELETE FROM question_book_links WHERE question_id = ?', [id]);
     }
   });
 }
@@ -506,19 +547,16 @@ export function getCachedPracticeStem(id: string): QuestionPracticeStem | null {
 }
 
 /**
- * Published questions tagged to a book chapter, for the "Books & Tools" chapter questions panel.
- * Matches on the question's own (legacy, always-set) `book_chapter_id` field — the primary link
- * point regardless of whether the admin tagged it at chapter/topic/sub-topic level. Questions
- * additionally tagged to *other* chapters via a secondary QuestionBookLink are not reflected here
- * (the server's `/books/chapters/:id/questions` also walks those extra links); that's a rare
- * multi-tagging case and out of scope for the local cache.
+ * Published questions tagged to a book chapter (primary field or any book_links membership).
  */
 export function getCachedChapterQuestions(chapterId: string): ChapterQuestionBrief[] {
   const rows = getDb().getAllSync<QuestionRow>(
-    `SELECT * FROM questions
-     WHERE book_chapter_id = ? AND is_published = 1 AND is_active = 1
-     ORDER BY question_type_code ASC, updated_at DESC`,
-    [chapterId],
+    `SELECT DISTINCT q.* FROM questions q
+     LEFT JOIN question_book_links l ON l.question_id = q.id
+     WHERE q.is_published = 1 AND q.is_active = 1
+       AND (q.book_chapter_id = ? OR l.book_chapter_id = ?)
+     ORDER BY q.question_type_code ASC, q.updated_at DESC`,
+    [chapterId, chapterId],
   );
   return rows.filter(isRowInStoredSubjectScope).map((row) => ({
     id: row.id,
@@ -531,16 +569,16 @@ export function getCachedChapterQuestions(chapterId: string): ChapterQuestionBri
 }
 
 /**
- * Published questions tagged to any chapter of a book, for the single book-level "Questions"
- * button on the Books & Tools detail screen — same shape/ordering as getCachedChapterQuestions,
- * just matched on book_id instead of one chapter.
+ * Published questions tagged to any chapter of a book (primary book_id or book_links).
  */
 export function getCachedBookQuestions(bookId: string): ChapterQuestionBrief[] {
   const rows = getDb().getAllSync<QuestionRow>(
-    `SELECT * FROM questions
-     WHERE book_id = ? AND is_published = 1 AND is_active = 1
-     ORDER BY question_type_code ASC, updated_at DESC`,
-    [bookId],
+    `SELECT DISTINCT q.* FROM questions q
+     LEFT JOIN question_book_links l ON l.question_id = q.id
+     WHERE q.is_published = 1 AND q.is_active = 1
+       AND (q.book_id = ? OR l.book_id = ?)
+     ORDER BY q.question_type_code ASC, q.updated_at DESC`,
+    [bookId, bookId],
   );
   return rows.filter(isRowInStoredSubjectScope).map((row) => ({
     id: row.id,
@@ -550,4 +588,51 @@ export function getCachedBookQuestions(bookId: string): ChapterQuestionBrief[] {
     marks: row.marks,
     difficulty: row.difficulty,
   }));
+}
+
+/** After a Question Update quick-tag — keep local Books panels in sync without waiting for pull. */
+export function upsertCachedQuestionBookLink(
+  questionId: string,
+  bookId: string,
+  bookChapterId: string,
+): void {
+  const database = getDb();
+  database.runSync(
+    `INSERT OR REPLACE INTO question_book_links (question_id, book_id, book_chapter_id)
+     VALUES (?, ?, ?)`,
+    [questionId, bookId, bookChapterId],
+  );
+  // If the question had no primary book yet, mirror the tag onto the legacy columns.
+  const row = database.getFirstSync<{ book_id: string | null; book_chapter_id: string | null }>(
+    'SELECT book_id, book_chapter_id FROM questions WHERE id = ?',
+    [questionId],
+  );
+  if (row && !row.book_id) {
+    database.runSync(
+      'UPDATE questions SET book_id = ?, book_chapter_id = ? WHERE id = ?',
+      [bookId, bookChapterId, questionId],
+    );
+  }
+}
+
+export function removeCachedQuestionBookLink(questionId: string, bookId: string): void {
+  const database = getDb();
+  database.runSync('DELETE FROM question_book_links WHERE question_id = ? AND book_id = ?', [
+    questionId,
+    bookId,
+  ]);
+  const row = database.getFirstSync<{ book_id: string | null }>(
+    'SELECT book_id FROM questions WHERE id = ?',
+    [questionId],
+  );
+  if (row?.book_id === bookId) {
+    const next = database.getFirstSync<{ book_id: string; book_chapter_id: string }>(
+      'SELECT book_id, book_chapter_id FROM question_book_links WHERE question_id = ? LIMIT 1',
+      [questionId],
+    );
+    database.runSync(
+      'UPDATE questions SET book_id = ?, book_chapter_id = ? WHERE id = ?',
+      [next?.book_id ?? null, next?.book_chapter_id ?? null, questionId],
+    );
+  }
 }

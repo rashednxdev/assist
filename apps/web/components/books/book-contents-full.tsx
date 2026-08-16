@@ -18,6 +18,7 @@ import {
   TopicInlineEdit,
 } from '@/components/books/book-inline-edit';
 import type { ReaderChapter } from '@/components/books/book-reader-context';
+import { MarkupText } from '@/components/shared/markup-text';
 import { chapterHeading, ruleHeading, subRuleHeading } from '@/lib/book-display';
 import { bookTheme } from '@/lib/book-theme';
 import type { ComparisonTable, ProcessStep } from '@ibas/shared-types';
@@ -117,9 +118,18 @@ export function BookContentsFull({
                 <h3 className="text-lg font-semibold text-foreground">
                   <Link
                     href={`/books/${bookId}/read/chapter/${chapter.id}`}
-                    className="hover:text-primary"
+                    className="hover:text-primary block"
                   >
-                    {chapterHeading(chapter)}
+                    {chapter.chapter_number?.trim() ? (
+                      <span className="block text-sm text-primary">
+                        {chapter.chapter_number.trim()}
+                      </span>
+                    ) : null}
+                    {chapter.name?.trim() ? (
+                      <MarkupText text={chapter.name} className="text-lg font-semibold" />
+                    ) : (
+                      chapterHeading(chapter)
+                    )}
                   </Link>
                 </h3>
                 {chapter.sub_name?.trim() && (

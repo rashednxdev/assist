@@ -1,97 +1,92 @@
 import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import { Asset } from 'expo-asset';
 import type { AnswerPdfPageSize } from '@ibas/shared-types';
-import { ApiError, getApiAccessToken } from '@/lib/api';
+import { ApiError } from '@/lib/api';
+import { fetchQuestionDetail } from '@/lib/questions-api';
+import { getCachedMcqDetail } from '@/lib/questions-db';
+import type { QuestionDetail } from '@/types/questions';
+import { buildAnswerPdfHtml, pdfPagePoints } from '@/lib/answer-pdf-html';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1';
-const API_TIMEOUT_MS = Number(process.env.EXPO_PUBLIC_API_TIMEOUT_MS ?? 90_000);
+const MAX_QUESTIONS = 40;
 
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  const chunk = 0x8000;
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  }
-  return globalThis.btoa(binary);
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const KALPURUSH_MODULE = require('../../assets/fonts/Kalpurush.ttf') as number;
+
+let cachedFontBase64: string | null = null;
+
+async function loadKalpurushBase64(): Promise<string> {
+  if (cachedFontBase64) return cachedFontBase64;
+  const asset = Asset.fromModule(KALPURUSH_MODULE);
+  await asset.downloadAsync();
+  const uri = asset.localUri ?? asset.uri;
+  if (!uri) throw new ApiError('Could not load Kalpurush font');
+  cachedFontBase64 = await FileSystem.readAsStringAsync(uri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  return cachedFontBase64;
 }
 
-function parseFilename(header: string | null, fallback: string): string {
-  if (!header) return fallback;
-  const star = /filename\*=UTF-8''([^;]+)/i.exec(header);
-  if (star?.[1]) {
-    try {
-      return decodeURIComponent(star[1].trim().replace(/^"|"$/g, ''));
-    } catch {
-      /* fall through */
-    }
-  }
-  const plain = /filename="?([^";]+)"?/i.exec(header);
-  return plain?.[1]?.trim() || fallback;
-}
-
-async function postAnswerPdf(body: {
-  question_ids: string[];
-  page_size: AnswerPdfPageSize;
-}): Promise<{ uri: string; filename: string }> {
-  const token = getApiAccessToken();
-  if (!token) throw new ApiError('Sign in required');
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+async function loadQuestionForPdf(id: string): Promise<QuestionDetail | null> {
+  const cached = getCachedMcqDetail(id);
+  if (cached) return cached;
   try {
-    const res = await fetch(`${API_URL}/questions/answer-pdf`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-
-    if (!res.ok) {
-      const json = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
-      throw new ApiError(json.error?.message ?? `Download failed (${res.status})`, res.status);
-    }
-
-    const filename = parseFilename(
-      res.headers.get('Content-Disposition'),
-      `answers-${body.page_size}.pdf`,
-    );
-    const buf = await res.arrayBuffer();
-    const base64 = arrayBufferToBase64(buf);
-    const dir = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
-    if (!dir) throw new ApiError('Storage is not available on this device');
-    const safeName = filename.replace(/[^\w.\-]+/g, '_');
-    const uri = `${dir}${safeName}`;
-    await FileSystem.writeAsStringAsync(uri, base64, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    return { uri, filename: safeName };
-  } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') {
-      throw new ApiError('Request timed out. Please try again.');
-    }
-    throw err;
-  } finally {
-    clearTimeout(timeoutId);
+    return await fetchQuestionDetail(id);
+  } catch {
+    return null;
   }
 }
 
-/** Download answers PDF and open the system share sheet. */
+async function collectQuestions(ids: string[]): Promise<QuestionDetail[]> {
+  const unique = [...new Set(ids.filter(Boolean))].slice(0, MAX_QUESTIONS);
+  if (unique.length === 0) throw new ApiError('No questions to export');
+  const out: QuestionDetail[] = [];
+  for (const id of unique) {
+    const q = await loadQuestionForPdf(id);
+    if (q) out.push(q);
+  }
+  if (out.length === 0) throw new ApiError('Could not load questions for PDF');
+  return out;
+}
+
+/** Build answer PDF on-device (same layout as reading UI) and open the share sheet. */
 export async function downloadAndShareAnswerPdf(params: {
   questionIds: string[];
   pageSize: AnswerPdfPageSize;
 }): Promise<void> {
-  const ids = [...new Set(params.questionIds.filter(Boolean))];
-  if (ids.length === 0) throw new ApiError('No questions to export');
-
-  const { uri } = await postAnswerPdf({
-    question_ids: ids.slice(0, 40),
-    page_size: params.pageSize,
+  const questions = await collectQuestions(params.questionIds);
+  const fontBase64 = await loadKalpurushBase64();
+  const html = buildAnswerPdfHtml({
+    questions,
+    pageSize: params.pageSize,
+    fontBase64,
   });
+  const { width, height } = pdfPagePoints(params.pageSize);
+
+  const { uri } = await Print.printToFileAsync({
+    html,
+    width,
+    height,
+  });
+
+  const stamp = new Date().toISOString().slice(0, 10);
+  const sizeTag = params.pageSize === 'pocket' ? 'digest-5x8' : 'a4';
+  const filename =
+    questions.length === 1
+      ? `answer-${questions[0]!.id.slice(-6)}-${sizeTag}.pdf`
+      : `answers-${questions.length}q-${stamp}-${sizeTag}.pdf`;
+
+  const dir = FileSystem.cacheDirectory ?? FileSystem.documentDirectory;
+  if (!dir) throw new ApiError('Storage is not available on this device');
+  const dest = `${dir}${filename.replace(/[^\w.\-]+/g, '_')}`;
+  try {
+    await FileSystem.copyAsync({ from: uri, to: dest });
+  } catch {
+    // Fall back to the temp print URI if rename/copy fails.
+  }
+  const shareUri = (await FileSystem.getInfoAsync(dest)).exists ? dest : uri;
 
   const canShare = await Sharing.isAvailableAsync();
   if (!canShare) {
@@ -101,7 +96,7 @@ export async function downloadAndShareAnswerPdf(params: {
         : 'Sharing is not available on this device',
     );
   }
-  await Sharing.shareAsync(uri, {
+  await Sharing.shareAsync(shareUri, {
     mimeType: 'application/pdf',
     dialogTitle: 'Save answer PDF',
     UTI: 'com.adobe.pdf',

@@ -31,6 +31,11 @@ function notify() {
   listeners.forEach((fn) => fn());
 }
 
+/** Call after a local cache patch (e.g. quick book tag) so Books panels refresh. */
+export function notifyQuestionsCacheChanged() {
+  notify();
+}
+
 let inFlight: Promise<void> | null = null;
 let syncGeneration = 0;
 

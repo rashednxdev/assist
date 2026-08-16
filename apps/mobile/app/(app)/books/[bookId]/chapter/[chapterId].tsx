@@ -10,7 +10,7 @@ import {
 } from '@/components/books/ChapterQuestionsPanel';
 import { useBookReader } from '@/components/books/BookReaderContext';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
-import { chapterHeading, ruleHeading } from '@/lib/book-display';
+import { chapterHeading, chapterNameForMarkup, cleanBookLabel, ruleHeading } from '@/lib/book-display';
 import { bookRuleHref } from '@/lib/book-routes';
 import { colors, spacing } from '@/theme';
 
@@ -36,13 +36,17 @@ export default function BookChapterScreen() {
     return <BookEmpty title="Chapter not found" />;
   }
 
+  const chapterNum = cleanBookLabel(chapter.chapter_number);
+  const chapterName = chapterNameForMarkup(chapter);
+
   return (
     <>
       <ScrollView style={styles.root} contentContainerStyle={styles.content}>
         <View style={styles.panel}>
           <View style={styles.headerRow}>
             <View style={styles.headerText}>
-              <Text style={styles.title}>{chapterHeading(chapter)}</Text>
+              {chapterNum ? <Text style={styles.title}>{chapterNum}</Text> : null}
+              {chapterName ? <BookRichText html={chapterName} style={styles.title} /> : null}
               {chapter.sub_name?.trim() ? (
                 <Text style={styles.subtitle}>{chapter.sub_name}</Text>
               ) : null}

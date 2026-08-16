@@ -5,11 +5,29 @@ export function cleanBookLabel(value?: string | null) {
     .trim();
 }
 
+/** Strip admin markup markers for nav titles / plain-string labels. */
+export function stripBookMarkup(value?: string | null) {
+  return (value ?? '')
+    .replace(/\/{4}/g, ' ')
+    .replace(/\/{3}/g, ' ')
+    .replace(/\/{2}/g, ' ')
+    .replace(/\/-{2,}/g, ' ')
+    .replace(/\[\]/g, ' ')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function chapterHeading(chapter: { chapter_number?: string; name?: string }) {
   const no = cleanBookLabel(chapter.chapter_number);
-  const name = cleanBookLabel(chapter.name);
+  const name = stripBookMarkup(cleanBookLabel(chapter.name));
   if (no && name) return `${no}: ${name}`;
   return no || name || 'Chapter';
+}
+
+/** Chapter name with markup preserved for BookRichText. */
+export function chapterNameForMarkup(chapter: { name?: string }) {
+  return cleanBookLabel(chapter.name);
 }
 
 export function ruleHeading(rule: { rule_number?: string; name?: string }) {

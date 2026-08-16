@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Pressable,
   TextInput,
+  Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,11 +22,15 @@ import {
   ChapterQuestionsButton,
   ChapterQuestionsPanel,
 } from '@/components/books/ChapterQuestionsPanel';
+import { BookPdfDownloadSheet } from '@/components/books/BookPdfDownloadSheet';
+import { AnswerPdfDownloadSheet } from '@/components/questions/AnswerPdfDownloadSheet';
 import { useBookReader } from '@/components/books/BookReaderContext';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
-import { bookNavTitle, chapterHeading, ruleHeading, stripHtml } from '@/lib/book-display';
+import { bookNavTitle, chapterHeading, chapterNameForMarkup, cleanBookLabel, ruleHeading, stripHtml } from '@/lib/book-display';
 import { bookChapterHref, bookRuleHref } from '@/lib/book-routes';
+import { getCachedBookQuestions } from '@/lib/questions-db';
 import { saveLastReadBookId } from '@/lib/last-read-book';
+import { useAuth } from '@/lib/auth-context';
 import type { ReaderChapter, ReaderChapterFull, ReaderTopicFull } from '@/types/books';
 import { colors, spacing } from '@/theme';
 
@@ -103,16 +108,47 @@ export default function BookDetailScreen() {
   const { bookId, from } = useLocalSearchParams<{ bookId: string; from?: string }>();
   const fromSaved = from === 'saved';
   const { outline, fullChapters, loading, fullLoading, error, fullError } = useBookReader();
+  const { canAccess } = useAuth();
+  const canDownloadAnswers = canAccess('ANSWER_PDF');
   const bookName = outline?.book.name || outline?.book.short_name;
   const [detailsExpanded, setDetailsExpanded] = useState(false);
   const [viewMode, setViewMode] = useState<BookContentsViewMode>(
     () => viewModeByBook.get(bookId) ?? 'full',
   );
   const [showBookQuestions, setShowBookQuestions] = useState(false);
+  const [answerPdfOpen, setAnswerPdfOpen] = useState(false);
+  const [bookPdfOpen, setBookPdfOpen] = useState(false);
   const [searchDraft, setSearchDraft] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const searchInputRef = useRef<TextInput>(null);
+
+  const hasChapters = (outline?.chapters.length ?? 0) > 0;
+  const bookQuestionIds = useMemo(
+    () => (bookId ? getCachedBookQuestions(bookId).map((q) => q.id) : []),
+    [bookId, showBookQuestions, outline],
+  );
+
+  const displayFullChapters = useMemo(() => {
+    if (!fullChapters || !outline) return [];
+    return fullChapters.map((chapter) => {
+      const fromOutline = outline.chapters.find((c) => c.id === chapter.id);
+      return {
+        ...chapter,
+        description: chapter.description?.trim() ? chapter.description : fromOutline?.description,
+        sub_name: chapter.sub_name?.trim() ? chapter.sub_name : fromOutline?.sub_name,
+      };
+    });
+  }, [fullChapters, outline]);
+
+  function openBookPdfSheet() {
+    if (!outline || !hasChapters) return;
+    if (fullLoading || displayFullChapters.length === 0) {
+      Alert.alert('Please wait', 'Full book content is still loading. Try again in a moment.');
+      return;
+    }
+    setBookPdfOpen(true);
+  }
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -130,13 +166,45 @@ export default function BookDetailScreen() {
             </Pressable>
           )
         : undefined,
+      headerRight: hasChapters
+        ? () => (
+            <Pressable
+              onPress={openBookPdfSheet}
+              hitSlop={8}
+              style={{
+                marginRight: spacing.sm,
+                width: 34,
+                height: 30,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.45)',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              accessibilityLabel="Download book PDF"
+            >
+              <Ionicons name="download-outline" size={18} color={colors.white} />
+            </Pressable>
+          )
+        : undefined,
     });
-  }, [navigation, loading, outline?.book.name, fromSaved, router]);
+  }, [
+    navigation,
+    loading,
+    outline?.book.name,
+    fromSaved,
+    router,
+    hasChapters,
+    fullLoading,
+    displayFullChapters.length,
+  ]);
 
   useEffect(() => {
     setDetailsExpanded(false);
     setViewMode(viewModeByBook.get(bookId) ?? 'full');
     setShowBookQuestions(false);
+    setAnswerPdfOpen(false);
+    setBookPdfOpen(false);
     setSearchDraft('');
     setSearchQuery('');
     setSearchOpen(false);
@@ -176,18 +244,6 @@ export default function BookDetailScreen() {
     }
     applySearch();
   }
-
-  const displayFullChapters = useMemo(() => {
-    if (!fullChapters || !outline) return [];
-    return fullChapters.map((chapter) => {
-      const fromOutline = outline.chapters.find((c) => c.id === chapter.id);
-      return {
-        ...chapter,
-        description: chapter.description?.trim() ? chapter.description : fromOutline?.description,
-        sub_name: chapter.sub_name?.trim() ? chapter.sub_name : fromOutline?.sub_name,
-      };
-    });
-  }, [fullChapters, outline]);
 
   const q = searchQuery.trim().toLowerCase();
 
@@ -265,6 +321,40 @@ export default function BookDetailScreen() {
 
           <ChapterQuestionsButton fullWidth onPress={() => setShowBookQuestions(true)} />
 
+          {hasChapters ? (
+            <View style={styles.downloadRow}>
+              <Pressable
+                style={styles.downloadBtn}
+                onPress={openBookPdfSheet}
+                accessibilityRole="button"
+                accessibilityLabel="Download book PDF"
+              >
+                <Ionicons name="download-outline" size={16} color={colors.white} />
+                <Text style={styles.downloadBtnText}>Download book</Text>
+              </Pressable>
+              {canDownloadAnswers ? (
+                <Pressable
+                  style={styles.downloadBtnSecondary}
+                  onPress={() => {
+                    if (bookQuestionIds.length === 0) {
+                      Alert.alert(
+                        'No answers yet',
+                        'No published questions are tagged to this book yet.',
+                      );
+                      return;
+                    }
+                    setAnswerPdfOpen(true);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Download answers PDF"
+                >
+                  <Ionicons name="document-text-outline" size={16} color={colors.primary} />
+                  <Text style={styles.downloadBtnSecondaryText}>Answers PDF</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
+
           {hasDescription ? (
             <View style={styles.panel}>
               {detailsExpanded ? (
@@ -316,7 +406,17 @@ export default function BookDetailScreen() {
                       >
                         <Ionicons name="chevron-forward" size={16} color={colors.primary} />
                         <View style={styles.chapterText}>
-                          <Text style={styles.chapterTitle}>{chapterHeading(chapter)}</Text>
+                          {cleanBookLabel(chapter.chapter_number) ? (
+                            <Text style={styles.chapterTitle}>
+                              {cleanBookLabel(chapter.chapter_number)}
+                            </Text>
+                          ) : null}
+                          {chapterNameForMarkup(chapter) ? (
+                            <BookRichText
+                              html={chapterNameForMarkup(chapter)}
+                              style={styles.chapterTitle}
+                            />
+                          ) : null}
                           {chapter.sub_name?.trim() ? (
                             <Text style={styles.chapterSub}>{chapter.sub_name}</Text>
                           ) : null}
@@ -354,6 +454,28 @@ export default function BookDetailScreen() {
         open={showBookQuestions}
         onClose={() => setShowBookQuestions(false)}
       />
+
+      {outline && hasChapters ? (
+        <BookPdfDownloadSheet
+          visible={bookPdfOpen}
+          bookId={bookId}
+          bookName={outline.book.name}
+          shortName={outline.book.short_name}
+          edition={outline.book.edition}
+          language={outline.book.language}
+          chapters={displayFullChapters}
+          onClose={() => setBookPdfOpen(false)}
+        />
+      ) : null}
+
+      {canDownloadAnswers ? (
+        <AnswerPdfDownloadSheet
+          visible={answerPdfOpen}
+          questionIds={bookQuestionIds}
+          scopeLabel={`${Math.min(bookQuestionIds.length, 40)} question${bookQuestionIds.length === 1 ? '' : 's'} in this book`}
+          onClose={() => setAnswerPdfOpen(false)}
+        />
+      ) : null}
     </>
   );
 }
@@ -435,6 +557,47 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 6,
   },
+  downloadRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  downloadBtn: {
+    flexGrow: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: colors.primary,
+    borderRadius: 10,
+    paddingVertical: 11,
+    paddingHorizontal: spacing.md,
+    minHeight: 42,
+  },
+  downloadBtnText: {
+    color: colors.white,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  downloadBtnSecondary: {
+    flexGrow: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: 10,
+    paddingVertical: 11,
+    paddingHorizontal: spacing.md,
+    minHeight: 42,
+  },
+  downloadBtnSecondaryText: {
+    color: colors.primary,
+    fontSize: 14,
+    fontWeight: '700',
+  },
   panel: {
     backgroundColor: colors.surface,
     borderRadius: 16,
@@ -496,7 +659,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: colors.text,
-    textAlign: 'justify',
   },
   chapterSub: {
     fontSize: 13,

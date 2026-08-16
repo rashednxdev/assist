@@ -10,39 +10,57 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import type { AnswerPdfPageSize } from '@ibas/shared-types';
-import { downloadAndShareAnswerPdf } from '@/lib/answer-pdf-api';
+import {
+  downloadAndShareBookPdf,
+  type BookPdfOrientation,
+} from '@/lib/book-pdf-api';
+import type { ReaderChapterFull } from '@/types/books';
 import { colors, spacing } from '@/theme';
 
-interface AnswerPdfDownloadSheetProps {
+interface BookPdfDownloadSheetProps {
   visible: boolean;
-  questionIds: string[];
-  /** Short label shown in the sheet, e.g. "1 question" or "24 questions (current list)". */
-  scopeLabel: string;
+  bookId: string;
+  bookName: string;
+  shortName?: string;
+  edition?: string;
+  language?: string;
+  chapters: ReaderChapterFull[];
   onClose: () => void;
 }
 
-/** Choose A4 or Digest 5" × 8" (portrait) then download + share the answer PDF. */
-export function AnswerPdfDownloadSheet({
+/** Book PDF only — choose portrait or landscape A4, then download + share. */
+export function BookPdfDownloadSheet({
   visible,
-  questionIds,
-  scopeLabel,
+  bookId,
+  bookName,
+  shortName,
+  edition,
+  language,
+  chapters,
   onClose,
-}: AnswerPdfDownloadSheetProps) {
-  const [pageSize, setPageSize] = useState<AnswerPdfPageSize>('a4');
+}: BookPdfDownloadSheetProps) {
+  const [orientation, setOrientation] = useState<BookPdfOrientation>('portrait');
   const [busy, setBusy] = useState(false);
 
   async function handleDownload() {
-    if (questionIds.length === 0) {
-      Alert.alert('Nothing to export', 'No questions in this selection.');
+    if (chapters.length === 0) {
+      Alert.alert('Nothing to export', 'This book has no chapters to download yet.');
       return;
     }
     setBusy(true);
     try {
-      await downloadAndShareAnswerPdf({ questionIds, pageSize });
+      await downloadAndShareBookPdf({
+        bookId,
+        bookName,
+        shortName,
+        edition,
+        language,
+        chapters,
+        orientation,
+      });
       onClose();
     } catch (err) {
-      Alert.alert('Download failed', err instanceof Error ? err.message : 'Could not create PDF');
+      Alert.alert('Download failed', err instanceof Error ? err.message : 'Could not create book PDF');
     } finally {
       setBusy(false);
     }
@@ -55,38 +73,52 @@ export function AnswerPdfDownloadSheet({
         <SafeAreaView edges={['bottom']} style={styles.sheetSafe}>
           <View style={styles.sheet}>
             <View style={styles.handle} />
-            <Text style={styles.title}>Download answers as PDF</Text>
-            <Text style={styles.sub}>{scopeLabel}</Text>
+            <Text style={styles.title}>Download book as PDF</Text>
+            <Text style={styles.sub} numberOfLines={2}>
+              {bookName}
+            </Text>
 
-            <Text style={styles.label}>Page size (portrait)</Text>
+            <Text style={styles.label}>Orientation</Text>
             <View style={styles.row}>
               <Pressable
-                style={[styles.option, pageSize === 'a4' && styles.optionActive]}
-                onPress={() => setPageSize('a4')}
+                style={[styles.option, orientation === 'portrait' && styles.optionActive]}
+                onPress={() => setOrientation('portrait')}
                 disabled={busy}
               >
-                <Text style={[styles.optionTitle, pageSize === 'a4' && styles.optionTitleActive]}>A4</Text>
-                <Text style={[styles.optionSub, pageSize === 'a4' && styles.optionSubActive]}>
-                  Portrait · book layout
+                <Text
+                  style={[styles.optionTitle, orientation === 'portrait' && styles.optionTitleActive]}
+                >
+                  Portrait
+                </Text>
+                <Text
+                  style={[styles.optionSub, orientation === 'portrait' && styles.optionSubActive]}
+                >
+                  A4 · tall page
                 </Text>
               </Pressable>
               <Pressable
-                style={[styles.option, pageSize === 'pocket' && styles.optionActive]}
-                onPress={() => setPageSize('pocket')}
+                style={[styles.option, orientation === 'landscape' && styles.optionActive]}
+                onPress={() => setOrientation('landscape')}
                 disabled={busy}
               >
-                <Text style={[styles.optionTitle, pageSize === 'pocket' && styles.optionTitleActive]}>
-                  {`Digest 5" × 8"`}
+                <Text
+                  style={[
+                    styles.optionTitle,
+                    orientation === 'landscape' && styles.optionTitleActive,
+                  ]}
+                >
+                  Landscape
                 </Text>
-                <Text style={[styles.optionSub, pageSize === 'pocket' && styles.optionSubActive]}>
-                  Portrait · compact
+                <Text
+                  style={[styles.optionSub, orientation === 'landscape' && styles.optionSubActive]}
+                >
+                  A4 · wide page
                 </Text>
               </Pressable>
             </View>
 
             <Text style={styles.hint}>
-              Built on match the reading screen. Portrait book spacing. Max 40 questions per
-              file.
+              Book content only. Choose portrait or landscape before downloading.
             </Text>
 
             <Pressable
@@ -118,18 +150,17 @@ const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(15, 23, 42, 0.4)',
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
   },
   sheetSafe: {
-    width: '100%',
-  },
-  sheet: {
     backgroundColor: colors.surface,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
+  },
+  sheet: {
+    paddingHorizontal: spacing.md,
     paddingBottom: spacing.md,
+    paddingTop: spacing.sm,
     gap: spacing.sm,
   },
   handle: {
@@ -156,19 +187,20 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
+    marginTop: 4,
   },
   row: {
     flexDirection: 'row',
-    gap: 10,
+    gap: spacing.sm,
   },
   option: {
     flex: 1,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 12,
-    padding: spacing.sm,
+    padding: spacing.md,
     backgroundColor: colors.background,
-    gap: 2,
+    gap: 4,
   },
   optionActive: {
     borderColor: colors.primary,
@@ -176,26 +208,27 @@ const styles = StyleSheet.create({
   },
   optionTitle: {
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: '700',
     color: colors.text,
   },
   optionTitleActive: {
     color: colors.primary,
   },
   optionSub: {
-    fontSize: 11,
+    fontSize: 12,
     color: colors.textMuted,
   },
   optionSubActive: {
-    color: colors.primary,
+    color: colors.primaryDark,
   },
   hint: {
     fontSize: 12,
-    lineHeight: 17,
+    lineHeight: 18,
     color: colors.textMuted,
+    marginTop: 2,
   },
   downloadBtn: {
-    marginTop: 4,
+    marginTop: spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -210,11 +243,11 @@ const styles = StyleSheet.create({
   downloadBtnText: {
     color: colors.white,
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   cancelBtn: {
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: spacing.sm,
   },
   cancelText: {
     fontSize: 14,

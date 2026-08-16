@@ -243,6 +243,11 @@ export interface QuestionSyncRow {
   book_name?: string;
   chapter_number?: string;
   chapter_name?: string;
+  /**
+   * All book memberships (primary + QuestionBookLink tags). Mobile cache uses these so a
+   * question tagged to multiple books appears under each book/chapter panel.
+   */
+  book_links?: Array<{ book_id: string; book_chapter_id: string }>;
   /** Exam subjects tagged on this question (multi). */
   subjects?: Array<{ id: string; name: string; name_bn?: string }>;
   updated_at: string;

@@ -24,7 +24,10 @@ export function BookContentsFull({
 
   return (
     <View style={styles.article}>
-      {chapters.map((chapter) => (
+      {chapters.map((chapter) => {
+        const chapterNum = cleanBookLabel(chapter.chapter_number);
+        const chapterName = cleanBookLabel(chapter.name);
+        return (
         <View key={chapter.id} style={styles.chapterPanel}>
           {chapter.description?.trim() ? (
             <View style={styles.chapterBody}>
@@ -36,11 +39,11 @@ export function BookContentsFull({
             style={[styles.chapterHeader, chapter.description?.trim() && styles.chapterHeaderBorder]}
           >
             <View style={styles.chapterTitleBlock}>
-              {cleanBookLabel(chapter.chapter_number) ? (
-                <Text style={styles.chapterNumber}>{cleanBookLabel(chapter.chapter_number)}</Text>
+              {chapterNum ? (
+                <Text style={styles.chapterNumber}>{chapterNum}</Text>
               ) : null}
-              {cleanBookLabel(chapter.name) ? (
-                <Text style={styles.chapterTitle}>{cleanBookLabel(chapter.name)}</Text>
+              {chapterName ? (
+                <BookRichText html={chapterName} style={styles.chapterTitle} />
               ) : null}
               {chapter.sub_name?.trim() ? (
                 <Text style={styles.chapterSubName}>{chapter.sub_name}</Text>
@@ -103,7 +106,8 @@ export function BookContentsFull({
             );
           })}
         </View>
-      ))}
+        );
+      })}
     </View>
   );
 }
@@ -147,7 +151,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
     color: colors.text,
-    textAlign: 'justify',
   },
   chapterSubName: {
     fontSize: 14,

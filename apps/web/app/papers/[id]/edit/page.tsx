@@ -15,12 +15,15 @@ import { Badge } from '@/components/ui/badge';
 import { Alert } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { McqQuestionsPanel } from './McqQuestionsPanel';
+import { ReviewStatusBadge, type ReviewStatus } from '@/components/questions/review-status';
 
 export interface QuestionBrief {
   id: string;
   question_type_code: string;
   body_en: string;
   marks: number;
+  is_published?: boolean;
+  review_status?: ReviewStatus;
 }
 
 interface PaperPart {
@@ -84,6 +87,7 @@ interface BankQuestion {
   body_en: string;
   marks: number;
   is_published: boolean;
+  review_status?: ReviewStatus;
   /** Word-match % from link-search (only present when searching). */
   match?: number;
 }
@@ -103,6 +107,18 @@ const emptyQuestion = {
   is_compulsory: true,
 };
 
+function questionReviewStatus(q?: {
+  review_status?: ReviewStatus;
+  is_published?: boolean;
+}): ReviewStatus {
+  if (q?.review_status) return q.review_status;
+  return q?.is_published ? 'published' : 'draft';
+}
+
+function isPublishedBankQuestion(q: { review_status?: ReviewStatus; is_published?: boolean }) {
+  return questionReviewStatus(q) === 'published' || q.is_published === true;
+}
+
 function displayQuestionLabel(pq: PaperQuestionRow) {
   return pq.display_question_number?.trim() || String(pq.question_number);
 }
@@ -120,10 +136,6 @@ function showPartsList(pq: PaperQuestionRow) {
   if (pq.parts.length === 0) return false;
   if (pq.header_text?.trim()) return true;
   return pq.parts.length > 1;
-}
-
-function marksPreview(pq: { marks: number; marks_display_bn?: string }) {
-  return pq.marks_display_bn?.trim() || `${pq.marks} mark${pq.marks !== 1 ? 's' : ''}`;
 }
 
 function truncate(text: string, len = 120) {
@@ -253,7 +265,6 @@ export default function PaperComposerPage() {
         // ranked by match % — same standard as mother/link question search.
         const params = new URLSearchParams({
           q,
-          is_published: 'true',
           threshold: '0.5',
           limit: '50',
         });
@@ -262,7 +273,7 @@ export default function PaperComposerPage() {
           .catch(() => setPartBank([]));
         return;
       }
-      apiFetch<{ data: BankQuestion[] }>(`/questions?is_published=true&limit=50`)
+      apiFetch<{ data: BankQuestion[] }>(`/questions?limit=50`)
         .then((r) => setPartBank(r.data))
         .catch(() => setPartBank([]));
     }, 300);
@@ -539,10 +550,12 @@ export default function PaperComposerPage() {
               {pq.from_question_bank && pq.question?.question_type_code && (
                 <Badge variant="secondary">{pq.question.question_type_code}</Badge>
               )}
+              {pq.question ? (
+                <ReviewStatusBadge status={questionReviewStatus(pq.question)} />
+              ) : null}
             </div>
             <div className="mt-1 text-muted">
-              {marksPreview(pq)}
-              {pq.is_compulsory ? ' · compulsory' : ''}
+              {pq.is_compulsory ? 'compulsory' : 'optional'}
               <span className="text-xs"> · serial #{pq.question_number}</span>
             </div>
           </div>
@@ -582,9 +595,9 @@ export default function PaperComposerPage() {
               <li key={part.id} className="flex items-start justify-between gap-2">
                 <span>
                   <strong>{part.part_label}</strong> {truncate(part.question?.body_en ?? '')}{' '}
-                  <span className="text-muted">
-                    ({part.marks_display_bn?.trim() || `${part.marks}m`})
-                  </span>
+                  {part.question ? (
+                    <ReviewStatusBadge status={questionReviewStatus(part.question)} />
+                  ) : null}
                 </span>
                 {!readOnly && (
                   <div className="flex gap-1">
@@ -757,6 +770,7 @@ export default function PaperComposerPage() {
     : undefined;
   const usedSubPartQuestionIds = new Set(editingQuestion?.parts.map((p) => p.question_id) ?? []);
   const availablePartQuestions = partBank.filter((q) => !usedSubPartQuestionIds.has(q.id));
+  const addablePartQuestions = availablePartQuestions.filter(isPublishedBankQuestion);
 
   function openNewQuestionForm(overrides: Partial<typeof emptyQuestion> = {}) {
     setPanel('question');
@@ -765,6 +779,7 @@ export default function PaperComposerPage() {
   }
 
   function addPartDraft(q: BankQuestion) {
+    if (!isPublishedBankQuestion(q)) return;
     setPartDrafts((drafts) => {
       const existingLabels = [
         ...(editingQuestion?.parts.map((p) => p.part_label) ?? []),
@@ -790,7 +805,7 @@ export default function PaperComposerPage() {
         ...drafts.map((d) => d.part_label),
       ];
       const already = new Set(drafts.map((d) => d.question_id));
-      const toAdd = questions.filter((q) => !already.has(q.id));
+      const toAdd = questions.filter((q) => !already.has(q.id) && isPublishedBankQuestion(q));
       const labels = nextPartLabels(existingLabels, toAdd.length);
       return [
         ...drafts,
@@ -1029,8 +1044,12 @@ export default function PaperComposerPage() {
                     <p className="mb-2 text-sm font-medium">Current sub-parts</p>
                     <ul className="space-y-1 text-sm text-muted">
                       {editingQuestion.parts.map((part) => (
-                        <li key={part.id}>
-                          <strong>{part.part_label}</strong> {truncate(part.question?.body_en ?? '', 80)}
+                        <li key={part.id} className="flex flex-wrap items-center gap-1.5">
+                          <strong>{part.part_label}</strong>
+                          {truncate(part.question?.body_en ?? '', 80)}
+                          {part.question ? (
+                            <ReviewStatusBadge status={questionReviewStatus(part.question)} />
+                          ) : null}
                         </li>
                       ))}
                     </ul>
@@ -1038,25 +1057,24 @@ export default function PaperComposerPage() {
                 )}
 
                 <OutlinedInput
-                  label="Search published questions for sub-parts"
+                  label="Search questions for sub-parts"
                   value={partBankQ}
                   onChange={(e) => setPartBankQ(e.target.value)}
                 />
                 <div className="flex items-center justify-between gap-2 text-sm">
                   <span className="text-muted">
-                    {questionForm.header_text.trim()
-                      ? 'Add sub-parts under the header — label, marks & Bangla display are editable below'
-                      : 'Without a header, the sub-part text appears beside the display number'}
+                    Status is shown so unpublished questions are easy to spot. Only published
+                    questions can be added.
                   </span>
-                  {availablePartQuestions.length > 0 && (
+                  {addablePartQuestions.length > 0 && (
                     <Button
                       type="button"
                       size="sm"
                       variant="outline"
                       className="h-7"
-                      onClick={() => addAllPartDrafts(availablePartQuestions)}
+                      onClick={() => addAllPartDrafts(addablePartQuestions)}
                     >
-                      Select all
+                      Select all published
                     </Button>
                   )}
                 </div>
@@ -1065,22 +1083,27 @@ export default function PaperComposerPage() {
                     <p className="p-3 text-sm text-muted">
                       {partBank.length === 0
                         ? partBankQ.trim()
-                          ? 'No published questions with at least 50% word match'
-                          : 'No published questions match your search'
+                          ? 'No questions with at least 50% word match'
+                          : 'No questions match your search'
                         : 'All matching questions are already sub-parts of this question'}
                     </p>
                   ) : (
                     <ul className="divide-y divide-border">
                       {availablePartQuestions.map((q) => {
                         const checked = partDrafts.some((d) => d.question_id === q.id);
+                        const canAdd = isPublishedBankQuestion(q);
                         return (
                           <li key={q.id}>
-                            <label className="flex cursor-pointer items-start gap-3 p-3 hover:bg-slate-50/80">
+                            <label
+                              className={`flex items-start gap-3 p-3 ${
+                                canAdd ? 'cursor-pointer hover:bg-slate-50/80' : 'cursor-default opacity-80'
+                              }`}
+                            >
                               <input
                                 type="checkbox"
                                 className="mt-1"
                                 checked={checked}
-                                disabled={partBusy}
+                                disabled={partBusy || !canAdd}
                                 onChange={(e) => {
                                   if (e.target.checked) {
                                     addPartDraft(q);
@@ -1100,8 +1123,8 @@ export default function PaperComposerPage() {
                                     {q.match}% match
                                   </Badge>
                                 ) : null}
-                                {truncate(q.body_en, 120)}
-                                <span className="mt-0.5 block text-xs text-muted">{q.marks} marks</span>
+                                <ReviewStatusBadge status={questionReviewStatus(q)} />
+                                <span className="ml-1.5">{truncate(q.body_en, 120)}</span>
                               </span>
                             </label>
                           </li>
@@ -1233,8 +1256,8 @@ export default function PaperComposerPage() {
                       size={Math.min(8, Math.max(3, partBank.length))}
                     >
                       {partBank.map((q) => (
-                        <option key={q.id} value={q.id}>
-                          [{q.question_type_code}] {truncate(q.body_en, 80)} ({q.marks}m)
+                        <option key={q.id} value={q.id} disabled={!isPublishedBankQuestion(q)}>
+                          [{questionReviewStatus(q)}] [{q.question_type_code}] {truncate(q.body_en, 80)}
                         </option>
                       ))}
                     </OutlinedSelect>

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
-import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -67,12 +67,15 @@ export default function QuestionDetailScreen() {
   const [showPreviousEval, setShowPreviousEval] = useState(false);
   const [nextId, setNextId] = useState<string | undefined>();
   const [nextStem, setNextStem] = useState<QuestionPracticeStem | null>(null);
+  const [questionContentHeight, setQuestionContentHeight] = useState(0);
+  const { height: windowHeight } = useWindowDimensions();
 
   useEffect(() => {
     if (!id) return;
     setLoading(true);
     setShowAnswer(false);
     setNextStem(null);
+    setQuestionContentHeight(0);
     setEvalError('');
     setEvalMessage('');
     setShowPreviousEval(false);
@@ -303,14 +306,31 @@ export default function QuestionDetailScreen() {
     ? bilingualQuestionText(nextStem.body_en, nextStem.body_bn)
     : null;
   const showNextQuestion = Boolean(showAnswer && nextId && nextStem && nextText?.primary);
+  const halfScreen = windowHeight / 2;
+  const scrollQuestion = questionContentHeight > halfScreen;
 
   return (
     <View style={styles.root}>
-      {/* Fixed under the nav header so the user always sees which question they're reading,
-          however far they scroll into a long model answer / explanation below. */}
-      <View style={[styles.panel, styles.stickyQuestionPanel]}>
-        <BookRichText html={stem.primary} style={styles.questionText} />
-        {stem.secondary ? <BookRichText html={stem.secondary} style={styles.questionBn} /> : null}
+      {/* Fixed under the nav header so the user always sees which question they're reading.
+          If the stem is taller than half the screen, this block scrolls in place. */}
+      <View
+        style={[
+          styles.panel,
+          styles.stickyQuestionPanel,
+          scrollQuestion ? { maxHeight: halfScreen } : null,
+        ]}
+      >
+        <ScrollView
+          style={scrollQuestion ? { maxHeight: halfScreen } : undefined}
+          contentContainerStyle={styles.stickyQuestionContent}
+          scrollEnabled={scrollQuestion}
+          nestedScrollEnabled
+          showsVerticalScrollIndicator={scrollQuestion}
+          onContentSizeChange={(_w, h) => setQuestionContentHeight(h)}
+        >
+          <BookRichText html={stem.primary} style={styles.questionText} />
+          {stem.secondary ? <BookRichText html={stem.secondary} style={styles.questionBn} /> : null}
+        </ScrollView>
       </View>
 
       <ScrollView style={styles.scrollArea} contentContainerStyle={styles.content}>
@@ -655,6 +675,9 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
+  },
+  stickyQuestionContent: {
+    gap: spacing.sm,
   },
   content: {
     padding: spacing.md,

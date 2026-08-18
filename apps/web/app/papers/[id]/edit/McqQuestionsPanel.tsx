@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { ReviewStatusBadge, type ReviewStatus } from '@/components/questions/review-status';
 import type { PaperQuestionRow } from './page';
 
 interface BankMcqQuestion {
@@ -16,6 +17,8 @@ interface BankMcqQuestion {
   body_en: string;
   body_bn?: string;
   marks: number;
+  is_published?: boolean;
+  review_status?: ReviewStatus;
   book_id?: string;
   book_name?: string;
 }
@@ -34,6 +37,18 @@ interface ChapterOption {
 
 function truncate(text: string, len = 120) {
   return text.length > len ? `${text.slice(0, len)}…` : text;
+}
+
+function questionReviewStatus(q?: {
+  review_status?: ReviewStatus;
+  is_published?: boolean;
+}): ReviewStatus {
+  if (q?.review_status) return q.review_status;
+  return q?.is_published ? 'published' : 'draft';
+}
+
+function isPublishedBankQuestion(q: { review_status?: ReviewStatus; is_published?: boolean }) {
+  return questionReviewStatus(q) === 'published' || q.is_published === true;
 }
 
 /**
@@ -104,7 +119,6 @@ export function McqQuestionsPanel({
         setBankError('');
         try {
           const baseParams: Record<string, string> = {
-            is_published: 'true',
             question_type_code: 'MCQ',
           };
           if (search.trim()) baseParams.q = search.trim();
@@ -165,7 +179,8 @@ export function McqQuestionsPanel({
       .map((g) => ({ ...g, items: g.items.sort((a, b) => a.body_en.localeCompare(b.body_en)) }));
   }, [bank, existingQuestionIds]);
 
-  function toggleSelected(id: string) {
+  function toggleSelected(id: string, allowed: boolean) {
+    if (!allowed) return;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -246,6 +261,10 @@ export function McqQuestionsPanel({
                 <X className="h-4 w-4" />
               </Button>
             </div>
+            <p className="text-xs text-muted">
+              Draft and quality-check questions are listed for tracing. Only published questions can
+              be added to the paper.
+            </p>
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
@@ -290,7 +309,7 @@ export function McqQuestionsPanel({
               <p className="text-sm text-muted">Loading question bank…</p>
             ) : bankFetched && bank.length === 0 ? (
               <p className="text-sm text-muted">
-                No published MCQ questions matched this book/chapter/search.
+                No MCQ questions matched this book/chapter/search.
               </p>
             ) : groupedByBook.length === 0 ? (
               <p className="text-sm text-muted">
@@ -305,23 +324,29 @@ export function McqQuestionsPanel({
                       {group.label}
                     </div>
                     <div className="space-y-1">
-                      {group.items.map((q) => (
+                      {group.items.map((q) => {
+                        const canAdd = isPublishedBankQuestion(q);
+                        return (
                         <label
                           key={q.id}
-                          className="flex cursor-pointer items-start gap-2 rounded-md border border-border p-2 text-sm hover:bg-slate-50"
+                          className={`flex items-start gap-2 rounded-md border border-border p-2 text-sm ${
+                            canAdd ? 'cursor-pointer hover:bg-slate-50' : 'cursor-default opacity-80'
+                          }`}
                         >
                           <input
                             type="checkbox"
                             className="mt-1"
                             checked={selected.has(q.id)}
-                            onChange={() => toggleSelected(q.id)}
+                            disabled={!canAdd}
+                            onChange={() => toggleSelected(q.id, canAdd)}
                           />
                           <span className="min-w-0 flex-1">
-                            {truncate(q.body_en || q.body_bn || '')}
-                            <span className="ml-2 text-xs text-muted">({q.marks}m)</span>
+                            <ReviewStatusBadge status={questionReviewStatus(q)} />
+                            <span className="ml-1.5">{truncate(q.body_en || q.body_bn || '')}</span>
                           </span>
                         </label>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 ))}
@@ -353,8 +378,10 @@ export function McqQuestionsPanel({
                     {pq.question?.question_type_code && (
                       <Badge variant="secondary">{pq.question.question_type_code}</Badge>
                     )}
+                    {pq.question ? (
+                      <ReviewStatusBadge status={questionReviewStatus(pq.question)} />
+                    ) : null}
                   </div>
-                  <div className="mt-1 text-muted">{pq.marks} marks</div>
                 </div>
                 {!readOnly && (
                   <Button

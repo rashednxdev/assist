@@ -209,6 +209,7 @@ async function enrichQuestion(q: InstanceType<typeof Question>) {
     difficulty: q.difficulty,
     marks: q.marks,
     is_published: q.is_published,
+    review_status: q.review_status ?? (q.is_published ? 'published' : 'draft'),
   };
 }
 

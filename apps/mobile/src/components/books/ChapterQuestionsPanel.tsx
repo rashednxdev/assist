@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import {
   hasComparisonTableContent,
+  hasProcessContent,
   mergeComparisonIntoModelAnswerSections,
   type ComparisonTable as SharedComparisonTable,
   type ExplanationSection as SharedExplanationSection,
@@ -22,6 +23,7 @@ import { BookLoading } from '@/components/books/BookStates';
 import { BookRichText } from '@/components/books/BookRichText';
 import { ChapterMcqExam } from '@/components/books/ChapterMcqExam';
 import { ChapterQuestionEvaluator } from '@/components/books/ChapterQuestionEvaluator';
+import { ProcessFlowPreview } from '@/components/books/ProcessFlowPreview';
 import { RatingIndicator } from '@/components/evaluation/RatingIndicator';
 import {
   fetchQuestionEvaluation,
@@ -66,9 +68,30 @@ function sectionHasTable(section: ExplanationSection) {
   return hasComparisonTableContent(section.table);
 }
 
-function renderSection(section: ExplanationSection, index: number) {
+function sectionHasProcessContent(process?: ExplanationSection['process']) {
+  return hasProcessContent(process);
+}
+
+function collectProcesses(sections?: ExplanationSection[]) {
+  return (sections ?? [])
+    .map((sec) => sec.process)
+    .filter((process): process is NonNullable<ExplanationSection['process']> =>
+      sectionHasProcessContent(process),
+    );
+}
+
+function normalizeSections(sections?: ExplanationSection[]) {
+  return (sections ?? []).filter(
+    (sec) =>
+      Boolean(sec.title?.trim() || sec.content?.trim() || sec.details?.trim() || sec.note?.trim()) ||
+      sectionHasTable(sec) ||
+      (sec.subsections?.length ?? 0) > 0,
+  );
+}
+
+function renderSection(section: ExplanationSection, index: number, keyPrefix: string) {
   return (
-    <View key={`sec-${index}`} style={styles.answerSection}>
+    <View key={`${keyPrefix}-${index}`} style={styles.answerSection}>
       {section.title?.trim() ? <Text style={styles.answerSectionTitle}>{section.title}</Text> : null}
       {section.content?.trim() ? (
         <BookRichText html={section.content} style={styles.answerText} />
@@ -80,6 +103,13 @@ function renderSection(section: ExplanationSection, index: number) {
       {sectionHasTable(section) ? (
         <ComparisonTablePreview table={section.table} title={section.title} />
       ) : null}
+      {section.subsections?.map((sub, i) => (
+        <View key={`${keyPrefix}-${index}-sub-${i}`} style={styles.answerSubsection}>
+          {sub.subtitle?.trim() ? <Text style={styles.answerSubsectionTitle}>{sub.subtitle}</Text> : null}
+          {sub.details?.trim() ? <BookRichText html={sub.details} style={styles.answerText} /> : null}
+          {sub.note?.trim() ? <BookRichText html={sub.note} style={styles.answerNote} /> : null}
+        </View>
+      ))}
     </View>
   );
 }
@@ -179,11 +209,24 @@ export function ChapterQuestionsPanel({
 
   const modelAnswerSections = useMemo(
     () =>
-      mergeComparisonIntoModelAnswerSections(
-        question?.model_answer_sections as SharedExplanationSection[] | undefined,
-        question?.model_answer_comparison as SharedComparisonTable | undefined,
+      normalizeSections(
+        mergeComparisonIntoModelAnswerSections(
+          question?.model_answer_sections as SharedExplanationSection[] | undefined,
+          question?.model_answer_comparison as SharedComparisonTable | undefined,
+        ),
       ),
     [question?.model_answer_sections, question?.model_answer_comparison],
+  );
+  const explanationSections = useMemo(
+    () => normalizeSections(question?.explanation_sections),
+    [question?.explanation_sections],
+  );
+  const allProcesses = useMemo(
+    () => [
+      ...collectProcesses(question?.model_answer_sections),
+      ...collectProcesses(question?.explanation_sections),
+    ],
+    [question?.model_answer_sections, question?.explanation_sections],
   );
   const hasNestedComparison = modelAnswerSections.some(sectionHasTable);
   const hasLegacyComparison =
@@ -516,13 +559,28 @@ export function ChapterQuestionsPanel({
                       {modelAnswerSections.length > 0 ? (
                         <>
                           <Text style={styles.sectionLabel}>Answer</Text>
-                          {modelAnswerSections.map(renderSection)}
+                          {modelAnswerSections.map((sec, idx) => renderSection(sec, idx, 'model'))}
                         </>
                       ) : null}
-                      {(question.explanation_sections ?? []).map(renderSection)}
+                      {explanationSections.length > 0 ? (
+                        explanationSections.map((sec, idx) => renderSection(sec, idx, 'exp'))
+                      ) : null}
                       {question.note?.trim() ? (
                         <BookRichText html={question.note} style={styles.answerNote} />
                       ) : null}
+                      {allProcesses.length > 0
+                        ? allProcesses.map((proc, idx) => (
+                            <View key={`proc-${idx}`} style={styles.processGroupBlock}>
+                              {proc.title?.trim() && proc.title.trim().toLowerCase() !== 'process' ? (
+                                <Text style={styles.answerSubsectionTitle}>{proc.title}</Text>
+                              ) : null}
+                              {proc.details?.trim() ? (
+                                <BookRichText html={proc.details} style={styles.answerText} />
+                              ) : null}
+                              <ProcessFlowPreview steps={proc.steps ?? []} />
+                            </View>
+                          ))
+                        : null}
                     </View>
                   ) : null}
 
@@ -955,6 +1013,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: colors.text,
+  },
+  answerSubsection: {
+    gap: 4,
+    marginTop: 6,
+    paddingLeft: 4,
+  },
+  answerSubsectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  processGroupBlock: {
+    gap: 6,
+    marginTop: 4,
   },
   answerText: {
     fontSize: 14,

@@ -1,13 +1,12 @@
 import { useEffect } from 'react';
 import { recordAnswerHistory } from '@/lib/answer-history';
 import { stripHtml } from '@/lib/book-display';
-
-const DWELL_MS = 6000;
+import { READ_DWELL_MS, startReadDwell, stopReadDwell } from '@/lib/read-dwell';
+import { ReadHistoryLocalTip } from '@/components/questions/ReadHistoryLocalTip';
 
 /**
- * Renders nothing — mount it only while a non-MCQ question's answer is visible. Its own
- * mount/unmount lifecycle is the dwell timer: 6s of continuous visibility records a history
- * entry, collapsing/navigating away before that just clears the pending timeout.
+ * Mount only while a question's answer is visible. Runs a 5s dwell then records a local read.
+ * Also shows a one-time tip that read history lives on this device.
  */
 export function AnswerDwellRecorder({
   id,
@@ -25,11 +24,16 @@ export function AnswerDwellRecorder({
   useEffect(() => {
     const title = stripHtml(bodyEn?.trim() || bodyBn || '').slice(0, 120);
     if (!title) return;
+    startReadDwell(id);
     const timer = setTimeout(() => {
       void recordAnswerHistory({ id, title, subtitle, subject });
-    }, DWELL_MS);
-    return () => clearTimeout(timer);
+      stopReadDwell(id);
+    }, READ_DWELL_MS);
+    return () => {
+      clearTimeout(timer);
+      stopReadDwell(id);
+    };
   }, [id, bodyEn, bodyBn, subtitle, subject]);
 
-  return null;
+  return <ReadHistoryLocalTip active />;
 }

@@ -8,6 +8,7 @@ export interface AnswerHistoryEntry {
   subtitle?: string;
   subject?: string;
   viewed_at: string;
+  read_count: number;
 }
 
 export type AnswerHistoryDateFilter = 'all' | 'today' | 'yesterday' | 'week' | 'older';
@@ -40,7 +41,8 @@ function getDb(): SQLite.SQLiteDatabase {
       title TEXT NOT NULL,
       subtitle TEXT,
       subject TEXT,
-      viewed_at TEXT NOT NULL
+      viewed_at TEXT NOT NULL,
+      read_count INTEGER NOT NULL DEFAULT 1
     );
     CREATE INDEX IF NOT EXISTS idx_answer_history_viewed_at ON answer_history(viewed_at);
   `);
@@ -48,6 +50,16 @@ function getDb(): SQLite.SQLiteDatabase {
     db.execSync('ALTER TABLE answer_history ADD COLUMN subject TEXT');
   } catch {
     // column already exists
+  }
+  try {
+    db.execSync('ALTER TABLE answer_history ADD COLUMN read_count INTEGER DEFAULT 1');
+  } catch {
+    // column already exists
+  }
+  try {
+    db.execSync('UPDATE answer_history SET read_count = 1 WHERE read_count IS NULL OR read_count < 1');
+  } catch {
+    // ignore
   }
   return db;
 }
@@ -57,10 +69,15 @@ function parseLegacy(raw: string | null): AnswerHistoryEntry[] {
   try {
     const parsed = JSON.parse(raw) as AnswerHistoryEntry[];
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (row) =>
-        row && typeof row.id === 'string' && typeof row.title === 'string' && typeof row.viewed_at === 'string',
-    );
+    return parsed
+      .filter(
+        (row) =>
+          row && typeof row.id === 'string' && typeof row.title === 'string' && typeof row.viewed_at === 'string',
+      )
+      .map((row) => ({
+        ...row,
+        read_count: Math.max(1, typeof row.read_count === 'number' ? row.read_count : 1),
+      }));
   } catch {
     return [];
   }
@@ -73,7 +90,8 @@ function readAllFromDb(): AnswerHistoryEntry[] {
     subtitle: string | null;
     subject: string | null;
     viewed_at: string;
-  }>('SELECT id, title, subtitle, subject, viewed_at FROM answer_history ORDER BY viewed_at DESC');
+    read_count: number | null;
+  }>('SELECT id, title, subtitle, subject, viewed_at, read_count FROM answer_history ORDER BY viewed_at DESC');
   return enrichSubjects(
     rows.map((row) => ({
       id: row.id,
@@ -81,6 +99,7 @@ function readAllFromDb(): AnswerHistoryEntry[] {
       subtitle: row.subtitle || undefined,
       subject: row.subject || undefined,
       viewed_at: row.viewed_at,
+      read_count: Math.max(1, row.read_count ?? 1),
     })),
   );
 }
@@ -124,7 +143,7 @@ async function migrateFromSecureStore() {
     database.withTransactionSync(() => {
       for (const row of legacy) {
         database.runSync(
-          `INSERT OR REPLACE INTO answer_history (id, title, subtitle, subject, viewed_at) VALUES (?, ?, ?, ?, ?)`,
+          `INSERT OR REPLACE INTO answer_history (id, title, subtitle, subject, viewed_at, read_count) VALUES (?, ?, ?, ?, ?, 1)`,
           [row.id, row.title, row.subtitle ?? null, row.subject ?? null, row.viewed_at],
         );
       }
@@ -154,16 +173,17 @@ function persistFromDb() {
   notify();
 }
 
-/** Upsert: re-viewing a question bumps it to the top with a fresh timestamp rather than duplicating. */
-export async function recordAnswerHistory(entry: Omit<AnswerHistoryEntry, 'viewed_at'>) {
+/** Upsert: each qualifying dwell bumps read_count and moves the row to the top. */
+export async function recordAnswerHistory(entry: Omit<AnswerHistoryEntry, 'viewed_at' | 'read_count'>) {
   await migrateFromSecureStore();
   getDb().runSync(
-    `INSERT INTO answer_history (id, title, subtitle, subject, viewed_at) VALUES (?, ?, ?, ?, ?)
+    `INSERT INTO answer_history (id, title, subtitle, subject, viewed_at, read_count) VALUES (?, ?, ?, ?, ?, 1)
      ON CONFLICT(id) DO UPDATE SET
        title = excluded.title,
        subtitle = excluded.subtitle,
        subject = excluded.subject,
-       viewed_at = excluded.viewed_at`,
+       viewed_at = excluded.viewed_at,
+       read_count = COALESCE(answer_history.read_count, 1) + 1`,
     [entry.id, entry.title, entry.subtitle ?? null, entry.subject ?? null, new Date().toISOString()],
   );
   persistFromDb();

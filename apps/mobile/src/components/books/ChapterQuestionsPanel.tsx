@@ -25,6 +25,9 @@ import { ChapterMcqExam } from '@/components/books/ChapterMcqExam';
 import { ChapterQuestionEvaluator } from '@/components/books/ChapterQuestionEvaluator';
 import { ProcessFlowPreview } from '@/components/books/ProcessFlowPreview';
 import { RatingIndicator } from '@/components/evaluation/RatingIndicator';
+import { AnswerDwellRecorder } from '@/components/questions/AnswerDwellRecorder';
+import { ReadCountBadge, ReadFilterChips, ReadSortChips, matchesReadFilter, compareReadCounts, type ReadFilter, type ReadSort } from '@/components/questions/ReadCountBadge';
+import { useAnswerHistory } from '@/hooks/useAnswerHistory';
 import {
   fetchQuestionEvaluation,
   fetchQuestionEvaluationsBatch,
@@ -44,7 +47,6 @@ import { stripHtml } from '@/lib/book-display';
 import { bilingualQuestionText } from '@/lib/question-display';
 import type { ChapterQuestionBrief } from '@/types/books';
 import { ComparisonTablePreview } from '@/components/questions/ComparisonTablePreview';
-import { AnswerDwellRecorder } from '@/components/questions/AnswerDwellRecorder';
 import type { ExplanationSection, QuestionDetail } from '@/types/questions';
 import { colors, spacing } from '@/theme';
 
@@ -164,6 +166,9 @@ export function ChapterQuestionsPanel({
   const [listError, setListError] = useState('');
   const [panelView, setPanelView] = useState<PanelView>('list');
   const [typeFilter, setTypeFilter] = useState('ALL');
+  const [readFilter, setReadFilter] = useState<ReadFilter>('all');
+  const [readSort, setReadSort] = useState<ReadSort>('unread_first');
+  const { readCountById } = useAnswerHistory();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [question, setQuestion] = useState<QuestionDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -190,12 +195,16 @@ export function ChapterQuestionsPanel({
     if (typeFilter !== 'ALL') {
       list = list.filter((q) => q.question_type_code === typeFilter);
     }
-    return [...list].sort(
-      (a, b) =>
+    list = list.filter((q) => matchesReadFilter(readCountById.get(q.id), readFilter));
+    return [...list].sort((a, b) => {
+      const readCmp = compareReadCounts(readCountById.get(a.id), readCountById.get(b.id), readSort);
+      if (readCmp !== 0) return readCmp;
+      return (
         a.question_type_code.localeCompare(b.question_type_code) ||
-        (a.body_en || a.body_bn).localeCompare(b.body_en || b.body_bn),
-    );
-  }, [questions, typeFilter]);
+        (a.body_en || a.body_bn).localeCompare(b.body_en || b.body_bn)
+      );
+    });
+  }, [questions, typeFilter, readFilter, readSort, readCountById]);
 
   const mcqQuestions = useMemo(
     () => questions.filter((q) => q.question_type_code === 'MCQ'),
@@ -444,6 +453,7 @@ export function ChapterQuestionsPanel({
               ) : (
                 <View style={styles.detailWrap}>
                   <View style={styles.badges}>
+                    <ReadCountBadge questionId={question.id} count={readCountById.get(question.id)} />
                     <BookBadge label={question.question_type_code} variant="muted" />
                     <BookBadge label={`${question.marks} marks`} variant="muted" />
                   </View>
@@ -541,7 +551,7 @@ export function ChapterQuestionsPanel({
                     </View>
                   ) : null}
 
-                  {open && showAnswer && !question.has_options ? (
+                  {open && showAnswer ? (
                     <AnswerDwellRecorder
                       id={question.id}
                       bodyEn={question.body_en}
@@ -678,9 +688,13 @@ export function ChapterQuestionsPanel({
                     );
                   })}
                 </ScrollView>
+                <ReadFilterChips value={readFilter} onChange={setReadFilter} />
+                <ReadSortChips value={readSort} onChange={setReadSort} />
 
                 {displayedQuestions.length === 0 ? (
-                  <Text style={styles.muted}>No questions for this type.</Text>
+                  <Text style={styles.muted}>
+                    {readFilter === 'all' ? 'No questions for this type.' : `No ${readFilter} questions for this type.`}
+                  </Text>
                 ) : (
                   displayedQuestions.map((q) => (
                     <Pressable
@@ -690,6 +704,7 @@ export function ChapterQuestionsPanel({
                     >
                       <View style={styles.listRowTop}>
                         <View style={styles.listBadges}>
+                          <ReadCountBadge questionId={q.id} count={readCountById.get(q.id)} />
                           <BookBadge label={q.question_type_code} variant="muted" />
                         </View>
                         <RatingIndicator evaluation={evalMap.get(q.id)} />

@@ -5,10 +5,15 @@ import { Plus, Trash2, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { ReviewStatusBadge, type ReviewStatus } from '@/components/questions/review-status';
+import {
+  applyComposerBankQuery,
+  ComposerBankFilters,
+  type ComposerBankSubjectOption,
+  type ComposerBankTypeOption,
+} from './composer-bank-filters';
 import type { PaperQuestionRow } from './page';
 
 interface BankMcqQuestion {
@@ -83,6 +88,11 @@ export function McqQuestionsPanel({
   const [filterBookId, setFilterBookId] = useState('');
   const [filterChapters, setFilterChapters] = useState<ChapterOption[]>([]);
   const [filterChapterId, setFilterChapterId] = useState('');
+  const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
+  const [filterTypeCodes, setFilterTypeCodes] = useState<string[]>(['MCQ']);
+  const [filterSubjectIds, setFilterSubjectIds] = useState<string[]>([]);
+  const [subjects, setSubjects] = useState<ComposerBankSubjectOption[]>([]);
+  const [types, setTypes] = useState<ComposerBankTypeOption[]>([]);
 
   const existingQuestionIds = useMemo(
     () => new Set(questions.map((q) => q.question_id).filter((id): id is string => Boolean(id))),
@@ -95,6 +105,20 @@ export function McqQuestionsPanel({
       .then((r) => setBooks(r.data))
       .catch(() => setBooks([]));
   }, [pickerOpen, books.length]);
+
+  useEffect(() => {
+    if (!pickerOpen || subjects.length > 0) return;
+    apiFetch<{ data: ComposerBankSubjectOption[] }>('/questions/subject-catalog')
+      .then((r) => setSubjects(r.data))
+      .catch(() => setSubjects([]));
+  }, [pickerOpen, subjects.length]);
+
+  useEffect(() => {
+    if (!pickerOpen || types.length > 0) return;
+    apiFetch<{ data: ComposerBankTypeOption[] }>('/questions/types')
+      .then((r) => setTypes(r.data))
+      .catch(() => setTypes([]));
+  }, [pickerOpen, types.length]);
 
   useEffect(() => {
     if (!filterBookId) {
@@ -118,12 +142,15 @@ export function McqQuestionsPanel({
         setBankLoading(true);
         setBankError('');
         try {
-          const baseParams: Record<string, string> = {
-            question_type_code: 'MCQ',
-          };
-          if (search.trim()) baseParams.q = search.trim();
-          if (filterChapterId) baseParams.book_chapter_id = filterChapterId;
-          else if (filterBookId) baseParams.book_info_id = filterBookId;
+          const baseParams = new URLSearchParams();
+          applyComposerBankQuery(baseParams, {
+            q: search,
+            reviewStatuses: filterStatuses,
+            typeCodes: filterTypeCodes.length ? filterTypeCodes : ['MCQ'],
+            subjectIds: filterSubjectIds,
+          });
+          if (filterChapterId) baseParams.set('book_chapter_id', filterChapterId);
+          else if (filterBookId) baseParams.set('book_info_id', filterBookId);
 
           // The question-bank endpoint caps `limit` at 100 per request, so pull every page —
           // the composer is meant to offer the full MCQ bank (hundreds of questions) to select
@@ -133,11 +160,9 @@ export function McqQuestionsPanel({
           let offset = 0;
           for (;;) {
             if (cancelled) return;
-            const params = new URLSearchParams({
-              ...baseParams,
-              limit: String(pageSize),
-              offset: String(offset),
-            });
+            const params = new URLSearchParams(baseParams);
+            params.set('limit', String(pageSize));
+            params.set('offset', String(offset));
             const r = await apiFetch<{ data: BankMcqQuestion[]; meta?: { has_more?: boolean } }>(
               `/questions?${params.toString()}`,
             );
@@ -163,7 +188,7 @@ export function McqQuestionsPanel({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [pickerOpen, search, filterBookId, filterChapterId]);
+  }, [pickerOpen, search, filterBookId, filterChapterId, filterStatuses, filterTypeCodes, filterSubjectIds]);
 
   const groupedByBook = useMemo(() => {
     const available = bank.filter((q) => !existingQuestionIds.has(q.id));
@@ -195,6 +220,9 @@ export function McqQuestionsPanel({
     setSelected(new Set());
     setFilterBookId('');
     setFilterChapterId('');
+    setFilterStatuses([]);
+    setFilterTypeCodes(['MCQ']);
+    setFilterSubjectIds([]);
   }
 
   async function addSelected() {
@@ -251,19 +279,27 @@ export function McqQuestionsPanel({
         {!readOnly && pickerOpen && (
           <div className="space-y-3 rounded-lg border border-border p-3">
             <div className="flex items-start justify-between gap-2">
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search MCQ question bank..."
-                className="max-w-sm"
-              />
+              <p className="text-sm font-medium">Add from question bank</p>
               <Button type="button" size="sm" variant="ghost" onClick={closePicker}>
                 <X className="h-4 w-4" />
               </Button>
             </div>
+            <ComposerBankFilters
+              search={search}
+              onSearchChange={setSearch}
+              searchPlaceholder="Search MCQ question bank..."
+              reviewStatuses={filterStatuses}
+              onReviewStatusesChange={setFilterStatuses}
+              typeCodes={filterTypeCodes}
+              onTypeCodesChange={setFilterTypeCodes}
+              types={types}
+              subjectIds={filterSubjectIds}
+              onSubjectIdsChange={setFilterSubjectIds}
+              subjects={subjects}
+            />
             <p className="text-xs text-muted">
-              Draft and quality-check questions are listed for tracing. Only published questions can
-              be added to the paper.
+              Draft and quality-check questions are listed for tracing. Only published MCQ
+              questions can be added to this paper.
             </p>
 
             <div className="grid gap-3 sm:grid-cols-2">
@@ -309,11 +345,11 @@ export function McqQuestionsPanel({
               <p className="text-sm text-muted">Loading question bank…</p>
             ) : bankFetched && bank.length === 0 ? (
               <p className="text-sm text-muted">
-                No MCQ questions matched this book/chapter/search.
+                No questions matched these filters.
               </p>
             ) : groupedByBook.length === 0 ? (
               <p className="text-sm text-muted">
-                Found {bank.length} matching MCQ question{bank.length === 1 ? '' : 's'}, but all of
+                Found {bank.length} matching question{bank.length === 1 ? '' : 's'}, but all of
                 them are already on this paper.
               </p>
             ) : (
@@ -325,7 +361,7 @@ export function McqQuestionsPanel({
                     </div>
                     <div className="space-y-1">
                       {group.items.map((q) => {
-                        const canAdd = isPublishedBankQuestion(q);
+                        const canAdd = isPublishedBankQuestion(q) && q.question_type_code === 'MCQ';
                         return (
                         <label
                           key={q.id}
@@ -341,6 +377,9 @@ export function McqQuestionsPanel({
                             onChange={() => toggleSelected(q.id, canAdd)}
                           />
                           <span className="min-w-0 flex-1">
+                            <Badge variant="secondary" className="mr-1.5">
+                              {q.question_type_code}
+                            </Badge>
                             <ReviewStatusBadge status={questionReviewStatus(q)} />
                             <span className="ml-1.5">{truncate(q.body_en || q.body_bn || '')}</span>
                           </span>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -6,6 +6,8 @@ import { BookLoading, BookEmpty, BookError } from '@/components/books/BookStates
 import { fetchQotdDateDetail, type QotdDateDetail } from '@/lib/qotd-api';
 import { formatDayName, parseIsoDate, toIsoDate } from '@/lib/date-format';
 import { questionDetailHref } from '@/lib/question-routes';
+import { ReadCountBadge, ReadFilterChips, matchesReadFilter, type ReadFilter } from '@/components/questions/ReadCountBadge';
+import { useAnswerHistory } from '@/hooks/useAnswerHistory';
 import { colors, spacing } from '@/theme';
 
 function truncate(text: string, len = 140) {
@@ -33,6 +35,8 @@ export default function QotdDateDetailScreen() {
   const [detail, setDetail] = useState<QotdDateDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [readFilter, setReadFilter] = useState<ReadFilter>('all');
+  const { readCountById } = useAnswerHistory();
 
   useEffect(() => {
     if (!date) return;
@@ -43,12 +47,23 @@ export default function QotdDateDetailScreen() {
       .finally(() => setLoading(false));
   }, [date]);
 
+  const visibleGroups = useMemo(() => {
+    if (!detail) return [];
+    return detail.groups
+      .map((group) => ({
+        ...group,
+        questions: group.questions.filter((q) => matchesReadFilter(readCountById.get(q.id), readFilter)),
+      }))
+      .filter((group) => group.questions.length > 0);
+  }, [detail, readFilter, readCountById]);
+
   if (loading) return <BookLoading />;
   if (error) return <BookError message={error} />;
   if (!detail || detail.groups.length === 0) return <BookEmpty title="No questions for this date" />;
 
   const heading = headingFor(detail.date);
-  const totalQuestions = detail.groups.reduce((sum, g) => sum + g.questions.length, 0);
+  const totalQuestions = visibleGroups.reduce((sum, g) => sum + g.questions.length, 0);
+  const allQuestions = detail.groups.reduce((sum, g) => sum + g.questions.length, 0);
 
   return (
     <ScrollView contentContainerStyle={styles.list}>
@@ -56,12 +71,19 @@ export default function QotdDateDetailScreen() {
         {heading.kicker ? <Text style={styles.kicker}>{heading.kicker}</Text> : null}
         <Text style={styles.dateLabel}>{heading.title}</Text>
         <Text style={styles.summary}>
-          {detail.groups.length} subject{detail.groups.length === 1 ? '' : 's'} · {totalQuestions}{' '}
+          {visibleGroups.length} subject{visibleGroups.length === 1 ? '' : 's'} · {totalQuestions}{' '}
           question{totalQuestions === 1 ? '' : 's'}
+          {readFilter !== 'all' ? ` of ${allQuestions}` : ''}
         </Text>
       </View>
 
-      {detail.groups.map((group) => (
+      <ReadFilterChips value={readFilter} onChange={setReadFilter} />
+
+      {visibleGroups.length === 0 ? (
+        <BookEmpty title={readFilter === 'read' ? 'No read questions' : 'No unread questions'} />
+      ) : null}
+
+      {visibleGroups.map((group) => (
         <View key={group.entry_id} style={styles.subjectBlock}>
           <View style={styles.subjectHead}>
             <Text style={styles.subjectName}>{group.subject_name}</Text>
@@ -80,6 +102,7 @@ export default function QotdDateDetailScreen() {
                 <Text style={styles.title} numberOfLines={3}>
                   {truncate(q.body_en || q.body_bn || '')}
                 </Text>
+                <ReadCountBadge questionId={q.id} count={readCountById.get(q.id)} />
                 <Text style={styles.sub}>
                   {q.question_type_code}
                   {q.marks ? ` · ${q.marks}m` : ''}

@@ -31,6 +31,8 @@ import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
 import { SaveButton } from '@/components/ui/SaveButton';
 import { BlockingLoader } from '@/components/ui/BlockingLoader';
 import { AnswerPdfDownloadSheet } from '@/components/questions/AnswerPdfDownloadSheet';
+import { ReadCountBadge, ReadFilterChips, ReadSortChips, matchesReadFilter, compareReadCounts, type ReadFilter, type ReadSort } from '@/components/questions/ReadCountBadge';
+import { useAnswerHistory } from '@/hooks/useAnswerHistory';
 import { cleanBookLabel, stripHtml } from '@/lib/book-display';
 import type { QuestionListItem, QuestionType } from '@/types/questions';
 import { colors, spacing } from '@/theme';
@@ -44,7 +46,11 @@ type BankRow =
   | { kind: 'question'; key: string; item: QuestionListItem; match?: number };
 
 /** Book/chapter grouping for optional “Group by Books & Tools” mode. */
-function sortForBookGrouping(items: QuestionListItem[]): QuestionListItem[] {
+function sortForBookGrouping(
+  items: QuestionListItem[],
+  readCountById: Map<string, number>,
+  readSort: ReadSort,
+): QuestionListItem[] {
   return [...items].sort((a, b) => {
     const aBook = a.book_name?.trim() || '';
     const bBook = b.book_name?.trim() || '';
@@ -57,6 +63,8 @@ function sortForBookGrouping(items: QuestionListItem[]): QuestionListItem[] {
     const bCh = b.chapter_number?.trim() || '';
     const chCmp = aCh.localeCompare(bCh, undefined, { sensitivity: 'base', numeric: true });
     if (chCmp !== 0) return chCmp;
+    const readCmp = compareReadCounts(readCountById.get(a.id), readCountById.get(b.id), readSort);
+    if (readCmp !== 0) return readCmp;
     return (b.updated_at || '').localeCompare(a.updated_at || '');
   });
 }
@@ -123,6 +131,9 @@ export default function QuestionsScreen() {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [evalMap, setEvalMap] = useState<Map<string, QuestionEvalBrief>>(new Map());
   const [loadingMore, setLoadingMore] = useState(false);
+  const [readFilter, setReadFilter] = useState<ReadFilter>('all');
+  const [readSort, setReadSort] = useState<ReadSort>('unread_first');
+  const { readCountById } = useAnswerHistory();
 
   const itemsRef = useRef<QuestionListItem[]>([]);
   const filteredRef = useRef<QuestionListItem[]>([]);
@@ -174,7 +185,9 @@ export default function QuestionsScreen() {
       difficulty ||
       selectedBookId ||
       selectedSubjectId ||
-      groupByBooks,
+      groupByBooks ||
+      readFilter !== 'all' ||
+      readSort !== 'unread_first',
   );
 
   /** Chip/book filters over the local cache (refreshed when you open this module). */
@@ -191,9 +204,10 @@ export default function QuestionsScreen() {
       }
       if (typeCode && item.question_type_code !== typeCode) return false;
       if (difficulty && item.difficulty !== difficulty) return false;
+      if (!matchesReadFilter(readCountById.get(item.id), readFilter)) return false;
       return true;
     });
-  }, [items, selectedBookId, selectedSubjectId, subjectMatchIds, typeCode, difficulty]);
+  }, [items, selectedBookId, selectedSubjectId, subjectMatchIds, typeCode, difficulty, readFilter, readCountById]);
 
   /**
    * Search runs against the full filtered cache (not only the first page), so results include
@@ -212,9 +226,12 @@ export default function QuestionsScreen() {
 
   const filteredAll = useMemo(() => {
     const base = isSearching ? searchResults.map((r) => r.item) : chipFilteredItems;
-    if (groupByBooks && !isSearching) return sortForBookGrouping(base);
-    return base;
-  }, [isSearching, searchResults, chipFilteredItems, groupByBooks]);
+    if (isSearching) return base;
+    if (groupByBooks) return sortForBookGrouping(base, readCountById, readSort);
+    return [...base].sort((a, b) =>
+      compareReadCounts(readCountById.get(a.id), readCountById.get(b.id), readSort),
+    );
+  }, [isSearching, searchResults, chipFilteredItems, groupByBooks, readCountById, readSort]);
 
   const pagedItems = useMemo(
     () => filteredAll.slice(0, visibleCount),
@@ -246,7 +263,7 @@ export default function QuestionsScreen() {
 
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
-  }, [appliedQuery, typeCode, difficulty, selectedBookId, selectedSubjectId, groupByBooks]);
+  }, [appliedQuery, typeCode, difficulty, selectedBookId, selectedSubjectId, groupByBooks, readFilter, readSort]);
 
   useEffect(() => {
     const ids = pagedItems.map((i) => i.id);
@@ -427,6 +444,8 @@ export default function QuestionsScreen() {
     setSubjectMatchIds(null);
     setGroupByBooks(false);
     setBookMenuOpen(false);
+    setReadFilter('all');
+    setReadSort('unread_first');
   }
 
   function loadMore() {
@@ -620,6 +639,8 @@ export default function QuestionsScreen() {
       ) : null}
 
       <View style={styles.filters}>
+        <ReadFilterChips value={readFilter} onChange={setReadFilter} />
+        <ReadSortChips value={readSort} onChange={setReadSort} />
         <FlatList
           horizontal
           data={[
@@ -746,6 +767,7 @@ export default function QuestionsScreen() {
                     {item.body_en}
                   </Text>
                   <View style={styles.badges}>
+                    <ReadCountBadge questionId={item.id} count={readCountById.get(item.id)} />
                     <RatingIndicator evaluation={evalMap.get(item.id)} />
                     <BookBadge
                       label={

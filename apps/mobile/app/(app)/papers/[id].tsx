@@ -5,6 +5,8 @@ import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates
 import { BookRichText } from '@/components/books/BookRichText';
 import { ProgressSummary } from '@/components/evaluation/ProgressSummary';
 import { RatingIndicator } from '@/components/evaluation/RatingIndicator';
+import { ReadCountBadge } from '@/components/questions/ReadCountBadge';
+import { useAnswerHistory } from '@/hooks/useAnswerHistory';
 import { PaperSheetHeader } from '@/components/papers/PaperSheetHeader';
 import { PaperMcqExam } from '@/components/papers/PaperMcqExam';
 import {
@@ -53,6 +55,7 @@ export default function PaperDetailScreen() {
   const [attempts, setAttempts] = useState<PaperAttemptRecord[]>([]);
   const [previewStems, setPreviewStems] = useState<QuestionPracticeStem[]>([]);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const { readCountById } = useAnswerHistory();
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -272,6 +275,7 @@ export default function PaperDetailScreen() {
         <View style={styles.questionBody}>
           <View style={styles.titleWithRating}>
             <Text style={[styles.sheetText, styles.partBody]}>{title}</Text>
+            <ReadCountBadge questionId={part.question_id} count={readCountById.get(part.question_id)} />
             <RatingIndicator evaluation={evalMap.get(part.question_id)} />
           </View>
           {showMarks ? (
@@ -309,7 +313,8 @@ export default function PaperDetailScreen() {
                 <View style={styles.titleWithRating}>
                   <Text style={[styles.sheetText, styles.questionTitle]}>
                     {inline || 'Open question detail'}
-                  </Text>
+                    </Text>
+                  <ReadCountBadge questionId={tapId} count={readCountById.get(tapId)} />
                   <RatingIndicator evaluation={questionEval} />
                 </View>
               </Pressable>

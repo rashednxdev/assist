@@ -15,6 +15,12 @@ import { Badge } from '@/components/ui/badge';
 import { Alert } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { McqQuestionsPanel } from './McqQuestionsPanel';
+import {
+  applyComposerBankQuery,
+  ComposerBankFilters,
+  type ComposerBankSubjectOption,
+  type ComposerBankTypeOption,
+} from './composer-bank-filters';
 import { ReviewStatusBadge, type ReviewStatus } from '@/components/questions/review-status';
 
 export interface QuestionBrief {
@@ -212,6 +218,11 @@ export default function PaperComposerPage() {
   const [panel, setPanel] = useState<Panel>('section');
   const [partBank, setPartBank] = useState<BankQuestion[]>([]);
   const [partBankQ, setPartBankQ] = useState('');
+  const [partBankStatuses, setPartBankStatuses] = useState<string[]>([]);
+  const [partBankTypeCodes, setPartBankTypeCodes] = useState<string[]>([]);
+  const [partBankSubjectIds, setPartBankSubjectIds] = useState<string[]>([]);
+  const [partBankTypes, setPartBankTypes] = useState<ComposerBankTypeOption[]>([]);
+  const [partBankSubjects, setPartBankSubjects] = useState<ComposerBankSubjectOption[]>([]);
   const [partDrafts, setPartDrafts] = useState<PartDraft[]>([]);
   const [partBusy, setPartBusy] = useState(false);
 
@@ -259,26 +270,33 @@ export default function PaperComposerPage() {
   useEffect(() => {
     if (panel !== 'question') return;
     const timer = window.setTimeout(() => {
-      const q = partBankQ.trim();
-      if (q) {
-        // Any query word can prefilter a candidate; only ≥50% word-match results are returned,
-        // ranked by match % — same standard as mother/link question search.
-        const params = new URLSearchParams({
-          q,
-          threshold: '0.5',
-          limit: '50',
-        });
-        apiFetch<{ data: BankQuestion[] }>(`/questions/link-search?${params.toString()}`)
-          .then((r) => setPartBank(r.data))
-          .catch(() => setPartBank([]));
-        return;
-      }
-      apiFetch<{ data: BankQuestion[] }>(`/questions?limit=50`)
+      const params = new URLSearchParams({ limit: '50' });
+      applyComposerBankQuery(params, {
+        q: partBankQ,
+        reviewStatuses: partBankStatuses,
+        typeCodes: partBankTypeCodes,
+        subjectIds: partBankSubjectIds,
+      });
+      apiFetch<{ data: BankQuestion[] }>(`/questions?${params.toString()}`)
         .then((r) => setPartBank(r.data))
         .catch(() => setPartBank([]));
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [partBankQ, panel]);
+  }, [partBankQ, partBankStatuses, partBankTypeCodes, partBankSubjectIds, panel]);
+
+  useEffect(() => {
+    if (panel !== 'question') return;
+    if (partBankTypes.length === 0) {
+      apiFetch<{ data: ComposerBankTypeOption[] }>('/questions/types')
+        .then((r) => setPartBankTypes(r.data))
+        .catch(() => setPartBankTypes([]));
+    }
+    if (partBankSubjects.length === 0) {
+      apiFetch<{ data: ComposerBankSubjectOption[] }>('/questions/subject-catalog')
+        .then((r) => setPartBankSubjects(r.data))
+        .catch(() => setPartBankSubjects([]));
+    }
+  }, [panel, partBankTypes.length, partBankSubjects.length]);
 
   useEffect(() => {
     setPartDrafts([]);
@@ -1056,10 +1074,18 @@ export default function PaperComposerPage() {
                   </div>
                 )}
 
-                <OutlinedInput
-                  label="Search questions for sub-parts"
-                  value={partBankQ}
-                  onChange={(e) => setPartBankQ(e.target.value)}
+                <ComposerBankFilters
+                  search={partBankQ}
+                  onSearchChange={setPartBankQ}
+                  searchPlaceholder="Search questions for sub-parts"
+                  reviewStatuses={partBankStatuses}
+                  onReviewStatusesChange={setPartBankStatuses}
+                  typeCodes={partBankTypeCodes}
+                  onTypeCodesChange={setPartBankTypeCodes}
+                  types={partBankTypes}
+                  subjectIds={partBankSubjectIds}
+                  onSubjectIdsChange={setPartBankSubjectIds}
+                  subjects={partBankSubjects}
                 />
                 <div className="flex items-center justify-between gap-2 text-sm">
                   <span className="text-muted">
@@ -1082,8 +1108,11 @@ export default function PaperComposerPage() {
                   {availablePartQuestions.length === 0 ? (
                     <p className="p-3 text-sm text-muted">
                       {partBank.length === 0
-                        ? partBankQ.trim()
-                          ? 'No questions with at least 50% word match'
+                        ? partBankQ.trim() ||
+                          partBankStatuses.length ||
+                          partBankTypeCodes.length ||
+                          partBankSubjectIds.length
+                          ? 'No questions matched this search or filters'
                           : 'No questions match your search'
                         : 'All matching questions are already sub-parts of this question'}
                     </p>

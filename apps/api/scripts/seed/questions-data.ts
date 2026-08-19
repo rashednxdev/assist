@@ -42,9 +42,33 @@ const STANDARD_TYPES = [
     has_options: false,
     note: 'Compare two or more items in a feature table (model answer)',
   },
+  {
+    name: 'Translation',
+    code: 'TRANSLATION',
+    has_options: false,
+    note: 'Translate a passage; model answer required for marking',
+  },
+  {
+    name: 'Summary',
+    code: 'SUMMARY',
+    has_options: false,
+    note: 'Summarise a passage; model answer required for marking',
+  },
+  {
+    name: 'Drafting',
+    code: 'DRAFTING',
+    has_options: false,
+    note: 'Draft a note, letter, or official text; model answer required for marking',
+  },
+  {
+    name: 'Calculation',
+    code: 'CALCULATION',
+    has_options: false,
+    note: 'Numeric or working-out answer; model answer required for marking',
+  },
 ] as const;
 
-async function ensureQuestionTypes() {
+export async function ensureQuestionTypes() {
   const map = new Map<string, InstanceType<typeof QuestionType>>();
   for (const t of STANDARD_TYPES) {
     let row = await QuestionType.findOne({ code: t.code });
@@ -55,10 +79,22 @@ async function ensureQuestionTypes() {
       row.name = t.name;
       row.has_options = t.has_options;
       row.note = t.note;
-      row.is_active = true;
       await row.save();
     }
     map.set(t.code, row);
+  }
+
+  // Combined "Summary & Drafting" was split into SUMMARY and DRAFTING.
+  const combined = await QuestionType.find({
+    $or: [{ code: 'SUMMARY_DRAFTING' }, { name: /^Summary\s*&\s*Drafting$/i }],
+  });
+  for (const row of combined) {
+    if (row.code === 'SUMMARY' || row.code === 'DRAFTING') continue;
+    if (row.is_active) {
+      row.is_active = false;
+      await row.save();
+      console.log(`Deactivated legacy question type: ${row.name} (${row.code})`);
+    }
   }
 
   // Remove legacy singular "Difference" (keep "Differences")
@@ -74,7 +110,56 @@ async function ensureQuestionTypes() {
     }
   }
 
+  await deactivateUnusedDuplicateTypes();
+
   return map;
+}
+
+function normalizeTypeName(name: string) {
+  return name.trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+}
+
+/**
+ * Hide duplicate types that share a display name (e.g. two "Descriptive") when the extra
+ * row has no questions. Keeps the standard-code type, or the one that is actually in use.
+ */
+async function deactivateUnusedDuplicateTypes() {
+  const standardCodes = new Set(STANDARD_TYPES.map((t) => t.code));
+  const active = await QuestionType.find({ is_active: true });
+  const counts = await Question.aggregate<{ _id: mongoose.Types.ObjectId; count: number }>([
+    { $match: { is_active: true } },
+    { $group: { _id: '$question_type_id', count: { $sum: 1 } } },
+  ]);
+  const countById = new Map(counts.map((c) => [String(c._id), c.count]));
+  const countFor = (id: string) => countById.get(id) ?? 0;
+
+  const groups = new Map<string, typeof active>();
+  for (const t of active) {
+    const key = normalizeTypeName(t.name);
+    const list = groups.get(key) ?? [];
+    list.push(t);
+    groups.set(key, list);
+  }
+
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    group.sort((a, b) => {
+      const byCount = countFor(String(b._id)) - countFor(String(a._id));
+      if (byCount !== 0) return byCount;
+      const aStd = standardCodes.has(a.code) ? 0 : 1;
+      const bStd = standardCodes.has(b.code) ? 0 : 1;
+      return aStd - bStd;
+    });
+    const keep = group[0]!;
+    for (const extra of group.slice(1)) {
+      if (countFor(String(extra._id)) > 0) continue;
+      extra.is_active = false;
+      await extra.save();
+      console.log(
+        `Deactivated unused duplicate type: ${extra.name} (${extra.code}) — kept ${keep.name} (${keep.code})`,
+      );
+    }
+  }
 }
 
 export async function seedQuestionsData() {

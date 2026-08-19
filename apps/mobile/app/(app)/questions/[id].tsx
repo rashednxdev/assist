@@ -29,6 +29,8 @@ import {
 import type { ExplanationSection, QuestionDetail, QuestionOption } from '@/types/questions';
 import { ComparisonTablePreview } from '@/components/questions/ComparisonTablePreview';
 import { AnswerDwellRecorder } from '@/components/questions/AnswerDwellRecorder';
+import { ReadCountBadge } from '@/components/questions/ReadCountBadge';
+import { useAnswerHistory } from '@/hooks/useAnswerHistory';
 import { ProcessFlowPreview } from '@/components/books/ProcessFlowPreview';
 import { BookRichText } from '@/components/books/BookRichText';
 import { AnswerPdfDownloadSheet } from '@/components/questions/AnswerPdfDownloadSheet';
@@ -69,6 +71,7 @@ export default function QuestionDetailScreen() {
   const [nextStem, setNextStem] = useState<QuestionPracticeStem | null>(null);
   const [questionContentHeight, setQuestionContentHeight] = useState(0);
   const { height: windowHeight } = useWindowDimensions();
+  const { readCountById } = useAnswerHistory();
 
   useEffect(() => {
     if (!id) return;
@@ -330,11 +333,14 @@ export default function QuestionDetailScreen() {
         >
           <BookRichText html={stem.primary} style={styles.questionText} />
           {stem.secondary ? <BookRichText html={stem.secondary} style={styles.questionBn} /> : null}
+          <View style={{ marginTop: 8 }}>
+            <ReadCountBadge questionId={id} count={id ? readCountById.get(id) : 0} />
+          </View>
         </ScrollView>
       </View>
 
       <ScrollView style={styles.scrollArea} contentContainerStyle={styles.content}>
-      {showAnswer && !item.has_options ? (
+      {showAnswer ? (
         <AnswerDwellRecorder
           id={item.id}
           bodyEn={item.body_en}

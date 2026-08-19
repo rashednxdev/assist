@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   loadAnswerHistory,
   subscribeAnswerHistory,
@@ -22,5 +22,13 @@ export function useAnswerHistory() {
     });
   }, [refresh]);
 
-  return { items, ready, refresh };
+  const readCountById = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const row of items) {
+      map.set(row.id, row.read_count);
+    }
+    return map;
+  }, [items]);
+
+  return { items, ready, refresh, readCountById };
 }

@@ -8,6 +8,7 @@ import {
   Pressable,
   Alert,
   Modal,
+  Linking,
 } from 'react-native';
 import { useFocusEffect, useRouter, type Href } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,6 +18,9 @@ import { PerformanceCard } from '@/components/home/PerformanceCard';
 import { ModuleTile } from '@/components/home/ModuleTile';
 import { ExamCountdownCard } from '@/components/home/ExamCountdownCard';
 import { AccessRequiredScreen, type AccessRequiredVariant } from '@/components/home/AccessRequiredScreen';
+import { ModuleWelcomeTips } from '@/components/home/ModuleWelcomeTips';
+import { APP_UPDATE_URL, APP_VERSION_LABEL } from '@/lib/app-version';
+import { isModuleWelcomeTipsPending } from '@/lib/module-welcome-tips';
 import { useAuth } from '@/lib/auth-context';
 import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
 import { useAnswerHistory } from '@/hooks/useAnswerHistory';
@@ -160,6 +164,7 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [checkingModuleId, setCheckingModuleId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [welcomeTipsOpen, setWelcomeTipsOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [accessScreen, setAccessScreen] = useState<{
     variant: AccessRequiredVariant;
@@ -267,6 +272,12 @@ export default function HomeScreen() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    void isModuleWelcomeTipsPending().then((pending) => {
+      if (pending) setWelcomeTipsOpen(true);
+    });
+  }, []);
 
   // Module grants can change while the app stays open (e.g. an admin grants/revokes access) —
   // re-check on every visit to home, not just at login, so tile visibility stays current.
@@ -385,6 +396,22 @@ export default function HomeScreen() {
                   <Text style={styles.menuItemSub}>End this session</Text>
                 </View>
               </Pressable>
+              <View style={styles.menuDivider} />
+              <View style={styles.menuVersion}>
+                <Text style={styles.menuVersionText}>{APP_VERSION_LABEL}</Text>
+                <Pressable
+                  style={({ pressed }) => [styles.updateBtn, pressed && styles.updateBtnPressed]}
+                  onPress={() => {
+                    setMenuOpen(false);
+                    void Linking.openURL(APP_UPDATE_URL);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Check update"
+                >
+                  <Ionicons name="cloud-download-outline" size={14} color={colors.primary} />
+                  <Text style={styles.updateBtnText}>Check update</Text>
+                </Pressable>
+              </View>
             </View>
           </SafeAreaView>
         </View>
@@ -488,6 +515,7 @@ export default function HomeScreen() {
         stoppedReason={accessScreen?.stoppedReason}
         onClose={() => setAccessScreen(null)}
       />
+      <ModuleWelcomeTips visible={welcomeTipsOpen} onDone={() => setWelcomeTipsOpen(false)} />
     </View>
   );
 }
@@ -601,6 +629,39 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: colors.border,
     marginHorizontal: spacing.md,
+  },
+  menuVersion: {
+    paddingHorizontal: spacing.md,
+    paddingTop: 10,
+    paddingBottom: 12,
+    alignItems: 'center',
+    gap: 8,
+  },
+  menuVersionText: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+    color: colors.textMuted,
+  },
+  updateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    width: '100%',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: '#eff6ff',
+    paddingVertical: 8,
+  },
+  updateBtnPressed: {
+    opacity: 0.85,
+  },
+  updateBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.primary,
   },
   scroll: {
     padding: spacing.lg,

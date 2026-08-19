@@ -65,7 +65,17 @@ export const QUESTION_DIFFICULTIES = ['easy', 'medium', 'hard'] as const;
 export type QuestionDifficulty = (typeof QUESTION_DIFFICULTIES)[number];
 
 /** Standard question type codes (seeded in question_types collection). */
-export const QUESTION_TYPE_CODES = ['MCQ', 'TF', 'DESCRIPTIVE', 'SHORT_NOTE', 'DIFFERENCES'] as const;
+export const QUESTION_TYPE_CODES = [
+  'MCQ',
+  'TF',
+  'DESCRIPTIVE',
+  'SHORT_NOTE',
+  'DIFFERENCES',
+  'TRANSLATION',
+  'SUMMARY',
+  'DRAFTING',
+  'CALCULATION',
+] as const;
 export type QuestionTypeCode = (typeof QUESTION_TYPE_CODES)[number];
 
 export const QUESTION_LINK_LEVELS = ['chapter', 'rule', 'sub_rule'] as const;

@@ -12,6 +12,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
 import { BookRichText } from '@/components/books/BookRichText';
 import { RatingIndicator } from '@/components/evaluation/RatingIndicator';
+import { ReadCountBadge, ReadFilterChips, matchesReadFilter, type ReadFilter } from '@/components/questions/ReadCountBadge';
+import { AnswerDwellRecorder } from '@/components/questions/AnswerDwellRecorder';
+import { useAnswerHistory } from '@/hooks/useAnswerHistory';
 import { fetchQuestionEvaluationsBatch, type QuestionEvalBrief } from '@/lib/evaluation-api';
 import { SwipeToRemove } from '@/components/saved/SwipeToRemove';
 import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
@@ -152,6 +155,8 @@ export default function SavedMarathonScreen() {
   const [selectedBookKey, setSelectedBookKey] = useState<string | null>(null);
   const [bookMenuOpen, setBookMenuOpen] = useState(false);
   const [evalMap, setEvalMap] = useState<Map<string, QuestionEvalBrief>>(new Map());
+  const [readFilter, setReadFilter] = useState<ReadFilter>('all');
+  const { readCountById } = useAnswerHistory();
 
   useEffect(() => {
     const ids = marathonSaved.map((row) => row.id);
@@ -179,7 +184,10 @@ export default function SavedMarathonScreen() {
     };
   }, [marathonSaved]);
 
-  const allGroups = useMemo(() => groupMarathonByBook(marathonSaved), [marathonSaved]);
+  const allGroups = useMemo(() => {
+    const filtered = marathonSaved.filter((row) => matchesReadFilter(readCountById.get(row.id), readFilter));
+    return groupMarathonByBook(filtered);
+  }, [marathonSaved, readFilter, readCountById]);
   const bookOptions = useMemo(
     () =>
       allGroups.map((g) => ({
@@ -300,6 +308,10 @@ export default function SavedMarathonScreen() {
         </Pressable>
       </View>
 
+      <View style={{ paddingBottom: spacing.sm }}>
+        <ReadFilterChips value={readFilter} onChange={setReadFilter} />
+      </View>
+
       {bookMenuOpen ? (
         <View style={styles.bookMenu}>
           <Pressable
@@ -389,6 +401,7 @@ export default function SavedMarathonScreen() {
                       >
                         <Text style={styles.number}>{displayNumber}.</Text>
                         <View style={styles.ratingWrap}>
+                          <ReadCountBadge questionId={row.id} count={readCountById.get(row.id)} />
                           <RatingIndicator evaluation={evalMap.get(row.id)} />
                         </View>
                         <View style={styles.questionBody}>
@@ -410,6 +423,14 @@ export default function SavedMarathonScreen() {
                                 <Text style={styles.answerMissing}>Not set</Text>
                               </View>
                             )
+                          ) : null}
+                          {questionsOnly && revealed ? (
+                            <AnswerDwellRecorder
+                              id={row.id}
+                              bodyEn={detail?.body_en ?? row.title}
+                              bodyBn={detail?.body_bn}
+                              subtitle={row.subtitle}
+                            />
                           ) : null}
                         </View>
                       </Pressable>
@@ -574,6 +595,8 @@ const styles = StyleSheet.create({
   },
   ratingWrap: {
     paddingTop: 3,
+    alignItems: 'flex-end',
+    gap: 4,
   },
   questionBody: {
     flex: 1,

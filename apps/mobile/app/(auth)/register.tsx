@@ -7,6 +7,7 @@ import { TextField } from '@/components/ui/TextField';
 import { Button } from '@/components/ui/Button';
 import { TermsViewerModal } from '@/components/auth/TermsViewerModal';
 import { register } from '@/lib/auth-api';
+import { markModuleWelcomeTipsPending } from '@/lib/module-welcome-tips';
 import { useAuth } from '@/lib/auth-context';
 import { ApiError } from '@/lib/api';
 import { colors, spacing } from '@/theme';
@@ -67,6 +68,7 @@ export default function RegisterScreen() {
         user_type: 'applicant',
         accept_terms: acceptedTerms,
       });
+      await markModuleWelcomeTipsPending();
       await refreshUser();
       router.replace('/(app)/home');
     } catch (err) {

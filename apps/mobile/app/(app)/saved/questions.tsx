@@ -9,6 +9,8 @@ import { SwipeToRemove } from '@/components/saved/SwipeToRemove';
 import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
 import { removeSavedShortcut, type SavedShortcut } from '@/lib/saved-shortcuts';
 import { questionDetailHref } from '@/lib/question-routes';
+import { ReadCountBadge, ReadFilterChips, matchesReadFilter, type ReadFilter } from '@/components/questions/ReadCountBadge';
+import { useAnswerHistory } from '@/hooks/useAnswerHistory';
 import { colors, spacing } from '@/theme';
 
 type BookGroup = {
@@ -41,6 +43,8 @@ export default function SavedQuestionsScreen() {
   const [selectedBookKey, setSelectedBookKey] = useState<string | null>(null);
   const [bookMenuOpen, setBookMenuOpen] = useState(false);
   const [evalMap, setEvalMap] = useState<Map<string, QuestionEvalBrief>>(new Map());
+  const [readFilter, setReadFilter] = useState<ReadFilter>('all');
+  const { readCountById } = useAnswerHistory();
 
   useEffect(() => {
     const ids = questions.map((q) => q.id);
@@ -68,7 +72,10 @@ export default function SavedQuestionsScreen() {
     };
   }, [questions]);
 
-  const groups = useMemo(() => groupQuestionsByBook(questions), [questions]);
+  const groups = useMemo(() => {
+    const filtered = questions.filter((row) => matchesReadFilter(readCountById.get(row.id), readFilter));
+    return groupQuestionsByBook(filtered);
+  }, [questions, readFilter, readCountById]);
   const bookOptions = useMemo(
     () => groups.map((g) => ({ id: g.bookKey, name: g.bookName, count: g.items.length })),
     [groups],
@@ -104,6 +111,10 @@ export default function SavedQuestionsScreen() {
         >
           <Ionicons name="ellipsis-vertical" size={18} color={colors.primary} />
         </Pressable>
+      </View>
+
+      <View style={{ paddingBottom: spacing.sm }}>
+        <ReadFilterChips value={readFilter} onChange={setReadFilter} />
       </View>
 
       {bookMenuOpen ? (
@@ -153,7 +164,13 @@ export default function SavedQuestionsScreen() {
       ) : null}
 
       <ScrollView contentContainerStyle={styles.list}>
-        {visibleGroups.map((group) => (
+        {visibleGroups.length === 0 ? (
+          <BookEmpty
+            title={readFilter === 'read' ? 'No read questions' : 'No unread questions'}
+            subtitle="Try a different Read / Unread filter."
+          />
+        ) : (
+          visibleGroups.map((group) => (
           <View key={group.bookKey} style={styles.bookBlock}>
             <Text style={styles.bookTitle}>{group.bookName}</Text>
             {group.items.map((item) => (
@@ -172,6 +189,7 @@ export default function SavedQuestionsScreen() {
                       <Text style={[styles.title, styles.titleText]} numberOfLines={3}>
                         {item.title}
                       </Text>
+                      <ReadCountBadge questionId={item.id} count={readCountById.get(item.id)} />
                       <RatingIndicator evaluation={evalMap.get(item.id)} />
                     </View>
                   </View>
@@ -179,7 +197,8 @@ export default function SavedQuestionsScreen() {
               </SwipeToRemove>
             ))}
           </View>
-        ))}
+          ))
+        )}
       </ScrollView>
     </View>
   );

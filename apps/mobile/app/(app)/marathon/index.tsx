@@ -16,6 +16,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
 import { BookRichText } from '@/components/books/BookRichText';
 import { RatingIndicator } from '@/components/evaluation/RatingIndicator';
+import { ReadCountBadge, ReadFilterChips, matchesReadFilter, type ReadFilter } from '@/components/questions/ReadCountBadge';
+import { AnswerDwellRecorder } from '@/components/questions/AnswerDwellRecorder';
+import { useAnswerHistory } from '@/hooks/useAnswerHistory';
 import { fetchQuestionEvaluationsBatchChunked, type QuestionEvalBrief } from '@/lib/evaluation-api';
 import { cleanBookLabel } from '@/lib/book-display';
 import {
@@ -23,7 +26,7 @@ import {
   saveMarathonLastQuestion,
   type MarathonLastQuestion,
 } from '@/lib/marathon-progress';
-import { getCachedMarathonItems } from '@/lib/questions-db';
+import { getCachedMarathonItems, getCachedQuestionSubjectLabel } from '@/lib/questions-db';
 import { subscribeQuestionsSync, syncQuestions } from '@/lib/questions-sync';
 import { questionCacheScopeKey } from '@/lib/subject-scope';
 import { useAuth } from '@/lib/auth-context';
@@ -151,6 +154,8 @@ export default function MarathonReviewScreen() {
   const [resumeReady, setResumeReady] = useState(false);
   const [resuming, setResuming] = useState(true);
   const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [readFilter, setReadFilter] = useState<ReadFilter>('all');
+  const { readCountById } = useAnswerHistory();
   const scrollRef = useRef<ScrollView>(null);
   const scrollYRef = useRef(0);
   const bookOffsets = useRef<Record<string, number>>({});
@@ -248,9 +253,11 @@ export default function MarathonReviewScreen() {
    */
   const filteredItems = useMemo(() => {
     const q = appliedQuery.trim();
-    if (!q) return items;
-    return items.filter((item) => questionMatchScore(q, item.body_en, item.body_bn) >= 0.5);
-  }, [items, appliedQuery]);
+    const searched = !q
+      ? items
+      : items.filter((item) => questionMatchScore(q, item.body_en, item.body_bn) >= 0.5);
+    return searched.filter((item) => matchesReadFilter(readCountById.get(item.id), readFilter));
+  }, [items, appliedQuery, readFilter, readCountById]);
 
   const groups = useMemo(() => groupByBookChapter(filteredItems), [filteredItems]);
 
@@ -299,7 +306,7 @@ export default function MarathonReviewScreen() {
     [visibleGroups],
   );
 
-  const hasActiveFilter = Boolean(appliedQuery.trim() || selectedBookId);
+  const hasActiveFilter = Boolean(appliedQuery.trim() || selectedBookId || readFilter !== 'all');
 
   function submitSearch() {
     setAppliedQuery(searchDraft.trim());
@@ -464,6 +471,10 @@ export default function MarathonReviewScreen() {
           ) : null}
         </View>
       ) : null}
+
+      <View style={{ paddingBottom: spacing.sm }}>
+        <ReadFilterChips value={readFilter} onChange={setReadFilter} />
+      </View>
 
       <View style={styles.infoRow}>
         <View style={styles.infoTextCol}>
@@ -655,9 +666,19 @@ export default function MarathonReviewScreen() {
                                 </View>
                               )
                             ) : null}
+                            {questionsOnly && revealed ? (
+                              <AnswerDwellRecorder
+                                id={item.id}
+                                bodyEn={item.body_en}
+                                bodyBn={item.body_bn}
+                                subtitle={item.book_name}
+                                subject={getCachedQuestionSubjectLabel(item.id)}
+                              />
+                            ) : null}
                           </View>
                         </Pressable>
                         <View style={styles.ratingWrap}>
+                          <ReadCountBadge questionId={item.id} count={readCountById.get(item.id)} />
                           <RatingIndicator evaluation={evalMap.get(item.id)} />
                         </View>
                         <SaveButton
@@ -961,6 +982,8 @@ const styles = StyleSheet.create({
   ratingWrap: {
     paddingTop: 12,
     paddingHorizontal: 2,
+    alignItems: 'flex-end',
+    gap: 4,
   },
   questionRowResumeWrap: {
     backgroundColor: '#eaf7ee',

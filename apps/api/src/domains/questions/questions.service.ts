@@ -68,6 +68,11 @@ import {
 /** Same pass bar as similar / link-search — ≥50% of query words found in the question text. */
 const QUESTION_SEARCH_MATCH_THRESHOLD = 0.5;
 
+function filterList(value?: string | string[]): string[] {
+  if (!value) return [];
+  return (Array.isArray(value) ? value : [value]).map((v) => v.trim()).filter(Boolean);
+}
+
 async function questionIdsForSubjectScope(scope: ExamSubjectScope): Promise<mongoose.Types.ObjectId[] | null> {
   const subjectIds = subjectObjectIds(scope);
   if (subjectIds === null) return null;
@@ -1179,16 +1184,16 @@ export async function listQuestions(
     q?: string;
     difficulty?: string;
     question_type_id?: string;
-    question_type_code?: string;
+    question_type_code?: string | string[];
     is_published?: boolean;
-    review_status?: string;
+    review_status?: string | string[];
     trashed?: boolean;
     book_chapter_id?: string;
     book_topic_id?: string;
     book_sub_topic_id?: string;
     regulation_id?: string;
     book_info_id?: string;
-    exam_subject_id?: string;
+    exam_subject_id?: string | string[];
     /** Not tagged to any book/chapter yet — overrides book_chapter_id/book_info_id when true. */
     untagged?: boolean;
     sort?: string;
@@ -1200,24 +1205,27 @@ export async function listQuestions(
   const offset = Math.max(0, filters.offset ?? 0);
   const limit = filters.limit;
   const subjectScope = options?.subjectScope ?? { mode: 'all' };
+  const typeCodes = filterList(filters.question_type_code);
+  const reviewStatuses = filterList(filters.review_status);
+  let subjectIds = filterList(filters.exam_subject_id);
   const scopedQuestionIds = await questionIdsForSubjectScope(subjectScope);
   if (scopedQuestionIds && scopedQuestionIds.length === 0) {
     return { items: [], total: 0, limit, offset };
   }
 
-  if (
-    filters.exam_subject_id &&
-    subjectScope.mode === 'subset' &&
-    !subjectScope.ids.includes(filters.exam_subject_id)
-  ) {
-    return { items: [], total: 0, limit, offset };
+  if (subjectIds.length && subjectScope.mode === 'subset') {
+    subjectIds = subjectIds.filter((id) => subjectScope.ids.includes(id));
+    if (subjectIds.length === 0) {
+      return { items: [], total: 0, limit, offset };
+    }
   }
 
   const canUsePublishedCache =
     !options?.bypassCache &&
     filters.is_published === true &&
     filters.trashed !== true &&
-    !filters.exam_subject_id &&
+    subjectIds.length === 0 &&
+    reviewStatuses.length === 0 &&
     !scopedQuestionIds;
 
   if (canUsePublishedCache) {
@@ -1245,8 +1253,8 @@ export async function listQuestions(
       if (filters.question_type_id) {
         list = list.filter((q) => q.question_type_id === filters.question_type_id);
       }
-      if (filters.question_type_code) {
-        list = list.filter((q) => q.question_type_code === filters.question_type_code);
+      if (typeCodes.length) {
+        list = list.filter((q) => q.question_type_code && typeCodes.includes(q.question_type_code));
       }
       if (filters.untagged) {
         list = list.filter((q) => !q.book_chapter_id);
@@ -1284,9 +1292,11 @@ export async function listQuestions(
   const query: Record<string, unknown> = { is_active: filters.trashed === true ? false : true };
   if (filters.difficulty) query.difficulty = filters.difficulty;
   if (filters.question_type_id) query.question_type_id = filters.question_type_id;
-  if (filters.question_type_code) query.question_type_code = filters.question_type_code;
+  if (typeCodes.length === 1) query.question_type_code = typeCodes[0];
+  else if (typeCodes.length > 1) query.question_type_code = { $in: typeCodes };
   if (filters.is_published !== undefined) query.is_published = filters.is_published;
-  if (filters.review_status) query.review_status = filters.review_status;
+  if (reviewStatuses.length === 1) query.review_status = reviewStatuses[0];
+  else if (reviewStatuses.length > 1) query.review_status = { $in: reviewStatuses };
 
   if (filters.untagged) {
     // Not tagged to any book/chapter yet — book_chapter_id is kept unset in sync with book_links.
@@ -1325,12 +1335,14 @@ export async function listQuestions(
     }
   }
 
-  if (filters.exam_subject_id) {
+  if (subjectIds.length) {
     const tagged = await QuestionSubjectLink.find({
-      exam_subject_id: new mongoose.Types.ObjectId(filters.exam_subject_id),
+      exam_subject_id: { $in: subjectIds.map((id) => new mongoose.Types.ObjectId(id)) },
       is_active: true,
     }).select('question_id');
-    const taggedIds = tagged.map((l) => l.question_id);
+    const taggedIds = [...new Set(tagged.map((l) => String(l.question_id)))].map(
+      (id) => new mongoose.Types.ObjectId(id),
+    );
     if (taggedIds.length === 0) {
       return { items: [], total: 0, limit, offset };
     }

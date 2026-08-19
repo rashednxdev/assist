@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "seed": "tsx scripts/seed/index.ts",
+    "seed:question-types": "tsx scripts/seed/question-types.ts",
     "migrate:indexes": "tsx scripts/migrations/create-indexes.ts",
     "migrate:explanations": "tsx scripts/migrations/migrate-explanation-sections.ts",
     "migrate:review-status": "tsx scripts/migrations/migrate-review-status.ts",

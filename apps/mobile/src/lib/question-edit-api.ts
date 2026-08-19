@@ -101,6 +101,14 @@ export async function updateQuestionContent(id: string, payload: QuestionUpdateP
   return res.data;
 }
 
+export async function updateQuestionType(id: string, questionTypeId: string): Promise<QuestionDetail> {
+  const res = await apiFetch<{ data: QuestionDetail }>(`/questions/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ question_type_id: questionTypeId }),
+  });
+  return res.data;
+}
+
 export type ReviewTransition = 'submit-for-quality-check' | 'return-to-draft' | 'publish' | 'unpublish';
 
 export async function transitionQuestionReviewStatus(

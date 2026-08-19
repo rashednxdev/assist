@@ -10,6 +10,7 @@ import { fetchQuestionForEdit, fetchQuestionsForEdit } from '@/lib/question-edit
 import { useAuth } from '@/lib/auth-context';
 import { useQuestionUpdateCatalogs } from '@/lib/question-update-catalogs';
 import { QuestionQuickTags } from '@/components/questions/QuestionQuickTags';
+import { QuestionQuickType } from '@/components/questions/QuestionQuickType';
 import type { QuestionListItem, ReviewStatus } from '@/types/questions';
 import { colors, spacing } from '@/theme';
 
@@ -341,31 +342,47 @@ export default function QuestionUpdateListScreen() {
                 style={({ pressed }) => [styles.cardTop, pressed && styles.pressed]}
                 onPress={() => openQuestion(item.id)}
               >
-                <View style={styles.cardBody}>
-                  <Text style={styles.cardText} numberOfLines={3}>
-                    {item.body_en}
-                  </Text>
-                  <View style={styles.badges}>
-                    <BookBadge
-                      label={item.question_type_name ?? item.question_type_code}
-                      variant="muted"
-                    />
-                    <BookBadge label={item.difficulty} variant="muted" />
-                    <BookBadge label={`${item.marks} marks`} variant="muted" />
-                    <ReviewStatusBadge status={item.review_status ?? 'draft'} by={item.status_by_name} />
-                    {(item.used_in_papers ?? []).map((paper) => {
-                      const session =
-                        paper.session_label_en?.trim() ||
-                        paper.session_year?.trim() ||
-                        paper.session_label_bn?.trim() ||
-                        '';
-                      const label = session ? `${session} · ${paper.name}` : paper.name;
-                      return <BookBadge key={paper.id} label={label} variant="muted" />;
-                    })}
-                  </View>
-                </View>
+                <Text style={styles.cardText} numberOfLines={3}>
+                  {item.body_en}
+                </Text>
                 <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
               </Pressable>
+              <View style={styles.badges}>
+                <QuestionQuickType
+                  questionId={item.id}
+                  typeId={item.question_type_id}
+                  typeCode={item.question_type_code}
+                  typeName={item.question_type_name}
+                  types={types}
+                  disabled={!canTag}
+                  onChanged={(next) =>
+                    setItems((prev) =>
+                      prev.map((row) =>
+                        row.id === item.id
+                          ? {
+                              ...row,
+                              question_type_id: next.id,
+                              question_type_code: next.code,
+                              question_type_name: next.name,
+                            }
+                          : row,
+                      ),
+                    )
+                  }
+                />
+                <BookBadge label={item.difficulty} variant="muted" />
+                <BookBadge label={`${item.marks} marks`} variant="muted" />
+                <ReviewStatusBadge status={item.review_status ?? 'draft'} by={item.status_by_name} />
+                {(item.used_in_papers ?? []).map((paper) => {
+                  const session =
+                    paper.session_label_en?.trim() ||
+                    paper.session_year?.trim() ||
+                    paper.session_label_bn?.trim() ||
+                    '';
+                  const label = session ? `${session} · ${paper.name}` : paper.name;
+                  return <BookBadge key={paper.id} label={label} variant="muted" />;
+                })}
+              </View>
               {canTag || (item.subjects ?? []).length > 0 || (item.book_tags ?? []).length > 0 ? (
               <QuestionQuickTags
                 questionId={item.id}
@@ -596,14 +613,11 @@ const styles = StyleSheet.create({
   },
   cardTop: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: spacing.md,
   },
-  cardBody: {
-    flex: 1,
-    gap: 8,
-  },
   cardText: {
+    flex: 1,
     fontSize: 14,
     color: colors.text,
     lineHeight: 20,

@@ -17,6 +17,7 @@ import {
   type AnswerHistorySort,
 } from '@/lib/answer-history';
 import { questionDetailHref } from '@/lib/question-routes';
+import { ReadCountBadge } from '@/components/questions/ReadCountBadge';
 import { useAuth } from '@/lib/auth-context';
 import { AnswerPdfDownloadSheet } from '@/components/questions/AnswerPdfDownloadSheet';
 import { colors, spacing } from '@/theme';
@@ -71,7 +72,7 @@ export default function AnswerHistoryScreen() {
     return (
       <BookEmpty
         title="No answer reading history yet"
-        subtitle="Questions you spend at least 6 seconds reading the answer of will show up here, grouped by date."
+        subtitle="Questions you spend at least 5 seconds reading the answer of will show up here, grouped by date."
       />
     );
   }
@@ -267,6 +268,7 @@ export default function AnswerHistoryScreen() {
                       <Text style={styles.title} numberOfLines={3}>
                         {item.title}
                       </Text>
+                      <ReadCountBadge questionId={item.id} count={item.read_count} />
                       <View style={styles.metaRow}>
                         <Text style={styles.subtitle} numberOfLines={1}>
                           {[item.subject, item.subtitle].filter(Boolean).join(' · ') || ' '}

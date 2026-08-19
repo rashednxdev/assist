@@ -590,6 +590,14 @@ export function getCachedBookQuestions(bookId: string): ChapterQuestionBrief[] {
   }));
 }
 
+/** After a Question Update type change — keep local Question Bank filters in sync. */
+export function updateCachedQuestionType(questionId: string, questionTypeCode: string): void {
+  getDb().runSync('UPDATE questions SET question_type_code = ? WHERE id = ?', [
+    questionTypeCode,
+    questionId,
+  ]);
+}
+
 /** After a Question Update quick-tag — keep local Books panels in sync without waiting for pull. */
 export function upsertCachedQuestionBookLink(
   questionId: string,

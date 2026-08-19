@@ -143,17 +143,32 @@ export const similarQuestionsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(20).default(8),
 });
 
+/** Accept `a`, `a,b`, or repeated `a&a=b` query values as a string list. */
+function csvOrRepeat(item: z.ZodType<string>) {
+  return z.preprocess((val) => {
+    if (val === undefined || val === null || val === '') return undefined;
+    const parts = (Array.isArray(val) ? val : [val]).flatMap((v) =>
+      String(v)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    );
+    return parts.length ? parts : undefined;
+  }, z.array(item).min(1).optional());
+}
+
 export const listQuestionsQuerySchema = z.object({
   q: z.string().optional(),
   difficulty: z.enum(QUESTION_DIFFICULTIES).optional(),
   question_type_id: mongoId.optional(),
-  question_type_code: z.string().optional(),
+  /** One or more type codes (`MCQ` or `MCQ,TRANSLATION`). */
+  question_type_code: csvOrRepeat(z.string().min(1)),
   is_published: z
     .enum(['true', 'false'])
     .optional()
     .transform((v) => (v === undefined ? undefined : v === 'true')),
-  /** Draft / quality_check / published — a finer-grained alternative to is_published. */
-  review_status: z.enum(QUESTION_REVIEW_STATUSES).optional(),
+  /** One or more of draft / quality_check / published. */
+  review_status: csvOrRepeat(z.enum(QUESTION_REVIEW_STATUSES)),
   /** When true, list soft-deleted (trashed) questions only. */
   trashed: z
     .enum(['true', 'false'])
@@ -165,8 +180,8 @@ export const listQuestionsQuerySchema = z.object({
   regulation_id: mongoId.optional(),
   /** Filter questions linked to any chapter of this book. */
   book_info_id: mongoId.optional(),
-  /** Filter questions tagged with this exam subject (multi-tag). */
-  exam_subject_id: mongoId.optional(),
+  /** One or more exam subjects (match if tagged with any selected subject). */
+  exam_subject_id: csvOrRepeat(mongoId),
   /** List sort order, defaults to most-recently-updated first. */
   sort: z.enum(QUESTION_SORT_OPTIONS).optional(),
   /** Page size (load first N, then request more with offset). */

@@ -25,6 +25,7 @@ import {
   CalendarClock,
   MessageSquarePlus,
   FileCheck,
+  Video,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -62,6 +63,7 @@ export const navGroups: NavGroup[] = [
       { href: '/questions', label: 'Question bank', icon: HelpCircle, moduleCode: 'QUESTIONS' },
       { href: '/exams', label: 'Exam programs', icon: GraduationCap, moduleCode: 'EXAM' },
       { href: '/papers', label: 'Exam papers', icon: FileText, moduleCode: 'PAPER' },
+      { href: '/live', label: 'Live class', icon: Video, moduleCode: 'LIVE_STREAM' },
       { href: '/pension', label: 'Pension calculator', icon: Calculator, moduleCode: 'PENSION' },
       { href: '/joining-period', label: 'Joining period', icon: Calculator, moduleCode: 'PENSION' },
     ],
@@ -141,6 +143,7 @@ export const navGroups: NavGroup[] = [
       { href: '/qotd/admin', label: 'Questions of the Day', icon: HelpCircle, moduleCode: 'QOTD', requireCreate: true },
       { href: '/exam-routine/admin', label: 'Exam Routine', icon: CalendarClock, moduleCode: 'EXAM_ROUTINE', requireCreate: true },
       { href: '/user-questions/admin', label: 'Submitted Questions', icon: MessageSquarePlus, moduleCode: 'USER_QUESTIONS', requireCreate: true },
+      { href: '/live/admin', label: 'Live class', icon: Video, moduleCode: 'LIVE_STREAM', requireCreate: true },
       { href: '/admin/setup/pension-leaves', label: 'Pension leave types', icon: Calculator, moduleCode: 'SETUP', requireCreate: true },
     ],
   },

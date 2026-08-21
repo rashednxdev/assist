@@ -31,6 +31,7 @@ export const MODULE_CODES = [
   'EXAM_WEEK',
   'QUESTION_EDIT',
   'ANSWER_PDF',
+  'LIVE_STREAM',
 ] as const;
 export type ModuleCode = (typeof MODULE_CODES)[number];
 

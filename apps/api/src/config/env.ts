@@ -22,6 +22,10 @@ const envSchema = z.object({
   SMTP_USER: z.string().optional(),
   /** Gmail App Password (not the account password) — Google Account > Security > App passwords. */
   SMTP_PASS: z.string().optional(),
+  /** Agora.io App ID for LIVE_STREAM (one-to-many). Required to join a session. */
+  AGORA_APP_ID: z.string().optional(),
+  /** Agora.io App Certificate — used to mint short-lived RTC tokens server-side. */
+  AGORA_APP_CERTIFICATE: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);

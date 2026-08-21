@@ -25,6 +25,7 @@ const PLATFORM_MODULES = [
   { code: 'USER_QUESTIONS', name_en: 'Submitted Questions', description_en: 'Questions submitted by users for admin review and answer', color: '#4D7C0F', sort_order: 26 },
   { code: 'EXAM_WEEK', name_en: 'Exams of the Week', description_en: 'Practice papers featured weekly, published on a schedule', color: '#B91C1C', sort_order: 27 },
   { code: 'ANSWER_PDF', name_en: 'Answer PDF download', description_en: 'Download question answers as PDF from Question Bank and Answer Reading History (A4 or Pocket 5″×8″, landscape)', color: '#1D4ED8', sort_order: 28 },
+  { code: 'LIVE_STREAM', name_en: 'Live class', description_en: 'One-to-many live video sessions (Agora) — admins schedule; invited users can join', color: '#BE185D', sort_order: 29 },
 ];
 
 const MODULES = [

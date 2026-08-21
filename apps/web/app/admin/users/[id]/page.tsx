@@ -102,6 +102,7 @@ const MOBILE_MODULE_CODES = [
   'EXAM_WEEK',
   'USER_QUESTIONS',
   'ANSWER_PDF',
+  'LIVE_STREAM',
   'USER',
 ];
 

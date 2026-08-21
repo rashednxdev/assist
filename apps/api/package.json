@@ -17,6 +17,7 @@
     "migrate:book-published": "tsx scripts/migrations/migrate-book-published.ts",
     "migrate:question-edit-module": "tsx scripts/migrations/add-question-edit-module.ts",
     "migrate:answer-pdf-module": "tsx scripts/migrations/add-answer-pdf-module.ts",
+    "migrate:live-stream-module": "tsx scripts/migrations/add-live-stream-module.ts",
     "migrate:status-changed-by": "tsx scripts/migrations/migrate-status-changed-by.ts",
     "test:db": "tsx scripts/test-connection.ts"
   },
@@ -24,6 +25,7 @@
     "@ibas/shared-constants": "workspace:*",
     "@ibas/shared-types": "workspace:*",
     "@napi-rs/canvas": "^0.1.70",
+    "agora-token": "^2.0.5",
     "bcryptjs": "^3.0.2",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",

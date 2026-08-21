@@ -47,7 +47,8 @@ const MODULES: Array<{
     | 'QUESTION_EDIT'
     | 'QOTD'
     | 'EXAM_ROUTINE'
-    | 'EXAM_WEEK';
+    | 'EXAM_WEEK'
+    | 'LIVE_STREAM';
   title: string;
   subtitle: string;
   icon:
@@ -59,7 +60,8 @@ const MODULES: Array<{
     | 'create-outline'
     | 'calendar-outline'
     | 'time-outline'
-    | 'trophy-outline';
+    | 'trophy-outline'
+    | 'videocam-outline';
   color: string;
   href: Href;
 }> = [
@@ -116,6 +118,15 @@ const MODULES: Array<{
     icon: 'trophy-outline' as const,
     color: examWeekColors.accent,
     href: '/(app)/exam-week' as Href,
+  },
+  {
+    id: 'live',
+    code: 'LIVE_STREAM' as const,
+    title: 'Live class',
+    subtitle: 'Join invited video sessions',
+    icon: 'videocam-outline' as const,
+    color: '#be185d',
+    href: '/(app)/live' as Href,
   },
   {
     id: 'pension',

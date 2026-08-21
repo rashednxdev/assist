@@ -65,6 +65,7 @@ export default function AppLayout() {
       <Stack.Screen name="exam-routine" />
       <Stack.Screen name="user-questions" />
       <Stack.Screen name="exam-week" />
+      <Stack.Screen name="live" />
       <Stack.Screen name="users" />
     </Stack>
   );

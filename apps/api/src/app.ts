@@ -28,6 +28,7 @@ import { qotdRouter } from './domains/qotd/qotd.routes.js';
 import { examRoutineRouter } from './domains/exam-routine/exam-routine.routes.js';
 import { userQuestionsRouter } from './domains/user-questions/user-questions.routes.js';
 import { termsRouter } from './domains/terms/terms.routes.js';
+import { liveStreamRouter } from './domains/live-stream/live-stream.routes.js';
 
 export function createApp(): Application {
   const app = express();
@@ -81,6 +82,7 @@ export function createApp(): Application {
   app.use('/api/v1/exam-routine', examRoutineRouter);
   app.use('/api/v1/user-questions', userQuestionsRouter);
   app.use('/api/v1/terms', termsRouter);
+  app.use('/api/v1/live-streams', liveStreamRouter);
 
   app.use(errorHandler);
   return app;

@@ -2,6 +2,7 @@ import type { Response } from 'express';
 import {
   createLiveStreamSchema,
   liveStreamInvitesSchema,
+  liveStreamRevokeInvitesSchema,
   updateLiveStreamSchema,
 } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
@@ -51,6 +52,21 @@ export async function startLiveStreamHandler(req: AuthRequest, res: Response): P
   res.json({ data });
 }
 
+export async function pauseLiveStreamHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await liveStreamService.pauseLiveStream(String(req.params.id));
+  res.json({ data });
+}
+
+export async function resumeLiveStreamHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await liveStreamService.resumeLiveStream(String(req.params.id));
+  res.json({ data });
+}
+
+export async function restartLiveStreamHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await liveStreamService.restartLiveStream(String(req.params.id));
+  res.json({ data });
+}
+
 export async function endLiveStreamHandler(req: AuthRequest, res: Response): Promise<void> {
   const data = await liveStreamService.endLiveStream(String(req.params.id));
   res.json({ data });
@@ -64,6 +80,12 @@ export async function listInvitesHandler(req: AuthRequest, res: Response): Promi
 export async function addInvitesHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = liveStreamInvitesSchema.parse(req.body);
   const data = await liveStreamService.addInvites(String(req.params.id), dto.user_ids, req.user!.id);
+  res.json({ data });
+}
+
+export async function revokeInvitesHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = liveStreamRevokeInvitesSchema.parse(req.body);
+  const data = await liveStreamService.revokeInvites(String(req.params.id), dto.user_ids);
   res.json({ data });
 }
 

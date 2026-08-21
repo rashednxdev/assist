@@ -24,7 +24,7 @@ const schema = new Schema<ILiveStream>(
     scheduled_at: { type: Date, required: true },
     status: {
       type: String,
-      enum: ['scheduled', 'live', 'ended', 'cancelled'],
+      enum: ['scheduled', 'live', 'paused', 'ended', 'cancelled'],
       default: 'scheduled',
     },
     channel_name: { type: String, required: true, unique: true },

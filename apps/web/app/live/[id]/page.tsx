@@ -113,6 +113,12 @@ export default function LiveStreamWatchPage() {
         <p className="mt-1 text-sm opacity-90">{perm.body}</p>
       </div>
 
+      {session.status === 'paused' ? (
+        <Alert variant="warning">
+          This class is paused. You can join again when the host resumes.
+        </Alert>
+      ) : null}
+
       {session.details ? (
         <Card>
           <CardHeader>
@@ -129,10 +135,24 @@ export default function LiveStreamWatchPage() {
         <CardContent className="space-y-3">
           {!join ? (
             <Button
-              disabled={busy || !session.can_join || session.permission_status === 'not_permitted'}
+              disabled={
+                busy ||
+                !session.can_join ||
+                session.permission_status === 'not_permitted' ||
+                session.status === 'paused' ||
+                session.status === 'ended'
+              }
               onClick={() => void joinSession()}
             >
-              {busy ? 'Joining…' : session.permission_status === 'not_permitted' ? 'Join locked' : 'Join live class'}
+              {busy
+                ? 'Joining…'
+                : session.permission_status === 'not_permitted'
+                  ? 'Join locked'
+                  : session.status === 'paused'
+                    ? 'Waiting for resume'
+                    : session.status === 'ended'
+                      ? 'Session ended'
+                      : 'Join live class'}
             </Button>
           ) : (
             <AgoraLiveRoom

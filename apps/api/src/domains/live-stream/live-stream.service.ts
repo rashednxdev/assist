@@ -60,7 +60,7 @@ export async function listLiveStreamsForUser(
 ): Promise<LiveStreamListItem[]> {
   const items = await LiveStream.find({
     is_active: true,
-    status: { $in: ['scheduled', 'live', 'ended'] },
+    status: { $in: ['scheduled', 'live', 'paused', 'ended'] },
   })
     .sort({ scheduled_at: -1 })
     .limit(100);
@@ -77,6 +77,9 @@ export async function listLiveStreamsForUser(
   const result: LiveStreamListItem[] = [];
   for (const doc of items) {
     const perm = await permissionFor(String(doc._id), user.id, String(doc.host_user_id), user);
+    const joinable =
+      doc.status === 'live' ||
+      (perm.permission_status === 'host' && (doc.status === 'scheduled' || doc.status === 'paused'));
     result.push({
       id: String(doc._id),
       topic: doc.topic,
@@ -85,7 +88,7 @@ export async function listLiveStreamsForUser(
       status: doc.status,
       host_name: hostName.get(String(doc.host_user_id)),
       permission_status: perm.permission_status,
-      can_join: perm.can_join && (doc.status === 'live' || doc.status === 'scheduled'),
+      can_join: perm.can_join && joinable,
       created_at: doc.created_at.toISOString(),
       updated_at: doc.updated_at.toISOString(),
     });
@@ -102,12 +105,15 @@ export async function getLiveStreamForUser(
   const host = await User.findById(doc.host_user_id).select('full_name_en full_name_bn');
   const perm = await permissionFor(String(doc._id), user.id, String(doc.host_user_id), user);
   const inviteCount = await LiveStreamInvite.countDocuments({ live_stream_id: doc._id });
+  const joinable =
+    doc.status === 'live' ||
+    (perm.permission_status === 'host' && (doc.status === 'scheduled' || doc.status === 'paused'));
   return {
     ...serializeBase(doc),
     host_name: host ? host.full_name_bn?.trim() || host.full_name_en : undefined,
     invite_count: inviteCount,
     permission_status: perm.permission_status,
-    can_join: perm.can_join && (doc.status === 'live' || doc.status === 'scheduled'),
+    can_join: perm.can_join && joinable,
   };
 }
 
@@ -169,7 +175,13 @@ export async function updateLiveStream(id: string, dto: UpdateLiveStreamDto) {
   if (dto.scheduled_at !== undefined) doc.scheduled_at = dto.scheduled_at;
   if (dto.status !== undefined) {
     doc.status = dto.status;
-    if (dto.status === 'live' && !doc.started_at) doc.started_at = new Date();
+    if (dto.status === 'live') {
+      if (!doc.started_at) doc.started_at = new Date();
+      doc.set('ended_at', undefined);
+    }
+    if (dto.status === 'paused') {
+      // keep started_at; do not set ended_at — session can resume
+    }
     if ((dto.status === 'ended' || dto.status === 'cancelled') && !doc.ended_at) {
       doc.ended_at = new Date();
     }
@@ -182,7 +194,7 @@ export async function softDeleteLiveStream(id: string) {
   const doc = await LiveStream.findOne({ _id: id, is_active: true });
   if (!doc) throw notFound('Live session not found');
   doc.is_active = false;
-  if (doc.status === 'live') {
+  if (doc.status === 'live' || doc.status === 'paused') {
     doc.status = 'ended';
     doc.ended_at = new Date();
   }
@@ -191,6 +203,30 @@ export async function softDeleteLiveStream(id: string) {
 }
 
 export async function startLiveStream(id: string) {
+  return updateLiveStream(id, { status: 'live' });
+}
+
+export async function pauseLiveStream(id: string) {
+  const doc = await LiveStream.findOne({ _id: id, is_active: true });
+  if (!doc) throw notFound('Live session not found');
+  if (doc.status !== 'live') throw badRequest('Only a live session can be paused.');
+  return updateLiveStream(id, { status: 'paused' });
+}
+
+export async function resumeLiveStream(id: string) {
+  const doc = await LiveStream.findOne({ _id: id, is_active: true });
+  if (!doc) throw notFound('Live session not found');
+  if (doc.status !== 'paused') throw badRequest('Only a paused session can be resumed.');
+  return updateLiveStream(id, { status: 'live' });
+}
+
+/** Restart an ended class on the same session (no delete / recreate). */
+export async function restartLiveStream(id: string) {
+  const doc = await LiveStream.findOne({ _id: id, is_active: true });
+  if (!doc) throw notFound('Live session not found');
+  if (doc.status !== 'ended' && doc.status !== 'cancelled') {
+    throw badRequest('Only an ended or cancelled session can be restarted.');
+  }
   return updateLiveStream(id, { status: 'live' });
 }
 
@@ -252,6 +288,17 @@ export async function removeInvite(sessionId: string, userId: string) {
   return { removed: true };
 }
 
+export async function revokeInvites(sessionId: string, userIds: string[]) {
+  const doc = await LiveStream.findOne({ _id: sessionId, is_active: true });
+  if (!doc) throw notFound('Live session not found');
+  const unique = [...new Set(userIds)];
+  const res = await LiveStreamInvite.deleteMany({
+    live_stream_id: doc._id,
+    user_id: { $in: unique },
+  });
+  return { removed: res.deletedCount ?? 0, invites: await listInvites(sessionId) };
+}
+
 export async function joinLiveStream(
   id: string,
   user: { id: string; is_super_admin?: boolean; user_type?: string },
@@ -259,7 +306,10 @@ export async function joinLiveStream(
   const doc = await LiveStream.findOne({ _id: id, is_active: true });
   if (!doc) throw notFound('Live session not found');
   if (doc.status === 'cancelled') throw badRequest('This session was cancelled.');
-  if (doc.status === 'ended') throw badRequest('This session has ended.');
+  if (doc.status === 'ended') throw badRequest('This session has ended. Ask an admin to restart it.');
+  if (doc.status === 'paused' && !isPlatformAdmin(user) && user.id !== String(doc.host_user_id)) {
+    throw badRequest('This live class is paused. Please wait for the host to resume.');
+  }
 
   const perm = await permissionFor(String(doc._id), user.id, String(doc.host_user_id), user);
   if (!perm.can_join) {

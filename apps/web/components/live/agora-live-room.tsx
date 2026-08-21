@@ -33,6 +33,7 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
   const [hasRemote, setHasRemote] = useState(false);
   const [ready, setReady] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [micMuted, setMicMuted] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -87,8 +88,9 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
             cam.play(localRef.current);
           }
           await client.publish([mic, cam]);
-          setStatus('You are live — share your screen when ready');
+          setStatus('You are live — speak with mic on, share screen when ready');
           setReady(true);
+          setMicMuted(false);
         } else {
           setStatus('Joined as viewer — waiting for the host…');
           setReady(true);
@@ -154,6 +156,15 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
     }
   }
 
+  function toggleMic() {
+    const mic = micRef.current;
+    if (!mic || role !== 'host') return;
+    const next = !micMuted;
+    void mic.setEnabled(!next);
+    setMicMuted(next);
+    setStatus(next ? 'Microphone muted' : 'Microphone on — your speech reaches viewers');
+  }
+
   async function startScreenShare() {
     const client = clientRef.current;
     const AgoraRTC = agoraRef.current;
@@ -208,15 +219,20 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-sm font-medium text-slate-600">{status}</p>
         {role === 'host' && ready ? (
-          sharing ? (
-            <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => void stopScreenShare()}>
-              Stop sharing
+          <>
+            <Button type="button" variant="outline" size="sm" disabled={busy} onClick={toggleMic}>
+              {micMuted ? 'Unmute speech' : 'Mute speech'}
             </Button>
-          ) : (
-            <Button type="button" size="sm" disabled={busy} onClick={() => void startScreenShare()}>
-              Share screen
-            </Button>
-          )
+            {sharing ? (
+              <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => void stopScreenShare()}>
+                Stop sharing
+              </Button>
+            ) : (
+              <Button type="button" size="sm" disabled={busy} onClick={() => void startScreenShare()}>
+                Share screen
+              </Button>
+            )}
+          </>
         ) : null}
       </div>
       <div className="grid gap-3 lg:grid-cols-2">
@@ -236,8 +252,8 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
       </div>
       {role === 'host' ? (
         <p className="text-xs text-muted-foreground">
-          Use Chrome or Edge on a PC. Click Share screen, pick a window or entire display, then invited users
-          watching in the app will see it.
+          Speak with your mic (Unmute speech). Share screen from Chrome/Edge on a PC — invited users in the app hear
+          you and see your desktop. There is no app-side viewer cap.
         </p>
       ) : null}
     </div>

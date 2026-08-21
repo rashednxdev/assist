@@ -2,18 +2,22 @@ import { z } from 'zod';
 
 const mongoId = z.string().regex(/^[a-f\d]{24}$/i);
 
-export const LIVE_STREAM_STATUSES = ['scheduled', 'live', 'ended', 'cancelled'] as const;
+export const LIVE_STREAM_STATUSES = ['scheduled', 'live', 'paused', 'ended', 'cancelled'] as const;
 export type LiveStreamStatus = (typeof LIVE_STREAM_STATUSES)[number];
 
 export const LIVE_PERMISSION_STATUSES = ['permitted', 'not_permitted', 'host'] as const;
 export type LivePermissionStatus = (typeof LIVE_PERMISSION_STATUSES)[number];
+
+/** Batch grant/revoke — large lists OK (Agora live supports many audience). */
+const inviteUserIds = z.array(mongoId).max(5000);
+const inviteUserIdsNonEmpty = inviteUserIds.min(1);
 
 export const createLiveStreamSchema = z.object({
   topic: z.string().trim().min(3).max(200),
   details: z.string().trim().max(5000).optional(),
   scheduled_at: z.coerce.date(),
   /** Optional invite list at create time. */
-  invite_user_ids: z.array(mongoId).max(500).optional(),
+  invite_user_ids: inviteUserIds.optional(),
 });
 
 export const updateLiveStreamSchema = z.object({
@@ -24,12 +28,17 @@ export const updateLiveStreamSchema = z.object({
 });
 
 export const liveStreamInvitesSchema = z.object({
-  user_ids: z.array(mongoId).min(1).max(500),
+  user_ids: inviteUserIdsNonEmpty,
+});
+
+export const liveStreamRevokeInvitesSchema = z.object({
+  user_ids: inviteUserIdsNonEmpty,
 });
 
 export type CreateLiveStreamDto = z.infer<typeof createLiveStreamSchema>;
 export type UpdateLiveStreamDto = z.infer<typeof updateLiveStreamSchema>;
 export type LiveStreamInvitesDto = z.infer<typeof liveStreamInvitesSchema>;
+export type LiveStreamRevokeInvitesDto = z.infer<typeof liveStreamRevokeInvitesSchema>;
 
 export interface LiveStreamListItem {
   id: string;

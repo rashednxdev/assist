@@ -184,6 +184,15 @@ export default function LiveStreamDetailScreen() {
         <Text style={[styles.permBody, { color: perm.color }]}>{perm.body}</Text>
       </View>
 
+      {session.status === 'paused' ? (
+        <View style={[styles.permCard, { backgroundColor: '#fff7ed', borderColor: '#fed7aa' }]}>
+          <Text style={[styles.permTitle, { color: '#9a3412' }]}>Class paused</Text>
+          <Text style={[styles.permBody, { color: '#9a3412' }]}>
+            The host paused this session. You can join again when it is live.
+          </Text>
+        </View>
+      ) : null}
+
       {session.details ? (
         <View style={styles.detailsCard}>
           <Text style={styles.detailsLabel}>Details</Text>
@@ -194,17 +203,33 @@ export default function LiveStreamDetailScreen() {
       <Pressable
         style={[
           styles.joinBtn,
-          (busy || !session.can_join || session.permission_status === 'not_permitted') &&
+          (busy ||
+            !session.can_join ||
+            session.permission_status === 'not_permitted' ||
+            session.status === 'paused' ||
+            session.status === 'ended') &&
             styles.joinBtnDisabled,
         ]}
-        disabled={busy || !session.can_join || session.permission_status === 'not_permitted'}
+        disabled={
+          busy ||
+          !session.can_join ||
+          session.permission_status === 'not_permitted' ||
+          session.status === 'paused' ||
+          session.status === 'ended'
+        }
         onPress={() => void handleJoin()}
       >
         {busy ? (
           <ActivityIndicator color={colors.white} />
         ) : (
           <Text style={styles.joinBtnText}>
-            {session.permission_status === 'not_permitted' ? 'Join locked' : 'Join live class'}
+            {session.permission_status === 'not_permitted'
+              ? 'Join locked'
+              : session.status === 'paused'
+                ? 'Waiting for resume'
+                : session.status === 'ended'
+                  ? 'Session ended'
+                  : 'Join live class'}
           </Text>
         )}
       </Pressable>

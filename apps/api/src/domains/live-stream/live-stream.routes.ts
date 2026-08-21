@@ -13,7 +13,11 @@ import {
   listAdminLiveStreamsHandler,
   listInvitesHandler,
   listLiveStreamsHandler,
+  pauseLiveStreamHandler,
   removeInviteHandler,
+  restartLiveStreamHandler,
+  resumeLiveStreamHandler,
+  revokeInvitesHandler,
   startLiveStreamHandler,
   updateLiveStreamHandler,
 } from './live-stream.controller.js';
@@ -27,9 +31,13 @@ liveStreamRouter.post('/', requireAdmin, asyncHandler(createLiveStreamHandler));
 liveStreamRouter.patch('/:id', requireAdmin, asyncHandler(updateLiveStreamHandler));
 liveStreamRouter.delete('/:id', requireAdmin, asyncHandler(deleteLiveStreamHandler));
 liveStreamRouter.post('/:id/start', requireAdmin, asyncHandler(startLiveStreamHandler));
+liveStreamRouter.post('/:id/pause', requireAdmin, asyncHandler(pauseLiveStreamHandler));
+liveStreamRouter.post('/:id/resume', requireAdmin, asyncHandler(resumeLiveStreamHandler));
+liveStreamRouter.post('/:id/restart', requireAdmin, asyncHandler(restartLiveStreamHandler));
 liveStreamRouter.post('/:id/end', requireAdmin, asyncHandler(endLiveStreamHandler));
 liveStreamRouter.get('/:id/invites', requireAdmin, asyncHandler(listInvitesHandler));
 liveStreamRouter.post('/:id/invites', requireAdmin, asyncHandler(addInvitesHandler));
+liveStreamRouter.post('/:id/invites/revoke', requireAdmin, asyncHandler(revokeInvitesHandler));
 liveStreamRouter.delete('/:id/invites/:userId', requireAdmin, asyncHandler(removeInviteHandler));
 
 liveStreamRouter.get('/', requireModuleAccess('LIVE_STREAM'), asyncHandler(listLiveStreamsHandler));

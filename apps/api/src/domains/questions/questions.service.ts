@@ -1425,9 +1425,9 @@ export async function listQuestions(
   const linkCountMap = new Map(linkCounts.map((c) => [String(c._id), c.count]));
   const optionCountMap = new Map(optionCounts.map((c) => [String(c._id), c.count]));
 
-  const subjectIds = [...new Set(subjectLinks.map((l) => String(l.exam_subject_id)))];
+  const linkedSubjectIds = [...new Set(subjectLinks.map((l) => String(l.exam_subject_id)))];
   const subjectDocs =
-    subjectIds.length > 0 ? await ExamSubject.find({ _id: { $in: subjectIds } }) : [];
+    linkedSubjectIds.length > 0 ? await ExamSubject.find({ _id: { $in: linkedSubjectIds } }) : [];
   const subjectMeta = new Map(
     subjectDocs.map((s) => [String(s._id), { id: String(s._id), name: s.name, name_bn: s.name_bn }]),
   );

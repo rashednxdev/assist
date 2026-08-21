@@ -3,7 +3,8 @@ import { getApiBaseUrl } from '@/lib/api-url';
 
 export const runtime = 'nodejs';
 
-const HOP_BY_HOP_REQUEST_HEADERS = [
+/** Headers that must not be forwarded to the upstream API (hop-by-hop or undici-unsupported). */
+const BLOCKED_REQUEST_HEADERS = new Set([
   'host',
   'connection',
   'content-length',
@@ -14,17 +15,16 @@ const HOP_BY_HOP_REQUEST_HEADERS = [
   'keep-alive',
   'proxy-authorization',
   'proxy-connection',
-] as const;
+  // Undici fetch throws UND_ERR_NOT_SUPPORTED if Expect is forwarded (common from PowerShell / some clients).
+  'expect',
+  // Avoid compressed upstream responses; fetch decompresses but would leave misleading headers.
+  'accept-encoding',
+]);
 
 function buildUpstreamHeaders(req: NextRequest): Headers {
   const headers = new Headers();
   req.headers.forEach((value, key) => {
-    const lower = key.toLowerCase();
-    if (HOP_BY_HOP_REQUEST_HEADERS.includes(lower as (typeof HOP_BY_HOP_REQUEST_HEADERS)[number])) {
-      return;
-    }
-    // Avoid compressed upstream responses; fetch decompresses but would leave misleading headers.
-    if (lower === 'accept-encoding') return;
+    if (BLOCKED_REQUEST_HEADERS.has(key.toLowerCase())) return;
     headers.set(key, value);
   });
   return headers;
@@ -101,11 +101,18 @@ async function proxyRequest(req: NextRequest, path: string): Promise<NextRespons
   let upstream: Response;
   try {
     upstream = await fetch(url, init);
-  } catch {
+  } catch (err) {
+    const cause =
+      err instanceof Error
+        ? err.cause instanceof Error
+          ? err.cause.message
+          : err.message
+        : '';
+    const detail = cause && !/fetch failed/i.test(cause) ? ` (${cause})` : '';
     return jsonError(
       503,
       'API_UNAVAILABLE',
-      `Cannot reach API at ${apiBase}. Check API_URL on the web service and that the API is deployed and running.`,
+      `Cannot reach API at ${apiBase}. Check API_URL on the web service and that the API is deployed and running.${detail}`,
     );
   }
 

@@ -1,7 +1,24 @@
 import { createHash } from 'node:crypto';
-import { RtcRole, RtcTokenBuilder } from 'agora-token';
+import { createRequire } from 'node:module';
 import { env } from '../../config/env.js';
 import { badRequest } from '../../shared/errors/AppError.js';
+
+// agora-token is CommonJS; named ESM imports fail at runtime on Node.
+const require = createRequire(import.meta.url);
+const { RtcRole, RtcTokenBuilder } = require('agora-token') as {
+  RtcRole: { PUBLISHER: number; SUBSCRIBER: number };
+  RtcTokenBuilder: {
+    buildTokenWithUid: (
+      appId: string,
+      appCertificate: string,
+      channelName: string,
+      uid: number,
+      role: number,
+      tokenExpire: number,
+      privilegeExpire: number,
+    ) => string;
+  };
+};
 
 /** Stable Agora uid from Mongo user id (1..2^31-2). */
 export function agoraUidFromUserId(userId: string): number {
@@ -24,6 +41,7 @@ export function buildAgoraRtcToken(opts: {
     );
   }
 
+  // Agora AccessToken2 expects TTL seconds from now (not a unix timestamp).
   const expireSeconds = opts.expireSeconds ?? 60 * 60 * 6;
   const expireAt = Math.floor(Date.now() / 1000) + expireSeconds;
   const role = opts.role === 'host' ? RtcRole.PUBLISHER : RtcRole.SUBSCRIBER;
@@ -33,8 +51,8 @@ export function buildAgoraRtcToken(opts: {
     opts.channel,
     opts.uid,
     role,
-    expireAt,
-    expireAt,
+    expireSeconds,
+    expireSeconds,
   );
   return { appId, token, expireAt };
 }

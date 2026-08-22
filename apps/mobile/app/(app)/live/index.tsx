@@ -19,9 +19,34 @@ function formatWhen(iso: string) {
 }
 
 function permissionMeta(status: LiveStreamListItem['permission_status']) {
-  if (status === 'host') return { label: 'Host / admin', bg: '#fffbeb', color: '#b45309' };
-  if (status === 'permitted') return { label: 'Permitted', bg: '#ecfdf5', color: '#047857' };
-  return { label: 'Not permitted', bg: '#fff1f2', color: '#be123c' };
+  if (status === 'not_permitted') return { label: 'Not permitted', bg: '#fff1f2', color: '#be123c' };
+  return { label: 'Permitted', bg: '#ecfdf5', color: '#047857' };
+}
+
+function sortByCurrentDateFirst(items: LiveStreamListItem[]) {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+  const today: LiveStreamListItem[] = [];
+  const future: LiveStreamListItem[] = [];
+  const past: LiveStreamListItem[] = [];
+  for (const item of items) {
+    const t = new Date(item.scheduled_at).getTime();
+    if (t >= startMs && t < endMs) today.push(item);
+    else if (t >= endMs) future.push(item);
+    else past.push(item);
+  }
+  const byAsc = (a: LiveStreamListItem, b: LiveStreamListItem) =>
+    new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime();
+  const byDesc = (a: LiveStreamListItem, b: LiveStreamListItem) =>
+    new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime();
+  today.sort(byAsc);
+  future.sort(byAsc);
+  past.sort(byDesc);
+  return [...today, ...future, ...past];
 }
 
 export default function LiveStreamListScreen() {
@@ -37,7 +62,7 @@ export default function LiveStreamListScreen() {
     setError('');
     try {
       const rows = await fetchLiveStreams();
-      setItems(rows);
+      setItems(sortByCurrentDateFirst(rows));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
     } finally {

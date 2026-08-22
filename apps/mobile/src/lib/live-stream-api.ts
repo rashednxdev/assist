@@ -27,6 +27,7 @@ export async function fetchLiveStream(id: string) {
 export async function joinLiveStream(id: string) {
   const res = await apiFetch<{ data: LiveStreamJoinPayload }>(`/live-streams/${id}/join`, {
     method: 'POST',
+    body: JSON.stringify({ as_host: false }),
   });
   return res.data;
 }

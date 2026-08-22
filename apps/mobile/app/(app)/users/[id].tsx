@@ -466,7 +466,16 @@ export default function UserDetailScreen() {
                 <View key={mid || mod.code} style={[styles.accessRow, granted && styles.accessRowGranted]}>
                   <View style={styles.accessMain}>
                     <View style={styles.accessInfo}>
-                      <Text style={styles.accessTitle}>{mod.name_en}</Text>
+                      <View style={styles.accessTitleRow}>
+                        <Text style={[styles.accessTitle, granted && styles.accessTitleGranted]}>
+                          {mod.name_en}
+                        </Text>
+                        {granted ? (
+                          <View style={styles.grantedBadge}>
+                            <Text style={styles.grantedBadgeText}>Granted</Text>
+                          </View>
+                        ) : null}
+                      </View>
                     </View>
                     <View style={styles.accessActions}>
                       {granted ? (
@@ -479,11 +488,11 @@ export default function UserDetailScreen() {
                         </Pressable>
                       ) : (
                         <Pressable
-                          style={[styles.actionBtn, busy && styles.actionBtnDisabled]}
+                          style={[styles.actionBtn, styles.grantBtn, busy && styles.actionBtnDisabled]}
                           onPress={() => void grantAccess(mod)}
                           disabled={busy}
                         >
-                          <Text style={styles.actionBtnText}>{busy ? '…' : 'Grant'}</Text>
+                          <Text style={styles.grantBtnText}>{busy ? '…' : 'Grant'}</Text>
                         </Pressable>
                       )}
                       <Pressable
@@ -523,11 +532,16 @@ export default function UserDetailScreen() {
                         />
                       </View>
                       <Pressable
-                        style={[styles.actionBtn, styles.saveDetailsBtn, busy && styles.actionBtnDisabled]}
+                        style={[
+                          styles.actionBtn,
+                          styles.saveDetailsBtn,
+                          styles.grantBtn,
+                          busy && styles.actionBtnDisabled,
+                        ]}
                         onPress={() => void saveAccessDetails(mod)}
                         disabled={busy}
                       >
-                        <Text style={styles.actionBtnText}>
+                        <Text style={styles.grantBtnText}>
                           {busy ? 'Saving…' : granted ? 'Save permissions' : 'Grant with these permissions'}
                         </Text>
                       </Pressable>
@@ -627,7 +641,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   accessRowGranted: {
-    backgroundColor: '#f7fbf8',
+    backgroundColor: '#ecfdf5',
+    borderColor: '#34d399',
+    borderWidth: 2,
   },
   accessMain: {
     flexDirection: 'row',
@@ -638,7 +654,26 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  accessTitleRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+  },
   accessTitle: { fontSize: 16, fontWeight: '700', color: colors.text },
+  accessTitleGranted: { color: '#064e3b' },
+  grantedBadge: {
+    backgroundColor: '#059669',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  grantedBadgeText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
   accessActions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -655,6 +690,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  grantBtn: {
+    backgroundColor: '#059669',
+    borderColor: '#047857',
+  },
+  grantBtnText: { fontSize: 12, fontWeight: '800', color: '#ffffff' },
   actionBtnDisabled: { opacity: 0.55 },
   actionBtnText: { fontSize: 12, fontWeight: '700', color: colors.text },
   accessDetails: {

@@ -11,6 +11,7 @@ import {
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { WebView } from 'react-native-webview';
 import { BookError, BookLoading } from '@/components/books/BookStates';
+import { BookRichText } from '@/components/books/BookRichText';
 import {
   fetchLiveStream,
   joinLiveStream,
@@ -20,19 +21,10 @@ import type { LiveStreamJoinPayload } from '@ibas/shared-types';
 import { colors, spacing } from '@/theme';
 
 function permissionCard(status: LiveStreamListItem['permission_status']) {
-  if (status === 'host') {
-    return {
-      title: 'You can join as host',
-      body: 'You are the host or an admin for this session.',
-      bg: '#fffbeb',
-      border: '#fde68a',
-      color: '#92400e',
-    };
-  }
-  if (status === 'permitted') {
+  if (status === 'permitted' || status === 'host') {
     return {
       title: 'You are permitted to join',
-      body: 'An admin invited you. Open the video room when the class is live.',
+      body: 'Watch as a viewer when the class is live. Host broadcasting is only from the web admin page.',
       bg: '#ecfdf5',
       border: '#a7f3d0',
       color: '#065f46',
@@ -77,7 +69,7 @@ function agoraHtml(join: LiveStreamJoinPayload) {
       const player = document.getElementById('player');
       try {
         const client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
-        await client.setClientRole(cfg.role === 'host' ? 'host' : 'audience');
+        await client.setClientRole('audience');
         client.on('user-published', async (user, mediaType) => {
           await client.subscribe(user, mediaType);
           if (mediaType === 'video') {
@@ -88,14 +80,7 @@ function agoraHtml(join: LiveStreamJoinPayload) {
           if (mediaType === 'audio') user.audioTrack.play();
         });
         await client.join(cfg.appId, cfg.channel, cfg.token, cfg.uid);
-        if (cfg.role === 'host') {
-          const [mic, cam] = await AgoraRTC.createMicrophoneAndCameraTracks();
-          cam.play(player);
-          await client.publish([mic, cam]);
-          status.textContent = 'You are live';
-        } else {
-          status.textContent = 'Joined — waiting for host…';
-        }
+        status.textContent = 'Joined — waiting for host…';
       } catch (e) {
         status.textContent = e && e.message ? e.message : 'Join failed';
       }
@@ -144,7 +129,7 @@ export default function LiveStreamDetailScreen() {
     setBusy(true);
     try {
       const payload = await joinLiveStream(id);
-      setJoin(payload);
+      setJoin({ ...payload, role: 'audience' });
     } catch (err) {
       Alert.alert('Cannot join', err instanceof Error ? err.message : 'Try again');
     } finally {
@@ -196,7 +181,7 @@ export default function LiveStreamDetailScreen() {
       {session.details ? (
         <View style={styles.detailsCard}>
           <Text style={styles.detailsLabel}>Details</Text>
-          <Text style={styles.detailsText}>{session.details}</Text>
+          <BookRichText html={session.details} style={styles.detailsText} />
         </View>
       ) : null}
 

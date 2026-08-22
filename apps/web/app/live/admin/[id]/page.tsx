@@ -10,6 +10,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert } from '@/components/ui/alert';
+import { MarkupText } from '@/components/shared/markup-text';
+import {
+  MarkupInstructionsButton,
+  MarkupInstructionsModal,
+} from '@/components/shared/markup-instructions-modal';
 
 const AgoraLiveRoom = dynamic(
   () => import('@/components/live/agora-live-room').then((m) => m.AgoraLiveRoom),
@@ -52,6 +57,24 @@ interface JoinPayload {
   status: string;
 }
 
+interface GuestRow {
+  id: string;
+  user_id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  role: 'host' | 'audience';
+  joined_at: string;
+  last_seen_at: string;
+}
+
+function toDatetimeLocal(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export default function LiveStreamAdminDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -65,6 +88,11 @@ export default function LiveStreamAdminDetailPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [join, setJoin] = useState<JoinPayload | null>(null);
   const [busy, setBusy] = useState(false);
+  const [editTopic, setEditTopic] = useState('');
+  const [editDetails, setEditDetails] = useState('');
+  const [editWhen, setEditWhen] = useState('');
+  const [showMarkupHelp, setShowMarkupHelp] = useState(false);
+  const [guests, setGuests] = useState<GuestRow[]>([]);
   const limit = 25;
 
   const invitedSet = useMemo(() => new Set(invites.map((i) => i.user_id)), [invites]);
@@ -78,6 +106,9 @@ export default function LiveStreamAdminDetailPage() {
       ]);
       setSession(s.data);
       setInvites(inv.data);
+      setEditTopic(s.data.topic);
+      setEditDetails(s.data.details ?? '');
+      setEditWhen(toDatetimeLocal(s.data.scheduled_at));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
     }
@@ -108,6 +139,49 @@ export default function LiveStreamAdminDetailPage() {
   useEffect(() => {
     void loadUsers(query, page);
   }, [loadUsers, query, page]);
+
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    async function loadGuests() {
+      try {
+        const res = await apiFetch<{ data: GuestRow[] }>(`/live-streams/${id}/guests`);
+        if (!cancelled) setGuests(res.data);
+      } catch {
+        // ignore poll errors
+      }
+    }
+    void loadGuests();
+    const timer = window.setInterval(() => void loadGuests(), 8000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [id]);
+
+  async function saveEdits() {
+    if (!editTopic.trim() || !editWhen) {
+      setError('Topic and date & time are required');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      await apiFetch(`/live-streams/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          topic: editTopic.trim(),
+          details: editDetails.trim() || null,
+          scheduled_at: new Date(editWhen).toISOString(),
+        }),
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save changes');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function toggleSelect(userId: string) {
     setSelectedIds((prev) =>
@@ -194,7 +268,10 @@ export default function LiveStreamAdminDetailPage() {
       if (session?.status === 'ended' || session?.status === 'cancelled') {
         await apiFetch(`/live-streams/${id}/restart`, { method: 'POST' });
       }
-      const res = await apiFetch<{ data: JoinPayload }>(`/live-streams/${id}/join`, { method: 'POST' });
+      const res = await apiFetch<{ data: JoinPayload }>(`/live-streams/${id}/join`, {
+        method: 'POST',
+        body: JSON.stringify({ as_host: true }),
+      });
       setJoin(res.data);
       await load();
     } catch (err) {
@@ -236,10 +313,59 @@ export default function LiveStreamAdminDetailPage() {
         description={`${new Date(session.scheduled_at).toLocaleString()} · ${session.status} · ${invites.length} allowed`}
       />
       {error ? <Alert variant="error">{error}</Alert> : null}
+      <MarkupInstructionsModal open={showMarkupHelp} onClose={() => setShowMarkupHelp(false)} />
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Edit class</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="edit-topic">Topic</Label>
+            <Input id="edit-topic" value={editTopic} onChange={(e) => setEditTopic(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-when">Date &amp; time</Label>
+            <Input
+              id="edit-when"
+              type="datetime-local"
+              value={editWhen}
+              onChange={(e) => setEditWhen(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="edit-details">Details</Label>
+              <MarkupInstructionsButton onClick={() => setShowMarkupHelp(true)} />
+            </div>
+            <textarea
+              id="edit-details"
+              value={editDetails}
+              onChange={(e) => setEditDetails(e.target.value)}
+              rows={5}
+              className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              placeholder="Use markup markers — see Markup guide"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2 sm:col-span-2">
+            <Button disabled={busy} onClick={() => void saveEdits()}>
+              Save changes
+            </Button>
+            <Button variant="outline" disabled={busy} onClick={() => void removeSession()}>
+              Delete class
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {session.details ? (
         <Card>
-          <CardContent className="pt-6 text-sm text-slate-600 whitespace-pre-wrap">{session.details}</CardContent>
+          <CardHeader>
+            <CardTitle className="text-base">Details preview</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-slate-700">
+            <MarkupText text={session.details} />
+          </CardContent>
         </Card>
       ) : null}
 
@@ -284,9 +410,6 @@ export default function LiveStreamAdminDetailPage() {
                 End session
               </Button>
             ) : null}
-            <Button variant="outline" disabled={busy} onClick={() => void removeSession()}>
-              Delete
-            </Button>
           </div>
           <p className="text-xs text-muted-foreground">
             Pause keeps the session and invites. Resume or restart without deleting. Mic carries your speech to all
@@ -302,6 +425,60 @@ export default function LiveStreamAdminDetailPage() {
               onError={setError}
             />
           ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">
+            Guest list
+            <span className="ml-2 text-xs font-medium text-muted-foreground">
+              {guests.filter((g) => g.role === 'audience').length} guests
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {guests.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No one has joined yet.</p>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2">Name</th>
+                    <th className="px-3 py-2">Email / phone</th>
+                    <th className="px-3 py-2">Role</th>
+                    <th className="px-3 py-2">Joined</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {guests.map((g) => (
+                    <tr key={g.id}>
+                      <td className="px-3 py-2 font-medium">{g.name}</td>
+                      <td className="px-3 py-2 text-slate-600">
+                        {g.email}
+                        {g.phone ? ` · ${g.phone}` : ''}
+                      </td>
+                      <td className="px-3 py-2">
+                        {g.role === 'host' ? (
+                          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                            Host
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+                            Guest
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-slate-500">
+                        {new Date(g.joined_at).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
 

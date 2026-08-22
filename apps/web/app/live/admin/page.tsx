@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Plus, Video } from 'lucide-react';
+import { Plus, Video, Pencil, Trash2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +10,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert } from '@/components/ui/alert';
+import {
+  MarkupInstructionsButton,
+  MarkupInstructionsModal,
+} from '@/components/shared/markup-instructions-modal';
 
 interface LiveRow {
   id: string;
@@ -41,6 +45,7 @@ export default function LiveStreamAdminPage() {
   const [details, setDetails] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
   const [creating, setCreating] = useState(false);
+  const [showMarkupHelp, setShowMarkupHelp] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -87,6 +92,17 @@ export default function LiveStreamAdminPage() {
     }
   }
 
+  async function deleteSession(itemId: string) {
+    if (!confirm('Delete this live class?')) return;
+    setError('');
+    try {
+      await apiFetch(`/live-streams/${itemId}`, { method: 'DELETE' });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Delete failed');
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -95,6 +111,7 @@ export default function LiveStreamAdminPage() {
       />
 
       {error ? <Alert variant="error">{error}</Alert> : null}
+      <MarkupInstructionsModal open={showMarkupHelp} onClose={() => setShowMarkupHelp(false)} />
 
       <Card>
         <CardHeader>
@@ -120,14 +137,17 @@ export default function LiveStreamAdminPage() {
             />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
-            <Label htmlFor="live-details">Details</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="live-details">Details</Label>
+              <MarkupInstructionsButton onClick={() => setShowMarkupHelp(true)} />
+            </div>
             <textarea
               id="live-details"
               value={details}
               onChange={(e) => setDetails(e.target.value)}
-              rows={3}
+              rows={4}
               className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              placeholder="What will you cover? Any prep for students?"
+              placeholder="Use markup markers — see Markup guide"
             />
           </div>
           <div className="sm:col-span-2">
@@ -150,23 +170,42 @@ export default function LiveStreamAdminPage() {
             <p className="text-sm text-muted-foreground">No live sessions yet.</p>
           ) : (
             items.map((item) => (
-              <Link
+              <div
                 key={item.id}
-                href={`/live/admin/${item.id}`}
-                className="flex items-start gap-3 rounded-xl border p-3 transition hover:bg-slate-50"
+                className="flex items-start gap-3 rounded-xl border p-3"
               >
-                <div className="mt-0.5 rounded-lg bg-pink-50 p-2 text-pink-700">
+                <Link
+                  href={`/live/admin/${item.id}`}
+                  className="mt-0.5 rounded-lg bg-pink-50 p-2 text-pink-700 hover:bg-pink-100"
+                >
                   <Video className="h-4 w-4" />
-                </div>
-                <div className="min-w-0 flex-1">
+                </Link>
+                <Link href={`/live/admin/${item.id}`} className="min-w-0 flex-1 hover:opacity-90">
                   <div className="font-semibold text-slate-900">{item.topic}</div>
                   <div className="text-sm text-slate-500">{formatWhen(item.scheduled_at)}</div>
                   <div className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-400">
                     {item.status}
                     {typeof item.invite_count === 'number' ? ` · ${item.invite_count} invited` : ''}
                   </div>
+                </Link>
+                <div className="flex shrink-0 gap-1">
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={`/live/admin/${item.id}`}>
+                      <Pencil className="h-3.5 w-3.5" />
+                      Edit
+                    </Link>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void deleteSession(item.id)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete
+                  </Button>
                 </div>
-              </Link>
+              </div>
             ))
           )}
         </CardContent>

@@ -2,12 +2,14 @@ import mongoose from 'mongoose';
 import type {
   CreateLiveStreamDto,
   LivePermissionStatus,
+  LiveStreamGuestItem,
   LiveStreamJoinPayload,
   LiveStreamListItem,
   UpdateLiveStreamDto,
 } from '@ibas/shared-types';
 import { LiveStream } from './models/LiveStream.model.js';
 import { LiveStreamInvite } from './models/LiveStreamInvite.model.js';
+import { LiveStreamGuest } from './models/LiveStreamGuest.model.js';
 import { User } from '../users/models/User.model.js';
 import { agoraUidFromUserId, buildAgoraRtcToken } from './agora-token.js';
 import { badRequest, forbidden, notFound } from '../../shared/errors/AppError.js';
@@ -22,13 +24,39 @@ function channelForId(id: string) {
   return `live_${id}`;
 }
 
+/** Today first (by time), then upcoming, then past. */
+function sortByCurrentDateFirst<T extends { scheduled_at: Date | string }>(items: T[]): T[] {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+
+  const today: T[] = [];
+  const future: T[] = [];
+  const past: T[] = [];
+  for (const item of items) {
+    const t = new Date(item.scheduled_at).getTime();
+    if (t >= startMs && t < endMs) today.push(item);
+    else if (t >= endMs) future.push(item);
+    else past.push(item);
+  }
+  const byAsc = (a: T, b: T) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime();
+  const byDesc = (a: T, b: T) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime();
+  today.sort(byAsc);
+  future.sort(byAsc);
+  past.sort(byDesc);
+  return [...today, ...future, ...past];
+}
+
 async function permissionFor(
   sessionId: string,
   userId: string,
   hostUserId: string,
   user: { is_super_admin?: boolean; user_type?: string },
 ): Promise<{ permission_status: LivePermissionStatus; can_join: boolean }> {
-  if (userId === hostUserId || isPlatformAdmin(user)) {
+  if (userId === hostUserId) {
     return { permission_status: 'host', can_join: true };
   }
   const invite = await LiveStreamInvite.findOne({
@@ -36,6 +64,8 @@ async function permissionFor(
     user_id: userId,
   }).lean();
   if (invite) return { permission_status: 'permitted', can_join: true };
+  // Admins can always enter as audience (guest), never implied host from the app.
+  if (isPlatformAdmin(user)) return { permission_status: 'permitted', can_join: true };
   return { permission_status: 'not_permitted', can_join: false };
 }
 
@@ -77,9 +107,6 @@ export async function listLiveStreamsForUser(
   const result: LiveStreamListItem[] = [];
   for (const doc of items) {
     const perm = await permissionFor(String(doc._id), user.id, String(doc.host_user_id), user);
-    const joinable =
-      doc.status === 'live' ||
-      (perm.permission_status === 'host' && (doc.status === 'scheduled' || doc.status === 'paused'));
     result.push({
       id: String(doc._id),
       topic: doc.topic,
@@ -88,12 +115,12 @@ export async function listLiveStreamsForUser(
       status: doc.status,
       host_name: hostName.get(String(doc.host_user_id)),
       permission_status: perm.permission_status,
-      can_join: perm.can_join && joinable,
+      can_join: perm.can_join && doc.status === 'live',
       created_at: doc.created_at.toISOString(),
       updated_at: doc.updated_at.toISOString(),
     });
   }
-  return result;
+  return sortByCurrentDateFirst(result);
 }
 
 export async function getLiveStreamForUser(
@@ -105,15 +132,12 @@ export async function getLiveStreamForUser(
   const host = await User.findById(doc.host_user_id).select('full_name_en full_name_bn');
   const perm = await permissionFor(String(doc._id), user.id, String(doc.host_user_id), user);
   const inviteCount = await LiveStreamInvite.countDocuments({ live_stream_id: doc._id });
-  const joinable =
-    doc.status === 'live' ||
-    (perm.permission_status === 'host' && (doc.status === 'scheduled' || doc.status === 'paused'));
   return {
     ...serializeBase(doc),
     host_name: host ? host.full_name_bn?.trim() || host.full_name_en : undefined,
     invite_count: inviteCount,
     permission_status: perm.permission_status,
-    can_join: perm.can_join && joinable,
+    can_join: perm.can_join && doc.status === 'live',
   };
 }
 
@@ -130,12 +154,14 @@ export async function listAdminLiveStreams(limit: number, skip: number) {
   const countMap = new Map(counts.map((c) => [String(c._id), c.count]));
   return {
     total,
-    items: items.map((doc) => ({
-      ...serializeBase(doc),
-      invite_count: countMap.get(String(doc._id)) ?? 0,
-      permission_status: 'host' as const,
-      can_join: true,
-    })),
+    items: sortByCurrentDateFirst(
+      items.map((doc) => ({
+        ...serializeBase(doc),
+        invite_count: countMap.get(String(doc._id)) ?? 0,
+        permission_status: 'host' as const,
+        can_join: true,
+      })),
+    ),
   };
 }
 
@@ -302,27 +328,54 @@ export async function revokeInvites(sessionId: string, userIds: string[]) {
 export async function joinLiveStream(
   id: string,
   user: { id: string; is_super_admin?: boolean; user_type?: string },
+  opts?: { as_host?: boolean },
 ): Promise<LiveStreamJoinPayload> {
   const doc = await LiveStream.findOne({ _id: id, is_active: true });
   if (!doc) throw notFound('Live session not found');
   if (doc.status === 'cancelled') throw badRequest('This session was cancelled.');
   if (doc.status === 'ended') throw badRequest('This session has ended. Ask an admin to restart it.');
-  if (doc.status === 'paused' && !isPlatformAdmin(user) && user.id !== String(doc.host_user_id)) {
-    throw badRequest('This live class is paused. Please wait for the host to resume.');
-  }
 
   const perm = await permissionFor(String(doc._id), user.id, String(doc.host_user_id), user);
   if (!perm.can_join) {
     throw forbidden('You are not permitted to join this live session. Ask an admin for access.');
   }
 
-  const role = perm.permission_status === 'host' ? 'host' : 'audience';
+  const wantsHost = Boolean(opts?.as_host);
+  const mayHost = user.id === String(doc.host_user_id) || isPlatformAdmin(user);
+  const role: 'host' | 'audience' = wantsHost && mayHost ? 'host' : 'audience';
+
+  if (doc.status === 'paused' && role !== 'host') {
+    throw badRequest('This live class is paused. Please wait for the host to resume.');
+  }
+  if (doc.status === 'scheduled' && role !== 'host') {
+    throw badRequest('This live class has not started yet.');
+  }
+
   const uid = agoraUidFromUserId(user.id);
   const { appId, token } = buildAgoraRtcToken({
     channel: doc.channel_name,
     uid,
     role,
   });
+
+  await LiveStreamGuest.updateOne(
+    {
+      live_stream_id: doc._id,
+      user_id: new mongoose.Types.ObjectId(user.id),
+    },
+    {
+      $set: {
+        role,
+        last_seen_at: new Date(),
+      },
+      $setOnInsert: {
+        live_stream_id: doc._id,
+        user_id: new mongoose.Types.ObjectId(user.id),
+        joined_at: new Date(),
+      },
+    },
+    { upsert: true },
+  );
 
   return {
     app_id: appId,
@@ -333,4 +386,28 @@ export async function joinLiveStream(
     topic: doc.topic,
     status: doc.status,
   };
+}
+
+export async function listGuests(id: string): Promise<LiveStreamGuestItem[]> {
+  const doc = await LiveStream.findOne({ _id: id, is_active: true });
+  if (!doc) throw notFound('Live session not found');
+  const guests = await LiveStreamGuest.find({ live_stream_id: doc._id }).sort({ last_seen_at: -1 });
+  const userIds = guests.map((g) => g.user_id);
+  const users = userIds.length
+    ? await User.find({ _id: { $in: userIds } }).select('full_name_en full_name_bn email phone')
+    : [];
+  const byId = new Map(users.map((u) => [String(u._id), u]));
+  return guests.map((g) => {
+    const u = byId.get(String(g.user_id));
+    return {
+      id: String(g._id),
+      user_id: String(g.user_id),
+      name: u ? u.full_name_bn?.trim() || u.full_name_en : 'Unknown',
+      email: u?.email,
+      phone: u?.phone,
+      role: g.role,
+      joined_at: g.joined_at.toISOString(),
+      last_seen_at: g.last_seen_at.toISOString(),
+    };
+  });
 }

@@ -9,6 +9,7 @@ import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
+import { MarkupText } from '@/components/shared/markup-text';
 
 const AgoraLiveRoom = dynamic(
   () => import('@/components/live/agora-live-room').then((m) => m.AgoraLiveRoom),
@@ -37,8 +38,8 @@ interface JoinPayload {
 function permissionCopy(status: LivePermissionStatus) {
   if (status === 'host') {
     return {
-      title: 'You can join as host',
-      body: 'You are the session host or an admin. You may start or watch this live class.',
+      title: 'You can join as host on the admin page',
+      body: 'Host broadcasting is only from Live admin on web. Here you can watch as a viewer.',
       tone: 'bg-amber-50 border-amber-100 text-amber-900',
     };
   }
@@ -80,7 +81,10 @@ export default function LiveStreamWatchPage() {
     setBusy(true);
     setError('');
     try {
-      const res = await apiFetch<{ data: JoinPayload }>(`/live-streams/${id}/join`, { method: 'POST' });
+      const res = await apiFetch<{ data: JoinPayload }>(`/live-streams/${id}/join`, {
+        method: 'POST',
+        body: JSON.stringify({ as_host: false }),
+      });
       setJoin(res.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not join');
@@ -124,7 +128,9 @@ export default function LiveStreamWatchPage() {
           <CardHeader>
             <CardTitle className="text-base">Details</CardTitle>
           </CardHeader>
-          <CardContent className="whitespace-pre-wrap text-sm text-slate-600">{session.details}</CardContent>
+          <CardContent className="text-sm text-slate-700">
+            <MarkupText text={session.details} />
+          </CardContent>
         </Card>
       ) : null}
 
@@ -160,7 +166,7 @@ export default function LiveStreamWatchPage() {
               channel={join.channel}
               token={join.token}
               uid={join.uid}
-              role={join.role}
+              role="audience"
               onError={setError}
             />
           )}

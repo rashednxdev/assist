@@ -587,6 +587,7 @@ export default function EditUserPage() {
 
           const renderModuleCard = (mod: ModuleItem) => {
             const existing = moduleAccess.find((a) => a.module_id === mod._id);
+            const granted = Boolean(existing);
             const draft = accessDraft[mod._id] ?? existing ?? {
               can_read: true,
               can_create: false,
@@ -599,11 +600,29 @@ export default function EditUserPage() {
             const flags = ['can_read', 'can_create', 'can_update', 'can_delete', 'can_grade', 'can_publish'] as const;
 
             return (
-              <div key={mod._id} className="rounded-lg border border-border p-4">
-                <div className="mb-2 flex items-center justify-between">
+              <div
+                key={mod._id}
+                className={
+                  granted
+                    ? 'rounded-lg border-2 border-emerald-400 bg-emerald-50 p-4 shadow-sm shadow-emerald-100'
+                    : 'rounded-lg border border-border bg-white p-4'
+                }
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
                   <div>
-                    <div className="font-medium">{mod.name_en}</div>
-                    <div className="text-xs text-muted">{mod.code}</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className={`font-medium ${granted ? 'text-emerald-950' : ''}`}>{mod.name_en}</div>
+                      {granted ? (
+                        <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                          Granted
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                          Not granted
+                        </span>
+                      )}
+                    </div>
+                    <div className={`text-xs ${granted ? 'text-emerald-700/80' : 'text-muted'}`}>{mod.code}</div>
                   </div>
                   {existing && (
                     <Button type="button" variant="outline" size="sm" onClick={() => revokeAccess(mod._id)}>
@@ -613,9 +632,13 @@ export default function EditUserPage() {
                 </div>
                 <div className="mb-3 flex flex-wrap gap-3">
                   {flags.map((flag) => (
-                    <label key={flag} className="flex items-center gap-1 text-xs capitalize">
+                    <label
+                      key={flag}
+                      className={`flex items-center gap-1 text-xs capitalize ${granted ? 'text-emerald-900' : ''}`}
+                    >
                       <input
                         type="checkbox"
+                        className={granted ? 'accent-emerald-600' : undefined}
                         checked={Boolean(draft[flag])}
                         onChange={(e) =>
                           setAccessDraft((prev) => ({
@@ -627,9 +650,10 @@ export default function EditUserPage() {
                       {flag.replace('can_', '')}
                     </label>
                   ))}
-                  <label className="flex items-center gap-1 text-xs">
+                  <label className={`flex items-center gap-1 text-xs ${granted ? 'text-emerald-900' : ''}`}>
                     <input
                       type="checkbox"
+                      className={granted ? 'accent-emerald-600' : undefined}
                       checked={Boolean(draft.bypass_stop)}
                       onChange={(e) =>
                         setAccessDraft((prev) => ({
@@ -641,7 +665,16 @@ export default function EditUserPage() {
                     Allow while module stopped
                   </label>
                 </div>
-                <Button type="button" size="sm" onClick={() => saveModuleAccess(mod._id)}>
+                <Button
+                  type="button"
+                  size="sm"
+                  className={
+                    granted
+                      ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                      : 'bg-emerald-500 text-white hover:bg-emerald-600'
+                  }
+                  onClick={() => saveModuleAccess(mod._id)}
+                >
                   {existing ? 'Update access' : 'Grant access'}
                 </Button>
               </div>

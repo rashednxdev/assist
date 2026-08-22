@@ -11,6 +11,7 @@ import {
   getLiveStreamHandler,
   joinLiveStreamHandler,
   listAdminLiveStreamsHandler,
+  listGuestsHandler,
   listInvitesHandler,
   listLiveStreamsHandler,
   pauseLiveStreamHandler,
@@ -36,6 +37,7 @@ liveStreamRouter.post('/:id/resume', requireAdmin, asyncHandler(resumeLiveStream
 liveStreamRouter.post('/:id/restart', requireAdmin, asyncHandler(restartLiveStreamHandler));
 liveStreamRouter.post('/:id/end', requireAdmin, asyncHandler(endLiveStreamHandler));
 liveStreamRouter.get('/:id/invites', requireAdmin, asyncHandler(listInvitesHandler));
+liveStreamRouter.get('/:id/guests', requireAdmin, asyncHandler(listGuestsHandler));
 liveStreamRouter.post('/:id/invites', requireAdmin, asyncHandler(addInvitesHandler));
 liveStreamRouter.post('/:id/invites/revoke', requireAdmin, asyncHandler(revokeInvitesHandler));
 liveStreamRouter.delete('/:id/invites/:userId', requireAdmin, asyncHandler(removeInviteHandler));

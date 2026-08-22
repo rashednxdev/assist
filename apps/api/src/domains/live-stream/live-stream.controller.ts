@@ -1,6 +1,7 @@
 import type { Response } from 'express';
 import {
   createLiveStreamSchema,
+  joinLiveStreamSchema,
   liveStreamInvitesSchema,
   liveStreamRevokeInvitesSchema,
   updateLiveStreamSchema,
@@ -20,7 +21,15 @@ export async function getLiveStreamHandler(req: AuthRequest, res: Response): Pro
 }
 
 export async function joinLiveStreamHandler(req: AuthRequest, res: Response): Promise<void> {
-  const data = await liveStreamService.joinLiveStream(String(req.params.id), req.user!);
+  const dto = joinLiveStreamSchema.parse(req.body ?? {});
+  const data = await liveStreamService.joinLiveStream(String(req.params.id), req.user!, {
+    as_host: dto.as_host,
+  });
+  res.json({ data });
+}
+
+export async function listGuestsHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await liveStreamService.listGuests(String(req.params.id));
   res.json({ data });
 }
 

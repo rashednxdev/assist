@@ -35,10 +35,27 @@ export const liveStreamRevokeInvitesSchema = z.object({
   user_ids: inviteUserIdsNonEmpty,
 });
 
+/** Host tokens are web-only. The mobile app must omit as_host (always audience). */
+export const joinLiveStreamSchema = z.object({
+  as_host: z.boolean().optional(),
+});
+
 export type CreateLiveStreamDto = z.infer<typeof createLiveStreamSchema>;
 export type UpdateLiveStreamDto = z.infer<typeof updateLiveStreamSchema>;
 export type LiveStreamInvitesDto = z.infer<typeof liveStreamInvitesSchema>;
 export type LiveStreamRevokeInvitesDto = z.infer<typeof liveStreamRevokeInvitesSchema>;
+export type JoinLiveStreamDto = z.infer<typeof joinLiveStreamSchema>;
+
+export interface LiveStreamGuestItem {
+  id: string;
+  user_id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  role: 'host' | 'audience';
+  joined_at: string;
+  last_seen_at: string;
+}
 
 export interface LiveStreamListItem {
   id: string;

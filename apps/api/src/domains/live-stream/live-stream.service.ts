@@ -172,6 +172,7 @@ export async function getLiveStreamForUser(
   if (!doc) throw notFound('Live session not found');
   const host = await User.findById(doc.host_user_id).select('full_name_en full_name_bn');
   const perm = await permissionFor(String(doc._id), user.id, String(doc.host_user_id), user);
+  const inviteCount = await LiveStreamInvite.countDocuments({ live_stream_id: doc._id });
   // Everyone can open the class page; slides stay invite-gated.
   const slides = serializeSlides(doc.slides);
   const allowed = perm.permission_status !== 'not_permitted';

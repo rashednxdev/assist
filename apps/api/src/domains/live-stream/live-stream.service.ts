@@ -3,6 +3,7 @@ import type {
   CreateLiveStreamDto,
   LivePermissionStatus,
   LiveStreamGuestItem,
+  LiveStreamGuestMessageItem,
   LiveStreamJoinPayload,
   LiveStreamListItem,
   LiveStreamSlide,
@@ -12,6 +13,7 @@ import { cleanLiveStreamSlides } from '@ibas/shared-types';
 import { LiveStream } from './models/LiveStream.model.js';
 import { LiveStreamInvite } from './models/LiveStreamInvite.model.js';
 import { LiveStreamGuest } from './models/LiveStreamGuest.model.js';
+import { LiveStreamGuestMessage } from './models/LiveStreamGuestMessage.model.js';
 import { User } from '../users/models/User.model.js';
 import { agoraUidFromUserId, buildAgoraRtcToken } from './agora-token.js';
 import { badRequest, forbidden, notFound } from '../../shared/errors/AppError.js';
@@ -39,6 +41,19 @@ export function isPreviousClass(doc: {
 }): boolean {
   if (doc.status === 'ended' || doc.status === 'cancelled') return true;
   return new Date(doc.scheduled_at).getTime() < startOfTodayMs();
+}
+
+/** Invitees after class ends; admins/hosts anytime (including upcoming) for review. */
+function canViewPresentation(
+  doc: { status: string; scheduled_at: Date | string; host_user_id: unknown },
+  user: { id: string; is_super_admin?: boolean; user_type?: string },
+  permissionStatus: LivePermissionStatus,
+): boolean {
+  if (permissionStatus === 'not_permitted') return false;
+  if (isPreviousClass(doc)) return true;
+  if (isPlatformAdmin(user)) return true;
+  if (user.id === String(doc.host_user_id)) return true;
+  return false;
 }
 
 function serializeSlides(
@@ -118,6 +133,7 @@ function serializeBase(doc: InstanceType<typeof LiveStream>, includeSlides = tru
     ended_at: doc.ended_at?.toISOString(),
     is_previous: isPreviousClass(doc),
     slide_count: slides.length,
+    allow_guest_messages: Boolean(doc.allow_guest_messages),
     ...(includeSlides ? { slides } : {}),
   };
 }
@@ -146,6 +162,7 @@ export async function listLiveStreamsForUser(
     const perm = await permissionFor(String(doc._id), user.id, String(doc.host_user_id), user);
     const previous = isPreviousClass(doc);
     const slides = serializeSlides(doc.slides);
+    const viewPresentation = canViewPresentation(doc, user, perm.permission_status);
     result.push({
       id: String(doc._id),
       topic: doc.topic,
@@ -157,6 +174,8 @@ export async function listLiveStreamsForUser(
       can_join: perm.can_join && doc.status === 'live',
       is_previous: previous,
       slide_count: slides.length,
+      allow_guest_messages: Boolean(doc.allow_guest_messages),
+      can_view_presentation: viewPresentation,
       created_at: doc.created_at.toISOString(),
       updated_at: doc.updated_at.toISOString(),
     });
@@ -173,13 +192,13 @@ export async function getLiveStreamForUser(
   const host = await User.findById(doc.host_user_id).select('full_name_en full_name_bn');
   const perm = await permissionFor(String(doc._id), user.id, String(doc.host_user_id), user);
   const inviteCount = await LiveStreamInvite.countDocuments({ live_stream_id: doc._id });
-  // Everyone can open the class page; slides stay invite-gated.
   const slides = serializeSlides(doc.slides);
-  const allowed = perm.permission_status !== 'not_permitted';
+  const viewPresentation = canViewPresentation(doc, user, perm.permission_status);
   return {
     ...serializeBase(doc, false),
-    slides: allowed ? slides : [],
+    slides: viewPresentation ? slides : [],
     slide_count: slides.length,
+    can_view_presentation: viewPresentation,
     host_name: host ? host.full_name_bn?.trim() || host.full_name_en : undefined,
     invite_count: inviteCount,
     permission_status: perm.permission_status,
@@ -206,6 +225,7 @@ export async function listAdminLiveStreams(limit: number, skip: number) {
         invite_count: countMap.get(String(doc._id)) ?? 0,
         permission_status: 'host' as const,
         can_join: true,
+        can_view_presentation: true,
       })),
     ),
   };
@@ -261,7 +281,10 @@ export async function updateLiveStream(id: string, dto: UpdateLiveStreamDto) {
     }
   }
   await doc.save();
-  return serializeBase(doc, true);
+  return {
+    ...serializeBase(doc, true),
+    can_view_presentation: true,
+  };
 }
 
 export async function softDeleteLiveStream(id: string) {
@@ -433,7 +456,125 @@ export async function joinLiveStream(
     role,
     topic: doc.topic,
     status: doc.status,
+    allow_guest_messages: Boolean(doc.allow_guest_messages),
   };
+}
+
+export async function setGuestMessagesAllowed(
+  id: string,
+  allow: boolean,
+): Promise<LiveStreamListItem> {
+  const doc = await LiveStream.findOne({ _id: id, is_active: true });
+  if (!doc) throw notFound('Live session not found');
+  doc.allow_guest_messages = allow;
+  await doc.save();
+  return {
+    ...serializeBase(doc, false),
+    invite_count: await LiveStreamInvite.countDocuments({ live_stream_id: doc._id }),
+    permission_status: 'host',
+    can_join: true,
+    can_view_presentation: true,
+  };
+}
+
+export async function sendGuestMessage(
+  id: string,
+  user: { id: string; is_super_admin?: boolean; user_type?: string },
+  body: string,
+): Promise<LiveStreamGuestMessageItem> {
+  const doc = await LiveStream.findOne({ _id: id, is_active: true });
+  if (!doc) throw notFound('Live session not found');
+  if (!doc.allow_guest_messages) {
+    throw badRequest('The host is not accepting guest messages right now.');
+  }
+  if (doc.status !== 'live') {
+    throw badRequest('You can only message the host while the class is live.');
+  }
+
+  const perm = await permissionFor(String(doc._id), user.id, String(doc.host_user_id), user);
+  if (!perm.can_join) {
+    throw forbidden('You are not permitted to message in this live session.');
+  }
+  if (user.id === String(doc.host_user_id)) {
+    throw badRequest('Host cannot send guest messages to themselves.');
+  }
+
+  const text = body.trim();
+  if (!text) throw badRequest('Message cannot be empty.');
+
+  const recent = await LiveStreamGuestMessage.findOne({
+    live_stream_id: doc._id,
+    from_user_id: user.id,
+  })
+    .sort({ created_at: -1 })
+    .lean();
+  if (recent && Date.now() - new Date(recent.created_at).getTime() < 2000) {
+    throw badRequest('Please wait a moment before sending another message.');
+  }
+
+  const msg = await LiveStreamGuestMessage.create({
+    live_stream_id: doc._id,
+    from_user_id: user.id,
+    body: text.slice(0, 500),
+    created_at: new Date(),
+  });
+
+  const from = await User.findById(user.id).select('full_name_en full_name_bn');
+  return {
+    id: String(msg._id),
+    from_user_id: user.id,
+    from_name: from ? from.full_name_bn?.trim() || from.full_name_en : 'Guest',
+    body: msg.body,
+    created_at: msg.created_at.toISOString(),
+  };
+}
+
+export async function listGuestMessages(
+  id: string,
+  opts?: { after?: string; limit?: number },
+): Promise<LiveStreamGuestMessageItem[]> {
+  const doc = await LiveStream.findOne({ _id: id, is_active: true });
+  if (!doc) throw notFound('Live session not found');
+
+  const limit = Math.min(Math.max(opts?.limit ?? 50, 1), 100);
+  const filter: Record<string, unknown> = { live_stream_id: doc._id };
+  if (opts?.after) {
+    if (mongoose.isValidObjectId(opts.after)) {
+      const afterDoc = await LiveStreamGuestMessage.findById(opts.after).lean();
+      if (afterDoc) {
+        filter.created_at = { $gt: afterDoc.created_at };
+      }
+    } else {
+      const afterDate = new Date(opts.after);
+      if (!Number.isNaN(afterDate.getTime())) {
+        filter.created_at = { $gt: afterDate };
+      }
+    }
+  }
+
+  // Initial load: newest page (then chronological). Incremental poll: after cursor ascending.
+  const messages = opts?.after
+    ? await LiveStreamGuestMessage.find(filter).sort({ created_at: 1 }).limit(limit)
+    : (
+        await LiveStreamGuestMessage.find(filter).sort({ created_at: -1 }).limit(limit)
+      ).reverse();
+
+  const userIds = [...new Set(messages.map((m) => String(m.from_user_id)))];
+  const users = userIds.length
+    ? await User.find({ _id: { $in: userIds } }).select('full_name_en full_name_bn')
+    : [];
+  const byId = new Map(users.map((u) => [String(u._id), u]));
+
+  return messages.map((m) => {
+    const u = byId.get(String(m.from_user_id));
+    return {
+      id: String(m._id),
+      from_user_id: String(m.from_user_id),
+      from_name: u ? u.full_name_bn?.trim() || u.full_name_en : 'Guest',
+      body: m.body,
+      created_at: m.created_at.toISOString(),
+    };
+  });
 }
 
 export async function listGuests(id: string): Promise<LiveStreamGuestItem[]> {

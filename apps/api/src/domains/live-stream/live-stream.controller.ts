@@ -4,6 +4,8 @@ import {
   joinLiveStreamSchema,
   liveStreamInvitesSchema,
   liveStreamRevokeInvitesSchema,
+  sendLiveStreamMessageSchema,
+  updateGuestMessagesSchema,
   updateLiveStreamSchema,
 } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
@@ -30,6 +32,35 @@ export async function joinLiveStreamHandler(req: AuthRequest, res: Response): Pr
 
 export async function listGuestsHandler(req: AuthRequest, res: Response): Promise<void> {
   const data = await liveStreamService.listGuests(String(req.params.id));
+  res.json({ data });
+}
+
+export async function setGuestMessagesHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = updateGuestMessagesSchema.parse(req.body);
+  const data = await liveStreamService.setGuestMessagesAllowed(
+    String(req.params.id),
+    dto.allow_guest_messages,
+  );
+  res.json({ data });
+}
+
+export async function sendGuestMessageHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = sendLiveStreamMessageSchema.parse(req.body);
+  const data = await liveStreamService.sendGuestMessage(
+    String(req.params.id),
+    req.user!,
+    dto.body,
+  );
+  res.status(201).json({ data });
+}
+
+export async function listGuestMessagesHandler(req: AuthRequest, res: Response): Promise<void> {
+  const after = typeof req.query.after === 'string' ? req.query.after : undefined;
+  const limitRaw = typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined;
+  const data = await liveStreamService.listGuestMessages(String(req.params.id), {
+    after,
+    limit: Number.isFinite(limitRaw) ? limitRaw : undefined,
+  });
   res.json({ data });
 }
 

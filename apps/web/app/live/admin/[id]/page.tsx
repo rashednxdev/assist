@@ -46,6 +46,15 @@ interface SessionDetail {
   slides?: LiveStreamSlide[];
   slide_count?: number;
   is_previous?: boolean;
+  allow_guest_messages?: boolean;
+}
+
+interface GuestMessageRow {
+  id: string;
+  from_user_id: string;
+  from_name: string;
+  body: string;
+  created_at: string;
 }
 
 interface SlideDraft {
@@ -120,6 +129,8 @@ export default function LiveStreamAdminDetailPage() {
   const [slides, setSlides] = useState<SlideDraft[]>([]);
   const [showMarkupHelp, setShowMarkupHelp] = useState(false);
   const [guests, setGuests] = useState<GuestRow[]>([]);
+  const [messages, setMessages] = useState<GuestMessageRow[]>([]);
+  const [msgBusy, setMsgBusy] = useState(false);
   const limit = 25;
 
   const invitedSet = useMemo(() => new Set(invites.map((i) => i.user_id)), [invites]);
@@ -194,6 +205,65 @@ export default function LiveStreamAdminDetailPage() {
       window.clearInterval(timer);
     };
   }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    let afterId: string | undefined;
+
+    async function loadMessages(initial: boolean) {
+      try {
+        const qs = afterId && !initial ? `?after=${encodeURIComponent(afterId)}` : '';
+        const res = await apiFetch<{ data: GuestMessageRow[] }>(`/live-streams/${id}/messages${qs}`);
+        if (cancelled) return;
+        if (initial) {
+          setMessages(res.data);
+        } else if (res.data.length) {
+          setMessages((prev) => {
+            const seen = new Set(prev.map((m) => m.id));
+            const next = [...prev];
+            for (const m of res.data) {
+              if (!seen.has(m.id)) next.push(m);
+            }
+            return next.slice(-200);
+          });
+        }
+        if (res.data.length) {
+          afterId = res.data[res.data.length - 1]?.id ?? afterId;
+        }
+      } catch {
+        // ignore poll errors
+      }
+    }
+
+    void loadMessages(true);
+    const timer = window.setInterval(() => void loadMessages(false), 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [id]);
+
+  async function toggleGuestMessages(allow: boolean) {
+    if (!id) return;
+    setMsgBusy(true);
+    setError('');
+    try {
+      const res = await apiFetch<{ data: SessionDetail }>(`/live-streams/${id}/guest-messages`, {
+        method: 'PATCH',
+        body: JSON.stringify({ allow_guest_messages: allow }),
+      });
+      setSession((prev) =>
+        prev
+          ? { ...prev, allow_guest_messages: res.data.allow_guest_messages ?? allow }
+          : prev,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update messaging');
+    } finally {
+      setMsgBusy(false);
+    }
+  }
 
   async function saveEdits() {
     if (!editTopic.trim() || !editWhen) {
@@ -676,6 +746,32 @@ export default function LiveStreamAdminDetailPage() {
             Pause keeps the session and invites. Resume or restart without deleting. Mic carries your speech to all
             viewers; Agora live mode has no fixed viewer limit in the app.
           </p>
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+            <span className="text-sm font-medium text-slate-800">Guest messages</span>
+            <span className="text-xs text-muted-foreground">
+              {session.allow_guest_messages
+                ? 'Guests may send messages to you'
+                : 'Messaging is off'}
+            </span>
+            <div className="ml-auto flex gap-2">
+              <Button
+                size="sm"
+                variant={session.allow_guest_messages ? 'default' : 'outline'}
+                disabled={msgBusy || Boolean(session.allow_guest_messages)}
+                onClick={() => void toggleGuestMessages(true)}
+              >
+                Allow
+              </Button>
+              <Button
+                size="sm"
+                variant={!session.allow_guest_messages ? 'default' : 'outline'}
+                disabled={msgBusy || !session.allow_guest_messages}
+                onClick={() => void toggleGuestMessages(false)}
+              >
+                Disallow
+              </Button>
+            </div>
+          </div>
           {join ? (
             <AgoraLiveRoom
               appId={join.app_id}
@@ -686,6 +782,38 @@ export default function LiveStreamAdminDetailPage() {
               onError={setError}
             />
           ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">
+            Guest messages
+            <span className="ml-2 text-xs font-medium text-muted-foreground">
+              {messages.length} · host only
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {messages.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No guest messages yet. Turn on “Allow” above so invited viewers can write to you.
+            </p>
+          ) : (
+            <ul className="max-h-80 space-y-2 overflow-y-auto rounded-xl border bg-white p-3">
+              {messages.map((m) => (
+                <li key={m.id} className="rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="font-semibold text-slate-900">{m.from_name}</span>
+                    <span className="shrink-0 text-[11px] text-slate-500">
+                      {new Date(m.created_at).toLocaleTimeString()}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 whitespace-pre-wrap text-slate-700">{m.body}</p>
+                </li>
+              ))}
+            </ul>
+          )}
         </CardContent>
       </Card>
 

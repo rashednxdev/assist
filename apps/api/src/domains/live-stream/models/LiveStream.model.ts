@@ -20,6 +20,8 @@ export interface ILiveStream extends Document {
   is_active: boolean;
   started_at?: Date;
   ended_at?: Date;
+  /** When true, invited guests may send messages to the host while the class is live. */
+  allow_guest_messages: boolean;
   /** Published class presentation slides (title + context + optional table/process). */
   slides: ILiveStreamSlide[];
   created_at: Date;
@@ -52,6 +54,7 @@ const schema = new Schema<ILiveStream>(
     is_active: { type: Boolean, default: true },
     started_at: { type: Date },
     ended_at: { type: Date },
+    allow_guest_messages: { type: Boolean, default: false },
     slides: { type: [slideSchema], default: [] },
   },
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } },

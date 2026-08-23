@@ -132,7 +132,7 @@ export default function QuestionsScreen() {
   const [evalMap, setEvalMap] = useState<Map<string, QuestionEvalBrief>>(new Map());
   const [loadingMore, setLoadingMore] = useState(false);
   const [readFilter, setReadFilter] = useState<ReadFilter>('all');
-  const [readSort, setReadSort] = useState<ReadSort>('unread_first');
+  const [readSort, setReadSort] = useState<ReadSort>('all');
   const { readCountById } = useAnswerHistory();
 
   const itemsRef = useRef<QuestionListItem[]>([]);
@@ -187,7 +187,7 @@ export default function QuestionsScreen() {
       selectedSubjectId ||
       groupByBooks ||
       readFilter !== 'all' ||
-      readSort !== 'unread_first',
+      readSort !== 'all',
   );
 
   /** Chip/book filters over the local cache (refreshed when you open this module). */
@@ -445,7 +445,7 @@ export default function QuestionsScreen() {
     setGroupByBooks(false);
     setBookMenuOpen(false);
     setReadFilter('all');
-    setReadSort('unread_first');
+    setReadSort('all');
   }
 
   function loadMore() {

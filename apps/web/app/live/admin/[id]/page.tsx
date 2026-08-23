@@ -15,6 +15,21 @@ import {
   MarkupInstructionsButton,
   MarkupInstructionsModal,
 } from '@/components/shared/markup-instructions-modal';
+import { ComparisonTableEditor } from '@/components/questions/comparison-table-editor';
+import {
+  ProcessStepsEditor,
+  emptyExplanationProcess,
+} from '@/components/questions/process-steps-editor';
+import { ProcessFlowPreview } from '@/components/books/process-flow-preview';
+import { ComparisonTableView } from '@/components/questions/comparison-table-view';
+import {
+  emptyComparisonTable,
+  hasComparisonTableContent,
+  hasProcessContent,
+  type ComparisonTable,
+  type ExplanationProcess,
+  type LiveStreamSlide,
+} from '@ibas/shared-types';
 
 const AgoraLiveRoom = dynamic(
   () => import('@/components/live/agora-live-room').then((m) => m.AgoraLiveRoom),
@@ -28,6 +43,17 @@ interface SessionDetail {
   scheduled_at: string;
   status: string;
   invite_count?: number;
+  slides?: LiveStreamSlide[];
+  slide_count?: number;
+  is_previous?: boolean;
+}
+
+interface SlideDraft {
+  key: string;
+  title: string;
+  context: string;
+  table?: ComparisonTable;
+  process?: ExplanationProcess;
 }
 
 interface InviteRow {
@@ -91,6 +117,7 @@ export default function LiveStreamAdminDetailPage() {
   const [editTopic, setEditTopic] = useState('');
   const [editDetails, setEditDetails] = useState('');
   const [editWhen, setEditWhen] = useState('');
+  const [slides, setSlides] = useState<SlideDraft[]>([]);
   const [showMarkupHelp, setShowMarkupHelp] = useState(false);
   const [guests, setGuests] = useState<GuestRow[]>([]);
   const limit = 25;
@@ -109,6 +136,15 @@ export default function LiveStreamAdminDetailPage() {
       setEditTopic(s.data.topic);
       setEditDetails(s.data.details ?? '');
       setEditWhen(toDatetimeLocal(s.data.scheduled_at));
+      setSlides(
+        (s.data.slides ?? []).map((slide, i) => ({
+          key: `slide-${i}-${Date.now()}`,
+          title: slide.title ?? '',
+          context: slide.context ?? '',
+          table: slide.table,
+          process: slide.process,
+        })),
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
     }
@@ -173,6 +209,12 @@ export default function LiveStreamAdminDetailPage() {
           topic: editTopic.trim(),
           details: editDetails.trim() || null,
           scheduled_at: new Date(editWhen).toISOString(),
+          slides: slides.map((s) => ({
+            title: s.title.trim(),
+            context: s.context.trim(),
+            ...(s.table ? { table: s.table } : {}),
+            ...(s.process ? { process: s.process } : {}),
+          })),
         }),
       });
       await load();
@@ -181,6 +223,34 @@ export default function LiveStreamAdminDetailPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function addSlide() {
+    setSlides((prev) => [
+      ...prev,
+      { key: `slide-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, title: '', context: '' },
+    ]);
+  }
+
+  function updateSlide(key: string, patch: Partial<Omit<SlideDraft, 'key'>>) {
+    setSlides((prev) => prev.map((s) => (s.key === key ? { ...s, ...patch } : s)));
+  }
+
+  function removeSlide(key: string) {
+    setSlides((prev) => prev.filter((s) => s.key !== key));
+  }
+
+  function moveSlide(key: string, dir: -1 | 1) {
+    setSlides((prev) => {
+      const idx = prev.findIndex((s) => s.key === key);
+      if (idx < 0) return prev;
+      const next = idx + dir;
+      if (next < 0 || next >= prev.length) return prev;
+      const copy = [...prev];
+      const [row] = copy.splice(idx, 1);
+      copy.splice(next, 0, row);
+      return copy;
+    });
   }
 
   function toggleSelect(userId: string) {
@@ -355,6 +425,197 @@ export default function LiveStreamAdminDetailPage() {
               Delete class
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
+          <CardTitle className="text-base">Class presentation slides</CardTitle>
+          <div className="flex items-center gap-2">
+            <MarkupInstructionsButton onClick={() => setShowMarkupHelp(true)} />
+            <Button type="button" variant="outline" size="sm" disabled={busy} onClick={addSlide}>
+              Add slide
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted">
+            Publish title + context for each slide, plus optional comparison tables and step
+            processes (same as Books / Questions). Invited users see these as stacked pages on
+            previous classes.
+          </p>
+          {slides.length === 0 ? (
+            <p className="text-sm text-muted">No slides yet. Add a slide to publish class content.</p>
+          ) : null}
+          {slides.map((slide, index) => (
+            <div
+              key={slide.key}
+              className="space-y-3 rounded-xl border border-border bg-background p-4"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-bold uppercase tracking-wide text-muted">
+                  Slide {index + 1}
+                </span>
+                <div className="flex flex-wrap gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={busy || index === 0}
+                    onClick={() => moveSlide(slide.key, -1)}
+                  >
+                    Up
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={busy || index === slides.length - 1}
+                    onClick={() => moveSlide(slide.key, 1)}
+                  >
+                    Down
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => removeSlide(slide.key)}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor={`slide-title-${slide.key}`}>Title</Label>
+                <Input
+                  id={`slide-title-${slide.key}`}
+                  value={slide.title}
+                  onChange={(e) => updateSlide(slide.key, { title: e.target.value })}
+                  placeholder="Slide title (markup allowed)"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor={`slide-context-${slide.key}`}>Context</Label>
+                <textarea
+                  id={`slide-context-${slide.key}`}
+                  value={slide.context}
+                  onChange={(e) => updateSlide(slide.key, { context: e.target.value })}
+                  rows={6}
+                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  placeholder="Slide context — use // /// //// /--- *bold* []"
+                />
+              </div>
+
+              <div className="space-y-2 rounded-lg border border-border p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Label className="text-xs">Comparison table (optional)</Label>
+                  {hasComparisonTableContent(slide.table) ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => updateSlide(slide.key, { table: undefined })}
+                    >
+                      Remove table
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => updateSlide(slide.key, { table: emptyComparisonTable(2) })}
+                    >
+                      Add table
+                    </Button>
+                  )}
+                </div>
+                {slide.table ? (
+                  <ComparisonTableEditor
+                    value={slide.table}
+                    onChange={(table) => updateSlide(slide.key, { table })}
+                    disabled={busy}
+                  />
+                ) : (
+                  <p className="text-xs text-muted">
+                    Add a Differences-style table under this slide (same as Questions / Books).
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2 rounded-lg border border-border p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Label className="text-xs">Process steps (optional)</Label>
+                  {hasProcessContent(slide.process) || slide.process ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => updateSlide(slide.key, { process: undefined })}
+                    >
+                      Remove process
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => updateSlide(slide.key, { process: emptyExplanationProcess() })}
+                    >
+                      Add process
+                    </Button>
+                  )}
+                </div>
+                {slide.process ? (
+                  <ProcessStepsEditor
+                    value={slide.process}
+                    onChange={(process) => updateSlide(slide.key, { process })}
+                    disabled={busy}
+                  />
+                ) : (
+                  <p className="text-xs text-muted">
+                    Add a step-by-step process under this slide (same as Books / model answers).
+                  </p>
+                )}
+              </div>
+
+              {(slide.title.trim() ||
+                slide.context.trim() ||
+                hasComparisonTableContent(slide.table) ||
+                hasProcessContent(slide.process)) && (
+                <div className="space-y-3 rounded-lg border border-dashed border-border bg-muted/30 p-3 text-sm">
+                  <p className="text-xs font-bold uppercase text-muted">Preview</p>
+                  {slide.title.trim() ? (
+                    <div className="text-lg font-bold text-foreground">
+                      <MarkupText text={slide.title} />
+                    </div>
+                  ) : null}
+                  {slide.context.trim() ? <MarkupText text={slide.context} /> : null}
+                  {hasComparisonTableContent(slide.table) ? (
+                    <ComparisonTableView table={slide.table} label="" />
+                  ) : null}
+                  {hasProcessContent(slide.process) ? (
+                    <div className="space-y-2">
+                      {slide.process?.title?.trim() ? (
+                        <p className="font-semibold text-foreground">{slide.process.title}</p>
+                      ) : null}
+                      {slide.process?.details?.trim() ? (
+                        <MarkupText text={slide.process.details} />
+                      ) : null}
+                      <ProcessFlowPreview steps={slide.process?.steps ?? []} />
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          ))}
+          <Button disabled={busy} onClick={() => void saveEdits()}>
+            Save slides &amp; class
+          </Button>
         </CardContent>
       </Card>
 

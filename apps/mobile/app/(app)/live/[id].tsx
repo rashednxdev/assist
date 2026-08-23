@@ -12,6 +12,7 @@ import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { WebView } from 'react-native-webview';
 import { BookError, BookLoading } from '@/components/books/BookStates';
 import { BookRichText } from '@/components/books/BookRichText';
+import { LiveClassPresentation } from '@/components/live/LiveClassPresentation';
 import {
   fetchLiveStream,
   joinLiveStream,
@@ -92,9 +93,7 @@ function agoraHtml(join: LiveStreamJoinPayload) {
 
 export default function LiveStreamDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [session, setSession] = useState<(LiveStreamListItem & { invite_count?: number }) | null>(
-    null,
-  );
+  const [session, setSession] = useState<LiveStreamListItem | null>(null);
   const [join, setJoin] = useState<LiveStreamJoinPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -118,6 +117,11 @@ export default function LiveStreamDetailScreen() {
       void load();
     }, [load]),
   );
+
+  const isPrevious = Boolean(session?.is_previous) || session?.status === 'ended';
+  const slides = session?.slides ?? [];
+  const isPermitted = session?.permission_status !== 'not_permitted';
+  const showPresentation = isPrevious && isPermitted;
 
   const perm = useMemo(
     () => (session ? permissionCard(session.permission_status) : null),
@@ -157,16 +161,31 @@ export default function LiveStreamDetailScreen() {
     );
   }
 
+  if (showPresentation) {
+    return (
+      <View style={styles.root}>
+        <LiveClassPresentation slides={slides} classTopic={session.topic} />
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
       <Text style={styles.topic}>{session.topic}</Text>
       <Text style={styles.meta}>
-        {new Date(session.scheduled_at).toLocaleString()} · {session.status}
+        {new Date(session.scheduled_at).toLocaleString()} ·{' '}
+        {isPrevious ? 'Previous class' : session.status}
       </Text>
 
       <View style={[styles.permCard, { backgroundColor: perm.bg, borderColor: perm.border }]}>
-        <Text style={[styles.permTitle, { color: perm.color }]}>{perm.title}</Text>
-        <Text style={[styles.permBody, { color: perm.color }]}>{perm.body}</Text>
+        <Text style={[styles.permTitle, { color: perm.color }]}>
+          {isPrevious && !isPermitted ? 'Presentation locked' : perm.title}
+        </Text>
+        <Text style={[styles.permBody, { color: perm.color }]}>
+          {isPrevious && !isPermitted
+            ? 'You can see this previous class in the list, but an admin must invite you to open the presentation.'
+            : perm.body}
+        </Text>
       </View>
 
       {session.status === 'paused' ? (
@@ -182,6 +201,17 @@ export default function LiveStreamDetailScreen() {
         <View style={styles.detailsCard}>
           <Text style={styles.detailsLabel}>Details</Text>
           <BookRichText html={session.details} style={styles.detailsText} />
+        </View>
+      ) : null}
+
+      {(session.slide_count ?? slides.length) > 0 ? (
+        <View style={styles.detailsCard}>
+          <Text style={styles.detailsLabel}>Presentation ready</Text>
+          <Text style={styles.detailsText}>
+            {session.slide_count ?? slides.length} slide
+            {(session.slide_count ?? slides.length) === 1 ? '' : 's'} will open here after the class
+            ends (for invited users).
+          </Text>
         </View>
       ) : null}
 

@@ -3,13 +3,21 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import type { LivePermissionStatus, LiveStreamStatus } from '@ibas/shared-types';
+import { MarkupText } from '@/components/shared/markup-text';
+import { ComparisonTableView } from '@/components/questions/comparison-table-view';
+import { ProcessFlowPreview } from '@/components/books/process-flow-preview';
+import {
+  hasComparisonTableContent,
+  hasProcessContent,
+  type LivePermissionStatus,
+  type LiveStreamSlide,
+  type LiveStreamStatus,
+} from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
-import { MarkupText } from '@/components/shared/markup-text';
 
 const AgoraLiveRoom = dynamic(
   () => import('@/components/live/agora-live-room').then((m) => m.AgoraLiveRoom),
@@ -25,6 +33,9 @@ interface SessionDetail {
   host_name?: string;
   permission_status: LivePermissionStatus;
   can_join: boolean;
+  is_previous?: boolean;
+  slides?: LiveStreamSlide[];
+  slide_count?: number;
 }
 
 interface JoinPayload {
@@ -103,6 +114,73 @@ export default function LiveStreamWatchPage() {
   }
 
   const perm = permissionCopy(session.permission_status);
+  const isPrevious = Boolean(session.is_previous) || session.status === 'ended';
+  const slides = session.slides ?? [];
+  const isPermitted = session.permission_status !== 'not_permitted';
+
+  if (isPrevious) {
+    return (
+      <div className="mx-auto max-w-3xl space-y-6">
+        <PageHeader
+          title={session.topic}
+          description={`${new Date(session.scheduled_at).toLocaleString()} · Previous class`}
+        />
+        {error ? <Alert variant="error">{error}</Alert> : null}
+        {!isPermitted ? (
+          <div className={`rounded-2xl border p-4 ${perm.tone}`}>
+            <div className="text-base font-bold">Presentation locked</div>
+            <p className="mt-1 text-sm opacity-90">
+              Everyone can see this class in the list. An admin must invite you to open the
+              presentation.
+            </p>
+          </div>
+        ) : slides.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No presentation slides published yet.</p>
+        ) : (
+          <div className="space-y-8">
+            <p className="text-center text-xs font-bold uppercase tracking-wide text-pink-800">
+              Class presentation · {slides.length} slide{slides.length === 1 ? '' : 's'}
+            </p>
+            {slides.map((slide, index) => (
+              <Card key={`slide-${index}`} className="border-pink-100 shadow-sm">
+                <CardContent className="space-y-4 px-6 py-10 sm:px-10">
+                  <p className="text-center text-xs font-bold text-slate-400">
+                    {index + 1} / {slides.length}
+                  </p>
+                  {slide.title?.trim() ? (
+                    <div className="text-center text-2xl font-extrabold leading-snug text-slate-900 sm:text-3xl">
+                      <MarkupText text={slide.title} />
+                    </div>
+                  ) : null}
+                  {slide.context?.trim() ? (
+                    <div className="text-base leading-8 text-slate-800 sm:text-lg">
+                      <MarkupText text={slide.context} />
+                    </div>
+                  ) : null}
+                  {hasComparisonTableContent(slide.table) ? (
+                    <ComparisonTableView table={slide.table} label="" />
+                  ) : null}
+                  {hasProcessContent(slide.process) ? (
+                    <div className="space-y-3 rounded-xl border border-border bg-slate-50 p-4">
+                      {slide.process?.title?.trim() ? (
+                        <p className="text-lg font-bold text-slate-900">{slide.process.title}</p>
+                      ) : null}
+                      {slide.process?.details?.trim() ? (
+                        <div className="text-sm text-slate-700">
+                          <MarkupText text={slide.process.details} />
+                        </div>
+                      ) : null}
+                      <ProcessFlowPreview steps={slide.process?.steps ?? []} />
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

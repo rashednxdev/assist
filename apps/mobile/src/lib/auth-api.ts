@@ -15,6 +15,8 @@ export type MeUser = AuthUser & {
   module_stops: ModuleStop[];
   /** False when amount_received is 0 (admins always true). */
   has_paid?: boolean;
+  /** Admin-configured message shown to unpaid users. */
+  unpaid_message?: string;
   all_exam_subjects?: boolean;
   exam_subject_ids?: string[];
   exam_subjects?: Array<{ id: string; name: string; name_bn?: string }>;

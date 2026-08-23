@@ -5,8 +5,10 @@ import type {
   LiveStreamGuestItem,
   LiveStreamJoinPayload,
   LiveStreamListItem,
+  LiveStreamSlide,
   UpdateLiveStreamDto,
 } from '@ibas/shared-types';
+import { cleanLiveStreamSlides } from '@ibas/shared-types';
 import { LiveStream } from './models/LiveStream.model.js';
 import { LiveStreamInvite } from './models/LiveStreamInvite.model.js';
 import { LiveStreamGuest } from './models/LiveStreamGuest.model.js';
@@ -24,13 +26,44 @@ function channelForId(id: string) {
   return `live_${id}`;
 }
 
-/** Today first (by time), then upcoming, then past. */
-function sortByCurrentDateFirst<T extends { scheduled_at: Date | string }>(items: T[]): T[] {
+function startOfTodayMs() {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
+  return start.getTime();
+}
+
+/** Ended/cancelled or scheduled before today → previous class. */
+export function isPreviousClass(doc: {
+  status: string;
+  scheduled_at: Date | string;
+}): boolean {
+  if (doc.status === 'ended' || doc.status === 'cancelled') return true;
+  return new Date(doc.scheduled_at).getTime() < startOfTodayMs();
+}
+
+function serializeSlides(
+  slides: Array<{
+    title?: string;
+    context?: string;
+    table?: LiveStreamSlide['table'];
+    process?: LiveStreamSlide['process'];
+  }> | undefined,
+): LiveStreamSlide[] {
+  return cleanLiveStreamSlides(
+    (slides ?? []).map((s) => ({
+      title: String(s.title ?? ''),
+      context: String(s.context ?? ''),
+      table: s.table,
+      process: s.process,
+    })),
+  );
+}
+
+/** Today first (by time), then upcoming, then past. */
+function sortByCurrentDateFirst<T extends { scheduled_at: Date | string }>(items: T[]): T[] {
+  const startMs = startOfTodayMs();
+  const end = new Date(startMs);
   end.setDate(end.getDate() + 1);
-  const startMs = start.getTime();
   const endMs = end.getTime();
 
   const today: T[] = [];
@@ -69,7 +102,8 @@ async function permissionFor(
   return { permission_status: 'not_permitted', can_join: false };
 }
 
-function serializeBase(doc: InstanceType<typeof LiveStream>) {
+function serializeBase(doc: InstanceType<typeof LiveStream>, includeSlides = true) {
+  const slides = serializeSlides(doc.slides);
   return {
     id: String(doc._id),
     topic: doc.topic,
@@ -82,6 +116,9 @@ function serializeBase(doc: InstanceType<typeof LiveStream>) {
     updated_at: doc.updated_at.toISOString(),
     started_at: doc.started_at?.toISOString(),
     ended_at: doc.ended_at?.toISOString(),
+    is_previous: isPreviousClass(doc),
+    slide_count: slides.length,
+    ...(includeSlides ? { slides } : {}),
   };
 }
 
@@ -107,6 +144,8 @@ export async function listLiveStreamsForUser(
   const result: LiveStreamListItem[] = [];
   for (const doc of items) {
     const perm = await permissionFor(String(doc._id), user.id, String(doc.host_user_id), user);
+    const previous = isPreviousClass(doc);
+    const slides = serializeSlides(doc.slides);
     result.push({
       id: String(doc._id),
       topic: doc.topic,
@@ -116,6 +155,8 @@ export async function listLiveStreamsForUser(
       host_name: hostName.get(String(doc.host_user_id)),
       permission_status: perm.permission_status,
       can_join: perm.can_join && doc.status === 'live',
+      is_previous: previous,
+      slide_count: slides.length,
       created_at: doc.created_at.toISOString(),
       updated_at: doc.updated_at.toISOString(),
     });
@@ -131,9 +172,13 @@ export async function getLiveStreamForUser(
   if (!doc) throw notFound('Live session not found');
   const host = await User.findById(doc.host_user_id).select('full_name_en full_name_bn');
   const perm = await permissionFor(String(doc._id), user.id, String(doc.host_user_id), user);
-  const inviteCount = await LiveStreamInvite.countDocuments({ live_stream_id: doc._id });
+  // Everyone can open the class page; slides stay invite-gated.
+  const slides = serializeSlides(doc.slides);
+  const allowed = perm.permission_status !== 'not_permitted';
   return {
-    ...serializeBase(doc),
+    ...serializeBase(doc, false),
+    slides: allowed ? slides : [],
+    slide_count: slides.length,
     host_name: host ? host.full_name_bn?.trim() || host.full_name_en : undefined,
     invite_count: inviteCount,
     permission_status: perm.permission_status,
@@ -156,7 +201,7 @@ export async function listAdminLiveStreams(limit: number, skip: number) {
     total,
     items: sortByCurrentDateFirst(
       items.map((doc) => ({
-        ...serializeBase(doc),
+        ...serializeBase(doc, false),
         invite_count: countMap.get(String(doc._id)) ?? 0,
         permission_status: 'host' as const,
         can_join: true,
@@ -180,6 +225,7 @@ export async function createLiveStream(dto: CreateLiveStreamDto, actorId: string
     host_user_id: actorId,
     created_by: actorId,
     is_active: true,
+    slides: dto.slides ? serializeSlides(dto.slides) : [],
   });
 
   if (dto.invite_user_ids?.length) {
@@ -199,6 +245,7 @@ export async function updateLiveStream(id: string, dto: UpdateLiveStreamDto) {
   if (dto.topic !== undefined) doc.topic = dto.topic;
   if (dto.details !== undefined) doc.details = dto.details ?? undefined;
   if (dto.scheduled_at !== undefined) doc.scheduled_at = dto.scheduled_at;
+  if (dto.slides !== undefined) doc.slides = serializeSlides(dto.slides);
   if (dto.status !== undefined) {
     doc.status = dto.status;
     if (dto.status === 'live') {
@@ -213,7 +260,7 @@ export async function updateLiveStream(id: string, dto: UpdateLiveStreamDto) {
     }
   }
   await doc.save();
-  return serializeBase(doc);
+  return serializeBase(doc, true);
 }
 
 export async function softDeleteLiveStream(id: string) {

@@ -2,10 +2,9 @@ import { Linking, Modal, Pressable, StatusBar, Text, View, StyleSheet } from 're
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { DEFAULT_UNPAID_MESSAGE } from '@ibas/shared-types';
+import { openSupportWhatsApp, SUPPORT_WHATSAPP_DISPLAY } from '@/lib/contact';
 import { colors, spacing } from '@/theme';
-
-const WHATSAPP_DISPLAY_NUMBER = '01911 120 610';
-const WHATSAPP_INTL_NUMBER = '8801911120610';
 
 export type AccessRequiredVariant = 'denied' | 'network-error' | 'stopped' | 'unpaid';
 
@@ -14,6 +13,8 @@ interface AccessRequiredScreenProps {
   variant: AccessRequiredVariant;
   moduleTitle?: string;
   stoppedReason?: string;
+  /** Admin-configured unpaid message (from /auth/me). */
+  unpaidMessage?: string;
   onClose: () => void;
 }
 
@@ -42,8 +43,7 @@ const COPY: Record<
   unpaid: {
     icon: 'card',
     title: 'Pay to Get Access Module',
-    body: (moduleTitle) =>
-      `Pay to unlock ${moduleTitle ?? 'this module'} and other learning content. Message us on WhatsApp to complete payment.`,
+    body: () => DEFAULT_UNPAID_MESSAGE,
   },
 };
 
@@ -52,21 +52,23 @@ export function AccessRequiredScreen({
   variant,
   moduleTitle,
   stoppedReason,
+  unpaidMessage,
   onClose,
 }: AccessRequiredScreenProps) {
   const copy = COPY[variant];
+  const bodyText =
+    variant === 'unpaid'
+      ? unpaidMessage?.trim() || DEFAULT_UNPAID_MESSAGE
+      : copy.body(moduleTitle, stoppedReason);
 
   function openWhatsApp() {
-    const text = encodeURIComponent(
+    const text =
       variant === 'unpaid'
         ? `Hi, I'd like to pay to get access to "${moduleTitle ?? 'a module'}" on ProAssist.`
         : variant === 'denied'
           ? `Hi, I'd like to request access to "${moduleTitle ?? 'a module'}" on ProAssist.`
-          : `Hi, I'm having trouble connecting to ProAssist and need help.`,
-    );
-    Linking.openURL(`https://wa.me/${WHATSAPP_INTL_NUMBER}?text=${text}`).catch(() => {
-      /* ignore — nothing sensible to show if the link fails to open */
-    });
+          : `Hi, I'm having trouble connecting to ProAssist and need help.`;
+    openSupportWhatsApp(text);
   }
 
   return (
@@ -96,7 +98,7 @@ export function AccessRequiredScreen({
             </View>
 
             <Text style={styles.title}>{copy.title}</Text>
-            <Text style={styles.body}>{copy.body(moduleTitle, stoppedReason)}</Text>
+            <Text style={styles.body}>{bodyText}</Text>
 
             {variant !== 'stopped' ? (
               <>
@@ -111,7 +113,7 @@ export function AccessRequiredScreen({
                   <Ionicons name="logo-whatsapp" size={24} color={colors.white} />
                   <Text style={styles.waButtonText}>Contact on WhatsApp</Text>
                 </Pressable>
-                <Text style={styles.waNumber}>{WHATSAPP_DISPLAY_NUMBER}</Text>
+                <Text style={styles.waNumber}>{SUPPORT_WHATSAPP_DISPLAY}</Text>
               </>
             ) : null}
 

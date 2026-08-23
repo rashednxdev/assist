@@ -68,5 +68,6 @@ export * from './qotd.js';
 export * from './exam-routine.js';
 export * from './user-questions.js';
 export * from './terms.js';
+export * from './app-settings.js';
 export * from './process.js';
 export * from './live-stream.js';

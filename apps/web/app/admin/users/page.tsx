@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Plus, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Search, ChevronLeft, ChevronRight, Phone, MessageCircle } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
+import { phoneTelHref, phoneWhatsAppHref } from '@/lib/contact';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,6 +30,32 @@ function statusVariant(status: string): 'success' | 'warning' | 'destructive' | 
   if (status === 'pending_verify') return 'warning';
   if (status === 'suspended') return 'destructive';
   return 'secondary';
+}
+
+function ContactActions({ user }: { user: UserRow }) {
+  const tel = user.phone ? phoneTelHref(user.phone) : null;
+  const wa = user.phone
+    ? phoneWhatsAppHref(user.phone, `Hi ${user.full_name_en}, regarding ProAssist.`)
+    : null;
+  if (!tel && !wa) return <span className="text-xs text-muted">—</span>;
+  return (
+    <div className="flex items-center justify-end gap-1">
+      {tel ? (
+        <Button asChild variant="ghost" size="sm" className="h-8 w-8 p-0" title="Call">
+          <a href={tel} aria-label={`Call ${user.full_name_en}`}>
+            <Phone className="h-4 w-4 text-sky-700" />
+          </a>
+        </Button>
+      ) : null}
+      {wa ? (
+        <Button asChild variant="ghost" size="sm" className="h-8 w-8 p-0" title="WhatsApp">
+          <a href={wa} target="_blank" rel="noreferrer" aria-label={`WhatsApp ${user.full_name_en}`}>
+            <MessageCircle className="h-4 w-4 text-emerald-600" />
+          </a>
+        </Button>
+      ) : null}
+    </div>
+  );
 }
 
 export default function UsersPage() {
@@ -134,6 +161,12 @@ export default function UsersPage() {
                 key: 'status',
                 header: 'Status',
                 cell: (u) => <Badge variant={statusVariant(u.status)}>{u.status}</Badge>,
+              },
+              {
+                key: 'contact',
+                header: 'Contact',
+                className: 'text-right',
+                cell: (u) => <ContactActions user={u} />,
               },
               {
                 key: 'actions',

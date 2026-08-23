@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, spacing } from '@/theme';
 
 export type ReadFilter = 'all' | 'read' | 'unread';
-export type ReadSort = 'unread_first' | 'read_first';
+export type ReadSort = 'all' | 'unread_first' | 'read_first';
 
 export function formatReadCountLabel(count: number): string {
   if (count <= 0) return '';
@@ -21,6 +21,7 @@ export function compareReadCounts(
   bCount: number | undefined,
   sort: ReadSort,
 ): number {
+  if (sort === 'all') return 0;
   const ac = aCount ?? 0;
   const bc = bCount ?? 0;
   const aRead = ac > 0;
@@ -50,6 +51,7 @@ const FILTERS: Array<{ id: ReadFilter; label: string }> = [
 ];
 
 const SORTS: Array<{ id: ReadSort; label: string }> = [
+  { id: 'all', label: 'All' },
   { id: 'unread_first', label: 'Unread first' },
   { id: 'read_first', label: 'Read first' },
 ];

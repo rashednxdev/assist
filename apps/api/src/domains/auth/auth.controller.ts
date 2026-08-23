@@ -6,6 +6,7 @@ import { User } from '../users/models/User.model.js';
 import { listModuleAccessForSession } from '../users/module-access.service.js';
 import { listStoppedModules } from '../setup/setup.service.js';
 import { serializeExamSubjectAccess } from '../users/subject-access.service.js';
+import { getAppSettings } from '../app-settings/app-settings.service.js';
 import { badRequest } from '../../shared/errors/AppError.js';
 
 export async function loginHandler(req: AuthRequest, res: Response): Promise<void> {
@@ -70,6 +71,7 @@ export async function meHandler(req: AuthRequest, res: Response): Promise<void> 
   const isAdmin =
     user.is_super_admin || user.user_type === 'system_admin' || user.user_type === 'admin';
   const has_paid = isAdmin || Number(user.amount_received ?? 0) > 0;
+  const appSettings = await getAppSettings();
 
   res.json({
     data: {
@@ -91,6 +93,7 @@ export async function meHandler(req: AuthRequest, res: Response): Promise<void> 
       module_access,
       module_stops,
       has_paid,
+      unpaid_message: appSettings.unpaid_message,
       all_exam_subjects: subjectAccess.all_exam_subjects,
       exam_subject_ids: subjectAccess.exam_subject_ids,
       exam_subjects: subjectAccess.exam_subjects,

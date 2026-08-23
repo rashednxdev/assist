@@ -195,9 +195,12 @@ export default function HomeScreen() {
       );
     });
     if (hasPaidModule) return MODULES;
+    // Until paid: pin free promo modules at the top — QOTD, then Live class.
     const qotd = MODULES.find((m) => m.code === 'QOTD');
-    if (!qotd) return MODULES;
-    return [qotd, ...MODULES.filter((m) => m.id !== qotd.id)];
+    const live = MODULES.find((m) => m.code === 'LIVE_STREAM');
+    const pinned = [qotd, live].filter(Boolean) as typeof MODULES;
+    const pinnedIds = new Set(pinned.map((m) => m.id));
+    return [...pinned, ...MODULES.filter((m) => !pinnedIds.has(m.id))];
   }, [user?.module_access, user?.module_stops, user?.has_paid]);
 
   const openModule = useCallback(
@@ -524,6 +527,7 @@ export default function HomeScreen() {
         variant={accessScreen?.variant ?? 'denied'}
         moduleTitle={accessScreen?.moduleTitle}
         stoppedReason={accessScreen?.stoppedReason}
+        unpaidMessage={user?.unpaid_message}
         onClose={() => setAccessScreen(null)}
       />
       <ModuleWelcomeTips visible={welcomeTipsOpen} onDone={() => setWelcomeTipsOpen(false)} />

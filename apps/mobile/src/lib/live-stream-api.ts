@@ -1,5 +1,10 @@
 import { apiFetch } from './api';
-import type { LivePermissionStatus, LiveStreamJoinPayload, LiveStreamStatus } from '@ibas/shared-types';
+import type {
+  LivePermissionStatus,
+  LiveStreamJoinPayload,
+  LiveStreamSlide,
+  LiveStreamStatus,
+} from '@ibas/shared-types';
 
 export interface LiveStreamListItem {
   id: string;
@@ -10,6 +15,10 @@ export interface LiveStreamListItem {
   host_name?: string;
   permission_status: LivePermissionStatus;
   can_join: boolean;
+  is_previous?: boolean;
+  slide_count?: number;
+  slides?: LiveStreamSlide[];
+  invite_count?: number;
 }
 
 export async function fetchLiveStreams() {
@@ -18,9 +27,7 @@ export async function fetchLiveStreams() {
 }
 
 export async function fetchLiveStream(id: string) {
-  const res = await apiFetch<{ data: LiveStreamListItem & { invite_count?: number } }>(
-    `/live-streams/${id}`,
-  );
+  const res = await apiFetch<{ data: LiveStreamListItem }>(`/live-streams/${id}`);
   return res.data;
 }
 

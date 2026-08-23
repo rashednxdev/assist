@@ -167,7 +167,7 @@ export function ChapterQuestionsPanel({
   const [panelView, setPanelView] = useState<PanelView>('list');
   const [typeFilter, setTypeFilter] = useState('ALL');
   const [readFilter, setReadFilter] = useState<ReadFilter>('all');
-  const [readSort, setReadSort] = useState<ReadSort>('unread_first');
+  const [readSort, setReadSort] = useState<ReadSort>('all');
   const { readCountById } = useAnswerHistory();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [question, setQuestion] = useState<QuestionDetail | null>(null);

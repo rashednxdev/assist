@@ -36,7 +36,7 @@ export const MODULE_CODES = [
 export type ModuleCode = (typeof MODULE_CODES)[number];
 
 /** Modules every authenticated user may open without a grant or payment. */
-export const FREE_MODULE_CODES = ['QOTD', 'EXAM_ROUTINE'] as const;
+export const FREE_MODULE_CODES = ['QOTD', 'EXAM_ROUTINE', 'LIVE_STREAM'] as const;
 export type FreeModuleCode = (typeof FREE_MODULE_CODES)[number];
 
 export function isFreeModuleCode(code: string): boolean {

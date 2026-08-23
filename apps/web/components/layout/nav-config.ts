@@ -26,6 +26,7 @@ import {
   MessageSquarePlus,
   FileCheck,
   Video,
+  MessageCircle,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -158,6 +159,13 @@ export const navGroups: NavGroup[] = [
       { href: '/admin/audit', label: 'Audit log', icon: ScrollText, moduleCode: 'AUDIT', requireCreate: true },
       { href: '/notifications/admin', label: 'Notifications', icon: Bell, moduleCode: 'NOTICE', requireCreate: true },
       { href: '/admin/terms', label: 'Terms & Conditions', icon: FileCheck, moduleCode: 'SETUP', requireCreate: true },
+      {
+        href: '/admin/unpaid-message',
+        label: 'Unpaid access message',
+        icon: MessageCircle,
+        moduleCode: 'SETUP',
+        requireCreate: true,
+      },
     ],
   },
 ];

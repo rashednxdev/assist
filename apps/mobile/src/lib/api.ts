@@ -92,7 +92,7 @@ export const LEARNING_MODULE_CODES = [
 export type LearningModuleCode = (typeof LEARNING_MODULE_CODES)[number];
 
 /** Always open for every authenticated user — no grant or payment required. */
-export const FREE_LEARNING_MODULE_CODES = ['QOTD', 'EXAM_ROUTINE'] as const;
+export const FREE_LEARNING_MODULE_CODES = ['QOTD', 'EXAM_ROUTINE', 'LIVE_STREAM'] as const;
 
 export function isFreeLearningModule(code: string): boolean {
   return (FREE_LEARNING_MODULE_CODES as readonly string[]).includes(code);

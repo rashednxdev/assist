@@ -1,4 +1,14 @@
 import { z } from 'zod';
+import {
+  comparisonTableSchema,
+  cleanComparisonTable,
+  hasComparisonTableContent,
+} from './comparison-table.js';
+import {
+  explanationProcessSchema,
+  cleanExplanationProcess,
+  hasProcessContent,
+} from './explanation.js';
 
 const mongoId = z.string().regex(/^[a-f\d]{24}$/i);
 
@@ -12,12 +22,23 @@ export type LivePermissionStatus = (typeof LIVE_PERMISSION_STATUSES)[number];
 const inviteUserIds = z.array(mongoId).max(5000);
 const inviteUserIdsNonEmpty = inviteUserIds.min(1);
 
+export const liveStreamSlideSchema = z.object({
+  /** May be empty when the slide is table/process-only. */
+  title: z.string().trim().max(300).default(''),
+  context: z.string().trim().max(15000).default(''),
+  table: comparisonTableSchema.optional(),
+  process: explanationProcessSchema.optional(),
+});
+
+export const liveStreamSlidesSchema = z.array(liveStreamSlideSchema).max(80);
+
 export const createLiveStreamSchema = z.object({
   topic: z.string().trim().min(3).max(200),
   details: z.string().trim().max(5000).optional(),
   scheduled_at: z.coerce.date(),
   /** Optional invite list at create time. */
   invite_user_ids: inviteUserIds.optional(),
+  slides: liveStreamSlidesSchema.optional(),
 });
 
 export const updateLiveStreamSchema = z.object({
@@ -25,6 +46,7 @@ export const updateLiveStreamSchema = z.object({
   details: z.string().trim().max(5000).optional().nullable(),
   scheduled_at: z.coerce.date().optional(),
   status: z.enum(LIVE_STREAM_STATUSES).optional(),
+  slides: liveStreamSlidesSchema.optional(),
 });
 
 export const liveStreamInvitesSchema = z.object({
@@ -45,6 +67,29 @@ export type UpdateLiveStreamDto = z.infer<typeof updateLiveStreamSchema>;
 export type LiveStreamInvitesDto = z.infer<typeof liveStreamInvitesSchema>;
 export type LiveStreamRevokeInvitesDto = z.infer<typeof liveStreamRevokeInvitesSchema>;
 export type JoinLiveStreamDto = z.infer<typeof joinLiveStreamSchema>;
+export type LiveStreamSlide = z.infer<typeof liveStreamSlideSchema>;
+
+export function cleanLiveStreamSlide(slide: LiveStreamSlide): LiveStreamSlide | null {
+  const title = (slide.title ?? '').trim();
+  const context = (slide.context ?? '').trim();
+  const table = cleanComparisonTable(slide.table);
+  const process = cleanExplanationProcess(slide.process);
+  if (!title && !context && !hasComparisonTableContent(table) && !hasProcessContent(process)) {
+    return null;
+  }
+  return {
+    title,
+    context,
+    ...(table ? { table } : {}),
+    ...(process ? { process } : {}),
+  };
+}
+
+export function cleanLiveStreamSlides(slides?: LiveStreamSlide[] | null): LiveStreamSlide[] {
+  return (slides ?? [])
+    .map((s) => cleanLiveStreamSlide(s))
+    .filter((s): s is LiveStreamSlide => s != null);
+}
 
 export interface LiveStreamGuestItem {
   id: string;
@@ -67,6 +112,10 @@ export interface LiveStreamListItem {
   invite_count?: number;
   permission_status: LivePermissionStatus;
   can_join: boolean;
+  /** Past / ended class — only invitees see these in the user list. */
+  is_previous: boolean;
+  slide_count: number;
+  slides?: LiveStreamSlide[];
   created_at: string;
   updated_at: string;
 }

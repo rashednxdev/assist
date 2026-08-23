@@ -38,7 +38,7 @@ function grantFor(
 }
 
 export function hasModuleRead(grants: ModuleAccessGrant[], moduleCode: string): boolean {
-  if (moduleCode === 'QOTD' || moduleCode === 'EXAM_ROUTINE') return true;
+  if (moduleCode === 'QOTD' || moduleCode === 'EXAM_ROUTINE' || moduleCode === 'LIVE_STREAM') return true;
   return grantFor(grants, moduleCode)?.can_read === true;
 }
 

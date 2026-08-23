@@ -7,6 +7,7 @@ import {
   TextInput,
   Pressable,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { useFocusEffect, useRouter, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,7 +15,24 @@ import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates
 import { BookBadge } from '@/components/books/BookBadge';
 import { useAuth } from '@/lib/auth-context';
 import { canManageUsers, fetchAdminUsers, type AdminUserRow } from '@/lib/users-api';
+import { openPhoneDialer, openWhatsAppToNumber } from '@/lib/contact';
 import { colors, spacing } from '@/theme';
+
+function openContactActions(item: AdminUserRow) {
+  if (!item.phone?.trim()) return;
+  Alert.alert(item.full_name_en, item.phone, [
+    {
+      text: 'Call',
+      onPress: () => openPhoneDialer(item.phone),
+    },
+    {
+      text: 'WhatsApp',
+      onPress: () =>
+        openWhatsAppToNumber(item.phone, `Hi ${item.full_name_en}, regarding ProAssist.`),
+    },
+    { text: 'Cancel', style: 'cancel' },
+  ]);
+}
 
 export default function UsersListScreen() {
   const router = useRouter();
@@ -114,26 +132,39 @@ export default function UsersListScreen() {
           <BookEmpty title="No users found" subtitle="Try a different search or add a user." />
         }
         renderItem={({ item }) => (
-          <Pressable
-            style={({ pressed }) => [styles.card, pressed && styles.pressed]}
-            onPress={() => router.push(`/(app)/users/${item.id}` as Href)}
-          >
-            <View style={styles.iconWrap}>
-              <Ionicons name="person-outline" size={20} color="#475569" />
-            </View>
-            <View style={styles.body}>
-              <Text style={styles.title}>{item.full_name_en}</Text>
-              <Text style={styles.sub}>{item.phone || item.email}</Text>
-              <Text style={styles.amount}>
-                Amount received: {(item.amount_received ?? 0).toLocaleString()}
-              </Text>
-              <View style={styles.badges}>
-                <BookBadge label={item.user_type} variant="muted" />
-                <BookBadge label={item.status} variant="muted" />
+          <View style={styles.card}>
+            <Pressable
+              style={({ pressed }) => [styles.cardMain, pressed && styles.pressed]}
+              onPress={() => router.push(`/(app)/users/${item.id}` as Href)}
+            >
+              <View style={styles.iconWrap}>
+                <Ionicons name="person-outline" size={20} color="#475569" />
               </View>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </Pressable>
+              <View style={styles.body}>
+                <Text style={styles.title}>{item.full_name_en}</Text>
+                <Text style={styles.sub}>{item.phone || item.email}</Text>
+                <Text style={styles.amount}>
+                  Amount received: {(item.amount_received ?? 0).toLocaleString()}
+                </Text>
+                <View style={styles.badges}>
+                  <BookBadge label={item.user_type} variant="muted" />
+                  <BookBadge label={item.status} variant="muted" />
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            </Pressable>
+            {item.phone ? (
+              <Pressable
+                style={({ pressed }) => [styles.dialerBtn, pressed && styles.pressed]}
+                onPress={() => openContactActions(item)}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={`Contact ${item.full_name_en}`}
+              >
+                <Ionicons name="call-outline" size={20} color="#0369a1" />
+              </Pressable>
+            ) : null}
+          </View>
         )}
       />
     </View>
@@ -187,14 +218,31 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    gap: spacing.sm,
     backgroundColor: colors.surface,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingLeft: spacing.md,
+    paddingRight: spacing.sm,
+  },
+  cardMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.xs,
   },
   pressed: { opacity: 0.92 },
+  dialerBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#e0f2fe',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   iconWrap: {
     width: 40,
     height: 40,

@@ -68,6 +68,7 @@ export type MeUser = AuthUser & {
   phone_verified: boolean;
   module_access: ModuleAccessGrant[];
   has_paid?: boolean;
+  unpaid_message?: string;
   all_exam_subjects?: boolean;
   exam_subject_ids?: string[];
 };

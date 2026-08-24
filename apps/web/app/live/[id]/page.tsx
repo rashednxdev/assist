@@ -99,13 +99,14 @@ export default function LiveStreamWatchPage() {
 
   useEffect(() => {
     if (!join || !id) return;
+    const currentJoin = join;
     let cancelled = false;
     async function poll() {
       try {
         const res = await apiFetch<{ data: SessionDetail }>(`/live-streams/${id}`);
         if (cancelled) return;
         setSession(res.data);
-        if (join.role === 'audience' && res.data.status !== 'live') {
+        if (currentJoin.role === 'audience' && res.data.status !== 'live') {
           setJoin(null);
           setError(
             res.data.status === 'paused'

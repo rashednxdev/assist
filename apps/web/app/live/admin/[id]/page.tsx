@@ -317,7 +317,9 @@ export default function LiveStreamAdminDetailPage() {
       const next = idx + dir;
       if (next < 0 || next >= prev.length) return prev;
       const copy = [...prev];
-      const [row] = copy.splice(idx, 1);
+      const row = copy[idx];
+      if (!row) return prev;
+      copy.splice(idx, 1);
       copy.splice(next, 0, row);
       return copy;
     });

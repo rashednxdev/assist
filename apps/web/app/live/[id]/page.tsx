@@ -99,9 +99,30 @@ export default function LiveStreamWatchPage() {
 
   useEffect(() => {
     if (!join || !id) return;
-    const timer = window.setInterval(() => void load(), 5000);
-    return () => window.clearInterval(timer);
-  }, [join, id, load]);
+    let cancelled = false;
+    async function poll() {
+      try {
+        const res = await apiFetch<{ data: SessionDetail }>(`/live-streams/${id}`);
+        if (cancelled) return;
+        setSession(res.data);
+        if (join.role === 'audience' && res.data.status !== 'live') {
+          setJoin(null);
+          setError(
+            res.data.status === 'paused'
+              ? 'Class paused — left video room to save connection time.'
+              : 'Class ended — left video room.',
+          );
+        }
+      } catch {
+        // ignore poll errors
+      }
+    }
+    const timer = window.setInterval(() => void poll(), 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [join, id]);
 
   async function joinSession(asHost: boolean) {
     setBusy(true);

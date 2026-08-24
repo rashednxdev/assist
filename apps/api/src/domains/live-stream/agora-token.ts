@@ -42,7 +42,8 @@ export function buildAgoraRtcToken(opts: {
   }
 
   // Agora AccessToken2 expects TTL seconds from now (not a unix timestamp).
-  const expireSeconds = opts.expireSeconds ?? 60 * 60 * 6;
+  // Keep tokens short so abandoned joins expire sooner (cost + security).
+  const expireSeconds = opts.expireSeconds ?? 60 * 90;
   const expireAt = Math.floor(Date.now() / 1000) + expireSeconds;
   const role = opts.role === 'host' ? RtcRole.PUBLISHER : RtcRole.SUBSCRIBER;
   const token = RtcTokenBuilder.buildTokenWithUid(

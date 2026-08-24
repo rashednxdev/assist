@@ -739,14 +739,26 @@ export default function LiveStreamAdminDetailPage() {
               </Button>
             ) : null}
             {session.status === 'live' || session.status === 'paused' ? (
-              <Button variant="outline" disabled={busy} onClick={() => void setLifecycle('end')}>
-                End session
+              <Button
+                variant="destructive"
+                disabled={busy}
+                onClick={() => {
+                  if (
+                    confirm(
+                      'End this live session now? Guests will be disconnected and Agora minutes stop (saves cost). You can restart later without deleting.',
+                    )
+                  ) {
+                    void setLifecycle('end');
+                  }
+                }}
+              >
+                End session (stop billing)
               </Button>
             ) : null}
           </div>
           <p className="text-xs text-muted-foreground">
-            Pause keeps the session and invites. Resume or restart without deleting. Mic carries your speech to all
-            viewers; Agora live mode has no fixed viewer limit in the app.
+            Pause keeps invites but guests cannot watch until you resume. Always <strong>End session</strong> when
+            finished so Agora channel minutes stop. Mic carries speech to viewers; screen share is desktop-only.
           </p>
           <div className="flex flex-wrap items-center gap-2 rounded-xl border border-pink-200 bg-pink-50 px-3 py-2.5">
             <div>

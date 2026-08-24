@@ -11,9 +11,10 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useNavigation } from 'expo-router';
 import { WebView } from 'react-native-webview';
 import * as ScreenOrientation from 'expo-screen-orientation';
+import { Ionicons } from '@expo/vector-icons';
 import { BookError, BookLoading } from '@/components/books/BookStates';
 import { BookRichText } from '@/components/books/BookRichText';
 import { LiveClassPresentation } from '@/components/live/LiveClassPresentation';
@@ -25,6 +26,9 @@ import {
 } from '@/lib/live-stream-api';
 import type { LiveStreamJoinPayload } from '@ibas/shared-types';
 import { colors, spacing } from '@/theme';
+
+/** Guest playback boost (Agora remote often accepts >100). */
+const GUEST_AUDIO_VOLUME = 400;
 
 function permissionCard(status: LiveStreamListItem['permission_status']) {
   if (status === 'permitted' || status === 'host') {
@@ -52,6 +56,7 @@ function agoraHtml(join: LiveStreamJoinPayload) {
     token: join.token,
     uid: join.uid,
     role: join.role,
+    boost: GUEST_AUDIO_VOLUME,
   });
   return `<!DOCTYPE html>
 <html>
@@ -64,7 +69,7 @@ function agoraHtml(join: LiveStreamJoinPayload) {
     #player{position:absolute;inset:0;width:100%;height:100%}
     #player video{width:100%!important;height:100%!important;object-fit:contain!important;background:#020617}
     #status{
-      position:absolute;left:10px;right:10px;top:10px;z-index:2;
+      position:absolute;left:10px;right:10px;top:52px;z-index:2;
       padding:8px 12px;border-radius:10px;background:rgba(15,23,42,.72);
       font-size:12px;line-height:1.35;pointer-events:none
     }
@@ -91,6 +96,7 @@ function agoraHtml(join: LiveStreamJoinPayload) {
   <script>
     (async () => {
       const cfg = ${payload};
+      const boost = cfg.boost || 400;
       const status = document.getElementById('status');
       const player = document.getElementById('player');
       const audioHost = document.getElementById('audioHost');
@@ -99,16 +105,24 @@ function agoraHtml(join: LiveStreamJoinPayload) {
       const remoteAudio = [];
       let client = null;
       let soundReady = false;
+      let left = false;
+
+      function setTrackVolume(track) {
+        try { track.setVolume(boost); } catch (e) {
+          try { track.setVolume(100); } catch (e2) {}
+        }
+      }
 
       function playAudio(track) {
         if (!track) return;
-        try { track.setVolume(100); } catch (e) {}
+        setTrackVolume(track);
         try {
-          // Play into a dedicated element so WebView audio routing is more reliable.
           var el = document.createElement('audio');
           el.autoplay = true;
           el.setAttribute('playsinline', 'true');
           el.controls = false;
+          el.volume = 1;
+          el.muted = false;
           audioHost.appendChild(el);
           track.play(el);
         } catch (e) {
@@ -141,6 +155,18 @@ function agoraHtml(join: LiveStreamJoinPayload) {
         }
       }
 
+      async function leaveChannel() {
+        if (left) return;
+        left = true;
+        try {
+          if (client) {
+            await client.leave();
+            client.removeAllListeners();
+          }
+        } catch (e) {}
+        client = null;
+      }
+
       async function unlockSound() {
         soundReady = true;
         soundGate.classList.add('hidden');
@@ -160,16 +186,17 @@ function agoraHtml(join: LiveStreamJoinPayload) {
         } catch (e) {}
         await subscribeExisting();
         remoteAudio.forEach(function (t) {
-          try { t.setVolume(100); t.play(); } catch (e) {}
+          try { setTrackVolume(t); t.play(); } catch (e) {}
         });
-        // Also replay any <audio> elements.
         Array.prototype.forEach.call(audioHost.querySelectorAll('audio'), function (el) {
           try { el.muted = false; el.volume = 1; el.play(); } catch (e) {}
         });
-        status.textContent = 'Sound on — you should hear the host';
+        status.textContent = 'Sound on (boosted)';
       }
 
       soundBtn.addEventListener('click', function () { unlockSound(); });
+      window.addEventListener('pagehide', function () { leaveChannel(); });
+      window.addEventListener('beforeunload', function () { leaveChannel(); });
 
       try {
         client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
@@ -198,6 +225,7 @@ function agoraHtml(join: LiveStreamJoinPayload) {
 
 export default function LiveStreamDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const navigation = useNavigation();
   const [session, setSession] = useState<LiveStreamListItem | null>(null);
   const [join, setJoin] = useState<LiveStreamJoinPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -226,8 +254,17 @@ export default function LiveStreamDetailScreen() {
   useFocusEffect(
     useCallback(() => {
       void load();
+      return () => {
+        // Leaving this screen closes the Agora WebView → stops guest minutes.
+        setJoin(null);
+      };
     }, [load]),
   );
+
+  // Hide nav header while watching so video is full-screen.
+  useEffect(() => {
+    navigation.setOptions({ headerShown: !join });
+  }, [navigation, join]);
 
   useEffect(() => {
     if (!join || !id) return;
@@ -235,9 +272,18 @@ export default function LiveStreamDetailScreen() {
     async function refreshFlag() {
       try {
         const data = await fetchLiveStream(id);
-        if (!cancelled) {
-          setAllowMessages(Boolean(data.allow_guest_messages));
-          setSession(data);
+        if (cancelled) return;
+        setAllowMessages(Boolean(data.allow_guest_messages));
+        setSession(data);
+        // Host ended/paused → leave channel (cost + UX).
+        if (data.status !== 'live') {
+          setJoin(null);
+          Alert.alert(
+            data.status === 'paused' ? 'Class paused' : 'Class ended',
+            data.status === 'paused'
+              ? 'The host paused this session. You left the video room to save connection time.'
+              : 'The host ended this session. You left the video room.',
+          );
         }
       } catch {
         // ignore
@@ -273,6 +319,11 @@ export default function LiveStreamDetailScreen() {
     () => (session ? permissionCard(session.permission_status) : null),
     [session],
   );
+
+  function leaveLiveRoom() {
+    setJoin(null);
+    void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+  }
 
   async function handleJoin() {
     if (!id) return;
@@ -312,22 +363,26 @@ export default function LiveStreamDetailScreen() {
         style={styles.liveRoot}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={styles.playerWrap}>
-          <WebView
-            originWhitelist={['*']}
-            allowsInlineMediaPlayback
-            mediaPlaybackRequiresUserAction={false}
-            allowsFullscreenVideo
-            javaScriptEnabled
-            domStorageEnabled
-            mixedContentMode="always"
-            androidLayerType="hardware"
-            source={{ html: agoraHtml(join) }}
-            style={styles.webview}
-          />
+        <WebView
+          originWhitelist={['*']}
+          allowsInlineMediaPlayback
+          mediaPlaybackRequiresUserAction={false}
+          allowsFullscreenVideo
+          javaScriptEnabled
+          domStorageEnabled
+          mixedContentMode="always"
+          androidLayerType="hardware"
+          source={{ html: agoraHtml(join) }}
+          style={styles.webviewFill}
+        />
+        <View style={styles.topOverlay} pointerEvents="box-none">
+          <Pressable style={styles.leaveBtn} onPress={leaveLiveRoom}>
+            <Ionicons name="chevron-back" size={20} color="#fff" />
+            <Text style={styles.leaveBtnText}>Leave</Text>
+          </Pressable>
         </View>
         {allowMessages ? (
-          <View style={styles.msgBarOverlay}>
+          <View style={styles.msgBarAbsolute}>
             <TextInput
               style={styles.msgInput}
               value={msgBody}
@@ -476,8 +531,25 @@ export default function LiveStreamDetailScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   liveRoot: { flex: 1, backgroundColor: '#020617' },
-  playerWrap: { flex: 1, backgroundColor: '#020617' },
-  webview: { flex: 1, backgroundColor: '#020617' },
+  webviewFill: { ...StyleSheet.absoluteFillObject, backgroundColor: '#020617' },
+  topOverlay: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 48 : 12,
+    left: 12,
+    right: 12,
+    zIndex: 20,
+  },
+  leaveBtn: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    backgroundColor: 'rgba(15,23,42,0.78)',
+  },
+  leaveBtnText: { color: '#fff', fontWeight: '800', fontSize: 14 },
   content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xl },
   topic: { fontSize: 22, fontWeight: '800', color: colors.text },
   meta: { fontSize: 13, color: colors.textMuted, marginTop: -4 },
@@ -536,13 +608,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   reviewBtnText: { color: '#9d174d', fontSize: 15, fontWeight: '800' },
-  msgBarOverlay: {
+  msgBarAbsolute: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: 'rgba(15,23,42,0.92)',
+    paddingBottom: Platform.OS === 'ios' ? 18 : 8,
+    backgroundColor: 'rgba(15,23,42,0.88)',
+    zIndex: 20,
   },
   msgInput: {
     flex: 1,

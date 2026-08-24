@@ -56,9 +56,14 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
   const playRemoteAudio = useCallback(async (track: IRemoteAudioTrack | undefined) => {
     if (!track) return;
     try {
-      track.setVolume(100);
+      // Remote volume: 100 = original; many SDK builds allow up to ~400 for boost.
+      track.setVolume(400);
     } catch {
-      // ignore
+      try {
+        track.setVolume(100);
+      } catch {
+        // ignore
+      }
     }
     try {
       await track.play();
@@ -219,10 +224,15 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
 
       for (const track of remoteAudioRef.current) {
         try {
-          track.setVolume(100);
+          track.setVolume(400);
           await track.play();
         } catch {
-          // ignore
+          try {
+            track.setVolume(100);
+            await track.play();
+          } catch {
+            // ignore
+          }
         }
       }
       setSoundOn(true);
@@ -247,7 +257,8 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
         ANS: false, // ANS can swallow speech on some phones
       });
       micRef.current = mic;
-      mic.setVolume(100);
+      // Local mic: 100 = original, up to 1000. Boost so guests hear clearly.
+      mic.setVolume(400);
       await mic.setEnabled(true);
       await client.publish([mic]);
 
@@ -320,7 +331,7 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
     const mic = micRef.current;
     if (mic && client) {
       try {
-        mic.setVolume(100);
+        mic.setVolume(400);
         if (!client.localTracks.includes(mic)) await client.publish(mic);
       } catch {
         // ignore
@@ -383,7 +394,7 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
       const mic = micRef.current;
       if (mic) {
         try {
-          mic.setVolume(100);
+          mic.setVolume(400);
           if (!micMuted) await mic.setEnabled(true);
           if (!client.localTracks.includes(mic)) await client.publish(mic);
         } catch {
@@ -504,10 +515,12 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
         <p className="text-xs text-muted-foreground">
           On phone: tap <strong>Start mic &amp; go live</strong>, allow microphone, then speak — watch the mic
           level move. Screen share works on desktop Chrome/Edge only. Guests must tap <strong>Enable sound</strong>.
+          When class is finished, click <strong>End session</strong> so Agora minutes stop (saves cost).
         </p>
       ) : (
         <p className="text-xs text-muted-foreground">
-          If you see video but no voice, tap <strong>Enable sound</strong> (browsers block audio until you tap).
+          If you see video but no voice, tap <strong>Enable sound</strong>. Leave the page when done so the
+          channel connection closes.
         </p>
       )}
     </div>

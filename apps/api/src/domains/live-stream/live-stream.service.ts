@@ -103,18 +103,19 @@ async function permissionFor(
   userId: string,
   hostUserId: string,
   user: { is_super_admin?: boolean; user_type?: string },
-): Promise<{ permission_status: LivePermissionStatus; can_join: boolean }> {
+): Promise<{ permission_status: LivePermissionStatus; can_join: boolean; can_host: boolean }> {
+  const canHost = userId === hostUserId || isPlatformAdmin(user);
   if (userId === hostUserId) {
-    return { permission_status: 'host', can_join: true };
+    return { permission_status: 'host', can_join: true, can_host: true };
   }
   const invite = await LiveStreamInvite.findOne({
     live_stream_id: sessionId,
     user_id: userId,
   }).lean();
-  if (invite) return { permission_status: 'permitted', can_join: true };
-  // Admins can always enter as audience (guest), never implied host from the app.
-  if (isPlatformAdmin(user)) return { permission_status: 'permitted', can_join: true };
-  return { permission_status: 'not_permitted', can_join: false };
+  if (invite) return { permission_status: 'permitted', can_join: true, can_host: canHost };
+  // Admins can always enter as audience (guest), and may also host from any browser.
+  if (isPlatformAdmin(user)) return { permission_status: 'permitted', can_join: true, can_host: true };
+  return { permission_status: 'not_permitted', can_join: false, can_host: false };
 }
 
 function serializeBase(doc: InstanceType<typeof LiveStream>, includeSlides = true) {
@@ -172,6 +173,7 @@ export async function listLiveStreamsForUser(
       host_name: hostName.get(String(doc.host_user_id)),
       permission_status: perm.permission_status,
       can_join: perm.can_join && doc.status === 'live',
+      can_host: perm.can_host,
       is_previous: previous,
       slide_count: slides.length,
       allow_guest_messages: Boolean(doc.allow_guest_messages),
@@ -203,6 +205,7 @@ export async function getLiveStreamForUser(
     invite_count: inviteCount,
     permission_status: perm.permission_status,
     can_join: perm.can_join && doc.status === 'live',
+    can_host: perm.can_host,
   };
 }
 
@@ -225,6 +228,7 @@ export async function listAdminLiveStreams(limit: number, skip: number) {
         invite_count: countMap.get(String(doc._id)) ?? 0,
         permission_status: 'host' as const,
         can_join: true,
+        can_host: true,
         can_view_presentation: true,
       })),
     ),
@@ -473,6 +477,7 @@ export async function setGuestMessagesAllowed(
     invite_count: await LiveStreamInvite.countDocuments({ live_stream_id: doc._id }),
     permission_status: 'host',
     can_join: true,
+    can_host: true,
     can_view_presentation: true,
   };
 }

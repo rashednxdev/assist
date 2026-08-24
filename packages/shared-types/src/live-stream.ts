@@ -142,6 +142,8 @@ export interface LiveStreamListItem {
   can_view_presentation: boolean;
   /** Host toggle: guests may send messages to the host while live. */
   allow_guest_messages: boolean;
+  /** True for session host and platform admins — may request Agora host token. */
+  can_host: boolean;
   created_at: string;
   updated_at: string;
 }

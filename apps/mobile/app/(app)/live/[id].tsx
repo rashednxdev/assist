@@ -77,44 +77,78 @@ function agoraHtml(join: LiveStreamJoinPayload) {
       background:#be185d;color:#fff
     }
     #soundGate.hidden{display:none}
+    #audioHost{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
   </style>
   <script src="https://download.agora.io/sdk/release/AgoraRTC_N.js"></script>
 </head>
 <body>
   <div id="stage">
     <div id="player"></div>
+    <div id="audioHost"></div>
     <div id="status">Connecting…</div>
-    <div id="soundGate"><button type="button" id="soundBtn">Tap to enable sound</button></div>
+    <div id="soundGate"><button type="button" id="soundBtn">Tap to hear host</button></div>
   </div>
   <script>
     (async () => {
       const cfg = ${payload};
       const status = document.getElementById('status');
       const player = document.getElementById('player');
+      const audioHost = document.getElementById('audioHost');
       const soundGate = document.getElementById('soundGate');
       const soundBtn = document.getElementById('soundBtn');
       const remoteAudio = [];
+      let client = null;
       let soundReady = false;
 
       function playAudio(track) {
         if (!track) return;
         try { track.setVolume(100); } catch (e) {}
-        try { track.play(); } catch (e) {}
+        try {
+          // Play into a dedicated element so WebView audio routing is more reliable.
+          var el = document.createElement('audio');
+          el.autoplay = true;
+          el.setAttribute('playsinline', 'true');
+          el.controls = false;
+          audioHost.appendChild(el);
+          track.play(el);
+        } catch (e) {
+          try { track.play(); } catch (e2) {}
+        }
         if (remoteAudio.indexOf(track) < 0) remoteAudio.push(track);
       }
 
-      function unlockSound() {
+      async function subscribeUser(user, mediaType) {
+        await client.subscribe(user, mediaType);
+        if (mediaType === 'video' && user.videoTrack) {
+          player.innerHTML = '';
+          user.videoTrack.play(player, { fit: 'contain' });
+          status.textContent = soundReady ? 'Watching live (full screen)' : 'Video on — tap to hear host';
+        }
+        if (mediaType === 'audio' && user.audioTrack) {
+          playAudio(user.audioTrack);
+          if (!soundReady) status.textContent = 'Host audio ready — tap to hear host';
+        }
+      }
+
+      async function subscribeExisting() {
+        if (!client) return;
+        for (var i = 0; i < client.remoteUsers.length; i++) {
+          var user = client.remoteUsers[i];
+          try {
+            if (user.hasAudio) await subscribeUser(user, 'audio');
+            if (user.hasVideo) await subscribeUser(user, 'video');
+          } catch (e) {}
+        }
+      }
+
+      async function unlockSound() {
         soundReady = true;
         soundGate.classList.add('hidden');
-        remoteAudio.forEach(function (t) {
-          try { t.setVolume(100); t.play(); } catch (e) {}
-        });
-        // Nudge WebView audio policy with a silent context resume if present.
         try {
           var Ctx = window.AudioContext || window.webkitAudioContext;
           if (Ctx) {
             var ctx = new Ctx();
-            if (ctx.state === 'suspended') ctx.resume();
+            if (ctx.state === 'suspended') await ctx.resume();
             var osc = ctx.createOscillator();
             var gain = ctx.createGain();
             gain.gain.value = 0.0001;
@@ -124,34 +158,34 @@ function agoraHtml(join: LiveStreamJoinPayload) {
             osc.stop(ctx.currentTime + 0.05);
           }
         } catch (e) {}
-        status.textContent = 'Sound on — watching live';
+        await subscribeExisting();
+        remoteAudio.forEach(function (t) {
+          try { t.setVolume(100); t.play(); } catch (e) {}
+        });
+        // Also replay any <audio> elements.
+        Array.prototype.forEach.call(audioHost.querySelectorAll('audio'), function (el) {
+          try { el.muted = false; el.volume = 1; el.play(); } catch (e) {}
+        });
+        status.textContent = 'Sound on — you should hear the host';
       }
 
-      soundBtn.addEventListener('click', unlockSound);
+      soundBtn.addEventListener('click', function () { unlockSound(); });
 
       try {
-        const client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
+        client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
         await client.setClientRole('audience');
-        client.on('user-published', async (user, mediaType) => {
-          await client.subscribe(user, mediaType);
-          if (mediaType === 'video' && user.videoTrack) {
-            player.innerHTML = '';
-            user.videoTrack.play(player, { fit: 'contain' });
-            status.textContent = soundReady ? 'Watching live (full screen)' : 'Video on — tap to enable sound';
-          }
-          if (mediaType === 'audio' && user.audioTrack) {
-            playAudio(user.audioTrack);
-            if (!soundReady) status.textContent = 'Host speaking — tap to enable sound';
-          }
+        client.on('user-published', async function (user, mediaType) {
+          try { await subscribeUser(user, mediaType); } catch (e) {}
         });
-        client.on('user-unpublished', (user, mediaType) => {
+        client.on('user-unpublished', function (user, mediaType) {
           if (mediaType === 'video') {
             player.innerHTML = '';
             status.textContent = 'Waiting for host…';
           }
         });
         await client.join(cfg.appId, cfg.channel, cfg.token, cfg.uid);
-        status.textContent = 'Joined — tap to enable sound, waiting for host…';
+        await subscribeExisting();
+        status.textContent = 'Joined — tap to hear host';
       } catch (e) {
         status.textContent = e && e.message ? e.message : 'Join failed';
         soundGate.classList.add('hidden');

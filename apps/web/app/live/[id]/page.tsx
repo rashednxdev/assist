@@ -34,6 +34,7 @@ interface SessionDetail {
   host_name?: string;
   permission_status: LivePermissionStatus;
   can_join: boolean;
+  can_host?: boolean;
   is_previous?: boolean;
   slides?: LiveStreamSlide[];
   slide_count?: number;
@@ -48,20 +49,21 @@ interface JoinPayload {
   uid: number;
   role: 'host' | 'audience';
   allow_guest_messages?: boolean;
+  status?: LiveStreamStatus;
 }
 
-function permissionCopy(status: LivePermissionStatus) {
-  if (status === 'host') {
+function permissionCopy(status: LivePermissionStatus, canHost?: boolean) {
+  if (status === 'host' || canHost) {
     return {
-      title: 'You can join as host on the admin page',
-      body: 'Host broadcasting is only from Live admin on web. Here you can watch as a viewer.',
+      title: 'You can host from this browser',
+      body: 'Join as host on phone or laptop. Tap “Start mic & go live” after connecting so guests hear you.',
       tone: 'bg-amber-50 border-amber-100 text-amber-900',
     };
   }
   if (status === 'permitted') {
     return {
       title: 'You are permitted to join',
-      body: 'An admin invited you to this live class. Join when the session is live.',
+      body: 'An admin invited you to this live class. Join when the session is live, then tap Enable sound.',
       tone: 'bg-emerald-50 border-emerald-100 text-emerald-900',
     };
   }
@@ -101,24 +103,37 @@ export default function LiveStreamWatchPage() {
     return () => window.clearInterval(timer);
   }, [join, id, load]);
 
-  async function joinSession() {
+  async function joinSession(asHost: boolean) {
     setBusy(true);
     setError('');
     try {
+      if (asHost) {
+        if (session?.status === 'scheduled' || session?.status === 'paused') {
+          await apiFetch(
+            `/live-streams/${id}/${session.status === 'paused' ? 'resume' : 'start'}`,
+            { method: 'POST' },
+          );
+        }
+        if (session?.status === 'ended' || session?.status === 'cancelled') {
+          await apiFetch(`/live-streams/${id}/restart`, { method: 'POST' });
+        }
+      }
       const res = await apiFetch<{ data: JoinPayload }>(`/live-streams/${id}/join`, {
         method: 'POST',
-        body: JSON.stringify({ as_host: false }),
+        body: JSON.stringify({ as_host: asHost }),
       });
       setJoin(res.data);
       setSession((prev) =>
         prev
           ? {
               ...prev,
+              status: res.data.status ?? (asHost ? 'live' : prev.status),
               allow_guest_messages:
                 res.data.allow_guest_messages ?? prev.allow_guest_messages,
             }
           : prev,
       );
+      await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not join');
     } finally {
@@ -154,10 +169,11 @@ export default function LiveStreamWatchPage() {
     );
   }
 
-  const perm = permissionCopy(session.permission_status);
+  const perm = permissionCopy(session.permission_status, session.can_host);
   const isPrevious = Boolean(session.is_previous) || session.status === 'ended';
   const slides = session.slides ?? [];
   const canViewPresentation = Boolean(session.can_view_presentation);
+  const canHost = Boolean(session.can_host);
 
   if (isPrevious) {
     return (
@@ -259,37 +275,51 @@ export default function LiveStreamWatchPage() {
         </CardHeader>
         <CardContent className="space-y-3">
           {!join ? (
-            <Button
-              disabled={
-                busy ||
-                !session.can_join ||
-                session.permission_status === 'not_permitted' ||
-                session.status === 'paused' ||
-                session.status === 'ended'
-              }
-              onClick={() => void joinSession()}
-            >
-              {busy
-                ? 'Joining…'
-                : session.permission_status === 'not_permitted'
-                  ? 'Join locked'
-                  : session.status === 'paused'
-                    ? 'Waiting for resume'
-                    : session.status === 'ended'
-                      ? 'Session ended'
-                      : 'Join live class'}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              {canHost ? (
+                <Button
+                  disabled={busy || session.status === 'cancelled'}
+                  onClick={() => void joinSession(true)}
+                >
+                  {busy ? 'Starting…' : 'Join as host'}
+                </Button>
+              ) : null}
+              <Button
+                variant={canHost ? 'outline' : 'default'}
+                disabled={
+                  busy ||
+                  !session.can_join ||
+                  session.permission_status === 'not_permitted' ||
+                  session.status === 'paused' ||
+                  session.status === 'ended' ||
+                  session.status === 'scheduled'
+                }
+                onClick={() => void joinSession(false)}
+              >
+                {busy
+                  ? 'Joining…'
+                  : session.permission_status === 'not_permitted'
+                    ? 'Join locked'
+                    : session.status === 'paused'
+                      ? 'Waiting for resume'
+                      : session.status === 'ended'
+                        ? 'Session ended'
+                        : session.status === 'scheduled'
+                          ? 'Waiting for live'
+                          : 'Join as guest'}
+              </Button>
+            </div>
           ) : (
             <AgoraLiveRoom
               appId={join.app_id}
               channel={join.channel}
               token={join.token}
               uid={join.uid}
-              role="audience"
+              role={join.role}
               onError={setError}
             />
           )}
-          {join && session.allow_guest_messages ? (
+          {join && join.role === 'audience' && session.allow_guest_messages ? (
             <div className="space-y-2 rounded-xl border border-pink-100 bg-pink-50/50 p-3">
               <p className="text-xs font-semibold text-pink-900">Message the host</p>
               <div className="flex gap-2">
@@ -312,7 +342,7 @@ export default function LiveStreamWatchPage() {
               </div>
               {msgHint ? <p className="text-xs text-emerald-700">{msgHint}</p> : null}
             </div>
-          ) : join ? (
+          ) : join && join.role === 'audience' ? (
             <p className="text-xs text-muted-foreground">
               Guest messaging is off. The host can allow messages from the admin page.
             </p>

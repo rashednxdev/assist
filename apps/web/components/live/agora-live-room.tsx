@@ -1,11 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   IAgoraRTCClient,
+  IAgoraRTCRemoteUser,
   ICameraVideoTrack,
   ILocalVideoTrack,
   IMicrophoneAudioTrack,
+  IRemoteAudioTrack,
   IRemoteVideoTrack,
 } from 'agora-rtc-sdk-ng';
 import { Button } from '@/components/ui/button';
@@ -19,7 +21,17 @@ interface AgoraLiveRoomProps {
   onError?: (message: string) => void;
 }
 
-/** Embedded Agora one-to-many room: host publishes mic + camera/screen; audience watches full share. */
+function isMobileBrowser() {
+  if (typeof navigator === 'undefined') return false;
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+}
+
+function screenShareSupported() {
+  if (typeof navigator === 'undefined') return false;
+  return Boolean(navigator.mediaDevices?.getDisplayMedia) && !isMobileBrowser();
+}
+
+/** Embedded Agora one-to-many room: host publishes mic (+ camera/screen); audience hears & watches. */
 export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: AgoraLiveRoomProps) {
   const localRef = useRef<HTMLDivElement>(null);
   const remoteRef = useRef<HTMLDivElement>(null);
@@ -28,32 +40,70 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
   const camRef = useRef<ICameraVideoTrack | null>(null);
   const screenRef = useRef<ILocalVideoTrack | null>(null);
   const agoraRef = useRef<typeof import('agora-rtc-sdk-ng').default | null>(null);
+  const remoteAudioRef = useRef<IRemoteAudioTrack[]>([]);
 
-  const [status, setStatus] = useState('Connecting…');
+  const [status, setStatus] = useState('Connecting to channel…');
   const [hasRemote, setHasRemote] = useState(false);
-  const [ready, setReady] = useState(false);
+  const [channelReady, setChannelReady] = useState(false);
+  const [mediaLive, setMediaLive] = useState(false);
+  const [soundOn, setSoundOn] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [micMuted, setMicMuted] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [micLevel, setMicLevel] = useState(0);
+  const canShareScreen = screenShareSupported();
+
+  const playRemoteAudio = useCallback(async (track: IRemoteAudioTrack | undefined) => {
+    if (!track) return;
+    try {
+      track.setVolume(100);
+    } catch {
+      // ignore
+    }
+    try {
+      await track.play();
+    } catch {
+      // autoplay may block until user taps Enable sound
+    }
+    if (!remoteAudioRef.current.includes(track)) {
+      remoteAudioRef.current.push(track);
+    }
+  }, []);
+
+  const subscribeExisting = useCallback(
+    async (client: IAgoraRTCClient) => {
+      for (const user of client.remoteUsers) {
+        if (user.hasAudio) {
+          try {
+            await client.subscribe(user, 'audio');
+            await playRemoteAudio(user.audioTrack);
+          } catch {
+            // ignore one-user failures
+          }
+        }
+        if (user.hasVideo && remoteRef.current) {
+          try {
+            await client.subscribe(user, 'video');
+            const track = user.videoTrack as IRemoteVideoTrack | undefined;
+            if (track) {
+              remoteRef.current.innerHTML = '';
+              track.play(remoteRef.current, { fit: 'contain' });
+              setHasRemote(true);
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
+    },
+    [playRemoteAudio],
+  );
 
   useEffect(() => {
     let cancelled = false;
+    let levelTimer: number | undefined;
 
-    async function ensureMicPublished(client: IAgoraRTCClient) {
-      const mic = micRef.current;
-      if (!mic) return;
-      try {
-        mic.setVolume(100);
-      } catch {
-        // ignore
-      }
-      const published = client.localTracks.some((t) => t === mic);
-      if (!published) {
-        await client.publish(mic);
-      }
-    }
-
-    async function start() {
+    async function connect() {
       try {
         const AgoraRTC = (await import('agora-rtc-sdk-ng')).default;
         if (cancelled) return;
@@ -63,7 +113,7 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
         clientRef.current = client;
         await client.setClientRole(role === 'host' ? 'host' : 'audience');
 
-        client.on('user-published', async (user, mediaType) => {
+        client.on('user-published', async (user: IAgoraRTCRemoteUser, mediaType) => {
           await client.subscribe(user, mediaType);
           if (mediaType === 'video') {
             const track = user.videoTrack as IRemoteVideoTrack | undefined;
@@ -74,12 +124,7 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
             }
           }
           if (mediaType === 'audio') {
-            user.audioTrack?.play();
-            try {
-              user.audioTrack?.setVolume(100);
-            } catch {
-              // ignore
-            }
+            await playRemoteAudio(user.audioTrack);
           }
         });
 
@@ -93,47 +138,14 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
         await client.join(appId, channel, token, uid);
         if (cancelled) return;
 
+        await subscribeExisting(client);
+
         if (role === 'host') {
-          // Mic first and independently — speech must reach guests even if camera fails.
-          const mic = await AgoraRTC.createMicrophoneAudioTrack({
-            AEC: true,
-            AGC: true,
-            ANS: true,
-          });
-          if (cancelled) {
-            mic.close();
-            return;
-          }
-          micRef.current = mic;
-          mic.setVolume(100);
-          await client.publish(mic);
-
-          try {
-            const cam = await AgoraRTC.createCameraVideoTrack();
-            if (cancelled) {
-              cam.close();
-              return;
-            }
-            camRef.current = cam;
-            if (localRef.current) {
-              localRef.current.innerHTML = '';
-              cam.play(localRef.current, { fit: 'contain' });
-            }
-            await client.publish(cam);
-          } catch (camErr) {
-            const camMsg =
-              camErr instanceof Error ? camErr.message : 'Camera unavailable';
-            setStatus(`Mic is live (camera: ${camMsg}). You can still share screen.`);
-          }
-
-          await ensureMicPublished(client);
-          setStatus('You are live — speak with mic on, share screen when ready');
-          setReady(true);
-          setMicMuted(false);
+          setStatus('Connected — tap “Start mic & go live” (required on phones)');
         } else {
-          setStatus('Joined as viewer — waiting for the host…');
-          setReady(true);
+          setStatus('Connected — tap “Enable sound” to hear the host');
         }
+        setChannelReady(true);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Could not join live session';
         setStatus(message);
@@ -141,10 +153,11 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
       }
     }
 
-    void start();
+    void connect();
 
     return () => {
       cancelled = true;
+      if (levelTimer) window.clearInterval(levelTimer);
       void (async () => {
         try {
           screenRef.current?.close();
@@ -161,7 +174,117 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
         }
       })();
     };
-  }, [appId, channel, token, uid, role, onError]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- join once per credentials
+  }, [appId, channel, token, uid, role, onError, playRemoteAudio, subscribeExisting]);
+
+  // Mic level meter while publishing (confirms speech is leaving this device).
+  useEffect(() => {
+    if (!mediaLive || role !== 'host') return;
+    const timer = window.setInterval(() => {
+      const mic = micRef.current;
+      if (!mic) return;
+      try {
+        const level = Math.round(mic.getVolumeLevel() * 100);
+        setMicLevel(level);
+      } catch {
+        // ignore
+      }
+    }, 200);
+    return () => window.clearInterval(timer);
+  }, [mediaLive, role]);
+
+  async function enableAudienceSound() {
+    setBusy(true);
+    try {
+      // Unlock autoplay policy, then replay every remote audio track.
+      try {
+        const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        if (Ctx) {
+          const ctx = new Ctx();
+          if (ctx.state === 'suspended') await ctx.resume();
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          gain.gain.value = 0.0001;
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.04);
+        }
+      } catch {
+        // ignore
+      }
+
+      const client = clientRef.current;
+      if (client) await subscribeExisting(client);
+
+      for (const track of remoteAudioRef.current) {
+        try {
+          track.setVolume(100);
+          await track.play();
+        } catch {
+          // ignore
+        }
+      }
+      setSoundOn(true);
+      setStatus('Sound on — you should hear the host');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startHostMedia() {
+    const client = clientRef.current;
+    const AgoraRTC = agoraRef.current;
+    if (!client || !AgoraRTC || role !== 'host' || busy || mediaLive) return;
+
+    setBusy(true);
+    setStatus('Requesting microphone…');
+    try {
+      // Must run from a user tap on mobile browsers.
+      const mic = await AgoraRTC.createMicrophoneAudioTrack({
+        AEC: true,
+        AGC: true,
+        ANS: false, // ANS can swallow speech on some phones
+      });
+      micRef.current = mic;
+      mic.setVolume(100);
+      await mic.setEnabled(true);
+      await client.publish([mic]);
+
+      try {
+        const cam = await AgoraRTC.createCameraVideoTrack();
+        camRef.current = cam;
+        if (localRef.current) {
+          localRef.current.innerHTML = '';
+          cam.play(localRef.current, { fit: 'contain' });
+        }
+        await client.publish([cam]);
+      } catch (camErr) {
+        const camMsg = camErr instanceof Error ? camErr.message : 'Camera unavailable';
+        setStatus(`Mic live (no camera: ${camMsg}). Guests should hear you.`);
+      }
+
+      // Confirm mic is still among published tracks.
+      if (!client.localTracks.includes(mic)) {
+        await client.publish([mic]);
+      }
+
+      setMediaLive(true);
+      setMicMuted(false);
+      setStatus('You are live — speak now. Guests must tap Enable sound.');
+    } catch (err) {
+      const message =
+        err instanceof Error && /NotAllowedError|Permission denied|NotFoundError/i.test(err.message)
+          ? 'Microphone permission denied or missing. Allow mic in browser settings, then try again.'
+          : err instanceof Error
+            ? err.message
+            : 'Could not start microphone';
+      setStatus(message);
+      onError?.(message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function stopScreenShare(opts?: { restoreCamera?: boolean }) {
     const client = clientRef.current;
@@ -194,7 +317,6 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
       setStatus('Screen share stopped — camera is live');
     }
 
-    // Mic must stay published across screen share stop/start.
     const mic = micRef.current;
     if (mic && client) {
       try {
@@ -212,7 +334,7 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
     const next = !micMuted;
     void mic.setEnabled(!next);
     setMicMuted(next);
-    setStatus(next ? 'Microphone muted' : 'Microphone on — your speech reaches viewers');
+    setStatus(next ? 'Microphone muted' : 'Microphone on — speech is publishing');
   }
 
   async function startScreenShare() {
@@ -220,10 +342,13 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
     const AgoraRTC = agoraRef.current;
     const cam = camRef.current;
     if (!client || !AgoraRTC || role !== 'host' || busy) return;
+    if (!canShareScreen) {
+      setStatus('Screen share needs desktop Chrome/Edge. On phone, use camera + mic.');
+      return;
+    }
 
     setBusy(true);
     try {
-      // Video-only screen track; keep the separate mic track for host speech.
       const screenTrack = await AgoraRTC.createScreenVideoTrack(
         {
           encoderConfig: {
@@ -255,7 +380,6 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
       }
       await client.publish(screen);
 
-      // Re-assert mic after screen publish (some browsers drop other tracks).
       const mic = micRef.current;
       if (mic) {
         try {
@@ -271,7 +395,7 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
       setStatus(
         micMuted
           ? 'Sharing screen — unmute speech so guests can hear you'
-          : 'Sharing screen + mic — guests hear you and see the full desktop',
+          : 'Sharing screen + mic — check mic level meter while speaking',
       );
 
       screen.on('track-ended', () => {
@@ -295,26 +419,71 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-sm font-medium text-slate-600">{status}</p>
-        {role === 'host' && ready ? (
+        {role === 'host' && channelReady && !mediaLive ? (
+          <Button type="button" size="sm" disabled={busy} onClick={() => void startHostMedia()}>
+            Start mic &amp; go live
+          </Button>
+        ) : null}
+        {role === 'audience' && channelReady && !soundOn ? (
+          <Button type="button" size="sm" disabled={busy} onClick={() => void enableAudienceSound()}>
+            Enable sound
+          </Button>
+        ) : null}
+        {role === 'host' && mediaLive ? (
           <>
             <Button type="button" variant="outline" size="sm" disabled={busy} onClick={toggleMic}>
               {micMuted ? 'Unmute speech' : 'Mute speech'}
             </Button>
-            {sharing ? (
-              <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => void stopScreenShare()}>
-                Stop sharing
-              </Button>
+            {canShareScreen ? (
+              sharing ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => void stopScreenShare()}
+                >
+                  Stop sharing
+                </Button>
+              ) : (
+                <Button type="button" size="sm" disabled={busy} onClick={() => void startScreenShare()}>
+                  Share screen
+                </Button>
+              )
             ) : (
-              <Button type="button" size="sm" disabled={busy} onClick={() => void startScreenShare()}>
-                Share screen
-              </Button>
+              <span className="text-xs text-muted-foreground">Screen share: desktop only</span>
             )}
           </>
         ) : null}
+        {role === 'audience' && soundOn ? (
+          <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => void enableAudienceSound()}>
+            Replay sound
+          </Button>
+        ) : null}
       </div>
+
+      {role === 'host' && mediaLive ? (
+        <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+          <span className="font-semibold">Mic level</span>
+          <div className="h-2 flex-1 overflow-hidden rounded-full bg-emerald-100">
+            <div
+              className="h-full rounded-full bg-emerald-600 transition-[width] duration-100"
+              style={{ width: `${Math.min(100, micLevel)}%` }}
+            />
+          </div>
+          <span className="w-10 text-right text-xs font-bold">{micLevel}%</span>
+          <span className="text-xs opacity-80">
+            {micMuted ? 'Muted' : micLevel < 2 ? 'Speak louder / check mic' : 'Publishing'}
+          </span>
+        </div>
+      ) : null}
+
       {role === 'host' ? (
         <div className="overflow-hidden rounded-2xl border bg-slate-950 aspect-video">
-          <div ref={localRef} className="h-full w-full [&_video]:h-full [&_video]:w-full [&_video]:object-contain" />
+          <div
+            ref={localRef}
+            className="h-full w-full [&_video]:h-full [&_video]:w-full [&_video]:object-contain"
+          />
         </div>
       ) : (
         <div className="relative min-h-[50vh] overflow-hidden rounded-2xl border bg-slate-950 sm:min-h-[70vh]">
@@ -324,19 +493,23 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
           />
           {!hasRemote ? (
             <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-300">
-              Host screen will appear here (full view)
+              Host video will appear here
             </div>
           ) : null}
         </div>
       )}
-      {/* Hidden remote mount for host if needed later */}
       {role === 'host' ? <div ref={remoteRef} className="hidden" /> : null}
+
       {role === 'host' ? (
         <p className="text-xs text-muted-foreground">
-          Keep <strong>Unmute speech</strong> on while sharing. Guests should hear your mic and see the full
-          shared screen (rotate phone to landscape if needed). Use Chrome/Edge on this PC.
+          On phone: tap <strong>Start mic &amp; go live</strong>, allow microphone, then speak — watch the mic
+          level move. Screen share works on desktop Chrome/Edge only. Guests must tap <strong>Enable sound</strong>.
         </p>
-      ) : null}
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          If you see video but no voice, tap <strong>Enable sound</strong> (browsers block audio until you tap).
+        </p>
+      )}
     </div>
   );
 }

@@ -17,6 +17,11 @@ export async function listLiveStreamsHandler(req: AuthRequest, res: Response): P
   res.json({ data });
 }
 
+export async function listHostingLiveStreamsHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await liveStreamService.listHostingLiveStreams(req.user!);
+  res.json({ data });
+}
+
 export async function getLiveStreamHandler(req: AuthRequest, res: Response): Promise<void> {
   const data = await liveStreamService.getLiveStreamForUser(String(req.params.id), req.user!);
   res.json({ data });

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Plus, Video, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Video, Pencil, Trash2, Radio } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,6 +22,7 @@ interface LiveRow {
   scheduled_at: string;
   status: string;
   invite_count?: number;
+  host_name?: string;
 }
 
 function formatWhen(iso: string) {
@@ -35,6 +36,10 @@ function formatWhen(iso: string) {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function openLiveRoom(sessionId: string) {
+  window.open(`/live-room/${sessionId}`, '_blank', 'noopener,noreferrer');
 }
 
 export default function LiveStreamAdminPage() {
@@ -107,7 +112,7 @@ export default function LiveStreamAdminPage() {
     <div className="space-y-6">
       <PageHeader
         title="Live class"
-        description="Schedule one-to-many live sessions. Invite users so only allowed people can join the embedded Agora stream."
+        description="Schedule sessions and invite users here. Open Control room in a new tab for mic, screen share, messages, guests, pause, and end."
       />
 
       {error ? <Alert variant="error">{error}</Alert> : null}
@@ -185,10 +190,19 @@ export default function LiveStreamAdminPage() {
                   <div className="text-sm text-slate-500">{formatWhen(item.scheduled_at)}</div>
                   <div className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-400">
                     {item.status}
+                    {item.host_name ? ` · Host: ${item.host_name}` : ''}
                     {typeof item.invite_count === 'number' ? ` · ${item.invite_count} invited` : ''}
                   </div>
                 </Link>
                 <div className="flex shrink-0 gap-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => openLiveRoom(item.id)}
+                  >
+                    <Radio className="h-3.5 w-3.5" />
+                    Control room
+                  </Button>
                   <Button asChild variant="outline" size="sm">
                     <Link href={`/live/admin/${item.id}`}>
                       <Pencil className="h-3.5 w-3.5" />

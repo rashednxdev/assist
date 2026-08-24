@@ -170,6 +170,7 @@ export async function listLiveStreamsForUser(
       details: doc.details || undefined,
       scheduled_at: doc.scheduled_at.toISOString(),
       status: doc.status,
+      host_user_id: String(doc.host_user_id),
       host_name: hostName.get(String(doc.host_user_id)),
       permission_status: perm.permission_status,
       can_join: perm.can_join && doc.status === 'live',
@@ -220,11 +221,20 @@ export async function listAdminLiveStreams(limit: number, skip: number) {
     { $group: { _id: '$live_stream_id', count: { $sum: 1 } } },
   ]);
   const countMap = new Map(counts.map((c) => [String(c._id), c.count]));
+  const hostIds = [...new Set(items.map((i) => String(i.host_user_id)))];
+  const hosts =
+    hostIds.length > 0
+      ? await User.find({ _id: { $in: hostIds } }).select('full_name_en full_name_bn')
+      : [];
+  const hostName = new Map(
+    hosts.map((h) => [String(h._id), h.full_name_bn?.trim() || h.full_name_en]),
+  );
   return {
     total,
     items: sortByCurrentDateFirst(
       items.map((doc) => ({
         ...serializeBase(doc, false),
+        host_name: hostName.get(String(doc.host_user_id)),
         invite_count: countMap.get(String(doc._id)) ?? 0,
         permission_status: 'host' as const,
         can_join: true,
@@ -235,10 +245,58 @@ export async function listAdminLiveStreams(limit: number, skip: number) {
   };
 }
 
+export async function listHostingLiveStreams(user: {
+  id: string;
+}): Promise<LiveStreamListItem[]> {
+  const items = await LiveStream.find({
+    is_active: true,
+    host_user_id: user.id,
+    status: { $in: ['scheduled', 'live', 'paused', 'ended'] },
+  })
+    .sort({ scheduled_at: -1 })
+    .limit(100);
+
+  const host = await User.findById(user.id).select('full_name_en full_name_bn');
+  const hostName = host ? host.full_name_bn?.trim() || host.full_name_en : undefined;
+
+  const result: LiveStreamListItem[] = items.map((doc) => {
+    const slides = serializeSlides(doc.slides);
+    const previous = isPreviousClass(doc);
+    return {
+      id: String(doc._id),
+      topic: doc.topic,
+      details: doc.details || undefined,
+      scheduled_at: doc.scheduled_at.toISOString(),
+      status: doc.status,
+      host_user_id: String(doc.host_user_id),
+      host_name: hostName,
+      permission_status: 'host' as const,
+      can_join: doc.status === 'live',
+      can_host: true,
+      is_previous: previous,
+      slide_count: slides.length,
+      allow_guest_messages: Boolean(doc.allow_guest_messages),
+      can_view_presentation: true,
+      created_at: doc.created_at.toISOString(),
+      updated_at: doc.updated_at.toISOString(),
+    };
+  });
+
+  return sortByCurrentDateFirst(result);
+}
+
 export async function createLiveStream(dto: CreateLiveStreamDto, actorId: string) {
   if (dto.scheduled_at.getTime() < Date.now() - 60_000) {
     throw badRequest('Scheduled time must be in the future (or within the last minute).');
   }
+
+  let hostUserId = actorId;
+  if (dto.host_user_id) {
+    const hostUser = await User.findOne({ _id: dto.host_user_id, status: 'active' }).select('_id');
+    if (!hostUser) throw badRequest('Host user not found or inactive.');
+    hostUserId = String(hostUser._id);
+  }
+
   const tempId = new mongoose.Types.ObjectId();
   const doc = await LiveStream.create({
     _id: tempId,
@@ -247,7 +305,7 @@ export async function createLiveStream(dto: CreateLiveStreamDto, actorId: string
     scheduled_at: dto.scheduled_at,
     status: 'scheduled',
     channel_name: channelForId(String(tempId)),
-    host_user_id: actorId,
+    host_user_id: hostUserId,
     created_by: actorId,
     is_active: true,
     slides: dto.slides ? serializeSlides(dto.slides) : [],
@@ -271,6 +329,11 @@ export async function updateLiveStream(id: string, dto: UpdateLiveStreamDto) {
   if (dto.details !== undefined) doc.details = dto.details ?? undefined;
   if (dto.scheduled_at !== undefined) doc.scheduled_at = dto.scheduled_at;
   if (dto.slides !== undefined) doc.slides = serializeSlides(dto.slides);
+  if (dto.host_user_id !== undefined) {
+    const hostUser = await User.findOne({ _id: dto.host_user_id, status: 'active' }).select('_id');
+    if (!hostUser) throw badRequest('Host user not found or inactive.');
+    doc.host_user_id = hostUser._id as typeof doc.host_user_id;
+  }
   if (dto.status !== undefined) {
     doc.status = dto.status;
     if (dto.status === 'live') {

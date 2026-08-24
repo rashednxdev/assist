@@ -26,6 +26,7 @@ import {
   MessageSquarePlus,
   FileCheck,
   Video,
+  Radio,
   MessageCircle,
 } from 'lucide-react';
 
@@ -65,6 +66,7 @@ export const navGroups: NavGroup[] = [
       { href: '/exams', label: 'Exam programs', icon: GraduationCap, moduleCode: 'EXAM' },
       { href: '/papers', label: 'Exam papers', icon: FileText, moduleCode: 'PAPER' },
       { href: '/live', label: 'Live class', icon: Video, moduleCode: 'LIVE_STREAM' },
+      { href: '/live/hosting', label: 'Host live', icon: Radio, moduleCode: 'LIVE_STREAM' },
       { href: '/pension', label: 'Pension calculator', icon: Calculator, moduleCode: 'PENSION' },
       { href: '/joining-period', label: 'Joining period', icon: Calculator, moduleCode: 'PENSION' },
     ],

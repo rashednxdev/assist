@@ -36,6 +36,8 @@ export const createLiveStreamSchema = z.object({
   topic: z.string().trim().min(3).max(200),
   details: z.string().trim().max(5000).optional(),
   scheduled_at: z.coerce.date(),
+  /** Assigned class host (defaults to creating admin). */
+  host_user_id: mongoId.optional(),
   /** Optional invite list at create time. */
   invite_user_ids: inviteUserIds.optional(),
   slides: liveStreamSlidesSchema.optional(),
@@ -46,6 +48,8 @@ export const updateLiveStreamSchema = z.object({
   details: z.string().trim().max(5000).optional().nullable(),
   scheduled_at: z.coerce.date().optional(),
   status: z.enum(LIVE_STREAM_STATUSES).optional(),
+  /** Reassign the class host (admin only). */
+  host_user_id: mongoId.optional(),
   slides: liveStreamSlidesSchema.optional(),
 });
 
@@ -126,6 +130,7 @@ export interface LiveStreamListItem {
   details?: string;
   scheduled_at: string;
   status: LiveStreamStatus;
+  host_user_id?: string;
   host_name?: string;
   invite_count?: number;
   permission_status: LivePermissionStatus;

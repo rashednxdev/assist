@@ -2,12 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Video, Layers } from 'lucide-react';
+import { Video, Layers, Radio } from 'lucide-react';
 import type { LivePermissionStatus, LiveStreamStatus } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 
 interface LiveRow {
   id: string;
@@ -100,8 +101,16 @@ export default function LiveStreamUserListPage() {
     <div className="space-y-6">
       <PageHeader
         title="Live class"
-        description="Everyone can browse the schedule and class list. Joining a live session (or opening a previous-class presentation) requires an admin invite."
+        description="Browse the schedule. Invited guests can join live. Assigned hosts use Host live to open the control room."
       />
+      <div className="flex flex-wrap gap-2">
+        <Button asChild variant="outline" size="sm">
+          <Link href="/live/hosting">
+            <Radio className="h-3.5 w-3.5" />
+            Host live classes
+          </Link>
+        </Button>
+      </div>
       {error ? <Alert variant="error">{error}</Alert> : null}
       {loading ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
       {!loading && items.length === 0 ? (

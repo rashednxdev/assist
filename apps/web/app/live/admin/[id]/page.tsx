@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import dynamic from 'next/dynamic';
+import Link from 'next/link';
+import { Radio } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,11 +32,6 @@ import {
   type LiveStreamSlide,
 } from '@ibas/shared-types';
 
-const AgoraLiveRoom = dynamic(
-  () => import('@/components/live/agora-live-room').then((m) => m.AgoraLiveRoom),
-  { ssr: false },
-);
-
 interface SessionDetail {
   id: string;
   topic: string;
@@ -46,15 +42,8 @@ interface SessionDetail {
   slides?: LiveStreamSlide[];
   slide_count?: number;
   is_previous?: boolean;
-  allow_guest_messages?: boolean;
-}
-
-interface GuestMessageRow {
-  id: string;
-  from_user_id: string;
-  from_name: string;
-  body: string;
-  created_at: string;
+  host_user_id?: string;
+  host_name?: string;
 }
 
 interface SlideDraft {
@@ -82,32 +71,15 @@ interface UserPick {
   status?: string;
 }
 
-interface JoinPayload {
-  app_id: string;
-  channel: string;
-  token: string;
-  uid: number;
-  role: 'host' | 'audience';
-  topic: string;
-  status: string;
-}
-
-interface GuestRow {
-  id: string;
-  user_id: string;
-  name: string;
-  email?: string;
-  phone?: string;
-  role: 'host' | 'audience';
-  joined_at: string;
-  last_seen_at: string;
-}
-
 function toDatetimeLocal(iso: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function openLiveRoom(sessionId: string) {
+  window.open(`/live-room/${sessionId}`, '_blank', 'noopener,noreferrer');
 }
 
 export default function LiveStreamAdminDetailPage() {
@@ -121,16 +93,12 @@ export default function LiveStreamAdminDetailPage() {
   const [usersTotal, setUsersTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [join, setJoin] = useState<JoinPayload | null>(null);
   const [busy, setBusy] = useState(false);
   const [editTopic, setEditTopic] = useState('');
   const [editDetails, setEditDetails] = useState('');
   const [editWhen, setEditWhen] = useState('');
   const [slides, setSlides] = useState<SlideDraft[]>([]);
   const [showMarkupHelp, setShowMarkupHelp] = useState(false);
-  const [guests, setGuests] = useState<GuestRow[]>([]);
-  const [messages, setMessages] = useState<GuestMessageRow[]>([]);
-  const [msgBusy, setMsgBusy] = useState(false);
   const limit = 25;
 
   const invitedSet = useMemo(() => new Set(invites.map((i) => i.user_id)), [invites]);
@@ -186,84 +154,6 @@ export default function LiveStreamAdminDetailPage() {
   useEffect(() => {
     void loadUsers(query, page);
   }, [loadUsers, query, page]);
-
-  useEffect(() => {
-    if (!id) return;
-    let cancelled = false;
-    async function loadGuests() {
-      try {
-        const res = await apiFetch<{ data: GuestRow[] }>(`/live-streams/${id}/guests`);
-        if (!cancelled) setGuests(res.data);
-      } catch {
-        // ignore poll errors
-      }
-    }
-    void loadGuests();
-    const timer = window.setInterval(() => void loadGuests(), 8000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [id]);
-
-  useEffect(() => {
-    if (!id) return;
-    let cancelled = false;
-    let afterId: string | undefined;
-
-    async function loadMessages(initial: boolean) {
-      try {
-        const qs = afterId && !initial ? `?after=${encodeURIComponent(afterId)}` : '';
-        const res = await apiFetch<{ data: GuestMessageRow[] }>(`/live-streams/${id}/messages${qs}`);
-        if (cancelled) return;
-        if (initial) {
-          setMessages(res.data);
-        } else if (res.data.length) {
-          setMessages((prev) => {
-            const seen = new Set(prev.map((m) => m.id));
-            const next = [...prev];
-            for (const m of res.data) {
-              if (!seen.has(m.id)) next.push(m);
-            }
-            return next.slice(-200);
-          });
-        }
-        if (res.data.length) {
-          afterId = res.data[res.data.length - 1]?.id ?? afterId;
-        }
-      } catch {
-        // ignore poll errors
-      }
-    }
-
-    void loadMessages(true);
-    const timer = window.setInterval(() => void loadMessages(false), 4000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [id]);
-
-  async function toggleGuestMessages(allow: boolean) {
-    if (!id) return;
-    setMsgBusy(true);
-    setError('');
-    try {
-      const res = await apiFetch<{ data: SessionDetail }>(`/live-streams/${id}/guest-messages`, {
-        method: 'PATCH',
-        body: JSON.stringify({ allow_guest_messages: allow }),
-      });
-      setSession((prev) =>
-        prev
-          ? { ...prev, allow_guest_messages: res.data.allow_guest_messages ?? allow }
-          : prev,
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update messaging');
-    } finally {
-      setMsgBusy(false);
-    }
-  }
 
   async function saveEdits() {
     if (!editTopic.trim() || !editWhen) {
@@ -341,6 +231,22 @@ export default function LiveStreamAdminDetailPage() {
     }
   }
 
+  async function assignHost(userId: string) {
+    setBusy(true);
+    setError('');
+    try {
+      await apiFetch(`/live-streams/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ host_user_id: userId }),
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not assign host');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function grantSelected() {
     if (selectedIds.length === 0) return;
     setBusy(true);
@@ -376,48 +282,6 @@ export default function LiveStreamAdminDetailPage() {
       setSelectedIds([]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not revoke access');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function setLifecycle(
-    action: 'start' | 'pause' | 'resume' | 'restart' | 'end',
-  ) {
-    setBusy(true);
-    setError('');
-    try {
-      await apiFetch(`/live-streams/${id}/${action}`, { method: 'POST' });
-      if (action === 'pause' || action === 'end') setJoin(null);
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Update failed');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function goLiveAsHost() {
-    setBusy(true);
-    setError('');
-    try {
-      if (session?.status === 'scheduled' || session?.status === 'paused') {
-        await apiFetch(
-          `/live-streams/${id}/${session.status === 'paused' ? 'resume' : 'start'}`,
-          { method: 'POST' },
-        );
-      }
-      if (session?.status === 'ended' || session?.status === 'cancelled') {
-        await apiFetch(`/live-streams/${id}/restart`, { method: 'POST' });
-      }
-      const res = await apiFetch<{ data: JoinPayload }>(`/live-streams/${id}/join`, {
-        method: 'POST',
-        body: JSON.stringify({ as_host: true }),
-      });
-      setJoin(res.data);
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not start stream');
     } finally {
       setBusy(false);
     }
@@ -702,188 +566,111 @@ export default function LiveStreamAdminDetailPage() {
         </Card>
       ) : null}
 
-      <Card>
+      <Card className="border-pink-200 bg-pink-50/60">
         <CardHeader>
-          <CardTitle className="text-base">Broadcast</CardTitle>
+          <CardTitle className="text-base">Live control room</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            {session.status === 'scheduled' ? (
-              <Button disabled={busy} onClick={() => void goLiveAsHost()}>
-                Start &amp; go live
-              </Button>
-            ) : null}
-            {session.status === 'live' && !join ? (
-              <Button disabled={busy} onClick={() => void goLiveAsHost()}>
-                Join as host
-              </Button>
-            ) : null}
-            {session.status === 'live' ? (
-              <Button variant="outline" disabled={busy} onClick={() => void setLifecycle('pause')}>
-                Pause class
-              </Button>
-            ) : null}
-            {session.status === 'paused' ? (
-              <>
-                <Button disabled={busy} onClick={() => void goLiveAsHost()}>
-                  Resume &amp; go live
-                </Button>
-                <Button variant="outline" disabled={busy} onClick={() => void setLifecycle('resume')}>
-                  Resume (mark live)
-                </Button>
-              </>
-            ) : null}
-            {session.status === 'ended' || session.status === 'cancelled' ? (
-              <Button disabled={busy} onClick={() => void goLiveAsHost()}>
-                Restart class
-              </Button>
-            ) : null}
-            {session.status === 'live' || session.status === 'paused' ? (
-              <Button
-                variant="destructive"
-                disabled={busy}
-                onClick={() => {
-                  if (
-                    confirm(
-                      'End this live session now? Guests will be disconnected and Agora minutes stop (saves cost). You can restart later without deleting.',
-                    )
-                  ) {
-                    void setLifecycle('end');
-                  }
-                }}
-              >
-                End session (stop billing)
-              </Button>
-            ) : null}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Pause keeps invites but guests cannot watch until you resume. Always <strong>End session</strong> when
-            finished so Agora channel minutes stop. Mic carries speech to viewers; screen share is desktop-only.
+        <CardContent className="flex flex-wrap items-center gap-3">
+          <p className="max-w-xl text-sm text-pink-950/90">
+            Mic, screen share, allow/disallow messages, guest list with totals, inbox, pause /
+            restart / end open in a separate tab for a cleaner host workspace.
           </p>
-          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-pink-200 bg-pink-50 px-3 py-2.5">
-            <div>
-              <div className="text-sm font-semibold text-pink-950">Guest messages (during live)</div>
-              <p className="text-xs text-pink-800/80">
-                {session.allow_guest_messages
-                  ? 'Allowed — guests can write to you from the app'
-                  : 'Disallowed — turn on when you want questions from guests'}
-              </p>
-            </div>
-            <div className="ml-auto flex gap-2">
-              <Button
-                size="sm"
-                variant={session.allow_guest_messages ? 'default' : 'outline'}
-                disabled={msgBusy || Boolean(session.allow_guest_messages)}
-                onClick={() => void toggleGuestMessages(true)}
-              >
-                Allow
-              </Button>
-              <Button
-                size="sm"
-                variant={!session.allow_guest_messages ? 'default' : 'outline'}
-                disabled={msgBusy || !session.allow_guest_messages}
-                onClick={() => void toggleGuestMessages(false)}
-              >
-                Disallow
-              </Button>
-            </div>
+          <div className="ml-auto flex flex-wrap gap-2">
+            <Button type="button" onClick={() => openLiveRoom(String(id))}>
+              <Radio className="h-4 w-4" />
+              Open control room
+            </Button>
+            <Button asChild variant="outline">
+              <Link href={`/live-room/${id}`} target="_blank" rel="noreferrer">
+                Open in new tab
+              </Link>
+            </Button>
           </div>
-          {join ? (
-            <AgoraLiveRoom
-              appId={join.app_id}
-              channel={join.channel}
-              token={join.token}
-              uid={join.uid}
-              role="host"
-              onError={setError}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Session host</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Assign a user as host. After login they see this class under{' '}
+            <Link href="/live/hosting" className="font-medium text-pink-700 underline-offset-2 hover:underline">
+              Host live classes
+            </Link>{' '}
+            and open the control room directly.
+          </p>
+          <div className="rounded-xl border bg-slate-50 px-3 py-2.5 text-sm">
+            <span className="text-slate-500">Current host: </span>
+            <span className="font-semibold text-slate-900">
+              {session.host_name || 'Not set'}
+            </span>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="host-search">Search user to assign as host</Label>
+            <Input
+              id="host-search"
+              value={query}
+              onChange={(e) => {
+                setPage(1);
+                setQuery(e.target.value);
+              }}
+              placeholder="Name, email, or phone"
             />
-          ) : null}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">
-            Guest messages
-            <span className="ml-2 text-xs font-medium text-muted-foreground">
-              {messages.length} · host only
-            </span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {messages.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No guest messages yet. Turn on “Allow” above so invited viewers can write to you.
-            </p>
-          ) : (
-            <ul className="max-h-80 space-y-2 overflow-y-auto rounded-xl border bg-white p-3">
-              {messages.map((m) => (
-                <li key={m.id} className="rounded-lg bg-slate-50 px-3 py-2 text-sm">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="font-semibold text-slate-900">{m.from_name}</span>
-                    <span className="shrink-0 text-[11px] text-slate-500">
-                      {new Date(m.created_at).toLocaleTimeString()}
-                    </span>
-                  </div>
-                  <p className="mt-0.5 whitespace-pre-wrap text-slate-700">{m.body}</p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">
-            Guest list
-            <span className="ml-2 text-xs font-medium text-muted-foreground">
-              {guests.filter((g) => g.role === 'audience').length} guests
-            </span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {guests.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No one has joined yet.</p>
-          ) : (
-            <div className="overflow-x-auto rounded-xl border">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+          </div>
+          <div className="max-h-56 overflow-y-auto rounded-xl border">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-3 py-2">Name</th>
+                  <th className="px-3 py-2">Contact</th>
+                  <th className="px-3 py-2">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {users.length === 0 ? (
                   <tr>
-                    <th className="px-3 py-2">Name</th>
-                    <th className="px-3 py-2">Email / phone</th>
-                    <th className="px-3 py-2">Role</th>
-                    <th className="px-3 py-2">Joined</th>
+                    <td colSpan={3} className="px-3 py-6 text-center text-muted-foreground">
+                      No users found
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {guests.map((g) => (
-                    <tr key={g.id}>
-                      <td className="px-3 py-2 font-medium">{g.name}</td>
-                      <td className="px-3 py-2 text-slate-600">
-                        {g.email}
-                        {g.phone ? ` · ${g.phone}` : ''}
-                      </td>
-                      <td className="px-3 py-2">
-                        {g.role === 'host' ? (
-                          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800">
-                            Host
-                          </span>
-                        ) : (
-                          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800">
-                            Guest
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-xs text-slate-500">
-                        {new Date(g.joined_at).toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                ) : (
+                  users.map((u) => {
+                    const isHost = session.host_user_id === u.id;
+                    return (
+                      <tr key={u.id} className="hover:bg-slate-50/80">
+                        <td className="px-3 py-2 font-medium">
+                          {u.full_name_bn?.trim() || u.full_name_en}
+                        </td>
+                        <td className="px-3 py-2 text-slate-600">
+                          {u.email}
+                          {u.phone ? ` · ${u.phone}` : ''}
+                        </td>
+                        <td className="px-3 py-2">
+                          {isHost ? (
+                            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                              Host
+                            </span>
+                          ) : (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={busy}
+                              onClick={() => void assignHost(u.id)}
+                            >
+                              Make host
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </CardContent>
       </Card>
 

@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import {
   ArrowRight,
   BookOpen,
@@ -10,6 +11,7 @@ import {
   Inbox,
   Library,
   PlayCircle,
+  Radio,
   Route,
   Settings,
   Sparkles,
@@ -18,6 +20,7 @@ import {
 import type { MeUser } from '@/lib/auth';
 import { hasModuleRead, hasOfficeModuleRead, isSuperAdmin } from '@/lib/capabilities';
 import { userDisplayName } from '@/lib/display-text';
+import { apiFetch } from '@/lib/api-client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -91,6 +94,18 @@ const learnLinks = [
   },
 ] as const;
 
+interface HostingRow {
+  id: string;
+  topic: string;
+  scheduled_at: string;
+  status: string;
+  is_previous?: boolean;
+}
+
+function openLiveRoom(sessionId: string) {
+  window.open(`/live-room/${sessionId}`, '_blank', 'noopener,noreferrer');
+}
+
 export function UserDashboard({
   user,
   summary,
@@ -110,6 +125,19 @@ export function UserDashboard({
     grants.find((g) => g.module_code === code)?.module_name_en;
   const showWorkflow =
     isSuperAdmin(user) || hasModuleRead(grants, 'WORKFLOW') || hasOfficeModuleRead(grants);
+  const [hosting, setHosting] = useState<HostingRow[]>([]);
+
+  useEffect(() => {
+    apiFetch<{ data: HostingRow[] }>('/live-streams/hosting')
+      .then((res) =>
+        setHosting(
+          res.data.filter(
+            (row) => !row.is_previous && row.status !== 'ended' && row.status !== 'cancelled',
+          ),
+        ),
+      )
+      .catch(() => setHosting([]));
+  }, []);
 
   return (
     <div className="space-y-8">
@@ -124,6 +152,11 @@ export function UserDashboard({
             pace.
           </p>
           <div className="flex flex-wrap gap-2 pt-2">
+            {hosting.length > 0 && (
+              <Button asChild size="sm" variant="outline" className="bg-white text-primary-dark hover:bg-white/90 border-0">
+                <Link href="/live/hosting">Host live classes ({hosting.length})</Link>
+              </Button>
+            )}
             {showWorkflow && (
               <Button asChild size="sm" variant="outline" className="bg-white text-primary-dark hover:bg-white/90 border-0">
                 <Link href="/guided-tasks">{grantLabel('WORKFLOW') ?? 'Guided processes'}</Link>
@@ -143,6 +176,39 @@ export function UserDashboard({
         </div>
         <Sparkles className="absolute -right-4 -top-4 h-32 w-32 text-white/10" />
       </div>
+
+      {hosting.length > 0 ? (
+        <div>
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold">Your host classes</h2>
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/live/hosting">
+                View all <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+          <div className="grid gap-3">
+            {hosting.slice(0, 5).map((item) => (
+              <Card key={item.id} className="border-pink-100 bg-pink-50/40">
+                <CardContent className="flex flex-wrap items-center gap-3 pt-5">
+                  <div className="rounded-xl bg-pink-100 p-2 text-pink-800">
+                    <Radio className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold text-slate-900">{item.topic}</div>
+                    <div className="text-xs text-slate-500">
+                      {new Date(item.scheduled_at).toLocaleString()} · {item.status}
+                    </div>
+                  </div>
+                  <Button type="button" size="sm" onClick={() => openLiveRoom(item.id)}>
+                    Open control room
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>

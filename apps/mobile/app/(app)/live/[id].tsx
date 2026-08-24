@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { WebView } from 'react-native-webview';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { BookError, BookLoading } from '@/components/books/BookStates';
 import { BookRichText } from '@/components/books/BookRichText';
 import { LiveClassPresentation } from '@/components/live/LiveClassPresentation';
@@ -55,39 +56,105 @@ function agoraHtml(join: LiveStreamJoinPayload) {
   return `<!DOCTYPE html>
 <html>
 <head>
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
   <style>
-    html,body{margin:0;padding:0;background:#0f172a;color:#fff;font-family:system-ui,sans-serif;height:100%;}
-    #status{padding:12px 14px;font-size:13px;opacity:.9}
-    #player{width:100%;height:calc(100% - 44px);background:#020617}
-    video{width:100%!important;height:100%!important;object-fit:contain}
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;width:100%;height:100%;background:#020617;color:#fff;font-family:system-ui,sans-serif;overflow:hidden}
+    #stage{position:fixed;inset:0;background:#020617}
+    #player{position:absolute;inset:0;width:100%;height:100%}
+    #player video{width:100%!important;height:100%!important;object-fit:contain!important;background:#020617}
+    #status{
+      position:absolute;left:10px;right:10px;top:10px;z-index:2;
+      padding:8px 12px;border-radius:10px;background:rgba(15,23,42,.72);
+      font-size:12px;line-height:1.35;pointer-events:none
+    }
+    #soundGate{
+      position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;
+      background:rgba(2,6,23,.78);padding:24px
+    }
+    #soundGate button{
+      border:0;border-radius:14px;padding:14px 22px;font-size:16px;font-weight:800;
+      background:#be185d;color:#fff
+    }
+    #soundGate.hidden{display:none}
   </style>
   <script src="https://download.agora.io/sdk/release/AgoraRTC_N.js"></script>
 </head>
 <body>
-  <div id="status">Connecting…</div>
-  <div id="player"></div>
+  <div id="stage">
+    <div id="player"></div>
+    <div id="status">Connecting…</div>
+    <div id="soundGate"><button type="button" id="soundBtn">Tap to enable sound</button></div>
+  </div>
   <script>
     (async () => {
       const cfg = ${payload};
       const status = document.getElementById('status');
       const player = document.getElementById('player');
+      const soundGate = document.getElementById('soundGate');
+      const soundBtn = document.getElementById('soundBtn');
+      const remoteAudio = [];
+      let soundReady = false;
+
+      function playAudio(track) {
+        if (!track) return;
+        try { track.setVolume(100); } catch (e) {}
+        try { track.play(); } catch (e) {}
+        if (remoteAudio.indexOf(track) < 0) remoteAudio.push(track);
+      }
+
+      function unlockSound() {
+        soundReady = true;
+        soundGate.classList.add('hidden');
+        remoteAudio.forEach(function (t) {
+          try { t.setVolume(100); t.play(); } catch (e) {}
+        });
+        // Nudge WebView audio policy with a silent context resume if present.
+        try {
+          var Ctx = window.AudioContext || window.webkitAudioContext;
+          if (Ctx) {
+            var ctx = new Ctx();
+            if (ctx.state === 'suspended') ctx.resume();
+            var osc = ctx.createOscillator();
+            var gain = ctx.createGain();
+            gain.gain.value = 0.0001;
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.05);
+          }
+        } catch (e) {}
+        status.textContent = 'Sound on — watching live';
+      }
+
+      soundBtn.addEventListener('click', unlockSound);
+
       try {
         const client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
         await client.setClientRole('audience');
         client.on('user-published', async (user, mediaType) => {
           await client.subscribe(user, mediaType);
+          if (mediaType === 'video' && user.videoTrack) {
+            player.innerHTML = '';
+            user.videoTrack.play(player, { fit: 'contain' });
+            status.textContent = soundReady ? 'Watching live (full screen)' : 'Video on — tap to enable sound';
+          }
+          if (mediaType === 'audio' && user.audioTrack) {
+            playAudio(user.audioTrack);
+            if (!soundReady) status.textContent = 'Host speaking — tap to enable sound';
+          }
+        });
+        client.on('user-unpublished', (user, mediaType) => {
           if (mediaType === 'video') {
             player.innerHTML = '';
-            user.videoTrack.play(player);
-            status.textContent = 'Watching live';
+            status.textContent = 'Waiting for host…';
           }
-          if (mediaType === 'audio') user.audioTrack.play();
         });
         await client.join(cfg.appId, cfg.channel, cfg.token, cfg.uid);
-        status.textContent = 'Joined — waiting for host…';
+        status.textContent = 'Joined — tap to enable sound, waiting for host…';
       } catch (e) {
         status.textContent = e && e.message ? e.message : 'Join failed';
+        soundGate.classList.add('hidden');
       }
     })();
   </script>
@@ -149,6 +216,18 @@ export default function LiveStreamDetailScreen() {
     };
   }, [join, id]);
 
+  // Allow portrait + landscape while watching so the full shared screen fits.
+  useEffect(() => {
+    if (!join) return;
+    let cancelled = false;
+    void ScreenOrientation.unlockAsync().catch(() => {});
+    return () => {
+      cancelled = true;
+      void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+      void cancelled;
+    };
+  }, [join]);
+
   const isPrevious = Boolean(session?.is_previous) || session?.status === 'ended';
   const slides = session?.slides ?? [];
   const canViewPresentation = Boolean(session?.can_view_presentation);
@@ -196,20 +275,25 @@ export default function LiveStreamDetailScreen() {
   if (join) {
     return (
       <KeyboardAvoidingView
-        style={styles.root}
+        style={styles.liveRoot}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <WebView
-          originWhitelist={['*']}
-          allowsInlineMediaPlayback
-          mediaPlaybackRequiresUserAction={false}
-          javaScriptEnabled
-          domStorageEnabled
-          source={{ html: agoraHtml(join) }}
-          style={styles.webview}
-        />
+        <View style={styles.playerWrap}>
+          <WebView
+            originWhitelist={['*']}
+            allowsInlineMediaPlayback
+            mediaPlaybackRequiresUserAction={false}
+            allowsFullscreenVideo
+            javaScriptEnabled
+            domStorageEnabled
+            mixedContentMode="always"
+            androidLayerType="hardware"
+            source={{ html: agoraHtml(join) }}
+            style={styles.webview}
+          />
+        </View>
         {allowMessages ? (
-          <View style={styles.msgBar}>
+          <View style={styles.msgBarOverlay}>
             <TextInput
               style={styles.msgInput}
               value={msgBody}
@@ -233,11 +317,7 @@ export default function LiveStreamDetailScreen() {
               )}
             </Pressable>
           </View>
-        ) : (
-          <View style={styles.msgOff}>
-            <Text style={styles.msgOffText}>Host has disallowed guest messages</Text>
-          </View>
-        )}
+        ) : null}
       </KeyboardAvoidingView>
     );
   }
@@ -361,7 +441,9 @@ export default function LiveStreamDetailScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
-  webview: { flex: 1, backgroundColor: '#0f172a' },
+  liveRoot: { flex: 1, backgroundColor: '#020617' },
+  playerWrap: { flex: 1, backgroundColor: '#020617' },
+  webview: { flex: 1, backgroundColor: '#020617' },
   content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xl },
   topic: { fontSize: 22, fontWeight: '800', color: colors.text },
   meta: { fontSize: 13, color: colors.textMuted, marginTop: -4 },
@@ -420,15 +502,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   reviewBtnText: { color: '#9d174d', fontSize: 15, fontWeight: '800' },
-  msgBar: {
+  msgBarOverlay: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#e2e8f0',
-    backgroundColor: colors.surface,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(15,23,42,0.92)',
   },
   msgInput: {
     flex: 1,
@@ -436,12 +516,12 @@ const styles = StyleSheet.create({
     maxHeight: 88,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#334155',
     paddingHorizontal: 12,
     paddingVertical: 8,
     fontSize: 14,
-    color: colors.text,
-    backgroundColor: '#fff',
+    color: '#f8fafc',
+    backgroundColor: '#0f172a',
   },
   msgSend: {
     height: 42,
@@ -453,12 +533,4 @@ const styles = StyleSheet.create({
   },
   msgSendDisabled: { opacity: 0.45 },
   msgSendText: { color: colors.white, fontWeight: '800', fontSize: 14 },
-  msgOff: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderTopWidth: 1,
-    borderTopColor: '#e2e8f0',
-    backgroundColor: '#f8fafc',
-  },
-  msgOffText: { fontSize: 12, color: colors.textMuted, textAlign: 'center' },
 });

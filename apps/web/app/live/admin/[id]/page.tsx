@@ -746,13 +746,15 @@ export default function LiveStreamAdminDetailPage() {
             Pause keeps the session and invites. Resume or restart without deleting. Mic carries your speech to all
             viewers; Agora live mode has no fixed viewer limit in the app.
           </p>
-          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
-            <span className="text-sm font-medium text-slate-800">Guest messages</span>
-            <span className="text-xs text-muted-foreground">
-              {session.allow_guest_messages
-                ? 'Guests may send messages to you'
-                : 'Messaging is off'}
-            </span>
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-pink-200 bg-pink-50 px-3 py-2.5">
+            <div>
+              <div className="text-sm font-semibold text-pink-950">Guest messages (during live)</div>
+              <p className="text-xs text-pink-800/80">
+                {session.allow_guest_messages
+                  ? 'Allowed — guests can write to you from the app'
+                  : 'Disallowed — turn on when you want questions from guests'}
+              </p>
+            </div>
             <div className="ml-auto flex gap-2">
               <Button
                 size="sm"

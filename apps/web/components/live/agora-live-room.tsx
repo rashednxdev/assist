@@ -19,7 +19,7 @@ interface AgoraLiveRoomProps {
   onError?: (message: string) => void;
 }
 
-/** Embedded Agora one-to-many room: host publishes camera/mic or screen; audience watches. */
+/** Embedded Agora one-to-many room: host publishes mic + camera/screen; audience watches full share. */
 export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: AgoraLiveRoomProps) {
   const localRef = useRef<HTMLDivElement>(null);
   const remoteRef = useRef<HTMLDivElement>(null);
@@ -39,6 +39,20 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
   useEffect(() => {
     let cancelled = false;
 
+    async function ensureMicPublished(client: IAgoraRTCClient) {
+      const mic = micRef.current;
+      if (!mic) return;
+      try {
+        mic.setVolume(100);
+      } catch {
+        // ignore
+      }
+      const published = client.localTracks.some((t) => t === mic);
+      if (!published) {
+        await client.publish(mic);
+      }
+    }
+
     async function start() {
       try {
         const AgoraRTC = (await import('agora-rtc-sdk-ng')).default;
@@ -55,12 +69,17 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
             const track = user.videoTrack as IRemoteVideoTrack | undefined;
             if (track && remoteRef.current) {
               remoteRef.current.innerHTML = '';
-              track.play(remoteRef.current);
+              track.play(remoteRef.current, { fit: 'contain' });
               setHasRemote(true);
             }
           }
           if (mediaType === 'audio') {
             user.audioTrack?.play();
+            try {
+              user.audioTrack?.setVolume(100);
+            } catch {
+              // ignore
+            }
           }
         });
 
@@ -75,19 +94,39 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
         if (cancelled) return;
 
         if (role === 'host') {
-          const [mic, cam] = await AgoraRTC.createMicrophoneAndCameraTracks();
+          // Mic first and independently — speech must reach guests even if camera fails.
+          const mic = await AgoraRTC.createMicrophoneAudioTrack({
+            AEC: true,
+            AGC: true,
+            ANS: true,
+          });
           if (cancelled) {
             mic.close();
-            cam.close();
             return;
           }
           micRef.current = mic;
-          camRef.current = cam;
-          if (localRef.current) {
-            localRef.current.innerHTML = '';
-            cam.play(localRef.current);
+          mic.setVolume(100);
+          await client.publish(mic);
+
+          try {
+            const cam = await AgoraRTC.createCameraVideoTrack();
+            if (cancelled) {
+              cam.close();
+              return;
+            }
+            camRef.current = cam;
+            if (localRef.current) {
+              localRef.current.innerHTML = '';
+              cam.play(localRef.current, { fit: 'contain' });
+            }
+            await client.publish(cam);
+          } catch (camErr) {
+            const camMsg =
+              camErr instanceof Error ? camErr.message : 'Camera unavailable';
+            setStatus(`Mic is live (camera: ${camMsg}). You can still share screen.`);
           }
-          await client.publish([mic, cam]);
+
+          await ensureMicPublished(client);
           setStatus('You are live — speak with mic on, share screen when ready');
           setReady(true);
           setMicMuted(false);
@@ -145,7 +184,7 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
     if (restoreCamera && cam && client) {
       if (localRef.current) {
         localRef.current.innerHTML = '';
-        cam.play(localRef.current);
+        cam.play(localRef.current, { fit: 'contain' });
       }
       try {
         await client.publish(cam);
@@ -153,6 +192,17 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
         // already published
       }
       setStatus('Screen share stopped — camera is live');
+    }
+
+    // Mic must stay published across screen share stop/start.
+    const mic = micRef.current;
+    if (mic && client) {
+      try {
+        mic.setVolume(100);
+        if (!client.localTracks.includes(mic)) await client.publish(mic);
+      } catch {
+        // ignore
+      }
     }
   }
 
@@ -173,8 +223,18 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
 
     setBusy(true);
     try {
+      // Video-only screen track; keep the separate mic track for host speech.
       const screenTrack = await AgoraRTC.createScreenVideoTrack(
-        { encoderConfig: '1080p_1', optimizationMode: 'detail' },
+        {
+          encoderConfig: {
+            width: 1920,
+            height: 1080,
+            frameRate: 15,
+            bitrateMax: 3000,
+            bitrateMin: 1000,
+          },
+          optimizationMode: 'detail',
+        },
         'disable',
       );
       const screen = Array.isArray(screenTrack) ? screenTrack[0] : screenTrack;
@@ -191,11 +251,28 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
       screenRef.current = screen;
       if (localRef.current) {
         localRef.current.innerHTML = '';
-        screen.play(localRef.current);
+        screen.play(localRef.current, { fit: 'contain' });
       }
       await client.publish(screen);
+
+      // Re-assert mic after screen publish (some browsers drop other tracks).
+      const mic = micRef.current;
+      if (mic) {
+        try {
+          mic.setVolume(100);
+          if (!micMuted) await mic.setEnabled(true);
+          if (!client.localTracks.includes(mic)) await client.publish(mic);
+        } catch {
+          // ignore
+        }
+      }
+
       setSharing(true);
-      setStatus('Sharing your screen — viewers see your desktop');
+      setStatus(
+        micMuted
+          ? 'Sharing screen — unmute speech so guests can hear you'
+          : 'Sharing screen + mic — guests hear you and see the full desktop',
+      );
 
       screen.on('track-ended', () => {
         void stopScreenShare({ restoreCamera: true });
@@ -235,25 +312,29 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
           </>
         ) : null}
       </div>
-      <div className="grid gap-3 lg:grid-cols-2">
-        {role === 'host' ? (
-          <div className="overflow-hidden rounded-2xl border bg-slate-950 aspect-video">
-            <div ref={localRef} className="h-full w-full" />
-          </div>
-        ) : null}
-        <div className="overflow-hidden rounded-2xl border bg-slate-950 aspect-video relative">
-          <div ref={remoteRef} className="h-full w-full" />
-          {!hasRemote && role === 'audience' ? (
+      {role === 'host' ? (
+        <div className="overflow-hidden rounded-2xl border bg-slate-950 aspect-video">
+          <div ref={localRef} className="h-full w-full [&_video]:h-full [&_video]:w-full [&_video]:object-contain" />
+        </div>
+      ) : (
+        <div className="relative min-h-[50vh] overflow-hidden rounded-2xl border bg-slate-950 sm:min-h-[70vh]">
+          <div
+            ref={remoteRef}
+            className="absolute inset-0 h-full w-full [&_video]:h-full [&_video]:w-full [&_video]:object-contain"
+          />
+          {!hasRemote ? (
             <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-300">
-              Host video will appear here
+              Host screen will appear here (full view)
             </div>
           ) : null}
         </div>
-      </div>
+      )}
+      {/* Hidden remote mount for host if needed later */}
+      {role === 'host' ? <div ref={remoteRef} className="hidden" /> : null}
       {role === 'host' ? (
         <p className="text-xs text-muted-foreground">
-          Speak with your mic (Unmute speech). Share screen from Chrome/Edge on a PC — invited users in the app hear
-          you and see your desktop. There is no app-side viewer cap.
+          Keep <strong>Unmute speech</strong> on while sharing. Guests should hear your mic and see the full
+          shared screen (rotate phone to landscape if needed). Use Chrome/Edge on this PC.
         </p>
       ) : null}
     </div>

@@ -35,7 +35,7 @@ export function UserPicker({
       void (async () => {
         setLoading(true);
         try {
-          const params = new URLSearchParams({ limit: '50' });
+          const params = new URLSearchParams({ limit: '100', sort: 'paid' });
           if (search.trim()) params.set('q', search.trim());
           const res = await apiFetch<{ data: UserOption[] }>(`/users?${params.toString()}`);
           if (!cancelled) setResults(res.data);

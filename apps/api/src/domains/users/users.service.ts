@@ -55,6 +55,8 @@ export async function listUsers(filters: {
   user_type?: string;
   status?: string;
   q?: string;
+  /** `paid` = amount_received desc (paid first), default = newest first */
+  sort?: string;
   skip: number;
   limit: number;
 }) {
@@ -71,8 +73,15 @@ export async function listUsers(filters: {
     ];
   }
 
+  const sort =
+    filters.sort === 'paid'
+      ? ({ amount_received: -1 as const, created_at: -1 as const })
+      : filters.sort === 'unpaid'
+        ? ({ amount_received: 1 as const, created_at: -1 as const })
+        : ({ created_at: -1 as const });
+
   const [items, total] = await Promise.all([
-    User.find(query).sort({ created_at: -1 }).skip(filters.skip).limit(filters.limit),
+    User.find(query).sort(sort).skip(filters.skip).limit(filters.limit),
     User.countDocuments(query),
   ]);
 

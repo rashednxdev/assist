@@ -21,10 +21,13 @@ export async function listExamSubjectOptionsHandler(_req: AuthRequest, res: Resp
 
 export async function listUsersHandler(req: AuthRequest, res: Response): Promise<void> {
   const { page, limit, skip } = parsePagination(req);
+  const sortRaw = typeof req.query.sort === 'string' ? req.query.sort : undefined;
+  const sort = sortRaw === 'paid' || sortRaw === 'unpaid' ? sortRaw : undefined;
   const { items, total } = await usersService.listUsers({
     user_type: req.query.user_type as string | undefined,
     status: req.query.status as string | undefined,
     q: req.query.q as string | undefined,
+    sort,
     skip,
     limit,
   });

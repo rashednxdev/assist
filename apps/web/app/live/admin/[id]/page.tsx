@@ -69,6 +69,7 @@ interface UserPick {
   email: string;
   phone?: string;
   status?: string;
+  amount_received?: number;
 }
 
 function toDatetimeLocal(iso: string) {
@@ -99,7 +100,8 @@ export default function LiveStreamAdminDetailPage() {
   const [editWhen, setEditWhen] = useState('');
   const [slides, setSlides] = useState<SlideDraft[]>([]);
   const [showMarkupHelp, setShowMarkupHelp] = useState(false);
-  const limit = 25;
+  const [paySort, setPaySort] = useState<'paid' | 'unpaid'>('paid');
+  const limit = 100;
 
   const invitedSet = useMemo(() => new Set(invites.map((i) => i.user_id)), [invites]);
 
@@ -129,12 +131,13 @@ export default function LiveStreamAdminDetailPage() {
     }
   }, [id]);
 
-  const loadUsers = useCallback(async (q: string, p: number) => {
+  const loadUsers = useCallback(async (q: string, p: number, sort: 'paid' | 'unpaid') => {
     try {
       const params = new URLSearchParams({
         status: 'active',
         limit: String(limit),
         page: String(p),
+        sort,
       });
       if (q.trim()) params.set('q', q.trim());
       const res = await apiFetch<{ data: UserPick[]; meta?: { total?: number } }>(`/users?${params}`);
@@ -152,8 +155,8 @@ export default function LiveStreamAdminDetailPage() {
   }, [load]);
 
   useEffect(() => {
-    void loadUsers(query, page);
-  }, [loadUsers, query, page]);
+    void loadUsers(query, page, paySort);
+  }, [loadUsers, query, page, paySort]);
 
   async function saveEdits() {
     if (!editTopic.trim() || !editWhen) {
@@ -679,17 +682,34 @@ export default function LiveStreamAdminDetailPage() {
           <CardTitle className="text-base">User access (batch)</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="access-search">Search users</Label>
-            <Input
-              id="access-search"
-              value={query}
-              onChange={(e) => {
-                setPage(1);
-                setQuery(e.target.value);
-              }}
-              placeholder="Name, email, or phone"
-            />
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[14rem] flex-1 space-y-1.5">
+              <Label htmlFor="access-search">Search users</Label>
+              <Input
+                id="access-search"
+                value={query}
+                onChange={(e) => {
+                  setPage(1);
+                  setQuery(e.target.value);
+                }}
+                placeholder="Name, email, or phone"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="pay-sort">Sort</Label>
+              <select
+                id="pay-sort"
+                value={paySort}
+                onChange={(e) => {
+                  setPage(1);
+                  setPaySort(e.target.value === 'unpaid' ? 'unpaid' : 'paid');
+                }}
+                className="flex h-10 rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="paid">Paid first</option>
+                <option value="unpaid">Unpaid first</option>
+              </select>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -704,7 +724,7 @@ export default function LiveStreamAdminDetailPage() {
               Revoke access ({selectedIds.length})
             </Button>
             <span className="text-xs text-muted-foreground">
-              {invites.length} currently allowed · {usersTotal} users in list
+              {invites.length} currently allowed · {usersTotal} users total · {limit} per page
             </span>
           </div>
 
@@ -722,19 +742,21 @@ export default function LiveStreamAdminDetailPage() {
                   </th>
                   <th className="px-3 py-2">Name</th>
                   <th className="px-3 py-2">Email / phone</th>
+                  <th className="px-3 py-2">Payment</th>
                   <th className="px-3 py-2">Access</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {users.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-3 py-6 text-center text-muted-foreground">
+                    <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
                       No users found
                     </td>
                   </tr>
                 ) : (
                   users.map((u) => {
                     const allowed = invitedSet.has(u.id);
+                    const paid = Number(u.amount_received ?? 0) > 0;
                     return (
                       <tr key={u.id} className="hover:bg-slate-50/80">
                         <td className="px-3 py-2">
@@ -751,6 +773,20 @@ export default function LiveStreamAdminDetailPage() {
                         <td className="px-3 py-2 text-slate-600">
                           {u.email}
                           {u.phone ? ` · ${u.phone}` : ''}
+                        </td>
+                        <td className="px-3 py-2">
+                          {paid ? (
+                            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+                              Paid
+                              {typeof u.amount_received === 'number'
+                                ? ` · ${u.amount_received.toLocaleString()}`
+                                : ''}
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                              Unpaid
+                            </span>
+                          )}
                         </td>
                         <td className="px-3 py-2">
                           {allowed ? (
@@ -782,6 +818,9 @@ export default function LiveStreamAdminDetailPage() {
             </Button>
             <span className="text-xs text-muted-foreground">
               Page {page} / {totalPages}
+              {usersTotal > 0
+                ? ` · showing ${Math.min((page - 1) * limit + 1, usersTotal)}–${Math.min(page * limit, usersTotal)} of ${usersTotal}`
+                : ''}
             </span>
             <Button
               variant="outline"

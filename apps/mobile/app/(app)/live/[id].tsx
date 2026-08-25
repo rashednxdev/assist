@@ -27,8 +27,8 @@ import {
 import type { LiveStreamJoinPayload } from '@ibas/shared-types';
 import { colors, spacing } from '@/theme';
 
-/** Guest playback boost (Agora remote often accepts >100). */
-const GUEST_AUDIO_VOLUME = 400;
+/** Guest playback: 100 = original. Soft gain only — high boost clips into rumble/engine noise. */
+const GUEST_AUDIO_VOLUME = 110;
 
 function permissionCard(status: LiveStreamListItem['permission_status']) {
   if (status === 'permitted' || status === 'host') {
@@ -96,7 +96,7 @@ function agoraHtml(join: LiveStreamJoinPayload) {
   <script>
     (async () => {
       const cfg = ${payload};
-      const boost = cfg.boost || 400;
+      const boost = cfg.boost || 110;
       const status = document.getElementById('status');
       const player = document.getElementById('player');
       const audioHost = document.getElementById('audioHost');
@@ -191,7 +191,7 @@ function agoraHtml(join: LiveStreamJoinPayload) {
         Array.prototype.forEach.call(audioHost.querySelectorAll('audio'), function (el) {
           try { el.muted = false; el.volume = 1; el.play(); } catch (e) {}
         });
-        status.textContent = 'Sound on (boosted)';
+        status.textContent = 'Sound on';
       }
 
       soundBtn.addEventListener('click', function () { unlockSound(); });

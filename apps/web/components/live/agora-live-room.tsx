@@ -31,6 +31,23 @@ function screenShareSupported() {
   return Boolean(navigator.mediaDevices?.getDisplayMedia) && !isMobileBrowser();
 }
 
+/** Soft playback gain — keep ≤120 to avoid clipping that sounds like rumble/engine noise. */
+const GUEST_PLAYBACK_VOLUME = 110;
+/** Host mic capture level: 100 = original. Mild boost only; AGC handles quiet speech. */
+const HOST_MIC_VOLUME = 120;
+
+function applyTrackVolume(track: { setVolume: (v: number) => void }, volume: number) {
+  try {
+    track.setVolume(volume);
+  } catch {
+    try {
+      track.setVolume(100);
+    } catch {
+      // ignore
+    }
+  }
+}
+
 /** Embedded Agora one-to-many room: host publishes mic (+ camera/screen); audience hears & watches. */
 export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: AgoraLiveRoomProps) {
   const localRef = useRef<HTMLDivElement>(null);
@@ -55,16 +72,7 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
 
   const playRemoteAudio = useCallback(async (track: IRemoteAudioTrack | undefined) => {
     if (!track) return;
-    try {
-      // Remote volume: 100 = original; many SDK builds allow up to ~400 for boost.
-      track.setVolume(400);
-    } catch {
-      try {
-        track.setVolume(100);
-      } catch {
-        // ignore
-      }
-    }
+    applyTrackVolume(track, GUEST_PLAYBACK_VOLUME);
     try {
       await track.play();
     } catch {
@@ -224,11 +232,11 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
 
       for (const track of remoteAudioRef.current) {
         try {
-          track.setVolume(400);
+          applyTrackVolume(track, GUEST_PLAYBACK_VOLUME);
           await track.play();
         } catch {
           try {
-            track.setVolume(100);
+            applyTrackVolume(track, 100);
             await track.play();
           } catch {
             // ignore
@@ -236,7 +244,7 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
         }
       }
       setSoundOn(true);
-      setStatus('Sound on — you should hear the host');
+      setStatus('Sound on — you should hear the host clearly');
     } finally {
       setBusy(false);
     }
@@ -250,15 +258,15 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
     setBusy(true);
     setStatus('Requesting microphone…');
     try {
-      // Must run from a user tap on mobile browsers.
+      // Speech profile + noise suppression. Avoid high setVolume (causes rumble/clipping).
       const mic = await AgoraRTC.createMicrophoneAudioTrack({
-        AEC: true,
-        AGC: true,
-        ANS: false, // ANS can swallow speech on some phones
+        AEC: true, // echo cancel
+        AGC: true, // auto gain for quiet/loud speech
+        ANS: true, // noise suppress (fans, traffic, vehicle rumble)
+        encoderConfig: 'speech_standard',
       });
       micRef.current = mic;
-      // Local mic: 100 = original, up to 1000. Boost so guests hear clearly.
-      mic.setVolume(400);
+      applyTrackVolume(mic, HOST_MIC_VOLUME);
       await mic.setEnabled(true);
       await client.publish([mic]);
 
@@ -331,7 +339,7 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
     const mic = micRef.current;
     if (mic && client) {
       try {
-        mic.setVolume(400);
+        applyTrackVolume(mic, HOST_MIC_VOLUME);
         if (!client.localTracks.includes(mic)) await client.publish(mic);
       } catch {
         // ignore
@@ -394,7 +402,7 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
       const mic = micRef.current;
       if (mic) {
         try {
-          mic.setVolume(400);
+          applyTrackVolume(mic, HOST_MIC_VOLUME);
           if (!micMuted) await mic.setEnabled(true);
           if (!client.localTracks.includes(mic)) await client.publish(mic);
         } catch {
@@ -514,8 +522,9 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
       {role === 'host' ? (
         <p className="text-xs text-muted-foreground">
           On phone: tap <strong>Start mic &amp; go live</strong>, allow microphone, then speak — watch the mic
-          level move. Screen share works on desktop Chrome/Edge only. Guests must tap <strong>Enable sound</strong>.
-          When class is finished, click <strong>End session</strong> so Agora minutes stop (saves cost).
+          level move. Prefer a quiet room and keep the mic close. Screen share works on desktop Chrome/Edge
+          only. Guests must tap <strong>Enable sound</strong>. When class is finished, click{' '}
+          <strong>End session</strong> so Agora minutes stop (saves cost).
         </p>
       ) : (
         <p className="text-xs text-muted-foreground">

@@ -73,12 +73,12 @@ export async function listUsers(filters: {
     ];
   }
 
-  const sort =
+  const sort: Record<string, 1 | -1> =
     filters.sort === 'paid'
-      ? ({ amount_received: -1 as const, created_at: -1 as const })
+      ? { amount_received: -1, created_at: -1 }
       : filters.sort === 'unpaid'
-        ? ({ amount_received: 1 as const, created_at: -1 as const })
-        : ({ created_at: -1 as const });
+        ? { amount_received: 1, created_at: -1 }
+        : { created_at: -1 };
 
   const [items, total] = await Promise.all([
     User.find(query).sort(sort).skip(filters.skip).limit(filters.limit),

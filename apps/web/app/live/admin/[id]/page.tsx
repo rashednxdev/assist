@@ -45,6 +45,7 @@ interface SessionDetail {
   host_user_id?: string;
   host_name?: string;
   access_type?: 'free' | 'paid';
+  video_platform?: 'agora' | 'zoom';
 }
 
 interface SlideDraft {
@@ -80,8 +81,10 @@ function toDatetimeLocal(iso: string) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function openLiveRoom(sessionId: string) {
-  window.open(`/live-room/${sessionId}`, '_blank', 'noopener,noreferrer');
+function openControlRoom(sessionId: string, platform?: 'agora' | 'zoom') {
+  const path =
+    platform === 'zoom' ? `/live/zoom-room/${sessionId}` : `/live-room/${sessionId}`;
+  window.open(path, '_blank', 'noopener,noreferrer');
 }
 
 export default function LiveStreamAdminDetailPage() {
@@ -587,20 +590,34 @@ export default function LiveStreamAdminDetailPage() {
 
       <Card className="border-pink-200 bg-pink-50/60">
         <CardHeader>
-          <CardTitle className="text-base">Live control room</CardTitle>
+          <CardTitle className="text-base">
+            {session.video_platform === 'zoom' ? 'Zoom control room' : 'Live control room'}
+          </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-wrap items-center gap-3">
           <p className="max-w-xl text-sm text-pink-950/90">
-            Mic, screen share, allow/disallow messages, guest list with totals, inbox, pause /
-            restart / end open in a separate tab for a cleaner host workspace.
+            {session.video_platform === 'zoom'
+              ? 'Open the Zoom control room for two-way AV, screen share, and host controls.'
+              : 'Mic, screen share, allow/disallow messages, guest list with totals, inbox, pause / restart / end open in a separate tab for a cleaner host workspace.'}
           </p>
           <div className="ml-auto flex flex-wrap gap-2">
-            <Button type="button" onClick={() => openLiveRoom(String(id))}>
+            <Button
+              type="button"
+              onClick={() => openControlRoom(String(id), session.video_platform)}
+            >
               <Radio className="h-4 w-4" />
               Open control room
             </Button>
             <Button asChild variant="outline">
-              <Link href={`/live-room/${id}`} target="_blank" rel="noreferrer">
+              <Link
+                href={
+                  session.video_platform === 'zoom'
+                    ? `/live/zoom-room/${id}`
+                    : `/live-room/${id}`
+                }
+                target="_blank"
+                rel="noreferrer"
+              >
                 Open in new tab
               </Link>
             </Button>
@@ -615,8 +632,11 @@ export default function LiveStreamAdminDetailPage() {
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
             Assign a user as host. After login they see this class under{' '}
-            <Link href="/live/hosting" className="font-medium text-pink-700 underline-offset-2 hover:underline">
-              Host live classes
+            <Link
+              href={session.video_platform === 'zoom' ? '/live/zoom/hosting' : '/live/hosting'}
+              className="font-medium text-pink-700 underline-offset-2 hover:underline"
+            >
+              {session.video_platform === 'zoom' ? 'Host Zoom classes' : 'Host live classes'}
             </Link>{' '}
             and open the control room directly.
           </p>

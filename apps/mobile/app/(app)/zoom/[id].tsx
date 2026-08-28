@@ -11,7 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { useFocusEffect, useLocalSearchParams, useNavigation } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { WebView } from 'react-native-webview';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { Ionicons } from '@expo/vector-icons';
@@ -124,6 +124,7 @@ function zoomHtml(join: ZoomLiveStreamJoinPayload) {
 export default function ZoomStreamDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
+  const router = useRouter();
   const { user } = useAuth();
   const [session, setSession] = useState<LiveStreamListItem | null>(null);
   const [join, setJoin] = useState<LiveStreamJoinPayload | null>(null);
@@ -141,6 +142,10 @@ export default function ZoomStreamDetailScreen() {
     setError('');
     try {
       const data = await fetchLiveStream(id);
+      if (data.video_platform && data.video_platform !== 'zoom') {
+        router.replace(`/(app)/live/${id}` as never);
+        return;
+      }
       setSession(data);
       setAllowMessages(Boolean(data.allow_guest_messages));
     } catch (err) {
@@ -148,7 +153,7 @@ export default function ZoomStreamDetailScreen() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, router]);
 
   useFocusEffect(
     useCallback(() => {
@@ -239,6 +244,10 @@ export default function ZoomStreamDetailScreen() {
     setBusy(true);
     try {
       const payload = await joinLiveStream(id);
+      if (!isZoomJoinPayload(payload)) {
+        Alert.alert('Wrong class type', 'This is not a Zoom class. Open it from Live class.');
+        return;
+      }
       setJoin({ ...payload, role: 'audience' });
       setAllowMessages(Boolean(payload.allow_guest_messages));
     } catch (err) {

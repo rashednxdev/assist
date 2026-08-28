@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { ExternalLink, Users, MessageSquare, Radio } from 'lucide-react';
@@ -22,9 +22,11 @@ interface SessionDetail {
   allow_guest_messages?: boolean;
   can_host?: boolean;
   permission_status?: string;
+  video_platform?: 'agora' | 'zoom';
 }
 
 interface JoinPayload {
+  video_platform?: 'agora' | 'zoom';
   app_id: string;
   channel: string;
   token: string;
@@ -62,6 +64,7 @@ function statusTone(status: string) {
 
 export default function LiveRoomManagePage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const [session, setSession] = useState<SessionDetail | null>(null);
   const [join, setJoin] = useState<JoinPayload | null>(null);
   const [guests, setGuests] = useState<GuestRow[]>([]);
@@ -77,6 +80,10 @@ export default function LiveRoomManagePage() {
   const load = useCallback(async () => {
     try {
       const res = await apiFetch<{ data: SessionDetail }>(`/live-streams/${id}`);
+      if (res.data.video_platform === 'zoom') {
+        router.replace(`/live/zoom-room/${id}`);
+        return;
+      }
       if (!res.data.can_host) {
         setDenied(true);
         setSession(null);
@@ -87,7 +94,7 @@ export default function LiveRoomManagePage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
     }
-  }, [id]);
+  }, [id, router]);
 
   useEffect(() => {
     void import('@/lib/auth').then(({ fetchMe }) =>
@@ -232,6 +239,10 @@ export default function LiveRoomManagePage() {
         method: 'POST',
         body: JSON.stringify({ as_host: true }),
       });
+      if (res.data.video_platform === 'zoom') {
+        router.replace(`/live/zoom-room/${id}`);
+        return;
+      }
       setJoin(res.data);
       await load();
     } catch (err) {

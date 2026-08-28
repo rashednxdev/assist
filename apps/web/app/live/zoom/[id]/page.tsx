@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { MarkupText } from '@/components/shared/markup-text';
 import { ComparisonTableView } from '@/components/questions/comparison-table-view';
@@ -44,6 +44,7 @@ interface SessionDetail {
   access_type?: 'free' | 'paid';
   payment_blocked?: boolean;
   payment_required_message?: string;
+  video_platform?: 'agora' | 'zoom';
 }
 
 type JoinPayload = ZoomLiveStreamJoinPayload;
@@ -70,8 +71,9 @@ function permissionCopy(status: LivePermissionStatus, canHost?: boolean) {
   };
 }
 
-export default function LiveStreamWatchPage() {
+export default function ZoomStreamWatchPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const [session, setSession] = useState<SessionDetail | null>(null);
   const [join, setJoin] = useState<JoinPayload | null>(null);
   const [error, setError] = useState('');
@@ -83,11 +85,15 @@ export default function LiveStreamWatchPage() {
   const load = useCallback(async () => {
     try {
       const res = await apiFetch<{ data: SessionDetail }>(`/live-streams/${id}`);
+      if (res.data.video_platform && res.data.video_platform !== 'zoom') {
+        router.replace(`/live/${id}`);
+        return;
+      }
       setSession(res.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
     }
-  }, [id]);
+  }, [id, router]);
 
   useEffect(() => {
     void load();
@@ -140,6 +146,10 @@ export default function LiveStreamWatchPage() {
         method: 'POST',
         body: JSON.stringify({ as_host: asHost }),
       });
+      if (res.data.video_platform !== 'zoom') {
+        setError('This is not a Zoom class. Open it from Live class (Agora).');
+        return;
+      }
       setJoin(res.data);
       setSession((prev) =>
         prev

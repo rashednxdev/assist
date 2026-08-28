@@ -11,7 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { useFocusEffect, useLocalSearchParams, useNavigation } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { WebView } from 'react-native-webview';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { Ionicons } from '@expo/vector-icons';
@@ -264,6 +264,7 @@ function agoraHtml(join: AgoraLiveStreamJoinPayload) {
 export default function LiveStreamDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
+  const router = useRouter();
   const { user } = useAuth();
   const [session, setSession] = useState<LiveStreamListItem | null>(null);
   const [join, setJoin] = useState<LiveStreamJoinPayload | null>(null);
@@ -281,6 +282,10 @@ export default function LiveStreamDetailScreen() {
     setError('');
     try {
       const data = await fetchLiveStream(id);
+      if (data.video_platform === 'zoom') {
+        router.replace(`/(app)/zoom/${id}` as never);
+        return;
+      }
       setSession(data);
       setAllowMessages(Boolean(data.allow_guest_messages));
     } catch (err) {
@@ -288,7 +293,7 @@ export default function LiveStreamDetailScreen() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, router]);
 
   useFocusEffect(
     useCallback(() => {
@@ -379,6 +384,11 @@ export default function LiveStreamDetailScreen() {
     setBusy(true);
     try {
       const payload = await joinLiveStream(id);
+      if (!isAgoraJoinPayload(payload)) {
+        Alert.alert('Wrong class type', 'This is a Zoom class. Open it from Zoom class.');
+        router.replace(`/(app)/zoom/${id}` as never);
+        return;
+      }
       setJoin({ ...payload, role: 'audience' });
       setAllowMessages(Boolean(payload.allow_guest_messages));
     } catch (err) {

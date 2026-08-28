@@ -495,6 +495,9 @@ export async function restartLiveStream(id: string) {
   if (doc.status !== 'ended' && doc.status !== 'cancelled') {
     throw badRequest('Only an ended or cancelled session can be restarted.');
   }
+  if (videoPlatformOf(doc) === 'zoom') {
+    await ensureZoomMeeting(doc);
+  }
   return updateLiveStream(id, { status: 'live' });
 }
 

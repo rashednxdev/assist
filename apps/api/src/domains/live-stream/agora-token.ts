@@ -164,11 +164,12 @@ export function buildAgoraRtcToken(opts: {
   }
 
   const rtcRole = opts.role === 'host' ? RtcRole.PUBLISHER : RtcRole.SUBSCRIBER;
+  // uid 0 in token = not bound to a user; client joins with opts.uid (Agora recommended for web).
   const token = RtcTokenBuilder.buildTokenWithUid(
     appId,
     certificate,
     opts.channel,
-    opts.uid,
+    0,
     rtcRole,
     expireSeconds,
     expireSeconds,

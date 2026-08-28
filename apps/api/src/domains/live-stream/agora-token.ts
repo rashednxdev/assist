@@ -17,6 +17,17 @@ const { RtcRole, RtcTokenBuilder } = require('agora-token') as {
       tokenExpire: number,
       privilegeExpire: number,
     ) => string;
+    buildTokenWithUidAndPrivilege: (
+      appId: string,
+      appCertificate: string,
+      channelName: string,
+      uid: number,
+      tokenExpire: number,
+      joinChannelPrivilegeExpire: number,
+      pubAudioPrivilegeExpire: number,
+      pubVideoPrivilegeExpire: number,
+      pubDataStreamPrivilegeExpire: number,
+    ) => string;
   };
 };
 
@@ -121,6 +132,8 @@ export function getAgoraLiveVideoStatus(): {
     app_id_prefix: appId.slice(0, 8),
     token_mint_ok: tokenMintOk,
     token_builder: 'buildTokenWithUid',
+    warning:
+      'token_mint_ok only checks local token generation. Use /health/agora-test in Agora Web Demo to verify credentials with Agora servers.',
     ...(usesToken && !tokenMintOk
       ? {
           issue:
@@ -171,16 +184,30 @@ export function buildAgoraRtcToken(opts: {
   }
 
   const rtcRole = opts.role === 'host' ? RtcRole.PUBLISHER : RtcRole.SUBSCRIBER;
-  // uid 0 in token = not bound to a user; client joins with opts.uid (Agora recommended for web).
-  const token = RtcTokenBuilder.buildTokenWithUid(
-    appId,
-    certificate,
-    opts.channel,
-    0,
-    rtcRole,
-    expireSeconds,
-    expireSeconds,
-  );
+  const joinUid = opts.uid > 0 ? opts.uid : 1;
+  // Token uid must match the uid passed to client.join() — mismatch causes gateway errors.
+  const token =
+    opts.role === 'host'
+      ? RtcTokenBuilder.buildTokenWithUidAndPrivilege(
+          appId,
+          certificate,
+          opts.channel,
+          joinUid,
+          expireSeconds,
+          expireSeconds,
+          expireSeconds,
+          expireSeconds,
+          expireSeconds,
+        )
+      : RtcTokenBuilder.buildTokenWithUid(
+          appId,
+          certificate,
+          opts.channel,
+          joinUid,
+          rtcRole,
+          expireSeconds,
+          expireSeconds,
+        );
 
   if (!token || !token.startsWith('007')) {
     throw badRequest(

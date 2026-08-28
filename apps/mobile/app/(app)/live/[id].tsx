@@ -215,7 +215,18 @@ function agoraHtml(join: LiveStreamJoinPayload) {
             status.textContent = 'Waiting for host…';
           }
         });
-        await client.join(cfg.appId, cfg.channel, cfg.token || null, Number(cfg.uid));
+        if (!cfg.token || !String(cfg.token).startsWith('007')) {
+          status.textContent = 'Invalid token from API — check AGORA_APP_CERTIFICATE on Render';
+          soundGate.classList.add('hidden');
+          return;
+        }
+        var numericUid = Number(cfg.uid);
+        if (!numericUid || numericUid <= 0) {
+          status.textContent = 'Invalid user id from API';
+          soundGate.classList.add('hidden');
+          return;
+        }
+        await client.join(cfg.appId, cfg.channel, cfg.token, numericUid);
         await subscribeExisting();
         status.textContent = 'Joined — tap to hear host';
       } catch (e) {

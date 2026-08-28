@@ -37,15 +37,17 @@ function isGatewayJoinError(message: string): boolean {
   );
 }
 
-function joinHelpMessage(appId: string, usedToken: boolean): string {
+function joinHelpMessage(appId: string, rawError: string): string {
   const prefix = appId.slice(0, 8);
-  return (
+  const base =
     `Agora rejected the connection (App ID ${prefix}…). ` +
-    (usedToken
-      ? 'The certificate on Render likely does not match Agora Console → Primary Certificate. ' +
-        'Open https://ibas-api.onrender.com/api/v1/health/agora-test and test in Agora Web Demo. ' +
-        'If certificate auth is OFF in Agora, set AGORA_USE_TOKEN=false on Render.'
-      : 'Tokenless join also failed — verify the App ID is active in Agora Console or try another network.')
+    `Server error: ${rawError.slice(0, 120)}. `;
+  return (
+    base +
+    'This usually means AGORA_APP_CERTIFICATE on Render does not match the Primary Certificate for this App ID in Agora Console (same project, not a different one of your 3 projects). ' +
+    'Steps: (1) Agora Console → project with App ID 7302ee83… → Config → copy Primary Certificate. ' +
+    '(2) Paste into Render AGORA_APP_CERTIFICATE (no quotes). (3) Redeploy API. ' +
+    '(4) Test https://ibas-api.onrender.com/api/v1/health/agora-test in https://webdemo.agora.io/basicVideo/index.html — if demo fails, credentials are wrong in Agora/Render.'
   );
 }
 
@@ -159,25 +161,16 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
         });
 
         const numericUid = Number(uid);
-        let joined = false;
-        try {
-          await client.join(appId.trim().toLowerCase(), channel, token || null, numericUid);
-          joined = true;
-        } catch (firstErr) {
-          const firstMsg = firstErr instanceof Error ? firstErr.message : '';
-          // Certificate disabled in Agora Console → token join fails; App-ID-only join works.
-          if (token && isGatewayJoinError(firstMsg)) {
-            try {
-              await client.join(appId.trim().toLowerCase(), channel, null, numericUid);
-              joined = true;
-            } catch {
-              throw firstErr;
-            }
-          } else {
-            throw firstErr;
-          }
+        if (!Number.isFinite(numericUid) || numericUid <= 0) {
+          throw new Error('Invalid Agora user id from server');
         }
-        if (!joined) throw new Error('Could not join live session');
+        if (!token?.startsWith('007')) {
+          throw new Error(
+            'Live video token missing or invalid from API. Redeploy API with AGORA_APP_CERTIFICATE set on Render.',
+          );
+        }
+
+        await client.join(appId.trim(), channel, token, numericUid);
         if (cancelled) return;
 
         await subscribeExisting(client);
@@ -190,7 +183,7 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
         setChannelReady(true);
       } catch (err) {
         const raw = err instanceof Error ? err.message : 'Could not join live session';
-        const message = isGatewayJoinError(raw) ? joinHelpMessage(appId, Boolean(token)) : raw;
+        const message = isGatewayJoinError(raw) ? joinHelpMessage(appId, raw) : raw;
         setStatus(message);
         onError?.(message);
       }

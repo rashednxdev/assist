@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import type {
   CreateLiveStreamDto,
+  LiveClassAccessType,
   LivePermissionStatus,
   LiveStreamGuestItem,
   LiveStreamGuestMessageItem,
@@ -143,6 +144,10 @@ async function permissionFor(
   return { permission_status: 'not_permitted', can_join: false, can_host: false };
 }
 
+function liveClassAccessType(doc: { access_type?: string }): LiveClassAccessType {
+  return doc.access_type === 'paid' ? 'paid' : 'free';
+}
+
 function serializeBase(doc: InstanceType<typeof LiveStream>, includeSlides = true) {
   const slides = serializeSlides(doc.slides);
   return {
@@ -160,7 +165,7 @@ function serializeBase(doc: InstanceType<typeof LiveStream>, includeSlides = tru
     is_previous: isPreviousClass(doc),
     slide_count: slides.length,
     allow_guest_messages: Boolean(doc.allow_guest_messages),
-    access_type: doc.access_type === 'paid' ? 'paid' : 'free',
+    access_type: liveClassAccessType(doc),
     ...(includeSlides ? { slides } : {}),
   };
 }
@@ -207,7 +212,7 @@ export async function listLiveStreamsForUser(
       is_previous: previous,
       slide_count: slides.length,
       allow_guest_messages: Boolean(doc.allow_guest_messages),
-      access_type: doc.access_type === 'paid' ? 'paid' : 'free',
+      access_type: liveClassAccessType(doc),
       payment_blocked: payment.payment_blocked,
       ...(payment.payment_blocked
         ? { payment_required_message: payment.payment_required_message }
@@ -317,7 +322,7 @@ export async function listHostingLiveStreams(user: {
       is_previous: previous,
       slide_count: slides.length,
       allow_guest_messages: Boolean(doc.allow_guest_messages),
-      access_type: doc.access_type === 'paid' ? 'paid' : 'free',
+      access_type: liveClassAccessType(doc),
       can_view_presentation: true,
       created_at: doc.created_at.toISOString(),
       updated_at: doc.updated_at.toISOString(),

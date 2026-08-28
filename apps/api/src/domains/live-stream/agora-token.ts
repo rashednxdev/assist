@@ -97,7 +97,7 @@ export function buildAgoraRtcToken(opts: {
   const certificate = normalizeAgoraKey(env.AGORA_APP_CERTIFICATE);
 
   // Agora AccessToken2 expects TTL seconds from now (not a unix timestamp).
-  const expireSeconds = opts.expireSeconds ?? 60 * 90;
+  const expireSeconds = opts.expireSeconds ?? 60 * 130; // 2 hours 10 minutes
   const expireAt = Math.floor(Date.now() / 1000) + expireSeconds;
   const mayPublish = opts.role === 'host';
 

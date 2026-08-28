@@ -24,6 +24,11 @@ import {
   sendLiveStreamMessage,
   type LiveStreamListItem,
 } from '@/lib/live-stream-api';
+import { useAuth } from '@/lib/auth-context';
+import {
+  canBypassLiveCaptureBlock,
+  setLiveGuestCaptureBlocked,
+} from '@/lib/live-screen-capture';
 import type { LiveStreamJoinPayload } from '@ibas/shared-types';
 import { colors, spacing } from '@/theme';
 
@@ -84,7 +89,7 @@ function agoraHtml(join: LiveStreamJoinPayload) {
     #soundGate.hidden{display:none}
     #audioHost{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
   </style>
-  <script src="https://download.agora.io/sdk/release/AgoraRTC_N.js"></script>
+  <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.24.7.js"></script>
 </head>
 <body>
   <div id="stage">
@@ -199,6 +204,15 @@ function agoraHtml(join: LiveStreamJoinPayload) {
       window.addEventListener('beforeunload', function () { leaveChannel(); });
 
       try {
+        if (typeof AgoraRTC === 'undefined') {
+          throw new Error('Agora SDK failed to load. Check your internet connection and try again.');
+        }
+        if (!cfg.appId || cfg.appId.length !== 32) {
+          throw new Error('Live video is misconfigured on the server (invalid App ID). Ask an admin to check Agora settings.');
+        }
+        if (!cfg.token || cfg.token.indexOf('007') !== 0) {
+          throw new Error('Live video token is invalid. Leave and tap Join again, or ask an admin to verify AGORA_APP_ID and AGORA_APP_CERTIFICATE on the API.');
+        }
         client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
         await client.setClientRole('audience');
         client.on('user-published', async function (user, mediaType) {
@@ -214,7 +228,11 @@ function agoraHtml(join: LiveStreamJoinPayload) {
         await subscribeExisting();
         status.textContent = 'Joined — tap to hear host';
       } catch (e) {
-        status.textContent = e && e.message ? e.message : 'Join failed';
+        var msg = e && e.message ? e.message : 'Join failed';
+        if (/CAN_NOT_GET_GATEWAY_SERVER/i.test(msg)) {
+          msg = 'Could not connect to Agora (invalid App ID or token). Ask an admin to set AGORA_APP_ID and AGORA_APP_CERTIFICATE on the API server.';
+        }
+        status.textContent = msg;
         soundGate.classList.add('hidden');
       }
     })();
@@ -226,6 +244,7 @@ function agoraHtml(join: LiveStreamJoinPayload) {
 export default function LiveStreamDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
+  const { user } = useAuth();
   const [session, setSession] = useState<LiveStreamListItem | null>(null);
   const [join, setJoin] = useState<LiveStreamJoinPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -257,9 +276,19 @@ export default function LiveStreamDetailScreen() {
       return () => {
         // Leaving this screen closes the Agora WebView → stops guest minutes.
         setJoin(null);
+        void setLiveGuestCaptureBlocked(false);
       };
     }, [load]),
   );
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    if (!join || canBypassLiveCaptureBlock(user)) return;
+    void setLiveGuestCaptureBlocked(true);
+    return () => {
+      void setLiveGuestCaptureBlocked(false);
+    };
+  }, [join, user?.user_type, user?.is_super_admin]);
 
   // Hide nav header while watching so video is full-screen.
   useEffect(() => {

@@ -96,6 +96,13 @@ function applyTrackVolume(track: { setVolume: (v: number) => void }, volume: num
   }
 }
 
+function friendlyAgoraJoinError(message: string): string {
+  if (/CAN_NOT_GET_GATEWAY_SERVER|invalid vendor key|can not find appid|dynamic use static key/i.test(message)) {
+    return 'Could not connect to Agora. The server App ID or token is wrong — ask an admin to verify AGORA_APP_ID and AGORA_APP_CERTIFICATE on the API (Render env vars).';
+  }
+  return message;
+}
+
 /** Embedded Agora one-to-many room: host publishes mic (+ camera/screen); audience hears & watches. */
 export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: AgoraLiveRoomProps) {
   const localRef = useRef<HTMLDivElement>(null);
@@ -171,6 +178,17 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
 
     async function connect() {
       try {
+        if (!appId || appId.length !== 32) {
+          throw new Error(
+            'Live video is misconfigured on the server (invalid App ID). Ask an admin to check Agora settings.',
+          );
+        }
+        if (!token || !token.startsWith('007')) {
+          throw new Error(
+            'Live video token is invalid. Leave and join again, or ask an admin to verify AGORA_APP_ID and AGORA_APP_CERTIFICATE on the API.',
+          );
+        }
+
         const AgoraRTC = (await import('agora-rtc-sdk-ng')).default;
         if (cancelled) return;
         agoraRef.current = AgoraRTC;
@@ -213,7 +231,8 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
         }
         setChannelReady(true);
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Could not join live session';
+        const raw = err instanceof Error ? err.message : 'Could not join live session';
+        const message = friendlyAgoraJoinError(raw);
         setStatus(message);
         onError?.(message);
       }

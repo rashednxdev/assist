@@ -547,7 +547,7 @@ export async function joinLiveStream(
   }
 
   const uid = agoraUidFromUserId(user.id);
-  const { appId, token } = buildAgoraRtcToken({
+  const { appId, token, expireAt } = buildAgoraRtcToken({
     channel: doc.channel_name,
     uid,
     role,
@@ -576,6 +576,7 @@ export async function joinLiveStream(
     app_id: appId,
     channel: doc.channel_name,
     token,
+    token_expires_at: expireAt,
     uid,
     role,
     topic: doc.topic,

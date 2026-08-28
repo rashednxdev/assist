@@ -19,6 +19,10 @@ Use **two Web Services** from the same GitHub repo.
 | `CORS_ORIGIN` | `https://YOUR-WEB-SERVICE.onrender.com` |
 | `JWT_ACCESS_EXPIRES_IN` | `8h` |
 | `JWT_REFRESH_EXPIRES_IN` | `30d` |
+| `AGORA_APP_ID` | 32-char App ID from [Agora Console](https://console.agora.io/) → Project → Config |
+| `AGORA_APP_CERTIFICATE` | Primary App Certificate (same project; required when token auth is enabled) |
+
+Live class video **will not work** until both `AGORA_APP_ID` and `AGORA_APP_CERTIFICATE` are set on the API service. After deploy, check `GET /api/v1/health` — `live_video.valid` should be `true`.
 
 Copy the API URL after deploy, e.g. `https://ibas-api.onrender.com` (no trailing slash).
 
@@ -55,6 +59,7 @@ Test: open `https://YOUR-API.onrender.com/api/v1/health` — should return JSON 
 | "API_URL is not set" | Add `API_URL` on the **web** service in Render dashboard. |
 | "Cannot reach API" | API down or wrong URL; wake API (free tier sleeps). |
 | "Invalid email or password" | Run `pnpm seed` or use a user that exists in MongoDB. |
+| Live class: `CAN_NOT_GET_GATEWAY_SERVER` | API missing or wrong `AGORA_APP_ID` / `AGORA_APP_CERTIFICATE`. Check `/api/v1/health` → `live_video.valid`. |
 
 ## MongoDB Atlas
 

@@ -28,6 +28,12 @@ const envSchema = z.object({
   AGORA_APP_CERTIFICATE: z.string().optional(),
   /** Set to "false" only if App Certificate auth is disabled in Agora Console (join with App ID only). */
   AGORA_USE_TOKEN: z.enum(['true', 'false']).optional(),
+  /** Zoom Server-to-Server OAuth — account id from Zoom Marketplace app. */
+  ZOOM_ACCOUNT_ID: z.string().optional(),
+  /** Zoom OAuth client id (also Meeting SDK key). */
+  ZOOM_CLIENT_ID: z.string().optional(),
+  /** Zoom OAuth client secret (also Meeting SDK secret). */
+  ZOOM_CLIENT_SECRET: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);

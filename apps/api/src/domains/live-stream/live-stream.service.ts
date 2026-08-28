@@ -8,6 +8,7 @@ import type {
   LiveStreamJoinPayload,
   LiveStreamListItem,
   LiveStreamSlide,
+  LiveVideoPlatform,
   UpdateLiveStreamDto,
 } from '@ibas/shared-types';
 import { cleanLiveStreamSlides, PAID_LIVE_CLASS_UNPAID_MESSAGE } from '@ibas/shared-types';
@@ -17,6 +18,12 @@ import { LiveStreamGuest } from './models/LiveStreamGuest.model.js';
 import { LiveStreamGuestMessage } from './models/LiveStreamGuestMessage.model.js';
 import { User } from '../users/models/User.model.js';
 import { agoraUidFromUserId, buildAgoraRtcToken } from './agora-token.js';
+import {
+  buildZoomSdkSignature,
+  createZoomMeeting,
+  fetchZoomZakToken,
+  zoomConfigured,
+} from './zoom-meeting.js';
 import { badRequest, forbidden, notFound } from '../../shared/errors/AppError.js';
 
 function isPlatformAdmin(user: { is_super_admin?: boolean; user_type?: string }) {
@@ -52,6 +59,34 @@ function paymentAccessFor(
 
 function channelForId(id: string) {
   return `live_${id}`;
+}
+
+function videoPlatformOf(doc: { video_platform?: string }): LiveVideoPlatform {
+  return doc.video_platform === 'zoom' ? 'zoom' : 'agora';
+}
+
+export function liveStreamPlatformFilter(platform?: string) {
+  if (platform === 'zoom') return { video_platform: 'zoom' as const };
+  if (platform === 'agora') {
+    return { $or: [{ video_platform: 'agora' }, { video_platform: { $exists: false } }] };
+  }
+  return {};
+}
+
+async function ensureZoomMeeting(doc: InstanceType<typeof LiveStream>) {
+  if (!zoomConfigured()) {
+    throw badRequest('Zoom is not configured on the server. Set ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET.');
+  }
+  if (doc.zoom_meeting_number) return;
+  const meeting = await createZoomMeeting({
+    topic: doc.topic,
+    startTime: doc.scheduled_at,
+  });
+  doc.zoom_meeting_id = meeting.meeting_id;
+  doc.zoom_meeting_number = meeting.meeting_number;
+  doc.zoom_password = meeting.password;
+  doc.zoom_join_url = meeting.join_url;
+  await doc.save();
 }
 
 function startOfTodayMs() {
@@ -157,6 +192,7 @@ function serializeBase(doc: InstanceType<typeof LiveStream>, includeSlides = tru
     scheduled_at: doc.scheduled_at.toISOString(),
     status: doc.status,
     channel_name: doc.channel_name,
+    video_platform: videoPlatformOf(doc),
     host_user_id: String(doc.host_user_id),
     created_at: doc.created_at.toISOString(),
     updated_at: doc.updated_at.toISOString(),
@@ -172,10 +208,12 @@ function serializeBase(doc: InstanceType<typeof LiveStream>, includeSlides = tru
 
 export async function listLiveStreamsForUser(
   user: { id: string; is_super_admin?: boolean; user_type?: string },
+  opts?: { video_platform?: string },
 ): Promise<LiveStreamListItem[]> {
   const items = await LiveStream.find({
     is_active: true,
     status: { $in: ['scheduled', 'live', 'paused', 'ended'] },
+    ...liveStreamPlatformFilter(opts?.video_platform),
   })
     .sort({ scheduled_at: -1 })
     .limit(100);
@@ -204,6 +242,7 @@ export async function listLiveStreamsForUser(
       details: doc.details || undefined,
       scheduled_at: doc.scheduled_at.toISOString(),
       status: doc.status,
+      video_platform: videoPlatformOf(doc),
       host_user_id: String(doc.host_user_id),
       host_name: hostName.get(String(doc.host_user_id)),
       permission_status: perm.permission_status,
@@ -256,10 +295,11 @@ export async function getLiveStreamForUser(
   };
 }
 
-export async function listAdminLiveStreams(limit: number, skip: number) {
+export async function listAdminLiveStreams(limit: number, skip: number, opts?: { video_platform?: string }) {
+  const filter = { is_active: true, ...liveStreamPlatformFilter(opts?.video_platform) };
   const [total, items] = await Promise.all([
-    LiveStream.countDocuments({ is_active: true }),
-    LiveStream.find({ is_active: true }).sort({ scheduled_at: -1 }).skip(skip).limit(limit),
+    LiveStream.countDocuments(filter),
+    LiveStream.find(filter).sort({ scheduled_at: -1 }).skip(skip).limit(limit),
   ]);
   const ids = items.map((i) => i._id);
   const counts = await LiveStreamInvite.aggregate<{ _id: mongoose.Types.ObjectId; count: number }>([
@@ -291,13 +331,15 @@ export async function listAdminLiveStreams(limit: number, skip: number) {
   };
 }
 
-export async function listHostingLiveStreams(user: {
-  id: string;
-}): Promise<LiveStreamListItem[]> {
+export async function listHostingLiveStreams(
+  user: { id: string },
+  opts?: { video_platform?: string },
+): Promise<LiveStreamListItem[]> {
   const items = await LiveStream.find({
     is_active: true,
     host_user_id: user.id,
     status: { $in: ['scheduled', 'live', 'paused', 'ended'] },
+    ...liveStreamPlatformFilter(opts?.video_platform),
   })
     .sort({ scheduled_at: -1 })
     .limit(100);
@@ -314,6 +356,7 @@ export async function listHostingLiveStreams(user: {
       details: doc.details || undefined,
       scheduled_at: doc.scheduled_at.toISOString(),
       status: doc.status,
+      video_platform: videoPlatformOf(doc),
       host_user_id: String(doc.host_user_id),
       host_name: hostName,
       permission_status: 'host' as const,
@@ -345,6 +388,10 @@ export async function createLiveStream(dto: CreateLiveStreamDto, actorId: string
   }
 
   const tempId = new mongoose.Types.ObjectId();
+  const platform = dto.video_platform === 'zoom' ? 'zoom' : 'agora';
+  if (platform === 'zoom' && !zoomConfigured()) {
+    throw badRequest('Zoom is not configured on the server. Set ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET.');
+  }
   const doc = await LiveStream.create({
     _id: tempId,
     topic: dto.topic,
@@ -352,6 +399,7 @@ export async function createLiveStream(dto: CreateLiveStreamDto, actorId: string
     scheduled_at: dto.scheduled_at,
     status: 'scheduled',
     channel_name: channelForId(String(tempId)),
+    video_platform: platform,
     host_user_id: hostUserId,
     created_by: actorId,
     is_active: true,
@@ -418,6 +466,11 @@ export async function softDeleteLiveStream(id: string) {
 }
 
 export async function startLiveStream(id: string) {
+  const doc = await LiveStream.findOne({ _id: id, is_active: true });
+  if (!doc) throw notFound('Live session not found');
+  if (videoPlatformOf(doc) === 'zoom') {
+    await ensureZoomMeeting(doc);
+  }
   return updateLiveStream(id, { status: 'live' });
 }
 
@@ -546,13 +599,6 @@ export async function joinLiveStream(
     throw badRequest('This live class has not started yet.');
   }
 
-  const uid = agoraUidFromUserId(user.id);
-  const { appId, token, expireAt } = buildAgoraRtcToken({
-    channel: doc.channel_name,
-    uid,
-    role,
-  });
-
   await LiveStreamGuest.updateOne(
     {
       live_stream_id: doc._id,
@@ -572,7 +618,45 @@ export async function joinLiveStream(
     { upsert: true },
   );
 
+  const platform = videoPlatformOf(doc);
+
+  if (platform === 'zoom') {
+    if (!doc.zoom_meeting_number) {
+      throw badRequest('Zoom meeting is not ready yet. The host must start the class first.');
+    }
+    const { signature, sdk_key, expire_at } = buildZoomSdkSignature(doc.zoom_meeting_number, role);
+    const userDoc = await User.findById(user.id).select('full_name_en full_name_bn email');
+    const userName = userDoc?.full_name_bn?.trim() || userDoc?.full_name_en || 'Guest';
+    let zak: string | undefined;
+    if (role === 'host') {
+      zak = await fetchZoomZakToken();
+    }
+    return {
+      video_platform: 'zoom',
+      meeting_number: doc.zoom_meeting_number,
+      password: doc.zoom_password ?? '',
+      signature,
+      sdk_key,
+      signature_expires_at: expire_at,
+      user_name: userName,
+      user_email: userDoc?.email,
+      zak,
+      role,
+      topic: doc.topic,
+      status: doc.status,
+      allow_guest_messages: Boolean(doc.allow_guest_messages),
+    };
+  }
+
+  const uid = agoraUidFromUserId(user.id);
+  const { appId, token, expireAt } = buildAgoraRtcToken({
+    channel: doc.channel_name,
+    uid,
+    role,
+  });
+
   return {
+    video_platform: 'agora',
     app_id: appId,
     channel: doc.channel_name,
     token,

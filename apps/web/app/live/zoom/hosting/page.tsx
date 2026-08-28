@@ -19,7 +19,7 @@ interface HostingRow {
 }
 
 function openLiveRoom(sessionId: string) {
-  window.open(`/live-room/${sessionId}`, '_blank', 'noopener,noreferrer');
+  window.open(`/live/zoom-room/${sessionId}`, '_blank', 'noopener,noreferrer');
 }
 
 function statusClass(status: string) {
@@ -35,7 +35,7 @@ export default function LiveHostingPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiFetch<{ data: HostingRow[] }>('/live-streams/hosting?video_platform=agora')
+    apiFetch<{ data: HostingRow[] }>('/live-streams/hosting?video_platform=zoom')
       .then((res) => setItems(res.data))
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'))
       .finally(() => setLoading(false));
@@ -73,7 +73,7 @@ export default function LiveHostingPage() {
               Open control room
             </Button>
             <Button asChild variant="outline">
-              <Link href={`/live-room/${item.id}`} target="_blank" rel="noreferrer">
+              <Link href={`/live/zoom-room/${item.id}`} target="_blank" rel="noreferrer">
                 New tab
               </Link>
             </Button>
@@ -86,8 +86,8 @@ export default function LiveHostingPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Host live classes (Agora)"
-        description="Classes assigned to you as host. Open the control room to go live, share screen, manage guests, and messages."
+        title="Host Zoom classes"
+        description="Zoom Meeting SDK classes assigned to you. Open the control room for two-way AV, screen share, mute, and participant management."
       />
       {error ? <Alert variant="error">{error}</Alert> : null}
       {loading ? <p className="text-sm text-muted-foreground">Loading…</p> : null}

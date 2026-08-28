@@ -29,8 +29,8 @@ import {
   canBypassLiveCaptureBlock,
   setLiveGuestCaptureBlocked,
 } from '@/lib/live-screen-capture';
-import type { AgoraLiveStreamJoinPayload, LiveStreamJoinPayload } from '@ibas/shared-types';
-import { isAgoraJoinPayload } from '@ibas/shared-types';
+import type { LiveStreamJoinPayload, ZoomLiveStreamJoinPayload } from '@ibas/shared-types';
+import { isZoomJoinPayload } from '@ibas/shared-types';
 import { colors, spacing } from '@/theme';
 
 /** Guest playback: 100 = original. Soft gain only — high boost clips into rumble/engine noise. */
@@ -40,7 +40,7 @@ function permissionCard(status: LiveStreamListItem['permission_status']) {
   if (status === 'permitted' || status === 'host') {
     return {
       title: 'You are permitted to join',
-      body: 'Watch as a viewer when the class is live. Host broadcasting is only from the web admin page.',
+      body: 'Watch and participate in the Zoom meeting when the class is live. Host controls are web-only.',
       bg: '#ecfdf5',
       border: '#a7f3d0',
       color: '#065f46',
@@ -55,14 +55,15 @@ function permissionCard(status: LiveStreamListItem['permission_status']) {
   };
 }
 
-function agoraHtml(join: AgoraLiveStreamJoinPayload) {
+function zoomHtml(join: ZoomLiveStreamJoinPayload) {
   const payload = JSON.stringify({
-    appId: join.app_id,
-    channel: join.channel,
-    token: join.token,
-    uid: join.uid,
+    sdkKey: join.sdk_key,
+    signature: join.signature,
+    meetingNumber: join.meeting_number,
+    password: join.password,
+    userName: join.user_name,
+    userEmail: join.user_email ?? '',
     role: join.role,
-    boost: GUEST_AUDIO_VOLUME,
   });
   return `<!DOCTYPE html>
 <html>
@@ -71,189 +72,48 @@ function agoraHtml(join: AgoraLiveStreamJoinPayload) {
   <style>
     *{box-sizing:border-box}
     html,body{margin:0;padding:0;width:100%;height:100%;background:#020617;color:#fff;font-family:system-ui,sans-serif;overflow:hidden}
-    #stage{position:fixed;inset:0;background:#020617}
-    #player{position:absolute;inset:0;width:100%;height:100%}
-    #player video{width:100%!important;height:100%!important;object-fit:contain!important;background:#020617}
+    #root{position:fixed;inset:0;width:100%;height:100%}
     #status{
-      position:absolute;left:10px;right:10px;top:118px;z-index:2;
-      padding:8px 12px;border-radius:10px;background:rgba(15,23,42,.72);
+      position:absolute;left:10px;right:10px;top:10px;z-index:9;
+      padding:8px 12px;border-radius:10px;background:rgba(15,23,42,.85);
       font-size:12px;line-height:1.35;pointer-events:none
     }
-    #soundGate{
-      position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;
-      background:rgba(2,6,23,.78);padding:24px
-    }
-    #soundGate button{
-      border:0;border-radius:14px;padding:14px 22px;font-size:16px;font-weight:800;
-      background:#be185d;color:#fff
-    }
-    #soundGate.hidden{display:none}
-    #audioHost{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
   </style>
-  <script src="https://download.agora.io/sdk/release/AgoraRTC_N.js"></script>
+  <script src="https://source.zoom.us/3.12.0/lib/vendor/react.min.js"></script>
+  <script src="https://source.zoom.us/3.12.0/lib/vendor/react-dom.min.js"></script>
+  <script src="https://source.zoom.us/3.12.0/lib/vendor/redux.min.js"></script>
+  <script src="https://source.zoom.us/3.12.0/lib/vendor/redux-thunk.min.js"></script>
+  <script src="https://source.zoom.us/3.12.0/lib/vendor/lodash.min.js"></script>
+  <script src="https://source.zoom.us/3.12.0/zoom-meeting-embedded-3.12.0.min.js"></script>
 </head>
 <body>
-  <div id="stage">
-    <div id="player"></div>
-    <div id="audioHost"></div>
-    <div id="status">Connecting…</div>
-    <div id="soundGate"><button type="button" id="soundBtn">Tap to hear host</button></div>
-  </div>
+  <div id="root"></div>
+  <div id="status">Connecting to Zoom…</div>
   <script>
     (async () => {
       const cfg = ${payload};
-      const boost = cfg.boost || 110;
       const status = document.getElementById('status');
-      const player = document.getElementById('player');
-      const audioHost = document.getElementById('audioHost');
-      const soundGate = document.getElementById('soundGate');
-      const soundBtn = document.getElementById('soundBtn');
-      const remoteAudio = [];
-      let client = null;
-      let soundReady = false;
-      let left = false;
-
-      function setTrackVolume(track) {
-        try { track.setVolume(boost); } catch (e) {
-          try { track.setVolume(100); } catch (e2) {}
-        }
-      }
-
-      function playAudio(track) {
-        if (!track) return;
-        setTrackVolume(track);
-        try {
-          var el = document.createElement('audio');
-          el.autoplay = true;
-          el.setAttribute('playsinline', 'true');
-          el.controls = false;
-          el.volume = 1;
-          el.muted = false;
-          audioHost.appendChild(el);
-          track.play(el);
-        } catch (e) {
-          try { track.play(); } catch (e2) {}
-        }
-        if (remoteAudio.indexOf(track) < 0) remoteAudio.push(track);
-      }
-
-      async function subscribeUser(user, mediaType) {
-        await client.subscribe(user, mediaType);
-        if (mediaType === 'video' && user.videoTrack) {
-          player.innerHTML = '';
-          user.videoTrack.play(player, { fit: 'contain' });
-          status.textContent = soundReady ? 'Watching live (full screen)' : 'Video on — tap to hear host';
-        }
-        if (mediaType === 'audio' && user.audioTrack) {
-          playAudio(user.audioTrack);
-          if (!soundReady) status.textContent = 'Host audio ready — tap to hear host';
-        }
-      }
-
-      async function subscribeExisting() {
-        if (!client) return;
-        for (var i = 0; i < client.remoteUsers.length; i++) {
-          var user = client.remoteUsers[i];
-          try {
-            if (user.hasAudio) await subscribeUser(user, 'audio');
-            if (user.hasVideo) await subscribeUser(user, 'video');
-          } catch (e) {}
-        }
-      }
-
-      async function leaveChannel() {
-        if (left) return;
-        left = true;
-        try {
-          if (client) {
-            await client.leave();
-            client.removeAllListeners();
-          }
-        } catch (e) {}
-        client = null;
-      }
-
-      async function unlockSound() {
-        soundReady = true;
-        soundGate.classList.add('hidden');
-        try {
-          var Ctx = window.AudioContext || window.webkitAudioContext;
-          if (Ctx) {
-            var ctx = new Ctx();
-            if (ctx.state === 'suspended') await ctx.resume();
-            var osc = ctx.createOscillator();
-            var gain = ctx.createGain();
-            gain.gain.value = 0.0001;
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.start();
-            osc.stop(ctx.currentTime + 0.05);
-          }
-        } catch (e) {}
-        await subscribeExisting();
-        remoteAudio.forEach(function (t) {
-          try { setTrackVolume(t); t.play(); } catch (e) {}
-        });
-        Array.prototype.forEach.call(audioHost.querySelectorAll('audio'), function (el) {
-          try { el.muted = false; el.volume = 1; el.play(); } catch (e) {}
-        });
-        status.textContent = 'Sound on';
-      }
-
-      soundBtn.addEventListener('click', function () { unlockSound(); });
-      window.addEventListener('pagehide', function () { leaveChannel(); });
-      window.addEventListener('beforeunload', function () { leaveChannel(); });
-
       try {
-        client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
-        await client.setClientRole('audience');
-        client.on('user-published', async function (user, mediaType) {
-          try { await subscribeUser(user, mediaType); } catch (e) {}
+        if (!window.ZoomMtgEmbedded) throw new Error('Zoom SDK failed to load');
+        const client = ZoomMtgEmbedded.createClient();
+        await client.init({
+          zoomAppRoot: document.getElementById('root'),
+          language: 'en-US',
+          patchJsMedia: true,
+          leaveOnPageUnload: true,
         });
-        client.on('user-unpublished', function (user, mediaType) {
-          if (mediaType === 'video') {
-            player.innerHTML = '';
-            status.textContent = 'Waiting for host…';
-          }
+        status.textContent = 'Joining meeting…';
+        await client.join({
+          sdkKey: cfg.sdkKey,
+          signature: cfg.signature,
+          meetingNumber: cfg.meetingNumber,
+          password: cfg.password,
+          userName: cfg.userName,
+          userEmail: cfg.userEmail || undefined,
         });
-        if (!cfg.token || !String(cfg.token).startsWith('007')) {
-          status.textContent = 'Invalid token from API — check AGORA_APP_CERTIFICATE on Render';
-          soundGate.classList.add('hidden');
-          return;
-        }
-        var numericUid = Number(cfg.uid);
-        if (!numericUid || numericUid <= 0) {
-          status.textContent = 'Invalid user id from API';
-          soundGate.classList.add('hidden');
-          return;
-        }
-        async function doJoin() {
-          await client.join(cfg.appId, cfg.channel, cfg.token, numericUid);
-        }
-        try {
-          await doJoin();
-        } catch (e1) {
-          var msg = e1 && e1.message ? e1.message : '';
-          if (/CAN_NOT_GET_GATEWAY|invalid token|gateway/i.test(msg)) {
-            try {
-              if (typeof AgoraRTC.startProxyServer === 'function') {
-                await AgoraRTC.startProxyServer(3);
-              } else if (typeof client.startProxyServer === 'function') {
-                await client.startProxyServer(3);
-              }
-              await doJoin();
-            } catch (e2) {
-              throw e2;
-            }
-          } else {
-            throw e1;
-          }
-        }
-        await subscribeExisting();
-        status.textContent = 'Joined — tap to hear host';
+        status.textContent = '';
       } catch (e) {
-        status.textContent = e && e.message ? e.message : 'Join failed';
-        soundGate.classList.add('hidden');
+        status.textContent = e && e.message ? e.message : 'Zoom join failed';
       }
     })();
   </script>
@@ -261,7 +121,7 @@ function agoraHtml(join: AgoraLiveStreamJoinPayload) {
 </html>`;
 }
 
-export default function LiveStreamDetailScreen() {
+export default function ZoomStreamDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
   const { user } = useAuth();
@@ -406,7 +266,7 @@ export default function LiveStreamDetailScreen() {
   if (error && !session) return <BookError message={error} />;
   if (!session || !perm) return null;
 
-  if (join && isAgoraJoinPayload(join)) {
+  if (join && isZoomJoinPayload(join)) {
     return (
       <KeyboardAvoidingView
         style={styles.liveRoot}
@@ -421,7 +281,7 @@ export default function LiveStreamDetailScreen() {
           domStorageEnabled
           mixedContentMode="always"
           androidLayerType="hardware"
-          source={{ html: agoraHtml(join) }}
+          source={{ html: zoomHtml(join) }}
           style={styles.webviewFill}
         />
         <View style={styles.topOverlay} pointerEvents="box-none">
@@ -583,7 +443,7 @@ export default function LiveStreamDetailScreen() {
                 ? 'Waiting for resume'
                 : session.status === 'ended'
                   ? 'Session ended'
-                  : 'Join live class'}
+                  : 'Join Zoom class'}
           </Text>
         )}
       </Pressable>

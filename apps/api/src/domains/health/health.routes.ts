@@ -1,17 +1,20 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
 import { buildAgoraSampleJoin, getAgoraLiveVideoStatus } from '../live-stream/agora-token.js';
+import { getZoomLiveVideoStatus } from '../live-stream/zoom-meeting.js';
 
 export const healthRouter = Router();
 
 healthRouter.get('/', (_req, res) => {
   const agora = getAgoraLiveVideoStatus();
+  const zoom = getZoomLiveVideoStatus();
   res.json({
     data: {
       status: 'ok',
       service: 'ibas-api',
       mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
       live_video: agora,
+      zoom_video: zoom,
       timestamp: new Date().toISOString(),
     },
   });

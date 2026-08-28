@@ -19,6 +19,9 @@ export type LiveClassAccessType = (typeof LIVE_CLASS_ACCESS_TYPES)[number];
 export const PAID_LIVE_CLASS_UNPAID_MESSAGE =
   'This Live Class only for Paid User. You are unpaid Mode. Pay to Enjoy Live Class.';
 
+export const LIVE_VIDEO_PLATFORMS = ['agora', 'zoom'] as const;
+export type LiveVideoPlatform = (typeof LIVE_VIDEO_PLATFORMS)[number];
+
 export const LIVE_STREAM_STATUSES = ['scheduled', 'live', 'paused', 'ended', 'cancelled'] as const;
 export type LiveStreamStatus = (typeof LIVE_STREAM_STATUSES)[number];
 
@@ -50,6 +53,8 @@ export const createLiveStreamSchema = z.object({
   slides: liveStreamSlidesSchema.optional(),
   /** `free` = everyone invited; `paid` = only users with payment may join/watch. */
   access_type: z.enum(LIVE_CLASS_ACCESS_TYPES).optional().default('free'),
+  /** `agora` (default) or `zoom` — selects the video provider for this class. */
+  video_platform: z.enum(LIVE_VIDEO_PLATFORMS).optional().default('agora'),
 });
 
 export const updateLiveStreamSchema = z.object({
@@ -140,6 +145,8 @@ export interface LiveStreamListItem {
   details?: string;
   scheduled_at: string;
   status: LiveStreamStatus;
+  /** Video provider — `agora` when omitted on legacy rows. */
+  video_platform?: LiveVideoPlatform;
   host_user_id?: string;
   host_name?: string;
   invite_count?: number;
@@ -168,15 +175,44 @@ export interface LiveStreamListItem {
   updated_at: string;
 }
 
-export interface LiveStreamJoinPayload {
+export interface LiveStreamJoinPayloadBase {
+  video_platform: LiveVideoPlatform;
+  role: 'host' | 'audience';
+  topic: string;
+  status: LiveStreamStatus;
+  allow_guest_messages: boolean;
+}
+
+export interface AgoraLiveStreamJoinPayload extends LiveStreamJoinPayloadBase {
+  video_platform: 'agora';
   app_id: string;
   channel: string;
   token: string | null;
   /** Unix seconds — client may re-join before this to refresh the token. */
   token_expires_at?: number;
   uid: number;
-  role: 'host' | 'audience';
-  topic: string;
-  status: LiveStreamStatus;
-  allow_guest_messages: boolean;
+}
+
+export interface ZoomLiveStreamJoinPayload extends LiveStreamJoinPayloadBase {
+  video_platform: 'zoom';
+  meeting_number: string;
+  password: string;
+  signature: string;
+  sdk_key: string;
+  /** Unix seconds — re-join before expiry to refresh signature. */
+  signature_expires_at?: number;
+  user_name: string;
+  user_email?: string;
+  /** Host-only — required to start the meeting as host. */
+  zak?: string;
+}
+
+export type LiveStreamJoinPayload = AgoraLiveStreamJoinPayload | ZoomLiveStreamJoinPayload;
+
+export function isAgoraJoinPayload(p: LiveStreamJoinPayload): p is AgoraLiveStreamJoinPayload {
+  return p.video_platform === 'agora';
+}
+
+export function isZoomJoinPayload(p: LiveStreamJoinPayload): p is ZoomLiveStreamJoinPayload {
+  return p.video_platform === 'zoom';
 }

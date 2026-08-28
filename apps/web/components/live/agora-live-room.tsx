@@ -11,7 +11,7 @@ import type {
   IRemoteVideoTrack,
 } from 'agora-rtc-sdk-ng';
 import { Button } from '@/components/ui/button';
-import { isGatewayJoinError } from '@/lib/agora-join-client';
+import { isGatewayJoinError, joinAgoraChannel } from '@/lib/agora-join-client';
 
 interface AgoraLiveRoomProps {
   appId: string;
@@ -32,11 +32,12 @@ function screenShareSupported() {
   return Boolean(navigator.mediaDevices?.getDisplayMedia) && !isMobileBrowser();
 }
 
-function joinHelpMessage(): string {
+function joinHelpMessage(rawError: string): string {
   return (
-    'Live video connection failed. Redeploy API after latest fix, then open /agora-test. ' +
-    'If still failing: Agora Console → Generate Temp Token → test at webdemo.agora.io/basicVideoCall — ' +
-    'if Console token works but app token fails, tell support; if both fail, check project is Active in Agora Console or try another network (mobile hotspot).'
+    `Agora: ${rawError.slice(0, 200)}. ` +
+    'API credentials look OK — if this persists, try mobile hotspot (network may block Agora), ' +
+    'or Agora Console → Project → Cloud Proxy → enable, then redeploy and retry. ' +
+    'Test at /agora-test on this site.'
   );
 }
 
@@ -133,9 +134,14 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
           );
         }
 
-        const client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
+        const client = await joinAgoraChannel({
+          appId,
+          channel,
+          token,
+          uid: numericUid,
+          role,
+        });
         clientRef.current = client;
-        await client.setClientRole(role === 'host' ? 'host' : 'audience');
 
         client.on('user-published', async (user: IAgoraRTCRemoteUser, mediaType) => {
           await client.subscribe(user, mediaType);
@@ -159,7 +165,6 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
           }
         });
 
-        await client.join(appId.trim(), channel, token, numericUid);
         if (cancelled) return;
 
         await subscribeExisting(client);
@@ -172,7 +177,7 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
         setChannelReady(true);
       } catch (err) {
         const raw = err instanceof Error ? err.message : 'Could not join live session';
-        const message = isGatewayJoinError(raw) ? joinHelpMessage() : raw;
+        const message = isGatewayJoinError(raw) ? joinHelpMessage(raw) : raw;
         setStatus(message);
         onError?.(message);
       }

@@ -38,7 +38,7 @@ function permissionClass(status: LivePermissionStatus) {
 
 function ClassCard({ item, previous }: { item: LiveRow; previous?: boolean }) {
   return (
-    <Link key={item.id} href={`/live/${item.id}`}>
+    <Link key={item.id} href={`/live/zoom/${item.id}`}>
       <Card
         className={`transition hover:border-pink-200 hover:shadow-sm ${previous ? 'border-pink-100 bg-pink-50/30' : ''}`}
       >
@@ -91,7 +91,7 @@ export default function LiveStreamUserListPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiFetch<{ data: LiveRow[] }>('/live-streams?video_platform=agora')
+      apiFetch<{ data: LiveRow[] }>('/live-streams?video_platform=zoom')
       .then((res) => setItems(res.data))
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'))
       .finally(() => setLoading(false));
@@ -110,19 +110,19 @@ export default function LiveStreamUserListPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Live class (Agora)"
-        description="Browse Agora live sessions. Invited guests can join live. Assigned hosts use Host live to open the control room."
+        title="Zoom class"
+        description="Browse Zoom Meeting SDK sessions — two-way audio/video, screen share, and host controls. Hosts open the Zoom control room from Host Zoom."
       />
       <div className="flex flex-wrap gap-2">
         <Button asChild variant="outline" size="sm">
-          <Link href="/live/zoom">
-            Zoom class
+          <Link href="/live">
+            Agora live
           </Link>
         </Button>
         <Button asChild variant="outline" size="sm">
-          <Link href="/live/hosting">
+          <Link href="/live/zoom/hosting">
             <Radio className="h-3.5 w-3.5" />
-            Host live classes
+            Host Zoom classes
           </Link>
         </Button>
       </div>

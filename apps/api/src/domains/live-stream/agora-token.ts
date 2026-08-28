@@ -99,16 +99,14 @@ export function getAgoraLiveVideoStatus(): {
   let tokenMintOk = true;
   if (usesToken) {
     try {
-      const now = Math.floor(Date.now() / 1000);
-      const sampleExpire = now + 300;
       const sample = RtcTokenBuilder.buildTokenWithUid(
         appId,
         certificate,
         'health_check',
         1,
         RtcRole.PUBLISHER,
-        sampleExpire,
-        sampleExpire,
+        300,
+        300,
       );
       tokenMintOk = Boolean(sample && sample.startsWith('007'));
     } catch {
@@ -181,15 +179,15 @@ export function buildAgoraRtcToken(opts: {
 
   const rtcRole = opts.role === 'host' ? RtcRole.PUBLISHER : RtcRole.SUBSCRIBER;
   const joinUid = opts.uid > 0 ? opts.uid : 1;
-  // Agora expects privilege expiry as Unix timestamps (now + TTL), not raw second counts.
+  // Official agora-token API: tokenExpire/privilegeExpire = seconds from now (not Unix timestamps).
   const token = RtcTokenBuilder.buildTokenWithUid(
     appId,
     certificate,
     opts.channel,
     joinUid,
     rtcRole,
-    expireAt,
-    expireAt,
+    expireSeconds,
+    expireSeconds,
   );
 
   if (!token || !token.startsWith('007')) {

@@ -4,6 +4,7 @@ import type {
   LiveStreamJoinPayload,
   LiveStreamSlide,
   LiveStreamStatus,
+  LiveVideoPlatform,
 } from '@ibas/shared-types';
 
 export interface LiveStreamListItem {
@@ -12,6 +13,7 @@ export interface LiveStreamListItem {
   details?: string;
   scheduled_at: string;
   status: LiveStreamStatus;
+  video_platform?: LiveVideoPlatform;
   host_name?: string;
   permission_status: LivePermissionStatus;
   can_join: boolean;
@@ -27,8 +29,9 @@ export interface LiveStreamListItem {
   payment_required_message?: string;
 }
 
-export async function fetchLiveStreams() {
-  const res = await apiFetch<{ data: LiveStreamListItem[] }>('/live-streams');
+export async function fetchLiveStreams(platform?: LiveVideoPlatform) {
+  const qs = platform ? `?video_platform=${platform}` : '';
+  const res = await apiFetch<{ data: LiveStreamListItem[] }>(`/live-streams${qs}`);
   return res.data;
 }
 

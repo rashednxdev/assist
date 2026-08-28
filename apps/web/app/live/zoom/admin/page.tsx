@@ -40,7 +40,7 @@ function formatWhen(iso: string) {
 }
 
 function openLiveRoom(sessionId: string) {
-  window.open(`/live-room/${sessionId}`, '_blank', 'noopener,noreferrer');
+  window.open(`/live/zoom-room/${sessionId}`, '_blank', 'noopener,noreferrer');
 }
 
 export default function LiveStreamAdminPage() {
@@ -58,7 +58,7 @@ export default function LiveStreamAdminPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await apiFetch<{ data: LiveRow[] }>('/live-streams/admin?limit=100&video_platform=agora');
+      const res = await apiFetch<{ data: LiveRow[] }>('/live-streams/admin?limit=100&video_platform=zoom');
       setItems(res.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
@@ -86,6 +86,7 @@ export default function LiveStreamAdminPage() {
           details: details.trim() || undefined,
           scheduled_at: new Date(scheduledAt).toISOString(),
           access_type: accessType,
+          video_platform: 'zoom',
         }),
       });
       setTopic('');
@@ -114,8 +115,8 @@ export default function LiveStreamAdminPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Live class"
-        description="Schedule sessions and invite users here. Open Control room in a new tab for mic, screen share, messages, guests, pause, and end."
+        title="Zoom class admin"
+        description="Schedule Zoom Meeting SDK sessions. Hosts get two-way AV, screen share, and participant controls from the Zoom control room."
       />
 
       {error ? <Alert variant="error">{error}</Alert> : null}

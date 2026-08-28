@@ -70,7 +70,7 @@ export default function LiveStreamListScreen() {
     else setLoading(true);
     setError('');
     try {
-      setItems(await fetchLiveStreams('agora'));
+      setItems(await fetchLiveStreams('zoom'));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
     } finally {
@@ -107,8 +107,8 @@ export default function LiveStreamListScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} />}
         ListEmptyComponent={
           <BookEmpty
-            title="No live sessions"
-            subtitle="When an admin schedules a class, it will show up here for everyone. Joining still needs an invite."
+            title="No Zoom sessions"
+            subtitle="When an admin schedules a Zoom class, it will show up here. Joining still needs an invite."
           />
         }
         renderSectionHeader={({ section }) => (
@@ -120,7 +120,7 @@ export default function LiveStreamListScreen() {
           return (
             <Pressable
               style={({ pressed }) => [styles.card, previous && styles.cardPrevious, pressed && styles.pressed]}
-              onPress={() => router.push(`/(app)/live/${item.id}` as never)}
+              onPress={() => router.push(`/(app)/zoom/${item.id}` as never)}
             >
               <View style={[styles.iconWrap, previous && styles.iconWrapPrevious]}>
                 <Ionicons

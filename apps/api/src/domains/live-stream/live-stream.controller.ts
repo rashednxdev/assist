@@ -12,13 +12,23 @@ import type { AuthRequest } from '../../middleware/auth.js';
 import { parsePagination } from '../../shared/pagination.js';
 import * as liveStreamService from './live-stream.service.js';
 
+function platformFromQuery(req: AuthRequest): string | undefined {
+  const raw = req.query.video_platform;
+  if (raw === 'agora' || raw === 'zoom') return raw;
+  return undefined;
+}
+
 export async function listLiveStreamsHandler(req: AuthRequest, res: Response): Promise<void> {
-  const data = await liveStreamService.listLiveStreamsForUser(req.user!);
+  const data = await liveStreamService.listLiveStreamsForUser(req.user!, {
+    video_platform: platformFromQuery(req),
+  });
   res.json({ data });
 }
 
 export async function listHostingLiveStreamsHandler(req: AuthRequest, res: Response): Promise<void> {
-  const data = await liveStreamService.listHostingLiveStreams(req.user!);
+  const data = await liveStreamService.listHostingLiveStreams(req.user!, {
+    video_platform: platformFromQuery(req),
+  });
   res.json({ data });
 }
 
@@ -71,7 +81,9 @@ export async function listGuestMessagesHandler(req: AuthRequest, res: Response):
 
 export async function listAdminLiveStreamsHandler(req: AuthRequest, res: Response): Promise<void> {
   const { page, limit, skip } = parsePagination(req);
-  const { items, total } = await liveStreamService.listAdminLiveStreams(limit, skip);
+  const { items, total } = await liveStreamService.listAdminLiveStreams(limit, skip, {
+    video_platform: platformFromQuery(req),
+  });
   res.json({ data: items, meta: { page, limit, total } });
 }
 

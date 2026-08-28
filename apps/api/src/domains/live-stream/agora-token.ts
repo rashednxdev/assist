@@ -35,8 +35,10 @@ export function isValidAgoraKey(value: string | undefined): boolean {
 }
 
 export function agoraUsesToken(): boolean {
-  if (process.env.AGORA_USE_TOKEN === 'false') return false;
-  return Boolean(normalizeAgoraKey(env.AGORA_APP_CERTIFICATE));
+  const certificate = normalizeAgoraKey(env.AGORA_APP_CERTIFICATE);
+  // Certificate on Render → always mint tokens (Primary Certificate enabled in Agora Console).
+  if (isValidAgoraKey(certificate)) return true;
+  return process.env.AGORA_USE_TOKEN !== 'false';
 }
 
 /** Public-safe Agora config check for /health (does not call Agora servers). */
@@ -44,13 +46,16 @@ export function getAgoraLiveVideoStatus(): {
   configured: boolean;
   valid: boolean;
   uses_token: boolean;
+  certificate_on_server: boolean;
   app_id_prefix?: string;
   token_mint_ok?: boolean;
   token_builder: 'buildTokenWithUid';
   issue?: string;
+  warning?: string;
 } {
   const appId = normalizeAgoraKey(env.AGORA_APP_ID);
   const certificate = normalizeAgoraKey(env.AGORA_APP_CERTIFICATE);
+  const certificateOnServer = isValidAgoraKey(certificate);
   const usesToken = agoraUsesToken();
 
   if (!appId) {
@@ -58,6 +63,7 @@ export function getAgoraLiveVideoStatus(): {
       configured: false,
       valid: false,
       uses_token: usesToken,
+      certificate_on_server: certificateOnServer,
       token_builder: 'buildTokenWithUid',
       issue: 'Set AGORA_APP_ID on the API server.',
     };
@@ -68,30 +74,24 @@ export function getAgoraLiveVideoStatus(): {
       configured: true,
       valid: false,
       uses_token: usesToken,
+      certificate_on_server: certificateOnServer,
       token_builder: 'buildTokenWithUid',
       issue: 'AGORA_APP_ID must be exactly 32 hex characters (no spaces or quotes).',
     };
   }
 
-  if (usesToken && !certificate) {
+  if (!certificateOnServer) {
     return {
       configured: true,
       valid: false,
-      uses_token: true,
+      uses_token: false,
+      certificate_on_server: false,
       app_id_prefix: appId.slice(0, 8),
       token_builder: 'buildTokenWithUid',
-      issue: 'Set AGORA_APP_CERTIFICATE or AGORA_USE_TOKEN=false if certificate auth is off.',
-    };
-  }
-
-  if (usesToken && !isValidAgoraKey(certificate)) {
-    return {
-      configured: true,
-      valid: false,
-      uses_token: true,
-      app_id_prefix: appId.slice(0, 8),
-      token_builder: 'buildTokenWithUid',
-      issue: 'AGORA_APP_CERTIFICATE must be exactly 32 hex characters (Primary Certificate).',
+      issue:
+        'AGORA_APP_CERTIFICATE is missing on the API server. Add Primary Certificate from Agora Console → Project → Config, then redeploy.',
+      warning:
+        'If Primary Certificate is enabled in Agora, joins without a token always fail (CAN_NOT_GET_GATEWAY_SERVER).',
     };
   }
 
@@ -117,6 +117,7 @@ export function getAgoraLiveVideoStatus(): {
     configured: true,
     valid: usesToken ? tokenMintOk : true,
     uses_token: usesToken,
+    certificate_on_server: certificateOnServer,
     app_id_prefix: appId.slice(0, 8),
     token_mint_ok: tokenMintOk,
     token_builder: 'buildTokenWithUid',
@@ -124,6 +125,12 @@ export function getAgoraLiveVideoStatus(): {
       ? {
           issue:
             'Token mint failed — AGORA_APP_ID and AGORA_APP_CERTIFICATE must be from the same Agora project.',
+        }
+      : {}),
+    ...(process.env.AGORA_USE_TOKEN === 'false' && certificateOnServer
+      ? {
+          warning:
+            'AGORA_USE_TOKEN=false is ignored because AGORA_APP_CERTIFICATE is set (token mode is required).',
         }
       : {}),
   };

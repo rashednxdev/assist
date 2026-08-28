@@ -79,12 +79,12 @@ function zoomHtml(join: ZoomLiveStreamJoinPayload) {
       font-size:12px;line-height:1.35;pointer-events:none
     }
   </style>
-  <script src="https://source.zoom.us/3.12.0/lib/vendor/react.min.js"></script>
-  <script src="https://source.zoom.us/3.12.0/lib/vendor/react-dom.min.js"></script>
-  <script src="https://source.zoom.us/3.12.0/lib/vendor/redux.min.js"></script>
-  <script src="https://source.zoom.us/3.12.0/lib/vendor/redux-thunk.min.js"></script>
-  <script src="https://source.zoom.us/3.12.0/lib/vendor/lodash.min.js"></script>
-  <script src="https://source.zoom.us/3.12.0/zoom-meeting-embedded-3.12.0.min.js"></script>
+  <script src="https://source.zoom.us/3.13.2/lib/vendor/react.min.js"></script>
+  <script src="https://source.zoom.us/3.13.2/lib/vendor/react-dom.min.js"></script>
+  <script src="https://source.zoom.us/3.13.2/lib/vendor/redux.min.js"></script>
+  <script src="https://source.zoom.us/3.13.2/lib/vendor/redux-thunk.min.js"></script>
+  <script src="https://source.zoom.us/3.13.2/lib/vendor/lodash.min.js"></script>
+  <script src="https://source.zoom.us/3.13.2/zoom-meeting-embedded-3.13.2.min.js"></script>
 </head>
 <body>
   <div id="root"></div>

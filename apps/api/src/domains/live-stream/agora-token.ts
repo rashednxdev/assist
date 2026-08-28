@@ -26,7 +26,7 @@ const AGORA_KEY_RE = /^[a-f0-9]{32}$/i;
 export const AGORA_TOKEN_TTL_SECONDS = 60 * 130;
 
 function normalizeAgoraKey(value: string | undefined): string {
-  return value?.trim().replace(/^["']|["']$/g, '') ?? '';
+  return value?.trim().replace(/^["']|["']$/g, '').toLowerCase() ?? '';
 }
 
 export function isValidAgoraKey(value: string | undefined): boolean {
@@ -181,4 +181,14 @@ export function buildAgoraRtcToken(opts: {
   }
 
   return { appId, token, expireAt };
+}
+
+/** Sample host join for Agora Web Demo — verifies credentials reach Agora (public App ID). */
+export function buildAgoraSampleJoin() {
+  return buildAgoraRtcToken({
+    channel: 'proassist_credential_test',
+    uid: 10_001,
+    role: 'host',
+    expireSeconds: 3600,
+  });
 }

@@ -26,6 +26,8 @@ const envSchema = z.object({
   AGORA_APP_ID: z.string().optional(),
   /** Agora.io App Certificate — used to mint short-lived RTC tokens server-side. */
   AGORA_APP_CERTIFICATE: z.string().optional(),
+  /** Set to "false" only if App Certificate auth is disabled in Agora Console (join with App ID only). */
+  AGORA_USE_TOKEN: z.enum(['true', 'false']).optional(),
 });
 
 export const env = envSchema.parse(process.env);

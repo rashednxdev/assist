@@ -11,12 +11,7 @@ healthRouter.get('/', (_req, res) => {
       status: 'ok',
       service: 'ibas-api',
       mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-      live_video: {
-        configured: agora.configured,
-        valid: agora.valid,
-        ...(agora.app_id_prefix ? { app_id_prefix: agora.app_id_prefix } : {}),
-        ...(agora.issue ? { issue: agora.issue } : {}),
-      },
+      live_video: agora,
       timestamp: new Date().toISOString(),
     },
   });

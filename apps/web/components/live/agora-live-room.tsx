@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 interface AgoraLiveRoomProps {
   appId: string;
   channel: string;
-  token: string;
+  token: string | null;
   uid: number;
   role: 'host' | 'audience';
   onError?: (message: string) => void;
@@ -29,78 +29,6 @@ function isMobileBrowser() {
 function screenShareSupported() {
   if (typeof navigator === 'undefined') return false;
   return Boolean(navigator.mediaDevices?.getDisplayMedia) && !isMobileBrowser();
-}
-
-/** Soft playback gain — keep ≤120 to avoid clipping that sounds like rumble/engine noise. */
-const GUEST_PLAYBACK_VOLUME = 110;
-/** Host mic capture level: 100 = original. Mild boost only; AGC handles quiet speech. */
-const HOST_MIC_VOLUME = 120;
-
-type ScreenShareQuality = '360p' | '480p';
-
-const SCREEN_SHARE_QUALITY_KEY = 'proassist-live-screen-quality';
-
-/** Cost-tuned screen share presets — host picks before sharing. */
-const SCREEN_SHARE_PRESETS: Record<
-  ScreenShareQuality,
-  {
-    label: string;
-    costNote: string;
-    encoderConfig: {
-      width: number;
-      height: number;
-      frameRate: number;
-      bitrateMax: number;
-      bitrateMin: number;
-    };
-  }
-> = {
-  '360p': {
-    label: '360p',
-    costNote: 'Recommended — lowest Agora video cost',
-    encoderConfig: {
-      width: 640,
-      height: 360,
-      frameRate: 15,
-      bitrateMax: 320,
-      bitrateMin: 100,
-    },
-  },
-  '480p': {
-    label: '480p',
-    costNote: 'Sharper slides — more bandwidth',
-    encoderConfig: {
-      width: 640,
-      height: 480,
-      frameRate: 15,
-      bitrateMax: 480,
-      bitrateMin: 160,
-    },
-  },
-};
-
-function loadScreenShareQuality(): ScreenShareQuality {
-  if (typeof window === 'undefined') return '360p';
-  return localStorage.getItem(SCREEN_SHARE_QUALITY_KEY) === '480p' ? '480p' : '360p';
-}
-
-function applyTrackVolume(track: { setVolume: (v: number) => void }, volume: number) {
-  try {
-    track.setVolume(volume);
-  } catch {
-    try {
-      track.setVolume(100);
-    } catch {
-      // ignore
-    }
-  }
-}
-
-function friendlyAgoraJoinError(message: string): string {
-  if (/CAN_NOT_GET_GATEWAY_SERVER|invalid vendor key|can not find appid|dynamic use static key/i.test(message)) {
-    return 'Could not connect to Agora. The server App ID or token is wrong — ask an admin to verify AGORA_APP_ID and AGORA_APP_CERTIFICATE on the API (Render env vars).';
-  }
-  return message;
 }
 
 /** Embedded Agora one-to-many room: host publishes mic (+ camera/screen); audience hears & watches. */
@@ -123,16 +51,20 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
   const [micMuted, setMicMuted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [micLevel, setMicLevel] = useState(0);
-  const [screenQuality, setScreenQuality] = useState<ScreenShareQuality>('360p');
   const canShareScreen = screenShareSupported();
-
-  useEffect(() => {
-    setScreenQuality(loadScreenShareQuality());
-  }, []);
 
   const playRemoteAudio = useCallback(async (track: IRemoteAudioTrack | undefined) => {
     if (!track) return;
-    applyTrackVolume(track, GUEST_PLAYBACK_VOLUME);
+    try {
+      // Remote volume: 100 = original; many SDK builds allow up to ~400 for boost.
+      track.setVolume(400);
+    } catch {
+      try {
+        track.setVolume(100);
+      } catch {
+        // ignore
+      }
+    }
     try {
       await track.play();
     } catch {
@@ -178,17 +110,6 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
 
     async function connect() {
       try {
-        if (!appId || appId.length !== 32) {
-          throw new Error(
-            'Live video is misconfigured on the server (invalid App ID). Ask an admin to check Agora settings.',
-          );
-        }
-        if (!token || !token.startsWith('007')) {
-          throw new Error(
-            'Live video token is invalid. Leave and join again, or ask an admin to verify AGORA_APP_ID and AGORA_APP_CERTIFICATE on the API.',
-          );
-        }
-
         const AgoraRTC = (await import('agora-rtc-sdk-ng')).default;
         if (cancelled) return;
         agoraRef.current = AgoraRTC;
@@ -219,7 +140,7 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
           }
         });
 
-        await client.join(appId, channel, token, uid);
+        await client.join(appId, channel, token || null, Number(uid));
         if (cancelled) return;
 
         await subscribeExisting(client);
@@ -231,8 +152,7 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
         }
         setChannelReady(true);
       } catch (err) {
-        const raw = err instanceof Error ? err.message : 'Could not join live session';
-        const message = friendlyAgoraJoinError(raw);
+        const message = err instanceof Error ? err.message : 'Could not join live session';
         setStatus(message);
         onError?.(message);
       }
@@ -304,11 +224,11 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
 
       for (const track of remoteAudioRef.current) {
         try {
-          applyTrackVolume(track, GUEST_PLAYBACK_VOLUME);
+          track.setVolume(400);
           await track.play();
         } catch {
           try {
-            applyTrackVolume(track, 100);
+            track.setVolume(100);
             await track.play();
           } catch {
             // ignore
@@ -316,7 +236,7 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
         }
       }
       setSoundOn(true);
-      setStatus('Sound on — you should hear the host clearly');
+      setStatus('Sound on — you should hear the host');
     } finally {
       setBusy(false);
     }
@@ -330,15 +250,15 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
     setBusy(true);
     setStatus('Requesting microphone…');
     try {
-      // Speech profile + noise suppression. Avoid high setVolume (causes rumble/clipping).
+      // Must run from a user tap on mobile browsers.
       const mic = await AgoraRTC.createMicrophoneAudioTrack({
-        AEC: true, // echo cancel
-        AGC: true, // auto gain for quiet/loud speech
-        ANS: true, // noise suppress (fans, traffic, vehicle rumble)
-        encoderConfig: 'speech_standard',
+        AEC: true,
+        AGC: true,
+        ANS: false, // ANS can swallow speech on some phones
       });
       micRef.current = mic;
-      applyTrackVolume(mic, HOST_MIC_VOLUME);
+      // Local mic: 100 = original, up to 1000. Boost so guests hear clearly.
+      mic.setVolume(400);
       await mic.setEnabled(true);
       await client.publish([mic]);
 
@@ -411,7 +331,7 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
     const mic = micRef.current;
     if (mic && client) {
       try {
-        applyTrackVolume(mic, HOST_MIC_VOLUME);
+        mic.setVolume(400);
         if (!client.localTracks.includes(mic)) await client.publish(mic);
       } catch {
         // ignore
@@ -440,11 +360,16 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
 
     setBusy(true);
     try {
-      const preset = SCREEN_SHARE_PRESETS[screenQuality];
       const screenTrack = await AgoraRTC.createScreenVideoTrack(
         {
-          encoderConfig: preset.encoderConfig,
-          optimizationMode: 'motion',
+          encoderConfig: {
+            width: 1920,
+            height: 1080,
+            frameRate: 15,
+            bitrateMax: 3000,
+            bitrateMin: 1000,
+          },
+          optimizationMode: 'detail',
         },
         'disable',
       );
@@ -469,7 +394,7 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
       const mic = micRef.current;
       if (mic) {
         try {
-          applyTrackVolume(mic, HOST_MIC_VOLUME);
+          mic.setVolume(400);
           if (!micMuted) await mic.setEnabled(true);
           if (!client.localTracks.includes(mic)) await client.publish(mic);
         } catch {
@@ -480,8 +405,8 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
       setSharing(true);
       setStatus(
         micMuted
-          ? `Sharing screen (${screenQuality}) — unmute speech so guests can hear you`
-          : `Sharing screen (${screenQuality}) + mic — check mic level while speaking`,
+          ? 'Sharing screen — unmute speech so guests can hear you'
+          : 'Sharing screen + mic — check mic level meter while speaking',
       );
 
       screen.on('track-ended', () => {
@@ -548,37 +473,6 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
         ) : null}
       </div>
 
-      {role === 'host' && mediaLive && canShareScreen && !sharing ? (
-        <div className="rounded-xl border border-sky-200 bg-sky-50/80 px-3 py-2.5 space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-bold uppercase tracking-wide text-sky-900">
-              Screen share quality
-            </span>
-            {(['360p', '480p'] as const).map((q) => (
-              <Button
-                key={q}
-                type="button"
-                size="sm"
-                variant={screenQuality === q ? 'default' : 'outline'}
-                disabled={busy}
-                onClick={() => {
-                  setScreenQuality(q);
-                  try {
-                    localStorage.setItem(SCREEN_SHARE_QUALITY_KEY, q);
-                  } catch {
-                    // ignore
-                  }
-                }}
-              >
-                {q}
-                {q === '360p' ? ' · lower cost' : ''}
-              </Button>
-            ))}
-          </div>
-          <p className="text-xs text-sky-900/80">{SCREEN_SHARE_PRESETS[screenQuality].costNote}</p>
-        </div>
-      ) : null}
-
       {role === 'host' && mediaLive ? (
         <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
           <span className="font-semibold">Mic level</span>
@@ -620,10 +514,8 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
       {role === 'host' ? (
         <p className="text-xs text-muted-foreground">
           On phone: tap <strong>Start mic &amp; go live</strong>, allow microphone, then speak — watch the mic
-          level move. Before <strong>Share screen</strong>, pick <strong>360p</strong> (lower Agora cost) or{' '}
-          <strong>480p</strong> (sharper). Both use 15&nbsp;fps. Screen share is desktop Chrome/Edge only.
-          Guests must tap <strong>Enable sound</strong>. When finished, click <strong>End session</strong> to
-          stop billing.
+          level move. Screen share works on desktop Chrome/Edge only. Guests must tap <strong>Enable sound</strong>.
+          When class is finished, click <strong>End session</strong> so Agora minutes stop (saves cost).
         </p>
       ) : (
         <p className="text-xs text-muted-foreground">

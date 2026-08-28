@@ -5,24 +5,25 @@ import { badRequest } from '../../shared/errors/AppError.js';
 
 // agora-token is CommonJS; named ESM imports fail at runtime on Node.
 const require = createRequire(import.meta.url);
-const { RtcTokenBuilder } = require('agora-token') as {
+const { RtcRole, RtcTokenBuilder } = require('agora-token') as {
+  RtcRole: { PUBLISHER: number; SUBSCRIBER: number };
   RtcTokenBuilder: {
-    buildTokenWithUidAndPrivilege: (
+    buildTokenWithUid: (
       appId: string,
       appCertificate: string,
       channelName: string,
       uid: number,
+      role: number,
       tokenExpire: number,
-      joinChannelPrivilegeExpire: number,
-      pubAudioPrivilegeExpire: number,
-      pubVideoPrivilegeExpire: number,
-      pubDataStreamPrivilegeExpire: number,
+      privilegeExpire: number,
     ) => string;
   };
 };
 
 const AGORA_KEY_LEN = 32;
 const AGORA_KEY_RE = /^[a-f0-9]{32}$/i;
+/** 2 hours 10 minutes — host/guest stay connected without re-join. */
+export const AGORA_TOKEN_TTL_SECONDS = 60 * 130;
 
 function normalizeAgoraKey(value: string | undefined): string {
   return value?.trim().replace(/^["']|["']$/g, '') ?? '';
@@ -33,21 +34,32 @@ export function isValidAgoraKey(value: string | undefined): boolean {
   return key.length === AGORA_KEY_LEN && AGORA_KEY_RE.test(key);
 }
 
-/** Whether live video env vars are present and well-formed (does not call Agora). */
+export function agoraUsesToken(): boolean {
+  if (process.env.AGORA_USE_TOKEN === 'false') return false;
+  return Boolean(normalizeAgoraKey(env.AGORA_APP_CERTIFICATE));
+}
+
+/** Public-safe Agora config check for /health (does not call Agora servers). */
 export function getAgoraLiveVideoStatus(): {
   configured: boolean;
   valid: boolean;
+  uses_token: boolean;
   app_id_prefix?: string;
+  token_mint_ok?: boolean;
+  token_builder: 'buildTokenWithUid';
   issue?: string;
 } {
   const appId = normalizeAgoraKey(env.AGORA_APP_ID);
   const certificate = normalizeAgoraKey(env.AGORA_APP_CERTIFICATE);
+  const usesToken = agoraUsesToken();
 
-  if (!appId || !certificate) {
+  if (!appId) {
     return {
       configured: false,
       valid: false,
-      issue: 'Set AGORA_APP_ID and AGORA_APP_CERTIFICATE on the API server.',
+      uses_token: usesToken,
+      token_builder: 'buildTokenWithUid',
+      issue: 'Set AGORA_APP_ID on the API server.',
     };
   }
 
@@ -55,23 +67,65 @@ export function getAgoraLiveVideoStatus(): {
     return {
       configured: true,
       valid: false,
-      issue: 'AGORA_APP_ID must be exactly 32 hexadecimal characters from the Agora Console.',
+      uses_token: usesToken,
+      token_builder: 'buildTokenWithUid',
+      issue: 'AGORA_APP_ID must be exactly 32 hex characters (no spaces or quotes).',
     };
   }
 
-  if (!isValidAgoraKey(certificate)) {
+  if (usesToken && !certificate) {
     return {
       configured: true,
       valid: false,
-      issue:
-        'AGORA_APP_CERTIFICATE must be exactly 32 hexadecimal characters (Primary Certificate).',
+      uses_token: true,
+      app_id_prefix: appId.slice(0, 8),
+      token_builder: 'buildTokenWithUid',
+      issue: 'Set AGORA_APP_CERTIFICATE or AGORA_USE_TOKEN=false if certificate auth is off.',
     };
+  }
+
+  if (usesToken && !isValidAgoraKey(certificate)) {
+    return {
+      configured: true,
+      valid: false,
+      uses_token: true,
+      app_id_prefix: appId.slice(0, 8),
+      token_builder: 'buildTokenWithUid',
+      issue: 'AGORA_APP_CERTIFICATE must be exactly 32 hex characters (Primary Certificate).',
+    };
+  }
+
+  let tokenMintOk = true;
+  if (usesToken) {
+    try {
+      const sample = RtcTokenBuilder.buildTokenWithUid(
+        appId,
+        certificate,
+        'health_check',
+        1,
+        RtcRole.PUBLISHER,
+        300,
+        300,
+      );
+      tokenMintOk = Boolean(sample && sample.startsWith('007'));
+    } catch {
+      tokenMintOk = false;
+    }
   }
 
   return {
     configured: true,
-    valid: true,
+    valid: usesToken ? tokenMintOk : true,
+    uses_token: usesToken,
     app_id_prefix: appId.slice(0, 8),
+    token_mint_ok: tokenMintOk,
+    token_builder: 'buildTokenWithUid',
+    ...(usesToken && !tokenMintOk
+      ? {
+          issue:
+            'Token mint failed — AGORA_APP_ID and AGORA_APP_CERTIFICATE must be from the same Agora project.',
+        }
+      : {}),
   };
 }
 
@@ -87,35 +141,42 @@ export function buildAgoraRtcToken(opts: {
   uid: number;
   role: 'host' | 'audience';
   expireSeconds?: number;
-}): { appId: string; token: string; expireAt: number } {
-  const status = getAgoraLiveVideoStatus();
-  if (!status.valid) {
-    throw badRequest(status.issue ?? 'Live video is not configured on the API server.');
+}): { appId: string; token: string | null; expireAt: number } {
+  const appId = normalizeAgoraKey(env.AGORA_APP_ID);
+  if (!appId || !isValidAgoraKey(appId)) {
+    throw badRequest(
+      'Live video is not configured. Set a valid AGORA_APP_ID (32 hex chars) on the API.',
+    );
   }
 
-  const appId = normalizeAgoraKey(env.AGORA_APP_ID);
-  const certificate = normalizeAgoraKey(env.AGORA_APP_CERTIFICATE);
-
-  // Agora AccessToken2 expects TTL seconds from now (not a unix timestamp).
-  const expireSeconds = opts.expireSeconds ?? 60 * 130; // 2 hours 10 minutes
+  const expireSeconds = opts.expireSeconds ?? AGORA_TOKEN_TTL_SECONDS;
   const expireAt = Math.floor(Date.now() / 1000) + expireSeconds;
-  const mayPublish = opts.role === 'host';
 
-  const token = RtcTokenBuilder.buildTokenWithUidAndPrivilege(
+  if (!agoraUsesToken()) {
+    return { appId, token: null, expireAt };
+  }
+
+  const certificate = normalizeAgoraKey(env.AGORA_APP_CERTIFICATE);
+  if (!isValidAgoraKey(certificate)) {
+    throw badRequest(
+      'AGORA_APP_CERTIFICATE is invalid. Copy the Primary Certificate from Agora Console → Project → Config.',
+    );
+  }
+
+  const rtcRole = opts.role === 'host' ? RtcRole.PUBLISHER : RtcRole.SUBSCRIBER;
+  const token = RtcTokenBuilder.buildTokenWithUid(
     appId,
     certificate,
     opts.channel,
     opts.uid,
+    rtcRole,
     expireSeconds,
     expireSeconds,
-    mayPublish ? expireSeconds : 0,
-    mayPublish ? expireSeconds : 0,
-    mayPublish ? expireSeconds : 0,
   );
 
   if (!token || !token.startsWith('007')) {
     throw badRequest(
-      'Could not mint a valid Agora token. Confirm AGORA_APP_ID and AGORA_APP_CERTIFICATE match the same Agora project (Console → Project → Config).',
+      'Could not mint Agora token. Verify AGORA_APP_ID and AGORA_APP_CERTIFICATE match the same project in Agora Console.',
     );
   }
 

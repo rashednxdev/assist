@@ -89,7 +89,7 @@ function agoraHtml(join: LiveStreamJoinPayload) {
     #soundGate.hidden{display:none}
     #audioHost{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
   </style>
-  <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.24.7.js"></script>
+  <script src="https://download.agora.io/sdk/release/AgoraRTC_N.js"></script>
 </head>
 <body>
   <div id="stage">
@@ -204,15 +204,6 @@ function agoraHtml(join: LiveStreamJoinPayload) {
       window.addEventListener('beforeunload', function () { leaveChannel(); });
 
       try {
-        if (typeof AgoraRTC === 'undefined') {
-          throw new Error('Agora SDK failed to load. Check your internet connection and try again.');
-        }
-        if (!cfg.appId || cfg.appId.length !== 32) {
-          throw new Error('Live video is misconfigured on the server (invalid App ID). Ask an admin to check Agora settings.');
-        }
-        if (!cfg.token || cfg.token.indexOf('007') !== 0) {
-          throw new Error('Live video token is invalid. Leave and tap Join again, or ask an admin to verify AGORA_APP_ID and AGORA_APP_CERTIFICATE on the API.');
-        }
         client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
         await client.setClientRole('audience');
         client.on('user-published', async function (user, mediaType) {
@@ -224,15 +215,11 @@ function agoraHtml(join: LiveStreamJoinPayload) {
             status.textContent = 'Waiting for host…';
           }
         });
-        await client.join(cfg.appId, cfg.channel, cfg.token, cfg.uid);
+        await client.join(cfg.appId, cfg.channel, cfg.token || null, Number(cfg.uid));
         await subscribeExisting();
         status.textContent = 'Joined — tap to hear host';
       } catch (e) {
-        var msg = e && e.message ? e.message : 'Join failed';
-        if (/CAN_NOT_GET_GATEWAY_SERVER/i.test(msg)) {
-          msg = 'Could not connect to Agora (invalid App ID or token). Ask an admin to set AGORA_APP_ID and AGORA_APP_CERTIFICATE on the API server.';
-        }
-        status.textContent = msg;
+        status.textContent = e && e.message ? e.message : 'Join failed';
         soundGate.classList.add('hidden');
       }
     })();

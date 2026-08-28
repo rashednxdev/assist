@@ -171,7 +171,7 @@ export interface LiveStreamListItem {
 export interface LiveStreamJoinPayload {
   app_id: string;
   channel: string;
-  token: string;
+  token: string | null;
   /** Unix seconds — client may re-join before this to refresh the token. */
   token_expires_at?: number;
   uid: number;

@@ -10,11 +10,17 @@ export function zoomConfigured(): boolean {
 
 export function getZoomLiveVideoStatus() {
   const configured = zoomConfigured();
+  const sdkSeparate = Boolean(env.ZOOM_SDK_KEY?.trim() && env.ZOOM_SDK_SECRET?.trim());
   return {
     configured,
     valid: configured,
     account_id_prefix: env.ZOOM_ACCOUNT_ID?.slice(0, 6),
     client_id_prefix: env.ZOOM_CLIENT_ID?.slice(0, 6),
+    join_mode: 'zoom_web_client',
+    meeting_sdk_optional: {
+      configured: sdkSeparate,
+      note: 'S2S OAuth is enough. Classes open Zoom Web Client (mic, camera, screen share). ZOOM_SDK_KEY is optional.',
+    },
   };
 }
 
@@ -89,7 +95,7 @@ export async function createZoomMeeting(opts: {
     throw badRequest(`Zoom create meeting failed (${res.status}): ${text.slice(0, 320)}`);
   }
   const data = (await res.json()) as {
-    id: number;
+    id: number | string;
     join_url: string;
     start_url: string;
     password?: string;
@@ -104,29 +110,58 @@ export async function createZoomMeeting(opts: {
   };
 }
 
+/**
+ * Zoom Web Client URLs — work with Server-to-Server OAuth only.
+ * Full Zoom UI: two-way AV + screen share (no Meeting SDK JWT).
+ */
+export function buildZoomWebClientUrl(opts: {
+  meetingNumber: string;
+  password?: string;
+  role: 'host' | 'audience';
+  zak?: string;
+}): string {
+  const mn = String(opts.meetingNumber).replace(/\s+/g, '');
+  if (opts.role === 'host') {
+    const zak = opts.zak ? `?zak=${encodeURIComponent(opts.zak)}` : '';
+    return `https://zoom.us/wc/${mn}/start${zak}`;
+  }
+  const pwd = opts.password ? `?pwd=${encodeURIComponent(opts.password)}` : '';
+  return `https://zoom.us/wc/join/${mn}${pwd}`;
+}
+
+/**
+ * Meeting SDK JWT — optional. Only when ZOOM_SDK_KEY + ZOOM_SDK_SECRET are set
+ * (General app with Meeting SDK). S2S OAuth secrets cannot sign these.
+ */
 export function buildZoomSdkSignature(
   meetingNumber: string,
   role: 'host' | 'audience',
-): { signature: string; sdk_key: string; expire_at: number } {
-  if (!zoomConfigured()) {
-    throw badRequest('Zoom is not configured on the server.');
+): { signature: string; sdk_key: string; expire_at: number } | null {
+  if (!env.ZOOM_SDK_KEY?.trim() || !env.ZOOM_SDK_SECRET?.trim()) {
+    return null;
   }
-  const sdkKey = env.ZOOM_CLIENT_ID!;
+  const sdkKey = env.ZOOM_SDK_KEY.trim();
+  const sdkSecret = env.ZOOM_SDK_SECRET.trim();
+
+  const mn = String(meetingNumber).replace(/\s+/g, '');
   const iat = Math.floor(Date.now() / 1000) - 30;
   const exp = iat + 60 * 60 * 2;
-  const signature = jwt.sign(
-    {
-      sdkKey,
-      mn: meetingNumber,
-      role: role === 'host' ? 1 : 0,
-      iat,
-      exp,
-      appKey: sdkKey,
-      tokenExp: exp,
-    },
-    env.ZOOM_CLIENT_SECRET!,
-    { algorithm: 'HS256' },
-  );
+  const payload = {
+    appKey: sdkKey,
+    sdkKey,
+    mn,
+    role: role === 'host' ? 1 : 0,
+    iat,
+    exp,
+    tokenExp: exp,
+  };
+
+  const signature = jwt.sign(payload, sdkSecret, {
+    algorithm: 'HS256',
+    header: { alg: 'HS256', typ: 'JWT' },
+    noTimestamp: true,
+  });
+
   return { signature, sdk_key: sdkKey, expire_at: exp };
 }
 

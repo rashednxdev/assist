@@ -415,13 +415,14 @@ export default function ZoomRoomManagePage() {
             <div className="rounded-xl bg-white p-3 text-slate-900">
               <ZoomMeetingRoom
                 config={{
-                  sdkKey: join.sdk_key,
-                  signature: join.signature,
+                  webClientUrl: join.web_client_url,
                   meetingNumber: join.meeting_number,
                   password: join.password,
                   userName: join.user_name,
                   userEmail: join.user_email,
                   zak: join.zak,
+                  sdkKey: join.sdk_key,
+                  signature: join.signature,
                   role: 'host',
                 }}
                 onError={setError}

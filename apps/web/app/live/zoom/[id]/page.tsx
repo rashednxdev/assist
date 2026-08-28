@@ -354,13 +354,14 @@ export default function ZoomStreamWatchPage() {
             <div className="relative">
               <ZoomMeetingRoom
                 config={{
-                  sdkKey: join.sdk_key,
-                  signature: join.signature,
+                  webClientUrl: join.web_client_url,
                   meetingNumber: join.meeting_number,
                   password: join.password,
                   userName: join.user_name,
                   userEmail: join.user_email,
                   zak: join.zak,
+                  sdkKey: join.sdk_key,
+                  signature: join.signature,
                   role: join.role,
                 }}
                 onError={setError}

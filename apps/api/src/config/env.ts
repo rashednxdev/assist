@@ -28,12 +28,19 @@ const envSchema = z.object({
   AGORA_APP_CERTIFICATE: z.string().optional(),
   /** Set to "false" only if App Certificate auth is disabled in Agora Console (join with App ID only). */
   AGORA_USE_TOKEN: z.enum(['true', 'false']).optional(),
-  /** Zoom Server-to-Server OAuth — account id from Zoom Marketplace app. */
+  /** Zoom Server-to-Server OAuth — create meetings + ZAK (REST API). */
   ZOOM_ACCOUNT_ID: z.string().optional(),
-  /** Zoom OAuth client id (also Meeting SDK key). */
+  /** Zoom S2S OAuth client id. */
   ZOOM_CLIENT_ID: z.string().optional(),
-  /** Zoom OAuth client secret (also Meeting SDK secret). */
+  /** Zoom S2S OAuth client secret. */
   ZOOM_CLIENT_SECRET: z.string().optional(),
+  /**
+   * Meeting SDK Client ID (from a General / Meeting SDK app — NOT Server-to-Server OAuth).
+   * Falls back to ZOOM_CLIENT_ID only if unset (will fail for S2S-only apps).
+   */
+  ZOOM_SDK_KEY: z.string().optional(),
+  /** Meeting SDK Client Secret — used to sign join/start JWTs. */
+  ZOOM_SDK_SECRET: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);

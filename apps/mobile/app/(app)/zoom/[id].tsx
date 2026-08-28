@@ -29,12 +29,9 @@ import {
   canBypassLiveCaptureBlock,
   setLiveGuestCaptureBlocked,
 } from '@/lib/live-screen-capture';
-import type { LiveStreamJoinPayload, ZoomLiveStreamJoinPayload } from '@ibas/shared-types';
+import type { LiveStreamJoinPayload } from '@ibas/shared-types';
 import { isZoomJoinPayload } from '@ibas/shared-types';
 import { colors, spacing } from '@/theme';
-
-/** Guest playback: 100 = original. Soft gain only — high boost clips into rumble/engine noise. */
-const GUEST_AUDIO_VOLUME = 110;
 
 function permissionCard(status: LiveStreamListItem['permission_status']) {
   if (status === 'permitted' || status === 'host') {
@@ -53,72 +50,6 @@ function permissionCard(status: LiveStreamListItem['permission_status']) {
     border: '#fecdd3',
     color: '#9f1239',
   };
-}
-
-function zoomHtml(join: ZoomLiveStreamJoinPayload) {
-  const payload = JSON.stringify({
-    sdkKey: join.sdk_key,
-    signature: join.signature,
-    meetingNumber: join.meeting_number,
-    password: join.password,
-    userName: join.user_name,
-    userEmail: join.user_email ?? '',
-    role: join.role,
-  });
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
-  <style>
-    *{box-sizing:border-box}
-    html,body{margin:0;padding:0;width:100%;height:100%;background:#020617;color:#fff;font-family:system-ui,sans-serif;overflow:hidden}
-    #root{position:fixed;inset:0;width:100%;height:100%}
-    #status{
-      position:absolute;left:10px;right:10px;top:10px;z-index:9;
-      padding:8px 12px;border-radius:10px;background:rgba(15,23,42,.85);
-      font-size:12px;line-height:1.35;pointer-events:none
-    }
-  </style>
-  <script src="https://source.zoom.us/3.13.2/lib/vendor/react.min.js"></script>
-  <script src="https://source.zoom.us/3.13.2/lib/vendor/react-dom.min.js"></script>
-  <script src="https://source.zoom.us/3.13.2/lib/vendor/redux.min.js"></script>
-  <script src="https://source.zoom.us/3.13.2/lib/vendor/redux-thunk.min.js"></script>
-  <script src="https://source.zoom.us/3.13.2/lib/vendor/lodash.min.js"></script>
-  <script src="https://source.zoom.us/3.13.2/zoom-meeting-embedded-3.13.2.min.js"></script>
-</head>
-<body>
-  <div id="root"></div>
-  <div id="status">Connecting to Zoom…</div>
-  <script>
-    (async () => {
-      const cfg = ${payload};
-      const status = document.getElementById('status');
-      try {
-        if (!window.ZoomMtgEmbedded) throw new Error('Zoom SDK failed to load');
-        const client = ZoomMtgEmbedded.createClient();
-        await client.init({
-          zoomAppRoot: document.getElementById('root'),
-          language: 'en-US',
-          patchJsMedia: true,
-          leaveOnPageUnload: true,
-        });
-        status.textContent = 'Joining meeting…';
-        await client.join({
-          sdkKey: cfg.sdkKey,
-          signature: cfg.signature,
-          meetingNumber: cfg.meetingNumber,
-          password: cfg.password,
-          userName: cfg.userName,
-          userEmail: cfg.userEmail || undefined,
-        });
-        status.textContent = '';
-      } catch (e) {
-        status.textContent = e && e.message ? e.message : 'Zoom join failed';
-      }
-    })();
-  </script>
-</body>
-</html>`;
 }
 
 export default function ZoomStreamDetailScreen() {
@@ -290,7 +221,7 @@ export default function ZoomStreamDetailScreen() {
           domStorageEnabled
           mixedContentMode="always"
           androidLayerType="hardware"
-          source={{ html: zoomHtml(join) }}
+          source={{ uri: join.web_client_url }}
           style={styles.webviewFill}
         />
         <View style={styles.topOverlay} pointerEvents="box-none">

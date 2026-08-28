@@ -20,6 +20,7 @@ import { User } from '../users/models/User.model.js';
 import { agoraUidFromUserId, buildAgoraRtcToken } from './agora-token.js';
 import {
   buildZoomSdkSignature,
+  buildZoomWebClientUrl,
   createZoomMeeting,
   fetchZoomZakToken,
   zoomConfigured,
@@ -627,23 +628,35 @@ export async function joinLiveStream(
     if (!doc.zoom_meeting_number) {
       throw badRequest('Zoom meeting is not ready yet. The host must start the class first.');
     }
-    const { signature, sdk_key, expire_at } = buildZoomSdkSignature(doc.zoom_meeting_number, role);
     const userDoc = await User.findById(user.id).select('full_name_en full_name_bn email');
     const userName = userDoc?.full_name_bn?.trim() || userDoc?.full_name_en || 'Guest';
     let zak: string | undefined;
     if (role === 'host') {
       zak = await fetchZoomZakToken();
     }
+    const password = doc.zoom_password ?? '';
+    const webClientUrl = buildZoomWebClientUrl({
+      meetingNumber: doc.zoom_meeting_number,
+      password,
+      role,
+      zak,
+    });
+    const sdk = buildZoomSdkSignature(doc.zoom_meeting_number, role);
     return {
       video_platform: 'zoom',
       meeting_number: doc.zoom_meeting_number,
-      password: doc.zoom_password ?? '',
-      signature,
-      sdk_key,
-      signature_expires_at: expire_at,
+      password,
+      web_client_url: webClientUrl,
       user_name: userName,
       user_email: userDoc?.email,
       zak,
+      ...(sdk
+        ? {
+            signature: sdk.signature,
+            sdk_key: sdk.sdk_key,
+            signature_expires_at: sdk.expire_at,
+          }
+        : {}),
       role,
       topic: doc.topic,
       status: doc.status,

@@ -197,14 +197,19 @@ export interface ZoomLiveStreamJoinPayload extends LiveStreamJoinPayloadBase {
   video_platform: 'zoom';
   meeting_number: string;
   password: string;
-  signature: string;
-  sdk_key: string;
-  /** Unix seconds — re-join before expiry to refresh signature. */
-  signature_expires_at?: number;
   user_name: string;
   user_email?: string;
-  /** Host-only — required to start the meeting as host. */
+  /**
+   * Zoom Web Client URL (S2S-only). Host gets start+ZAK; guests get join+pwd.
+   * Supports mic, camera, and screen share in Zoom’s own UI — no Meeting SDK app needed.
+   */
+  web_client_url: string;
+  /** Host-only ZAK (also embedded in web_client_url when role is host). */
   zak?: string;
+  /** Optional Meeting SDK fields — only present when ZOOM_SDK_KEY/SECRET are configured. */
+  signature?: string;
+  sdk_key?: string;
+  signature_expires_at?: number;
 }
 
 export type LiveStreamJoinPayload = AgoraLiveStreamJoinPayload | ZoomLiveStreamJoinPayload;

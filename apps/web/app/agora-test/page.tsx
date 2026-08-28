@@ -132,9 +132,8 @@ export default function AgoraTestPage() {
       <section className="rounded-xl border p-4 text-sm space-y-2">
         <h2 className="font-semibold">If test fails</h2>
         <ol className="list-decimal space-y-1 pl-5 text-muted-foreground">
-          <li>Open console.agora.io → find App ID starting with 7302ee83</li>
-          <li>Manage credentials → copy Primary Certificate (same project only)</li>
-          <li>Render → ibas-api → AGORA_APP_CERTIFICATE → paste → Save → Manual Deploy</li>
+          <li>Open console.agora.io → your project → Manage credentials</li>
+          <li>Copy App ID + Primary Certificate into Render → ibas-api only (web does not need Agora env vars)</li>
           <li>Run this test again — when it passes, live class works</li>
         </ol>
       </section>

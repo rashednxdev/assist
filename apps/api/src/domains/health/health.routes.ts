@@ -31,7 +31,7 @@ healthRouter.get('/agora-test', (_req, res) => {
         demo_url: 'https://webdemo.agora.io/basicVideoCall/index.html',
         hint:
           'Paste app_id, channel, uid, and token into the Agora Web Demo. Join must use the same uid as shown here. ' +
-          'If the demo fails, AGORA_APP_ID and AGORA_APP_CERTIFICATE on Render are not from the same Agora project — open Console → project 7302ee83… → Config → copy Primary Certificate again (not from another project).',
+          'If the demo fails, AGORA_APP_ID and AGORA_APP_CERTIFICATE on Render are not from the same Agora project — copy Primary Certificate from the same project as the App ID.',
       },
     });
   } catch (err) {

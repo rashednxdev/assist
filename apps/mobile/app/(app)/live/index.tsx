@@ -138,6 +138,23 @@ export default function LiveStreamListScreen() {
                       {previous ? 'Previous' : item.status}
                     </Text>
                   </View>
+                  <View
+                    style={[
+                      styles.permBadge,
+                      {
+                        backgroundColor: item.access_type === 'paid' ? '#fffbeb' : '#ecfdf5',
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.permText,
+                        { color: item.access_type === 'paid' ? '#b45309' : '#047857' },
+                      ]}
+                    >
+                      {item.access_type === 'paid' ? 'Paid' : 'Free'}
+                    </Text>
+                  </View>
                   {!previous ? (
                     <View style={[styles.permBadge, { backgroundColor: perm.bg }]}>
                       <Text style={[styles.permText, { color: perm.color }]}>{perm.label}</Text>

@@ -1,5 +1,5 @@
 import mongoose, { Schema, type Document, type Types } from 'mongoose';
-import type { ComparisonTable, ExplanationProcess, LiveStreamStatus } from '@ibas/shared-types';
+import type { ComparisonTable, ExplanationProcess, LiveStreamStatus, LiveClassAccessType } from '@ibas/shared-types';
 
 export interface ILiveStreamSlide {
   title: string;
@@ -24,6 +24,8 @@ export interface ILiveStream extends Document {
   allow_guest_messages: boolean;
   /** Published class presentation slides (title + context + optional table/process). */
   slides: ILiveStreamSlide[];
+  /** `free` = all invitees; `paid` = only paid users may join/watch. */
+  access_type: LiveClassAccessType;
   created_at: Date;
   updated_at: Date;
 }
@@ -56,6 +58,7 @@ const schema = new Schema<ILiveStream>(
     ended_at: { type: Date },
     allow_guest_messages: { type: Boolean, default: false },
     slides: { type: [slideSchema], default: [] },
+    access_type: { type: String, enum: ['free', 'paid'], default: 'free' },
   },
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } },
 );

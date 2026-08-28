@@ -18,7 +18,7 @@ import { canManageUsers, fetchAdminUsers, type AdminUserRow } from '@/lib/users-
 import { openPhoneDialer, openWhatsAppToNumber } from '@/lib/contact';
 import { colors, spacing } from '@/theme';
 
-import { formatMobileAppVersionForDisplay } from '@/lib/app-version';
+import { formatMobileAppVersionForDisplay, isLatestMobileAppVersion } from '@/lib/app-version';
 
 const PAGE_SIZE = 100;
 
@@ -195,6 +195,11 @@ export default function UsersListScreen() {
         }
         renderItem={({ item }) => {
           const paid = Number(item.amount_received ?? 0) > 0;
+          const appVersion = formatMobileAppVersionForDisplay(
+            item.client_app_version,
+            item.client_platform,
+          );
+          const appUpdated = isLatestMobileAppVersion(item.client_app_version, item.client_platform);
           return (
             <View style={styles.card}>
               <Pressable
@@ -218,10 +223,14 @@ export default function UsersListScreen() {
                   <Text style={styles.amount}>
                     Amount: {(item.amount_received ?? 0).toLocaleString()}
                   </Text>
-                  <Text style={styles.version}>
-                    Mobile app:{' '}
-                    {formatMobileAppVersionForDisplay(item.client_app_version, item.client_platform)}
-                  </Text>
+                  <View style={styles.versionRow}>
+                    <Text style={styles.version}>Mobile app: {appVersion}</Text>
+                    {appUpdated ? (
+                      <View style={styles.updatedBadge}>
+                        <Text style={styles.updatedBadgeText}>Updated</Text>
+                      </View>
+                    ) : null}
+                  </View>
                 </View>
                 <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
               </Pressable>
@@ -369,6 +378,14 @@ const styles = StyleSheet.create({
   title: { fontSize: 16, fontWeight: '700', color: colors.text },
   sub: { fontSize: 13, color: colors.textMuted },
   amount: { fontSize: 12, fontWeight: '600', color: colors.text },
+  versionRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
   version: { fontSize: 12, color: colors.textMuted },
+  updatedBadge: {
+    borderRadius: 999,
+    backgroundColor: '#dcfce7',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  updatedBadgeText: { fontSize: 11, fontWeight: '700', color: '#15803d' },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
 });

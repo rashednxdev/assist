@@ -12,6 +12,13 @@ import {
 
 const mongoId = z.string().regex(/^[a-f\d]{24}$/i);
 
+export const LIVE_CLASS_ACCESS_TYPES = ['free', 'paid'] as const;
+export type LiveClassAccessType = (typeof LIVE_CLASS_ACCESS_TYPES)[number];
+
+/** Shown to unpaid users when a class is marked Paid. */
+export const PAID_LIVE_CLASS_UNPAID_MESSAGE =
+  'This Live Class only for Paid User. You are unpaid Mode. Pay to Enjoy Live Class.';
+
 export const LIVE_STREAM_STATUSES = ['scheduled', 'live', 'paused', 'ended', 'cancelled'] as const;
 export type LiveStreamStatus = (typeof LIVE_STREAM_STATUSES)[number];
 
@@ -41,6 +48,8 @@ export const createLiveStreamSchema = z.object({
   /** Optional invite list at create time. */
   invite_user_ids: inviteUserIds.optional(),
   slides: liveStreamSlidesSchema.optional(),
+  /** `free` = everyone invited; `paid` = only users with payment may join/watch. */
+  access_type: z.enum(LIVE_CLASS_ACCESS_TYPES).optional().default('free'),
 });
 
 export const updateLiveStreamSchema = z.object({
@@ -51,6 +60,7 @@ export const updateLiveStreamSchema = z.object({
   /** Reassign the class host (admin only). */
   host_user_id: mongoId.optional(),
   slides: liveStreamSlidesSchema.optional(),
+  access_type: z.enum(LIVE_CLASS_ACCESS_TYPES).optional(),
 });
 
 export const liveStreamInvitesSchema = z.object({
@@ -147,6 +157,11 @@ export interface LiveStreamListItem {
   can_view_presentation: boolean;
   /** Host toggle: guests may send messages to the host while live. */
   allow_guest_messages: boolean;
+  /** `free` or `paid` — paid classes block unpaid learners. */
+  access_type: LiveClassAccessType;
+  /** True when this user is unpaid and the class requires payment. */
+  payment_blocked?: boolean;
+  payment_required_message?: string;
   /** True for session host and platform admins — may request Agora host token. */
   can_host: boolean;
   created_at: string;

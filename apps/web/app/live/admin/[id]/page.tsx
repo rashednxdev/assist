@@ -44,6 +44,7 @@ interface SessionDetail {
   is_previous?: boolean;
   host_user_id?: string;
   host_name?: string;
+  access_type?: 'free' | 'paid';
 }
 
 interface SlideDraft {
@@ -98,6 +99,7 @@ export default function LiveStreamAdminDetailPage() {
   const [editTopic, setEditTopic] = useState('');
   const [editDetails, setEditDetails] = useState('');
   const [editWhen, setEditWhen] = useState('');
+  const [editAccessType, setEditAccessType] = useState<'free' | 'paid'>('free');
   const [slides, setSlides] = useState<SlideDraft[]>([]);
   const [showMarkupHelp, setShowMarkupHelp] = useState(false);
   const [paySort, setPaySort] = useState<'paid' | 'unpaid'>('paid');
@@ -117,6 +119,7 @@ export default function LiveStreamAdminDetailPage() {
       setEditTopic(s.data.topic);
       setEditDetails(s.data.details ?? '');
       setEditWhen(toDatetimeLocal(s.data.scheduled_at));
+      setEditAccessType(s.data.access_type === 'paid' ? 'paid' : 'free');
       setSlides(
         (s.data.slides ?? []).map((slide, i) => ({
           key: `slide-${i}-${Date.now()}`,
@@ -172,6 +175,7 @@ export default function LiveStreamAdminDetailPage() {
           topic: editTopic.trim(),
           details: editDetails.trim() || null,
           scheduled_at: new Date(editWhen).toISOString(),
+          access_type: editAccessType,
           slides: slides.map((s) => ({
             title: s.title.trim(),
             context: s.context.trim(),
@@ -341,6 +345,18 @@ export default function LiveStreamAdminDetailPage() {
               value={editWhen}
               onChange={(e) => setEditWhen(e.target.value)}
             />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-access">Access</Label>
+            <select
+              id="edit-access"
+              value={editAccessType}
+              onChange={(e) => setEditAccessType(e.target.value === 'paid' ? 'paid' : 'free')}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="free">Free — all invited users</option>
+              <option value="paid">Paid — paid users only</option>
+            </select>
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <div className="flex items-center justify-between gap-2">

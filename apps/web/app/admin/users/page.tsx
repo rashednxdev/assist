@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/shared/page-header';
 import { DataTable } from '@/components/shared/data-table';
 import { Badge } from '@/components/ui/badge';
-import { formatMobileAppVersion } from '@/lib/app-version';
+import { formatMobileAppVersion, isLatestMobileAppVersion } from '@/lib/app-version';
 
 const PAGE_SIZE = 100;
 
@@ -195,11 +195,20 @@ export default function UsersPage() {
                 key: 'client_version',
                 header: 'Mobile app',
                 className: 'hidden lg:table-cell',
-                cell: (u) => (
-                  <span className="text-sm text-foreground">
-                    {formatMobileAppVersion(u.client_app_version, u.client_platform)}
-                  </span>
-                ),
+                cell: (u) => {
+                  const version = formatMobileAppVersion(u.client_app_version, u.client_platform);
+                  const updated = isLatestMobileAppVersion(u.client_app_version, u.client_platform);
+                  return (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm text-foreground">{version}</span>
+                      {updated ? (
+                        <Badge variant="success" className="text-[10px]">
+                          Updated
+                        </Badge>
+                      ) : null}
+                    </div>
+                  );
+                },
               },
               {
                 key: 'contact',

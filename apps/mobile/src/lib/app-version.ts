@@ -10,3 +10,10 @@ export function formatMobileAppVersionForDisplay(
   if (platform !== 'mobile' || !version?.trim()) return '—';
   return version.replace(/^ProAssist\./i, '');
 }
+
+export function isLatestMobileAppVersion(
+  version?: string | null,
+  platform?: 'mobile' | 'web' | null,
+): boolean {
+  return platform === 'mobile' && version?.trim() === APP_VERSION_LABEL;
+}

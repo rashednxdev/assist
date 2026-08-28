@@ -9,7 +9,7 @@ import type {
   LiveStreamSlide,
   UpdateLiveStreamDto,
 } from '@ibas/shared-types';
-import { cleanLiveStreamSlides } from '@ibas/shared-types';
+import { cleanLiveStreamSlides, PAID_LIVE_CLASS_UNPAID_MESSAGE } from '@ibas/shared-types';
 import { LiveStream } from './models/LiveStream.model.js';
 import { LiveStreamInvite } from './models/LiveStreamInvite.model.js';
 import { LiveStreamGuest } from './models/LiveStreamGuest.model.js';
@@ -22,6 +22,31 @@ function isPlatformAdmin(user: { is_super_admin?: boolean; user_type?: string })
   return Boolean(
     user.is_super_admin || user.user_type === 'system_admin' || user.user_type === 'admin',
   );
+}
+
+function isPaidClass(doc: { access_type?: string }) {
+  return doc.access_type === 'paid';
+}
+
+async function userHasPaid(user: { id: string; is_super_admin?: boolean; user_type?: string }) {
+  if (isPlatformAdmin(user)) return true;
+  const u = await User.findById(user.id).select('amount_received');
+  return Number(u?.amount_received ?? 0) > 0;
+}
+
+function paymentAccessFor(
+  doc: { access_type?: string; host_user_id: unknown },
+  user: { id: string; is_super_admin?: boolean; user_type?: string },
+  hasPaid: boolean,
+) {
+  if (!isPaidClass(doc)) return { payment_blocked: false as const };
+  if (isPlatformAdmin(user)) return { payment_blocked: false as const };
+  if (user.id === String(doc.host_user_id)) return { payment_blocked: false as const };
+  if (hasPaid) return { payment_blocked: false as const };
+  return {
+    payment_blocked: true as const,
+    payment_required_message: PAID_LIVE_CLASS_UNPAID_MESSAGE,
+  };
 }
 
 function channelForId(id: string) {
@@ -135,6 +160,7 @@ function serializeBase(doc: InstanceType<typeof LiveStream>, includeSlides = tru
     is_previous: isPreviousClass(doc),
     slide_count: slides.length,
     allow_guest_messages: Boolean(doc.allow_guest_messages),
+    access_type: doc.access_type === 'paid' ? 'paid' : 'free',
     ...(includeSlides ? { slides } : {}),
   };
 }
@@ -158,12 +184,15 @@ export async function listLiveStreamsForUser(
     hosts.map((h) => [String(h._id), h.full_name_bn?.trim() || h.full_name_en]),
   );
 
+  const hasPaid = await userHasPaid(user);
   const result: LiveStreamListItem[] = [];
   for (const doc of items) {
     const perm = await permissionFor(String(doc._id), user.id, String(doc.host_user_id), user);
     const previous = isPreviousClass(doc);
     const slides = serializeSlides(doc.slides);
-    const viewPresentation = canViewPresentation(doc, user, perm.permission_status);
+    const payment = paymentAccessFor(doc, user, hasPaid);
+    const viewPresentation =
+      !payment.payment_blocked && canViewPresentation(doc, user, perm.permission_status);
     result.push({
       id: String(doc._id),
       topic: doc.topic,
@@ -173,11 +202,16 @@ export async function listLiveStreamsForUser(
       host_user_id: String(doc.host_user_id),
       host_name: hostName.get(String(doc.host_user_id)),
       permission_status: perm.permission_status,
-      can_join: perm.can_join && doc.status === 'live',
+      can_join: perm.can_join && doc.status === 'live' && !payment.payment_blocked,
       can_host: perm.can_host,
       is_previous: previous,
       slide_count: slides.length,
       allow_guest_messages: Boolean(doc.allow_guest_messages),
+      access_type: doc.access_type === 'paid' ? 'paid' : 'free',
+      payment_blocked: payment.payment_blocked,
+      ...(payment.payment_blocked
+        ? { payment_required_message: payment.payment_required_message }
+        : {}),
       can_view_presentation: viewPresentation,
       created_at: doc.created_at.toISOString(),
       updated_at: doc.updated_at.toISOString(),
@@ -196,7 +230,10 @@ export async function getLiveStreamForUser(
   const perm = await permissionFor(String(doc._id), user.id, String(doc.host_user_id), user);
   const inviteCount = await LiveStreamInvite.countDocuments({ live_stream_id: doc._id });
   const slides = serializeSlides(doc.slides);
-  const viewPresentation = canViewPresentation(doc, user, perm.permission_status);
+  const hasPaid = await userHasPaid(user);
+  const payment = paymentAccessFor(doc, user, hasPaid);
+  const viewPresentation =
+    !payment.payment_blocked && canViewPresentation(doc, user, perm.permission_status);
   return {
     ...serializeBase(doc, false),
     slides: viewPresentation ? slides : [],
@@ -205,8 +242,12 @@ export async function getLiveStreamForUser(
     host_name: host ? host.full_name_bn?.trim() || host.full_name_en : undefined,
     invite_count: inviteCount,
     permission_status: perm.permission_status,
-    can_join: perm.can_join && doc.status === 'live',
+    can_join: perm.can_join && doc.status === 'live' && !payment.payment_blocked,
     can_host: perm.can_host,
+    payment_blocked: payment.payment_blocked,
+    ...(payment.payment_blocked
+      ? { payment_required_message: payment.payment_required_message }
+      : {}),
   };
 }
 
@@ -276,6 +317,7 @@ export async function listHostingLiveStreams(user: {
       is_previous: previous,
       slide_count: slides.length,
       allow_guest_messages: Boolean(doc.allow_guest_messages),
+      access_type: doc.access_type === 'paid' ? 'paid' : 'free',
       can_view_presentation: true,
       created_at: doc.created_at.toISOString(),
       updated_at: doc.updated_at.toISOString(),
@@ -309,6 +351,7 @@ export async function createLiveStream(dto: CreateLiveStreamDto, actorId: string
     created_by: actorId,
     is_active: true,
     slides: dto.slides ? serializeSlides(dto.slides) : [],
+    access_type: dto.access_type === 'paid' ? 'paid' : 'free',
   });
 
   if (dto.invite_user_ids?.length) {
@@ -333,6 +376,9 @@ export async function updateLiveStream(id: string, dto: UpdateLiveStreamDto) {
     const hostUser = await User.findOne({ _id: dto.host_user_id, status: 'active' }).select('_id');
     if (!hostUser) throw badRequest('Host user not found or inactive.');
     doc.host_user_id = hostUser._id as typeof doc.host_user_id;
+  }
+  if (dto.access_type !== undefined) {
+    doc.access_type = dto.access_type === 'paid' ? 'paid' : 'free';
   }
   if (dto.status !== undefined) {
     doc.status = dto.status;
@@ -476,6 +522,12 @@ export async function joinLiveStream(
   const perm = await permissionFor(String(doc._id), user.id, String(doc.host_user_id), user);
   if (!perm.can_join) {
     throw forbidden('You are not permitted to join this live session. Ask an admin for access.');
+  }
+
+  const hasPaid = await userHasPaid(user);
+  const payment = paymentAccessFor(doc, user, hasPaid);
+  if (payment.payment_blocked) {
+    throw forbidden(payment.payment_required_message ?? PAID_LIVE_CLASS_UNPAID_MESSAGE);
   }
 
   const wantsHost = Boolean(opts?.as_host);

@@ -40,6 +40,9 @@ interface SessionDetail {
   slide_count?: number;
   allow_guest_messages?: boolean;
   can_view_presentation?: boolean;
+  access_type?: 'free' | 'paid';
+  payment_blocked?: boolean;
+  payment_required_message?: string;
 }
 
 interface JoinPayload {
@@ -269,6 +272,16 @@ export default function LiveStreamWatchPage() {
       />
       {error ? <Alert variant="error">{error}</Alert> : null}
 
+      {session.payment_blocked ? (
+        <Alert variant="warning" className="border-amber-200 bg-amber-50 text-amber-950">
+          <p className="text-base font-bold">Paid class — payment required</p>
+          <p className="mt-2 text-sm leading-relaxed">
+            {session.payment_required_message ??
+              'This Live Class only for Paid User. You are unpaid Mode. Pay to Enjoy Live Class.'}
+          </p>
+        </Alert>
+      ) : null}
+
       <div className={`rounded-2xl border p-4 ${perm.tone}`}>
         <div className="text-base font-bold">{perm.title}</div>
         <p className="mt-1 text-sm opacity-90">{perm.body}</p>
@@ -311,6 +324,7 @@ export default function LiveStreamWatchPage() {
                 disabled={
                   busy ||
                   !session.can_join ||
+                  session.payment_blocked ||
                   session.permission_status === 'not_permitted' ||
                   session.status === 'paused' ||
                   session.status === 'ended' ||
@@ -322,7 +336,9 @@ export default function LiveStreamWatchPage() {
                   ? 'Joining…'
                   : session.permission_status === 'not_permitted'
                     ? 'Join locked'
-                    : session.status === 'paused'
+                    : session.payment_blocked
+                      ? 'Payment required'
+                      : session.status === 'paused'
                       ? 'Waiting for resume'
                       : session.status === 'ended'
                         ? 'Session ended'

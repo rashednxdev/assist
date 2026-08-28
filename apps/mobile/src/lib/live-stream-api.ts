@@ -22,6 +22,9 @@ export interface LiveStreamListItem {
   allow_guest_messages?: boolean;
   /** Admins/hosts: always; invitees: after class ends. */
   can_view_presentation?: boolean;
+  access_type?: 'free' | 'paid';
+  payment_blocked?: boolean;
+  payment_required_message?: string;
 }
 
 export async function fetchLiveStreams() {

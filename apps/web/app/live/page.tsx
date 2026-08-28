@@ -21,6 +21,7 @@ interface LiveRow {
   can_join: boolean;
   is_previous?: boolean;
   slide_count?: number;
+  access_type?: 'free' | 'paid';
 }
 
 function permissionLabel(status: LivePermissionStatus) {
@@ -54,6 +55,15 @@ function ClassCard({ item, previous }: { item: LiveRow; previous?: boolean }) {
             <div className="flex flex-wrap gap-2 pt-1">
               <span className="rounded-full border px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">
                 {previous ? 'Previous' : item.status}
+              </span>
+              <span
+                className={`rounded-full border px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${
+                  item.access_type === 'paid'
+                    ? 'border-amber-200 bg-amber-50 text-amber-800'
+                    : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                }`}
+              >
+                {item.access_type === 'paid' ? 'Paid' : 'Free'}
               </span>
               {!previous ? (
                 <span

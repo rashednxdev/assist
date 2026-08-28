@@ -446,6 +446,16 @@ export default function LiveStreamDetailScreen() {
         </Text>
       </View>
 
+      {session.payment_blocked ? (
+        <View style={[styles.permCard, { backgroundColor: '#fffbeb', borderColor: '#fcd34d' }]}>
+          <Text style={[styles.permTitle, { color: '#92400e' }]}>Paid class — payment required</Text>
+          <Text style={[styles.permBody, { color: '#92400e' }]}>
+            {session.payment_required_message ??
+              'This Live Class only for Paid User. You are unpaid Mode. Pay to Enjoy Live Class.'}
+          </Text>
+        </View>
+      ) : null}
+
       {session.status === 'paused' ? (
         <View style={[styles.permCard, { backgroundColor: '#fff7ed', borderColor: '#fed7aa' }]}>
           <Text style={[styles.permTitle, { color: '#9a3412' }]}>Class paused</Text>
@@ -496,6 +506,7 @@ export default function LiveStreamDetailScreen() {
           styles.joinBtn,
           (busy ||
             !session.can_join ||
+            session.payment_blocked ||
             session.permission_status === 'not_permitted' ||
             session.status === 'paused' ||
             session.status === 'ended') &&
@@ -504,6 +515,7 @@ export default function LiveStreamDetailScreen() {
         disabled={
           busy ||
           !session.can_join ||
+          session.payment_blocked ||
           session.permission_status === 'not_permitted' ||
           session.status === 'paused' ||
           session.status === 'ended'
@@ -516,7 +528,9 @@ export default function LiveStreamDetailScreen() {
           <Text style={styles.joinBtnText}>
             {session.permission_status === 'not_permitted'
               ? 'Join locked'
-              : session.status === 'paused'
+              : session.payment_blocked
+                ? 'Payment required'
+                : session.status === 'paused'
                 ? 'Waiting for resume'
                 : session.status === 'ended'
                   ? 'Session ended'

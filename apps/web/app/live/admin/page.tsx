@@ -23,6 +23,7 @@ interface LiveRow {
   status: string;
   invite_count?: number;
   host_name?: string;
+  access_type?: 'free' | 'paid';
 }
 
 function formatWhen(iso: string) {
@@ -49,6 +50,7 @@ export default function LiveStreamAdminPage() {
   const [topic, setTopic] = useState('');
   const [details, setDetails] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
+  const [accessType, setAccessType] = useState<'free' | 'paid'>('free');
   const [creating, setCreating] = useState(false);
   const [showMarkupHelp, setShowMarkupHelp] = useState(false);
 
@@ -83,6 +85,7 @@ export default function LiveStreamAdminPage() {
           topic: topic.trim(),
           details: details.trim() || undefined,
           scheduled_at: new Date(scheduledAt).toISOString(),
+          access_type: accessType,
         }),
       });
       setTopic('');
@@ -141,6 +144,18 @@ export default function LiveStreamAdminPage() {
               onChange={(e) => setScheduledAt(e.target.value)}
             />
           </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="live-access">Access</Label>
+            <select
+              id="live-access"
+              value={accessType}
+              onChange={(e) => setAccessType(e.target.value === 'paid' ? 'paid' : 'free')}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="free">Free — all invited users</option>
+              <option value="paid">Paid — paid users only</option>
+            </select>
+          </div>
           <div className="space-y-1.5 sm:col-span-2">
             <div className="flex items-center justify-between gap-2">
               <Label htmlFor="live-details">Details</Label>
@@ -190,6 +205,7 @@ export default function LiveStreamAdminPage() {
                   <div className="text-sm text-slate-500">{formatWhen(item.scheduled_at)}</div>
                   <div className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-400">
                     {item.status}
+                    {item.access_type === 'paid' ? ' · Paid class' : ' · Free class'}
                     {item.host_name ? ` · Host: ${item.host_name}` : ''}
                     {typeof item.invite_count === 'number' ? ` · ${item.invite_count} invited` : ''}
                   </div>

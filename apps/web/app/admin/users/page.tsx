@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/shared/page-header';
 import { DataTable } from '@/components/shared/data-table';
 import { Badge } from '@/components/ui/badge';
+import { formatMobileAppVersion } from '@/lib/app-version';
 
 const PAGE_SIZE = 100;
 
@@ -23,6 +24,9 @@ interface UserRow {
   user_type: string;
   status: string;
   amount_received?: number;
+  client_app_version?: string | null;
+  client_platform?: 'mobile' | 'web' | null;
+  client_app_version_at?: string | null;
 }
 
 function statusVariant(status: string): 'success' | 'warning' | 'destructive' | 'secondary' {
@@ -186,6 +190,16 @@ export default function UsersPage() {
                 key: 'status',
                 header: 'Status',
                 cell: (u) => <Badge variant={statusVariant(u.status)}>{u.status}</Badge>,
+              },
+              {
+                key: 'client_version',
+                header: 'Mobile app',
+                className: 'hidden lg:table-cell',
+                cell: (u) => (
+                  <span className="text-sm text-foreground">
+                    {formatMobileAppVersion(u.client_app_version, u.client_platform)}
+                  </span>
+                ),
               },
               {
                 key: 'contact',

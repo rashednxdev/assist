@@ -8,13 +8,18 @@ import {
   subscribePlanSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  reportClientVersionSchema,
 } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
 import * as accountService from './account.service.js';
+import * as usersService from '../users/users.service.js';
 
 export async function registerHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = registerSchema.parse(req.body);
   const result = await accountService.registerUser(dto);
+  if (dto.app_version && dto.client_platform === 'mobile') {
+    await usersService.reportClientVersion(String(result.user.id), dto.app_version, dto.client_platform);
+  }
   res.status(201).json({ data: result });
 }
 
@@ -82,4 +87,10 @@ export async function getSubscriptionHandler(req: AuthRequest, res: Response): P
 export async function subscribeHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = subscribePlanSchema.parse(req.body);
   res.json({ data: await accountService.subscribeToPlan(req.user!.id, dto) });
+}
+
+export async function reportClientVersionHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = reportClientVersionSchema.parse(req.body);
+  await usersService.reportClientVersion(req.user!.id, dto.app_version, dto.client_platform);
+  res.json({ data: { ok: true } });
 }

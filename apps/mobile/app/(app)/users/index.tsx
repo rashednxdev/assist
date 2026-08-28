@@ -18,6 +18,10 @@ import { canManageUsers, fetchAdminUsers, type AdminUserRow } from '@/lib/users-
 import { openPhoneDialer, openWhatsAppToNumber } from '@/lib/contact';
 import { colors, spacing } from '@/theme';
 
+import { formatMobileAppVersionForDisplay } from '@/lib/app-version';
+
+const PAGE_SIZE = 100;
+
 function openContactActions(item: AdminUserRow) {
   if (!item.phone?.trim()) return;
   Alert.alert(item.full_name_en, item.phone, [
@@ -39,18 +43,21 @@ export default function UsersListScreen() {
   const { user } = useAuth();
   const [items, setItems] = useState<AdminUserRow[]>([]);
   const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [query, setQuery] = useState('');
   const [appliedQuery, setAppliedQuery] = useState('');
+  const [paySort, setPaySort] = useState<'paid' | 'unpaid'>('paid');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
   const allowed = canManageUsers(user);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  const load = useCallback(async (q: string) => {
+  const load = useCallback(async (q: string, p: number, sort: 'paid' | 'unpaid') => {
     setError('');
     try {
-      const res = await fetchAdminUsers({ q, page: 1, limit: 50 });
+      const res = await fetchAdminUsers({ q, page: p, limit: PAGE_SIZE, sort });
       setItems(res.data);
       setTotal(res.meta.total);
     } catch (err) {
@@ -65,14 +72,21 @@ export default function UsersListScreen() {
     useCallback(() => {
       if (!allowed) return;
       setLoading(true);
-      void load(appliedQuery);
-    }, [allowed, appliedQuery, load]),
+      void load(appliedQuery, page, paySort);
+    }, [allowed, appliedQuery, page, paySort, load]),
   );
 
-  const subtitle = useMemo(
-    () => (total > 0 ? `${items.length} of ${total} shown` : 'No users'),
-    [items.length, total],
-  );
+  const subtitle = useMemo(() => {
+    if (total <= 0) return 'No users';
+    const from = (page - 1) * PAGE_SIZE + 1;
+    const to = Math.min(page * PAGE_SIZE, total);
+    return `Showing ${from}–${to} of ${total} · page ${page}/${totalPages}`;
+  }, [page, total, totalPages]);
+
+  function applySearch() {
+    setPage(1);
+    setAppliedQuery(query.trim());
+  }
 
   if (!allowed) {
     return (
@@ -98,10 +112,10 @@ export default function UsersListScreen() {
             placeholder="Search name, email, phone..."
             placeholderTextColor={colors.textMuted}
             returnKeyType="search"
-            onSubmitEditing={() => setAppliedQuery(query.trim())}
+            onSubmitEditing={applySearch}
           />
         </View>
-        <Pressable style={styles.searchBtn} onPress={() => setAppliedQuery(query.trim())}>
+        <Pressable style={styles.searchBtn} onPress={applySearch}>
           <Text style={styles.searchBtnText}>Search</Text>
         </Pressable>
         <Pressable
@@ -110,6 +124,31 @@ export default function UsersListScreen() {
           hitSlop={8}
         >
           <Ionicons name="person-add-outline" size={20} color={colors.white} />
+        </Pressable>
+      </View>
+
+      <View style={styles.sortRow}>
+        <Pressable
+          style={[styles.sortChip, paySort === 'paid' && styles.sortChipActive]}
+          onPress={() => {
+            setPage(1);
+            setPaySort('paid');
+          }}
+        >
+          <Text style={[styles.sortChipText, paySort === 'paid' && styles.sortChipTextActive]}>
+            Paid first
+          </Text>
+        </Pressable>
+        <Pressable
+          style={[styles.sortChip, paySort === 'unpaid' && styles.sortChipActive]}
+          onPress={() => {
+            setPage(1);
+            setPaySort('unpaid');
+          }}
+        >
+          <Text style={[styles.sortChipText, paySort === 'unpaid' && styles.sortChipTextActive]}>
+            Unpaid first
+          </Text>
         </Pressable>
       </View>
 
@@ -124,48 +163,82 @@ export default function UsersListScreen() {
             refreshing={refreshing}
             onRefresh={() => {
               setRefreshing(true);
-              void load(appliedQuery);
+              void load(appliedQuery, page, paySort);
             }}
           />
         }
         ListEmptyComponent={
           <BookEmpty title="No users found" subtitle="Try a different search or add a user." />
         }
-        renderItem={({ item }) => (
-          <View style={styles.card}>
-            <Pressable
-              style={({ pressed }) => [styles.cardMain, pressed && styles.pressed]}
-              onPress={() => router.push(`/(app)/users/${item.id}` as Href)}
-            >
-              <View style={styles.iconWrap}>
-                <Ionicons name="person-outline" size={20} color="#475569" />
-              </View>
-              <View style={styles.body}>
-                <Text style={styles.title}>{item.full_name_en}</Text>
-                <Text style={styles.sub}>{item.phone || item.email}</Text>
-                <Text style={styles.amount}>
-                  Amount received: {(item.amount_received ?? 0).toLocaleString()}
-                </Text>
-                <View style={styles.badges}>
-                  <BookBadge label={item.user_type} variant="muted" />
-                  <BookBadge label={item.status} variant="muted" />
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-            </Pressable>
-            {item.phone ? (
+        ListFooterComponent={
+          total > PAGE_SIZE ? (
+            <View style={styles.pager}>
               <Pressable
-                style={({ pressed }) => [styles.dialerBtn, pressed && styles.pressed]}
-                onPress={() => openContactActions(item)}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={`Contact ${item.full_name_en}`}
+                style={[styles.pageBtn, page <= 1 && styles.pageBtnDisabled]}
+                disabled={page <= 1 || loading}
+                onPress={() => setPage((p) => Math.max(1, p - 1))}
               >
-                <Ionicons name="call-outline" size={20} color="#0369a1" />
+                <Text style={styles.pageBtnText}>Previous</Text>
               </Pressable>
-            ) : null}
-          </View>
-        )}
+              <Text style={styles.pageMeta}>
+                {page} / {totalPages}
+              </Text>
+              <Pressable
+                style={[styles.pageBtn, page >= totalPages && styles.pageBtnDisabled]}
+                disabled={page >= totalPages || loading}
+                onPress={() => setPage((p) => p + 1)}
+              >
+                <Text style={styles.pageBtnText}>Next</Text>
+              </Pressable>
+            </View>
+          ) : null
+        }
+        renderItem={({ item }) => {
+          const paid = Number(item.amount_received ?? 0) > 0;
+          return (
+            <View style={styles.card}>
+              <Pressable
+                style={({ pressed }) => [styles.cardMain, pressed && styles.pressed]}
+                onPress={() => router.push(`/(app)/users/${item.id}` as Href)}
+              >
+                <View style={styles.iconWrap}>
+                  <Ionicons name="person-outline" size={20} color="#475569" />
+                </View>
+                <View style={styles.body}>
+                  <Text style={styles.title}>{item.full_name_en}</Text>
+                  <Text style={styles.sub}>{item.phone || item.email}</Text>
+                  <View style={styles.badges}>
+                    <BookBadge
+                      label={paid ? 'Paid' : 'Unpaid'}
+                      variant={paid ? 'default' : 'warning'}
+                    />
+                    <BookBadge label={item.user_type} variant="muted" />
+                    <BookBadge label={item.status} variant="muted" />
+                  </View>
+                  <Text style={styles.amount}>
+                    Amount: {(item.amount_received ?? 0).toLocaleString()}
+                  </Text>
+                  <Text style={styles.version}>
+                    Mobile app:{' '}
+                    {formatMobileAppVersionForDisplay(item.client_app_version, item.client_platform)}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              </Pressable>
+              {item.phone ? (
+                <Pressable
+                  style={({ pressed }) => [styles.dialerBtn, pressed && styles.pressed]}
+                  onPress={() => openContactActions(item)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Contact ${item.full_name_en}`}
+                >
+                  <Ionicons name="call-outline" size={20} color="#0369a1" />
+                </Pressable>
+              ) : null}
+            </View>
+          );
+        }}
       />
     </View>
   );
@@ -207,6 +280,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  sortRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.xs,
+  },
+  sortChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  sortChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: '#fce7f3',
+  },
+  sortChipText: { fontSize: 12, fontWeight: '700', color: colors.textMuted },
+  sortChipTextActive: { color: '#9d174d' },
   meta: {
     paddingHorizontal: spacing.md,
     marginBottom: spacing.xs,
@@ -215,6 +308,27 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   list: { padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.xl },
+  pager: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  pageBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  pageBtnDisabled: { opacity: 0.45 },
+  pageBtnText: { fontSize: 13, fontWeight: '700', color: colors.text },
+  pageMeta: { fontSize: 12, fontWeight: '600', color: colors.textMuted },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -254,6 +368,7 @@ const styles = StyleSheet.create({
   body: { flex: 1, gap: 4 },
   title: { fontSize: 16, fontWeight: '700', color: colors.text },
   sub: { fontSize: 13, color: colors.textMuted },
-  amount: { fontSize: 13, fontWeight: '600', color: colors.text },
+  amount: { fontSize: 12, fontWeight: '600', color: colors.text },
+  version: { fontSize: 12, color: colors.textMuted },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
 });

@@ -11,6 +11,9 @@ export interface AdminUserRow {
   is_super_admin?: boolean;
   /** Admin-only. */
   amount_received?: number;
+  client_app_version?: string | null;
+  client_platform?: 'mobile' | 'web' | null;
+  client_app_version_at?: string | null;
 }
 
 export interface AdminUserDetail extends AdminUserRow {
@@ -90,12 +93,20 @@ export function canManageUsers(user: {
   );
 }
 
-export async function fetchAdminUsers(params?: { q?: string; page?: number; limit?: number }) {
+export async function fetchAdminUsers(params?: {
+  q?: string;
+  page?: number;
+  limit?: number;
+  sort?: 'paid' | 'unpaid';
+}) {
   const search = new URLSearchParams();
   search.set('page', String(params?.page ?? 1));
-  search.set('limit', String(params?.limit ?? 30));
+  search.set('limit', String(params?.limit ?? 100));
+  if (params?.sort) search.set('sort', params.sort);
   if (params?.q?.trim()) search.set('q', params.q.trim());
-  return apiFetch<{ data: AdminUserRow[]; meta: { total: number } }>(`/users?${search.toString()}`);
+  return apiFetch<{ data: AdminUserRow[]; meta: { total: number; page?: number; limit?: number } }>(
+    `/users?${search.toString()}`,
+  );
 }
 
 export async function fetchAdminUser(id: string) {

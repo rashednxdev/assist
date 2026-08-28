@@ -69,7 +69,7 @@ function agoraHtml(join: LiveStreamJoinPayload) {
     #player{position:absolute;inset:0;width:100%;height:100%}
     #player video{width:100%!important;height:100%!important;object-fit:contain!important;background:#020617}
     #status{
-      position:absolute;left:10px;right:10px;top:52px;z-index:2;
+      position:absolute;left:10px;right:10px;top:118px;z-index:2;
       padding:8px 12px;border-radius:10px;background:rgba(15,23,42,.72);
       font-size:12px;line-height:1.35;pointer-events:none
     }
@@ -380,33 +380,33 @@ export default function LiveStreamDetailScreen() {
             <Ionicons name="chevron-back" size={20} color="#fff" />
             <Text style={styles.leaveBtnText}>Leave</Text>
           </Pressable>
+          {allowMessages ? (
+            <View style={styles.msgBarTop}>
+              <TextInput
+                style={styles.msgInput}
+                value={msgBody}
+                onChangeText={setMsgBody}
+                placeholder="Message the host…"
+                placeholderTextColor="#94a3b8"
+                maxLength={500}
+                editable={!msgBusy}
+                returnKeyType="send"
+                onSubmitEditing={() => void handleSendMessage()}
+              />
+              <Pressable
+                style={[styles.msgSend, (msgBusy || !msgBody.trim()) && styles.msgSendDisabled]}
+                disabled={msgBusy || !msgBody.trim()}
+                onPress={() => void handleSendMessage()}
+              >
+                {msgBusy ? (
+                  <ActivityIndicator color={colors.white} size="small" />
+                ) : (
+                  <Text style={styles.msgSendText}>Send</Text>
+                )}
+              </Pressable>
+            </View>
+          ) : null}
         </View>
-        {allowMessages ? (
-          <View style={styles.msgBarAbsolute}>
-            <TextInput
-              style={styles.msgInput}
-              value={msgBody}
-              onChangeText={setMsgBody}
-              placeholder="Message the host…"
-              placeholderTextColor="#94a3b8"
-              maxLength={500}
-              editable={!msgBusy}
-              returnKeyType="send"
-              onSubmitEditing={() => void handleSendMessage()}
-            />
-            <Pressable
-              style={[styles.msgSend, (msgBusy || !msgBody.trim()) && styles.msgSendDisabled]}
-              disabled={msgBusy || !msgBody.trim()}
-              onPress={() => void handleSendMessage()}
-            >
-              {msgBusy ? (
-                <ActivityIndicator color={colors.white} size="small" />
-              ) : (
-                <Text style={styles.msgSendText}>Send</Text>
-              )}
-            </Pressable>
-          </View>
-        ) : null}
       </KeyboardAvoidingView>
     );
   }
@@ -538,6 +538,7 @@ const styles = StyleSheet.create({
     left: 12,
     right: 12,
     zIndex: 20,
+    gap: 8,
   },
   leaveBtn: {
     alignSelf: 'flex-start',
@@ -608,19 +609,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   reviewBtnText: { color: '#9d174d', fontSize: 15, fontWeight: '800' },
-  msgBarAbsolute: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
+  msgBarTop: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 8,
-    paddingBottom: Platform.OS === 'ios' ? 18 : 8,
+    borderRadius: 14,
     backgroundColor: 'rgba(15,23,42,0.88)',
-    zIndex: 20,
   },
   msgInput: {
     flex: 1,

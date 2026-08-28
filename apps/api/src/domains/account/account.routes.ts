@@ -14,6 +14,7 @@ import {
   listPlansHandler,
   getSubscriptionHandler,
   subscribeHandler,
+  reportClientVersionHandler,
 } from './account.controller.js';
 
 export const accountRouter = Router();
@@ -32,3 +33,4 @@ accountRouter.delete('/addresses/:id', asyncHandler(deleteAddressHandler));
 accountRouter.get('/subscription/plans', asyncHandler(listPlansHandler));
 accountRouter.get('/subscription', asyncHandler(getSubscriptionHandler));
 accountRouter.post('/subscription', asyncHandler(subscribeHandler));
+accountRouter.post('/client-version', asyncHandler(reportClientVersionHandler));

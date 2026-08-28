@@ -32,14 +32,21 @@ export const userSchema = z.object({
 
 export type User = z.infer<typeof userSchema>;
 
-export const loginSchema = z.object({
-  /** Email address or Bangladesh mobile number (01XXXXXXXXX). */
-  email: z.string().min(3),
-  password: z.string().min(8),
-  /** Stable client device id (UUID). Required for one-device login policy. */
-  device_id: z.string().min(8).max(128),
-  device_label: z.string().max(120).optional(),
-});
+export const loginSchema = z
+  .object({
+    /** Email address or Bangladesh mobile number (01XXXXXXXXX). */
+    email: z.string().min(3),
+    password: z.string().min(8),
+    /** Stable client device id (UUID). Required for one-device login policy. */
+    device_id: z.string().min(8).max(128),
+    device_label: z.string().max(120).optional(),
+  })
+  .merge(
+    z.object({
+      app_version: z.string().trim().min(1).max(80).optional(),
+      client_platform: z.enum(['mobile', 'web']).optional(),
+    }),
+  );
 
 export type LoginDto = z.infer<typeof loginSchema>;
 

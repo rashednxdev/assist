@@ -34,6 +34,10 @@ export interface IUser extends Document {
    */
   all_exam_subjects: boolean;
   exam_subject_ids: Types.ObjectId[];
+  /** Last reported client build (e.g. ProAssist.1.0.0.11). */
+  client_app_version?: string;
+  client_platform?: 'mobile' | 'web';
+  client_app_version_at?: Date;
   created_by: Types.ObjectId;
   created_at: Date;
   updated_at: Date;
@@ -79,6 +83,9 @@ const userSchema = new Schema<IUser>(
     amount_received: { type: Number, default: 0, min: 0 },
     all_exam_subjects: { type: Boolean, default: true },
     exam_subject_ids: { type: [Schema.Types.ObjectId], default: [], ref: 'ExamSubject' },
+    client_app_version: { type: String, maxlength: 80 },
+    client_platform: { type: String, enum: ['mobile', 'web'] },
+    client_app_version_at: { type: Date },
     created_by: { type: Schema.Types.ObjectId, required: true },
   },
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } },

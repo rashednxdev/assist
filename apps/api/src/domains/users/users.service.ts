@@ -46,6 +46,9 @@ async function serializeUser(user: InstanceType<typeof User>) {
     bound_device_id: credentials?.bound_device_id ?? null,
     bound_device_at: credentials?.bound_device_at ?? null,
     bound_device_label: credentials?.bound_device_label ?? null,
+    client_app_version: user.client_app_version ?? null,
+    client_platform: user.client_platform ?? null,
+    client_app_version_at: user.client_app_version_at ?? null,
     created_at: user.created_at,
     updated_at: user.updated_at,
   };
@@ -248,4 +251,18 @@ export async function removeWorkflowRole(userId: string, roleCode: string) {
   tag.is_active = false;
   await user.save();
   return serializeUser(user);
+}
+
+export async function reportClientVersion(
+  userId: string,
+  appVersion: string,
+  clientPlatform: 'mobile' | 'web',
+): Promise<void> {
+  if (clientPlatform !== 'mobile') return;
+  const user = await User.findById(userId);
+  if (!user) return;
+  user.client_app_version = appVersion.trim().slice(0, 80);
+  user.client_platform = 'mobile';
+  user.client_app_version_at = new Date();
+  await user.save();
 }

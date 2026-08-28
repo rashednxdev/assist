@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
@@ -71,6 +71,8 @@ export default function LiveRoomManagePage() {
   const [msgBusy, setMsgBusy] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [denied, setDenied] = useState(false);
+  const messagesListRef = useRef<HTMLUListElement>(null);
+  const prevMessageCountRef = useRef(0);
 
   const load = useCallback(async () => {
     try {
@@ -162,6 +164,21 @@ export default function LiveRoomManagePage() {
       window.clearInterval(timer);
     };
   }, [id, denied]);
+
+  const messagesNewestFirst = useMemo(
+    () =>
+      [...messages].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      ),
+    [messages],
+  );
+
+  useEffect(() => {
+    if (messages.length > prevMessageCountRef.current && messagesListRef.current) {
+      messagesListRef.current.scrollTop = 0;
+    }
+    prevMessageCountRef.current = messages.length;
+  }, [messages.length]);
 
   async function toggleGuestMessages(allow: boolean) {
     if (!id) return;
@@ -409,35 +426,38 @@ export default function LiveRoomManagePage() {
           )}
         </section>
 
-        <div className="space-y-4">
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
-            <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-300">
+        <div className="flex min-h-0 flex-col gap-4 lg:max-h-[calc(100vh-10rem)]">
+          <section className="flex min-h-0 flex-1 flex-col rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+            <h2 className="mb-2 flex shrink-0 items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-300">
               <MessageSquare className="h-4 w-4" />
               Messages
               <span className="ml-auto text-xs font-medium normal-case tracking-normal text-slate-400">
-                {messages.length} total
+                {messages.length} total · newest first
               </span>
             </h2>
             {messages.length === 0 ? (
               <p className="text-sm text-slate-400">No guest messages yet.</p>
             ) : (
-              <ul className="max-h-72 space-y-2 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-                {messages.map((m) => (
-                  <li key={m.id} className="rounded-lg bg-slate-900 px-3 py-2 text-sm">
+              <ul
+                ref={messagesListRef}
+                className="min-h-[21rem] max-h-[min(42rem,calc(100vh-14rem))] flex-1 space-y-2 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/60 p-3"
+              >
+                {messagesNewestFirst.map((m) => (
+                  <li key={m.id} className="rounded-lg bg-slate-900 px-3 py-2.5 text-sm">
                     <div className="flex items-baseline justify-between gap-2">
                       <span className="font-semibold text-slate-100">{m.from_name}</span>
                       <span className="shrink-0 text-[11px] text-slate-500">
                         {new Date(m.created_at).toLocaleTimeString()}
                       </span>
                     </div>
-                    <p className="mt-0.5 whitespace-pre-wrap text-slate-300">{m.body}</p>
+                    <p className="mt-1 whitespace-pre-wrap text-slate-300">{m.body}</p>
                   </li>
                 ))}
               </ul>
             )}
           </section>
 
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
+          <section className="shrink-0 rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
             <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-300">
               <Users className="h-4 w-4" />
               Guests

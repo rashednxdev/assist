@@ -67,6 +67,8 @@ export const registerSchema = z
     /** Binds the account to this device on first registration. */
     device_id: z.string().min(8).max(128),
     device_label: z.string().max(120).optional(),
+    app_version: z.string().trim().min(1).max(80).optional(),
+    client_platform: z.enum(['mobile', 'web']).optional(),
   })
   .refine((d) => d.password === d.confirm_password, {
     message: 'Passwords do not match',
@@ -74,6 +76,18 @@ export const registerSchema = z
   });
 
 export type RegisterDto = z.infer<typeof registerSchema>;
+
+/** Optional on login/register; also used for POST /account/client-version. */
+export const clientVersionFieldsSchema = z.object({
+  app_version: z.string().trim().min(1).max(80),
+  client_platform: z.enum(['mobile', 'web']),
+});
+
+export type ClientVersionFields = z.infer<typeof clientVersionFieldsSchema>;
+
+export const reportClientVersionSchema = clientVersionFieldsSchema;
+
+export type ReportClientVersionDto = z.infer<typeof reportClientVersionSchema>;
 
 export const otpVerifySchema = z.object({
   channel: z.enum(['email', 'phone']),

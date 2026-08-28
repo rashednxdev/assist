@@ -332,39 +332,43 @@ export default function LiveStreamWatchPage() {
               </Button>
             </div>
           ) : (
-            <AgoraLiveRoom
-              appId={join.app_id}
-              channel={join.channel}
-              token={join.token}
-              uid={join.uid}
-              role={join.role}
-              onError={setError}
-            />
-          )}
-          {join && join.role === 'audience' && session.allow_guest_messages ? (
-            <div className="space-y-2 rounded-xl border border-pink-100 bg-pink-50/50 p-3">
-              <p className="text-xs font-semibold text-pink-900">Message the host</p>
-              <div className="flex gap-2">
-                <Input
-                  value={msgBody}
-                  onChange={(e) => setMsgBody(e.target.value)}
-                  placeholder="Write a short message…"
-                  maxLength={500}
-                  disabled={msgBusy}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      void sendMessage();
-                    }
-                  }}
-                />
-                <Button disabled={msgBusy || !msgBody.trim()} onClick={() => void sendMessage()}>
-                  {msgBusy ? '…' : 'Send'}
-                </Button>
-              </div>
-              {msgHint ? <p className="text-xs text-emerald-700">{msgHint}</p> : null}
+            <div className="relative">
+              <AgoraLiveRoom
+                appId={join.app_id}
+                channel={join.channel}
+                token={join.token}
+                uid={join.uid}
+                role={join.role}
+                onError={setError}
+              />
+              {join.role === 'audience' && session.allow_guest_messages ? (
+                <div className="absolute inset-x-0 top-0 z-10 space-y-2 rounded-b-xl border-b border-pink-200/80 bg-slate-950/85 p-3 backdrop-blur-sm">
+                  <p className="text-xs font-semibold text-pink-100">Message the host</p>
+                  <div className="flex gap-2">
+                    <Input
+                      value={msgBody}
+                      onChange={(e) => setMsgBody(e.target.value)}
+                      placeholder="Write a short message…"
+                      maxLength={500}
+                      disabled={msgBusy}
+                      className="border-slate-600 bg-slate-900 text-slate-100"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          void sendMessage();
+                        }
+                      }}
+                    />
+                    <Button disabled={msgBusy || !msgBody.trim()} onClick={() => void sendMessage()}>
+                      {msgBusy ? '…' : 'Send'}
+                    </Button>
+                  </div>
+                  {msgHint ? <p className="text-xs text-emerald-300">{msgHint}</p> : null}
+                </div>
+              ) : null}
             </div>
-          ) : join && join.role === 'audience' ? (
+          )}
+          {join && join.role === 'audience' && !session.allow_guest_messages ? (
             <p className="text-xs text-muted-foreground">
               Guest messaging is off. The host can allow messages from the admin page.
             </p>

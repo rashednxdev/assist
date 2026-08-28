@@ -3,6 +3,7 @@ import { loginSchema } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
 import { login, refreshExpiresMs } from './auth.service.js';
 import { User } from '../users/models/User.model.js';
+import * as usersService from '../users/users.service.js';
 import { listModuleAccessForSession } from '../users/module-access.service.js';
 import { listStoppedModules } from '../setup/setup.service.js';
 import { serializeExamSubjectAccess } from '../users/subject-access.service.js';
@@ -12,6 +13,9 @@ import { badRequest } from '../../shared/errors/AppError.js';
 export async function loginHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = loginSchema.parse(req.body);
   const { tokens, userId } = await login(dto, req.ip);
+  if (dto.app_version && dto.client_platform === 'mobile') {
+    await usersService.reportClientVersion(userId, dto.app_version, dto.client_platform);
+  }
   const user = await User.findById(userId).select('-__v');
   if (!user) {
     throw badRequest('Invalid request');

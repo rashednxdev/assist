@@ -1,6 +1,8 @@
 import * as SecureStore from 'expo-secure-store';
 import type { AuthUser, ModuleAccessGrant, ModuleStop, RegisterDto } from '@ibas/shared-types';
 import { apiFetch, setApiAccessToken } from './api';
+import { APP_VERSION_LABEL } from './app-version';
+import { syncClientVersionIfNeeded, clearReportedClientVersion } from './client-version-sync';
 import { getDeviceLabel, getOrCreateDeviceId } from './device-id';
 
 const TOKEN_KEY = 'ibas_access_token';
@@ -63,9 +65,12 @@ export async function login(email: string, password: string) {
       password,
       device_id,
       device_label: getDeviceLabel(),
+      app_version: APP_VERSION_LABEL,
+      client_platform: 'mobile',
     }),
   });
   await persistToken(res.data.accessToken);
+  await syncClientVersionIfNeeded(res.data.user.id);
   return res.data;
 }
 
@@ -84,9 +89,12 @@ export async function register(body: Omit<RegisterDto, 'device_id' | 'device_lab
       user_type: 'applicant',
       device_id,
       device_label: getDeviceLabel(),
+      app_version: APP_VERSION_LABEL,
+      client_platform: 'mobile',
     }),
   });
   await persistToken(res.data.tokens.accessToken);
+  await syncClientVersionIfNeeded(res.data.user.id);
   return res.data;
 }
 
@@ -152,5 +160,6 @@ export async function logout() {
   } catch {
     // ignore network errors on logout
   }
+  await clearReportedClientVersion();
   await clearToken();
 }

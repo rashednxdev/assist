@@ -17,17 +17,6 @@ const { RtcRole, RtcTokenBuilder } = require('agora-token') as {
       tokenExpire: number,
       privilegeExpire: number,
     ) => string;
-    buildTokenWithUidAndPrivilege: (
-      appId: string,
-      appCertificate: string,
-      channelName: string,
-      uid: number,
-      tokenExpire: number,
-      joinChannelPrivilegeExpire: number,
-      pubAudioPrivilegeExpire: number,
-      pubVideoPrivilegeExpire: number,
-      pubDataStreamPrivilegeExpire: number,
-    ) => string;
   };
 };
 
@@ -58,6 +47,7 @@ export function getAgoraLiveVideoStatus(): {
   valid: boolean;
   uses_token: boolean;
   certificate_on_server: boolean;
+  certificate_fingerprint?: string;
   app_id_prefix?: string;
   token_mint_ok?: boolean;
   token_builder: 'buildTokenWithUid';
@@ -109,14 +99,16 @@ export function getAgoraLiveVideoStatus(): {
   let tokenMintOk = true;
   if (usesToken) {
     try {
+      const now = Math.floor(Date.now() / 1000);
+      const sampleExpire = now + 300;
       const sample = RtcTokenBuilder.buildTokenWithUid(
         appId,
         certificate,
         'health_check',
         1,
         RtcRole.PUBLISHER,
-        300,
-        300,
+        sampleExpire,
+        sampleExpire,
       );
       tokenMintOk = Boolean(sample && sample.startsWith('007'));
     } catch {
@@ -124,11 +116,14 @@ export function getAgoraLiveVideoStatus(): {
     }
   }
 
+  const certificateFingerprint = createHash('sha256').update(certificate).digest('hex').slice(0, 8);
+
   return {
     configured: true,
     valid: usesToken ? tokenMintOk : true,
     uses_token: usesToken,
     certificate_on_server: certificateOnServer,
+    certificate_fingerprint: certificateOnServer ? certificateFingerprint : undefined,
     app_id_prefix: appId.slice(0, 8),
     token_mint_ok: tokenMintOk,
     token_builder: 'buildTokenWithUid',
@@ -170,7 +165,8 @@ export function buildAgoraRtcToken(opts: {
   }
 
   const expireSeconds = opts.expireSeconds ?? AGORA_TOKEN_TTL_SECONDS;
-  const expireAt = Math.floor(Date.now() / 1000) + expireSeconds;
+  const now = Math.floor(Date.now() / 1000);
+  const expireAt = now + expireSeconds;
 
   if (!agoraUsesToken()) {
     return { appId, token: null, expireAt };
@@ -185,29 +181,16 @@ export function buildAgoraRtcToken(opts: {
 
   const rtcRole = opts.role === 'host' ? RtcRole.PUBLISHER : RtcRole.SUBSCRIBER;
   const joinUid = opts.uid > 0 ? opts.uid : 1;
-  // Token uid must match the uid passed to client.join() — mismatch causes gateway errors.
-  const token =
-    opts.role === 'host'
-      ? RtcTokenBuilder.buildTokenWithUidAndPrivilege(
-          appId,
-          certificate,
-          opts.channel,
-          joinUid,
-          expireSeconds,
-          expireSeconds,
-          expireSeconds,
-          expireSeconds,
-          expireSeconds,
-        )
-      : RtcTokenBuilder.buildTokenWithUid(
-          appId,
-          certificate,
-          opts.channel,
-          joinUid,
-          rtcRole,
-          expireSeconds,
-          expireSeconds,
-        );
+  // Agora expects privilege expiry as Unix timestamps (now + TTL), not raw second counts.
+  const token = RtcTokenBuilder.buildTokenWithUid(
+    appId,
+    certificate,
+    opts.channel,
+    joinUid,
+    rtcRole,
+    expireAt,
+    expireAt,
+  );
 
   if (!token || !token.startsWith('007')) {
     throw badRequest(

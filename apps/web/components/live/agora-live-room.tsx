@@ -11,6 +11,7 @@ import type {
   IRemoteVideoTrack,
 } from 'agora-rtc-sdk-ng';
 import { Button } from '@/components/ui/button';
+import { isGatewayJoinError } from '@/lib/agora-join-client';
 
 interface AgoraLiveRoomProps {
   appId: string;
@@ -31,23 +32,11 @@ function screenShareSupported() {
   return Boolean(navigator.mediaDevices?.getDisplayMedia) && !isMobileBrowser();
 }
 
-function isGatewayJoinError(message: string): boolean {
-  return /CAN_NOT_GET_GATEWAY_SERVER|invalid vendor key|can not find appid|dynamic use static key/i.test(
-    message,
-  );
-}
-
-function joinHelpMessage(appId: string, rawError: string): string {
-  const prefix = appId.slice(0, 8);
-  const base =
-    `Agora rejected the connection (App ID ${prefix}…). ` +
-    `Server error: ${rawError.slice(0, 120)}. `;
+function joinHelpMessage(): string {
   return (
-    base +
-    'This usually means AGORA_APP_CERTIFICATE on Render does not match the Primary Certificate for this App ID in Agora Console (same project, not a different one of your 3 projects). ' +
-    'Steps: (1) Agora Console → project with App ID 7302ee83… → Config → copy Primary Certificate. ' +
-    '(2) Paste into Render AGORA_APP_CERTIFICATE (no quotes). (3) Redeploy API. ' +
-    '(4) Test https://ibas-api.onrender.com/api/v1/health/agora-test in https://webdemo.agora.io/basicVideo/index.html — if demo fails, credentials are wrong in Agora/Render.'
+    'Live video connection failed. Redeploy API after latest fix, then open /agora-test. ' +
+    'If still failing: Agora Console → Generate Temp Token → test at webdemo.agora.io/basicVideoCall — ' +
+    'if Console token works but app token fails, tell support; if both fail, check project is Active in Agora Console or try another network (mobile hotspot).'
   );
 }
 
@@ -134,6 +123,16 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
         if (cancelled) return;
         agoraRef.current = AgoraRTC;
 
+        const numericUid = Number(uid);
+        if (!Number.isFinite(numericUid) || numericUid <= 0) {
+          throw new Error('Invalid Agora user id from server');
+        }
+        if (!token?.startsWith('007')) {
+          throw new Error(
+            'Live video token missing or invalid from API. Redeploy API with AGORA_APP_CERTIFICATE set on Render.',
+          );
+        }
+
         const client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
         clientRef.current = client;
         await client.setClientRole(role === 'host' ? 'host' : 'audience');
@@ -160,16 +159,6 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
           }
         });
 
-        const numericUid = Number(uid);
-        if (!Number.isFinite(numericUid) || numericUid <= 0) {
-          throw new Error('Invalid Agora user id from server');
-        }
-        if (!token?.startsWith('007')) {
-          throw new Error(
-            'Live video token missing or invalid from API. Redeploy API with AGORA_APP_CERTIFICATE set on Render.',
-          );
-        }
-
         await client.join(appId.trim(), channel, token, numericUid);
         if (cancelled) return;
 
@@ -183,7 +172,7 @@ export function AgoraLiveRoom({ appId, channel, token, uid, role, onError }: Ago
         setChannelReady(true);
       } catch (err) {
         const raw = err instanceof Error ? err.message : 'Could not join live session';
-        const message = isGatewayJoinError(raw) ? joinHelpMessage(appId, raw) : raw;
+        const message = isGatewayJoinError(raw) ? joinHelpMessage() : raw;
         setStatus(message);
         onError?.(message);
       }

@@ -42,6 +42,22 @@ export const liveStreamSlideSchema = z.object({
 
 export const liveStreamSlidesSchema = z.array(liveStreamSlideSchema).max(80);
 
+/** One named presentation deck — a class may have several. */
+export const liveStreamPresentationSchema = z.object({
+  title: z.string().trim().max(200).default(''),
+  slides: liveStreamSlidesSchema.default([]),
+});
+
+export const liveStreamPresentationsSchema = z.array(liveStreamPresentationSchema).max(20);
+
+/** YouTube (or similar) recording links for previous-class playback — multiple per class. */
+export const liveStreamRecordedContentSchema = z.object({
+  title: z.string().trim().max(200).default(''),
+  youtube_url: z.string().trim().url().max(500),
+});
+
+export const liveStreamRecordedContentsSchema = z.array(liveStreamRecordedContentSchema).max(20);
+
 export const createLiveStreamSchema = z.object({
   topic: z.string().trim().min(3).max(200),
   details: z.string().trim().max(5000).optional(),
@@ -50,11 +66,19 @@ export const createLiveStreamSchema = z.object({
   host_user_id: mongoId.optional(),
   /** Optional invite list at create time. */
   invite_user_ids: inviteUserIds.optional(),
+  /** @deprecated Prefer `presentations` — kept for older clients. */
   slides: liveStreamSlidesSchema.optional(),
+  presentations: liveStreamPresentationsSchema.optional(),
   /** `free` = everyone invited; `paid` = only users with payment may join/watch. */
   access_type: z.enum(LIVE_CLASS_ACCESS_TYPES).optional().default('free'),
   /** `agora` (default) or `zoom` — selects the video provider for this class. */
   video_platform: z.enum(LIVE_VIDEO_PLATFORMS).optional().default('agora'),
+  /**
+   * Zoom only: when true, meeting is created with cloud auto-record so recording
+   * starts when the host starts the live class (Zoom Business cloud recording).
+   */
+  auto_record_cloud: z.boolean().optional().default(false),
+  recorded_contents: liveStreamRecordedContentsSchema.optional(),
 });
 
 export const updateLiveStreamSchema = z.object({
@@ -64,8 +88,14 @@ export const updateLiveStreamSchema = z.object({
   status: z.enum(LIVE_STREAM_STATUSES).optional(),
   /** Reassign the class host (admin only). */
   host_user_id: mongoId.optional(),
+  /** @deprecated Prefer `presentations`. */
   slides: liveStreamSlidesSchema.optional(),
+  presentations: liveStreamPresentationsSchema.optional(),
   access_type: z.enum(LIVE_CLASS_ACCESS_TYPES).optional(),
+  /** Toggle cloud auto-record before the meeting is live (Zoom). */
+  auto_record_cloud: z.boolean().optional(),
+  /** Previous-class YouTube links (download from Zoom cloud → upload to YouTube → paste here). */
+  recorded_contents: liveStreamRecordedContentsSchema.optional(),
 });
 
 export const liveStreamInvitesSchema = z.object({
@@ -102,6 +132,8 @@ export type UpdateGuestMessagesDto = z.infer<typeof updateGuestMessagesSchema>;
 export type UpdateGuestSpeechDto = z.infer<typeof updateGuestSpeechSchema>;
 export type SendLiveStreamMessageDto = z.infer<typeof sendLiveStreamMessageSchema>;
 export type LiveStreamSlide = z.infer<typeof liveStreamSlideSchema>;
+export type LiveStreamPresentation = z.infer<typeof liveStreamPresentationSchema>;
+export type LiveStreamRecordedContent = z.infer<typeof liveStreamRecordedContentSchema>;
 
 export function cleanLiveStreamSlide(slide: LiveStreamSlide): LiveStreamSlide | null {
   const title = (slide.title ?? '').trim();
@@ -123,6 +155,99 @@ export function cleanLiveStreamSlides(slides?: LiveStreamSlide[] | null): LiveSt
   return (slides ?? [])
     .map((s) => cleanLiveStreamSlide(s))
     .filter((s): s is LiveStreamSlide => s != null);
+}
+
+export function cleanLiveStreamPresentations(
+  items?: LiveStreamPresentation[] | null,
+): LiveStreamPresentation[] {
+  return (items ?? [])
+    .map((p, index) => {
+      const slides = cleanLiveStreamSlides(p.slides);
+      if (slides.length === 0) return null;
+      const title = (p.title ?? '').trim() || `Presentation ${index + 1}`;
+      return { title, slides };
+    })
+    .filter((x): x is LiveStreamPresentation => x != null)
+    .slice(0, 20);
+}
+
+/** Flatten presentations (or legacy slides) into one slide list for counts / legacy clients. */
+export function flattenLiveStreamSlides(opts: {
+  presentations?: LiveStreamPresentation[] | null;
+  slides?: LiveStreamSlide[] | null;
+}): LiveStreamSlide[] {
+  const presentations = cleanLiveStreamPresentations(opts.presentations);
+  if (presentations.length > 0) {
+    return presentations.flatMap((p) => p.slides);
+  }
+  return cleanLiveStreamSlides(opts.slides);
+}
+
+/**
+ * Normalize storage: prefer presentations; migrate legacy flat slides into one deck.
+ */
+export function normalizeLiveStreamPresentations(opts: {
+  presentations?: LiveStreamPresentation[] | null;
+  slides?: LiveStreamSlide[] | null;
+}): LiveStreamPresentation[] {
+  const fromPresentations = cleanLiveStreamPresentations(opts.presentations);
+  if (fromPresentations.length > 0) return fromPresentations;
+  const legacy = cleanLiveStreamSlides(opts.slides);
+  if (legacy.length === 0) return [];
+  return [{ title: 'Presentation 1', slides: legacy }];
+}
+
+export function cleanLiveStreamRecordedContents(
+  items?: LiveStreamRecordedContent[] | null,
+): LiveStreamRecordedContent[] {
+  return (items ?? [])
+    .map((item) => {
+      const title = (item.title ?? '').trim();
+      const youtube_url = (item.youtube_url ?? '').trim();
+      if (!youtube_url) return null;
+      try {
+        // eslint-disable-next-line no-new
+        new URL(youtube_url);
+      } catch {
+        return null;
+      }
+      return { title, youtube_url };
+    })
+    .filter((x): x is LiveStreamRecordedContent => x != null)
+    .slice(0, 20);
+}
+
+/** Extract YouTube video id from common URL shapes for embed playback. */
+export function youtubeVideoIdFromUrl(raw: string): string | null {
+  const url = (raw ?? '').trim();
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, '');
+    if (host === 'youtu.be') {
+      const id = u.pathname.split('/').filter(Boolean)[0];
+      return id?.match(/^[\w-]{6,}$/) ? id : null;
+    }
+    if (host === 'youtube.com' || host === 'm.youtube.com' || host === 'music.youtube.com') {
+      if (u.pathname === '/watch') {
+        const id = u.searchParams.get('v');
+        return id?.match(/^[\w-]{6,}$/) ? id : null;
+      }
+      const parts = u.pathname.split('/').filter(Boolean);
+      if (parts[0] === 'embed' || parts[0] === 'shorts' || parts[0] === 'live') {
+        const id = parts[1];
+        return id?.match(/^[\w-]{6,}$/) ? id : null;
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+export function youtubeEmbedUrl(raw: string): string | null {
+  const id = youtubeVideoIdFromUrl(raw);
+  return id ? `https://www.youtube.com/embed/${id}?rel=0` : null;
 }
 
 export interface LiveStreamGuestItem {
@@ -161,6 +286,14 @@ export interface LiveStreamListItem {
   is_previous: boolean;
   slide_count: number;
   slides?: LiveStreamSlide[];
+  /** Multiple named presentation decks (preferred over flat `slides`). */
+  presentations?: LiveStreamPresentation[];
+  presentation_count?: number;
+  /** Zoom: cloud auto-record when the class goes live. */
+  auto_record_cloud?: boolean;
+  /** Previous-class YouTube recordings (one or more). */
+  recorded_contents?: LiveStreamRecordedContent[];
+  recorded_content_count?: number;
   /**
    * Presentation content may be opened.
    * Invitees: after the class is previous/ended.

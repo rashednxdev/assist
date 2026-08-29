@@ -1,11 +1,27 @@
 import mongoose, { Schema, type Document, type Types } from 'mongoose';
-import type { ComparisonTable, ExplanationProcess, LiveStreamStatus, LiveClassAccessType, LiveVideoPlatform } from '@ibas/shared-types';
+import type {
+  ComparisonTable,
+  ExplanationProcess,
+  LiveStreamStatus,
+  LiveClassAccessType,
+  LiveVideoPlatform,
+} from '@ibas/shared-types';
 
 export interface ILiveStreamSlide {
   title: string;
   context: string;
   table?: ComparisonTable;
   process?: ExplanationProcess;
+}
+
+export interface ILiveStreamPresentation {
+  title: string;
+  slides: ILiveStreamSlide[];
+}
+
+export interface ILiveStreamRecordedContent {
+  title: string;
+  youtube_url: string;
 }
 
 export interface ILiveStream extends Document {
@@ -23,6 +39,10 @@ export interface ILiveStream extends Document {
   zoom_meeting_number?: string;
   zoom_password?: string;
   zoom_join_url?: string;
+  /** When true, Zoom meeting uses cloud auto-recording. */
+  auto_record_cloud: boolean;
+  /** YouTube links for previous-class playback (after Zoom cloud → YouTube upload). */
+  recorded_contents: ILiveStreamRecordedContent[];
   host_user_id: Types.ObjectId;
   created_by: Types.ObjectId;
   is_active: boolean;
@@ -32,8 +52,12 @@ export interface ILiveStream extends Document {
   allow_guest_messages: boolean;
   /** When true, guests may unmute and speak (Zoom participant_can_unmute_self). */
   allow_guest_speech: boolean;
-  /** Published class presentation slides (title + context + optional table/process). */
+  /**
+   * @deprecated Prefer `presentations`. Kept for legacy rows; synced as flatten of presentations.
+   */
   slides: ILiveStreamSlide[];
+  /** Multiple named presentation decks. */
+  presentations: ILiveStreamPresentation[];
   /** `free` = all invitees; `paid` = only paid users may join/watch. */
   access_type: LiveClassAccessType;
   created_at: Date;
@@ -46,6 +70,22 @@ const slideSchema = new Schema(
     context: { type: String, default: '', trim: true },
     table: { type: Schema.Types.Mixed },
     process: { type: Schema.Types.Mixed },
+  },
+  { _id: false },
+);
+
+const presentationSchema = new Schema(
+  {
+    title: { type: String, default: '', trim: true },
+    slides: { type: [slideSchema], default: [] },
+  },
+  { _id: false },
+);
+
+const recordedContentSchema = new Schema(
+  {
+    title: { type: String, default: '', trim: true },
+    youtube_url: { type: String, required: true, trim: true },
   },
   { _id: false },
 );
@@ -66,6 +106,8 @@ const schema = new Schema<ILiveStream>(
     zoom_meeting_number: { type: String },
     zoom_password: { type: String },
     zoom_join_url: { type: String },
+    auto_record_cloud: { type: Boolean, default: false },
+    recorded_contents: { type: [recordedContentSchema], default: [] },
     host_user_id: { type: Schema.Types.ObjectId, required: true, ref: 'User' },
     created_by: { type: Schema.Types.ObjectId, required: true, ref: 'User' },
     is_active: { type: Boolean, default: true },
@@ -74,6 +116,7 @@ const schema = new Schema<ILiveStream>(
     allow_guest_messages: { type: Boolean, default: false },
     allow_guest_speech: { type: Boolean, default: false },
     slides: { type: [slideSchema], default: [] },
+    presentations: { type: [presentationSchema], default: [] },
     access_type: { type: String, enum: ['free', 'paid'], default: 'free' },
   },
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } },

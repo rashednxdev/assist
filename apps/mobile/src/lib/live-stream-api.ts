@@ -2,6 +2,8 @@ import { apiFetch } from './api';
 import type {
   LivePermissionStatus,
   LiveStreamJoinPayload,
+  LiveStreamPresentation,
+  LiveStreamRecordedContent,
   LiveStreamSlide,
   LiveStreamStatus,
   LiveVideoPlatform,
@@ -19,7 +21,13 @@ export interface LiveStreamListItem {
   can_join: boolean;
   is_previous?: boolean;
   slide_count?: number;
+  presentation_count?: number;
+  /** @deprecated Prefer `presentations`. */
   slides?: LiveStreamSlide[];
+  presentations?: LiveStreamPresentation[];
+  recorded_contents?: LiveStreamRecordedContent[];
+  recorded_content_count?: number;
+  auto_record_cloud?: boolean;
   invite_count?: number;
   allow_guest_messages?: boolean;
   allow_guest_speech?: boolean;

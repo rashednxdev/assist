@@ -3,22 +3,20 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { MarkupText } from '@/components/shared/markup-text';
-import { ComparisonTableView } from '@/components/questions/comparison-table-view';
-import { ProcessFlowPreview } from '@/components/books/process-flow-preview';
 import {
-  hasComparisonTableContent,
-  hasProcessContent,
   type LivePermissionStatus,
+  type LiveStreamPresentation,
   type LiveStreamSlide,
   type LiveStreamStatus,
 } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
+import { MarkupText } from '@/components/shared/markup-text';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
+import { LiveClassPresentations } from '@/components/live/live-class-presentations';
 
 const AgoraLiveRoom = dynamic(
   () => import('@/components/live/agora-live-room').then((m) => m.AgoraLiveRoom),
@@ -37,7 +35,9 @@ interface SessionDetail {
   can_host?: boolean;
   is_previous?: boolean;
   slides?: LiveStreamSlide[];
+  presentations?: LiveStreamPresentation[];
   slide_count?: number;
+  presentation_count?: number;
   allow_guest_messages?: boolean;
   can_view_presentation?: boolean;
   access_type?: 'free' | 'paid';
@@ -208,6 +208,7 @@ export default function LiveStreamWatchPage() {
   const perm = permissionCopy(session.permission_status, session.can_host);
   const isPrevious = Boolean(session.is_previous) || session.status === 'ended';
   const slides = session.slides ?? [];
+  const presentations = session.presentations ?? [];
   const canViewPresentation = Boolean(session.can_view_presentation);
   const canHost = Boolean(session.can_host);
 
@@ -227,49 +228,8 @@ export default function LiveStreamWatchPage() {
               presentation.
             </p>
           </div>
-        ) : slides.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No presentation slides published yet.</p>
         ) : (
-          <div className="space-y-8">
-            <p className="text-center text-xs font-bold uppercase tracking-wide text-pink-800">
-              Class presentation · {slides.length} slide{slides.length === 1 ? '' : 's'}
-            </p>
-            {slides.map((slide, index) => (
-              <Card key={`slide-${index}`} className="border-pink-100 shadow-sm">
-                <CardContent className="space-y-4 px-6 py-10 sm:px-10">
-                  <p className="text-center text-xs font-bold text-slate-400">
-                    {index + 1} / {slides.length}
-                  </p>
-                  {slide.title?.trim() ? (
-                    <div className="text-center text-2xl font-extrabold leading-snug text-slate-900 sm:text-3xl">
-                      <MarkupText text={slide.title} />
-                    </div>
-                  ) : null}
-                  {slide.context?.trim() ? (
-                    <div className="text-base leading-8 text-slate-800 sm:text-lg">
-                      <MarkupText text={slide.context} />
-                    </div>
-                  ) : null}
-                  {hasComparisonTableContent(slide.table) ? (
-                    <ComparisonTableView table={slide.table} label="" />
-                  ) : null}
-                  {hasProcessContent(slide.process) ? (
-                    <div className="space-y-3 rounded-xl border border-border bg-slate-50 p-4">
-                      {slide.process?.title?.trim() ? (
-                        <p className="text-lg font-bold text-slate-900">{slide.process.title}</p>
-                      ) : null}
-                      {slide.process?.details?.trim() ? (
-                        <div className="text-sm text-slate-700">
-                          <MarkupText text={slide.process.details} />
-                        </div>
-                      ) : null}
-                      <ProcessFlowPreview steps={slide.process?.steps ?? []} />
-                    </div>
-                  ) : null}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          <LiveClassPresentations presentations={presentations} slides={slides} />
         )}
       </div>
     );
@@ -406,50 +366,13 @@ export default function LiveStreamWatchPage() {
         </CardContent>
       </Card>
 
-      {canViewPresentation && slides.length > 0 ? (
+      {canViewPresentation && (presentations.length > 0 || slides.length > 0) ? (
         <div className="space-y-6">
           <PageHeader
             title="Class content (review)"
-            description="Admins can preview slides and context for upcoming sessions."
+            description="Admins can preview presentations for upcoming sessions."
           />
-          <p className="text-center text-xs font-bold uppercase tracking-wide text-pink-800">
-            {slides.length} slide{slides.length === 1 ? '' : 's'}
-          </p>
-          {slides.map((slide, index) => (
-            <Card key={`review-slide-${index}`} className="border-pink-100 shadow-sm">
-              <CardContent className="space-y-4 px-6 py-8 sm:px-10">
-                <p className="text-center text-xs font-bold text-slate-400">
-                  {index + 1} / {slides.length}
-                </p>
-                {slide.title?.trim() ? (
-                  <div className="text-center text-xl font-extrabold leading-snug text-slate-900 sm:text-2xl">
-                    <MarkupText text={slide.title} />
-                  </div>
-                ) : null}
-                {slide.context?.trim() ? (
-                  <div className="text-base leading-7 text-slate-800">
-                    <MarkupText text={slide.context} />
-                  </div>
-                ) : null}
-                {hasComparisonTableContent(slide.table) ? (
-                  <ComparisonTableView table={slide.table} label="" />
-                ) : null}
-                {hasProcessContent(slide.process) ? (
-                  <div className="space-y-3 rounded-xl border border-border bg-slate-50 p-4">
-                    {slide.process?.title?.trim() ? (
-                      <p className="text-lg font-bold text-slate-900">{slide.process.title}</p>
-                    ) : null}
-                    {slide.process?.details?.trim() ? (
-                      <div className="text-sm text-slate-700">
-                        <MarkupText text={slide.process.details} />
-                      </div>
-                    ) : null}
-                    <ProcessFlowPreview steps={slide.process?.steps ?? []} />
-                  </div>
-                ) : null}
-              </CardContent>
-            </Card>
-          ))}
+          <LiveClassPresentations presentations={presentations} slides={slides} />
         </div>
       ) : null}
     </div>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { BookError, BookLoading } from '@/components/books/BookStates';
 import { BookRichText } from '@/components/books/BookRichText';
 import { LiveClassPresentation } from '@/components/live/LiveClassPresentation';
+import { LiveClassRecordedVideos } from '@/components/live/LiveClassRecordedVideos';
 import {
   fetchLiveStream,
   joinLiveStream,
@@ -30,11 +31,14 @@ import {
   setLiveGuestCaptureBlocked,
 } from '@/lib/live-screen-capture';
 import {
-  buildZoomGuestWebViewHtml,
-  ensureAvPermissions,
+  buildZoomGuestUiLockScript,
+  ensureGuestListenPermissions,
+  ensureGuestSpeakPermissions,
+  filterZoomMediaResources,
   withZoomGuestIdentity,
   zoomGuestDisplayName,
 } from '@/lib/zoom-guest-webview';
+import { startLiveAudioSession, stopLiveAudioSession } from '@/lib/live-audio-session';
 import type { LiveStreamJoinPayload } from '@ibas/shared-types';
 import { isZoomJoinPayload } from '@ibas/shared-types';
 import { colors, spacing } from '@/theme';
@@ -82,6 +86,8 @@ export default function LiveStreamDetailScreen() {
   const [allowMessages, setAllowMessages] = useState(false);
   const [allowSpeech, setAllowSpeech] = useState(false);
   const [reviewing, setReviewing] = useState(false);
+  const [webviewReady, setWebviewReady] = useState(false);
+  const webViewRef = useRef<WebView>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -109,6 +115,7 @@ export default function LiveStreamDetailScreen() {
       void load();
       return () => {
         setJoin(null);
+        stopLiveAudioSession();
         void setLiveGuestCaptureBlocked(false);
       };
     }, [load]),
@@ -159,16 +166,56 @@ export default function LiveStreamDetailScreen() {
 
   useEffect(() => {
     if (!join) return;
+    const t = setTimeout(() => {
+      webViewRef.current?.injectJavaScript(buildZoomGuestUiLockScript(allowSpeech));
+    }, 400);
+    // Re-assert audio routing after Zoom WebRTC starts
+    const audioKick = setTimeout(() => startLiveAudioSession(), 1500);
+    const audioKick2 = setTimeout(() => startLiveAudioSession(), 4000);
+    return () => {
+      clearTimeout(t);
+      clearTimeout(audioKick);
+      clearTimeout(audioKick2);
+    };
+  }, [join, allowSpeech]);
+
+  useEffect(() => {
+    if (!join || !allowSpeech) return;
+    void ensureGuestSpeakPermissions();
+  }, [join, allowSpeech]);
+
+  useEffect(() => {
+    if (!join) {
+      setWebviewReady(false);
+      return;
+    }
+    startLiveAudioSession();
     void ScreenOrientation.unlockAsync().catch(() => {});
     return () => {
+      stopLiveAudioSession();
       void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     };
   }, [join]);
 
   const isPrevious = Boolean(session?.is_previous) || session?.status === 'ended';
+  const presentations = session?.presentations ?? [];
   const slides = session?.slides ?? [];
+  const hasSlides =
+    presentations.length > 0 || slides.length > 0 || (session?.slide_count ?? 0) > 0;
+  const recordedContents = session?.recorded_contents ?? [];
   const canViewPresentation = Boolean(session?.can_view_presentation);
-  const showPresentation = reviewing || (isPrevious && canViewPresentation);
+  const showPresentation =
+    reviewing ||
+    (isPrevious && canViewPresentation && (hasSlides || recordedContents.length > 0));
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    if (!showPresentation || canBypassLiveCaptureBlock(user)) return;
+    void setLiveGuestCaptureBlocked(true);
+    return () => {
+      void setLiveGuestCaptureBlocked(false);
+    };
+  }, [showPresentation, user?.user_type, user?.is_super_admin]);
 
   const perm = useMemo(
     () =>
@@ -180,6 +227,8 @@ export default function LiveStreamDetailScreen() {
 
   function leaveLiveRoom() {
     setJoin(null);
+    setWebviewReady(false);
+    stopLiveAudioSession();
     void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
   }
 
@@ -187,11 +236,12 @@ export default function LiveStreamDetailScreen() {
     if (!id) return;
     setBusy(true);
     try {
-      const avOk = await ensureAvPermissions();
-      if (!avOk) {
+      // Mic must be granted before WebView opens or Zoom never joins computer audio.
+      const listenOk = await ensureGuestListenPermissions();
+      if (!listenOk) {
         Alert.alert(
-          'Camera & microphone',
-          'Please allow camera and microphone access to join the live class.',
+          'Microphone required',
+          'Allow microphone so you can hear the host. You stay muted until the host allows speaking.',
         );
         return;
       }
@@ -200,6 +250,8 @@ export default function LiveStreamDetailScreen() {
         Alert.alert('Cannot join', 'This live class is not available in the app.');
         return;
       }
+      setWebviewReady(false);
+      startLiveAudioSession();
       setJoin({ ...payload, role: 'audience' });
       setAllowMessages(Boolean(payload.allow_guest_messages));
       setAllowSpeech(Boolean(payload.allow_guest_speech));
@@ -231,7 +283,6 @@ export default function LiveStreamDetailScreen() {
   if (join && isZoomJoinPayload(join)) {
     const guestName = zoomGuestDisplayName(join, user);
     const zoomUrl = withZoomGuestIdentity(join.web_client_url, guestName, join.user_email);
-    const webViewSource = { html: buildZoomGuestWebViewHtml(zoomUrl) };
 
     return (
       <KeyboardAvoidingView
@@ -239,32 +290,54 @@ export default function LiveStreamDetailScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <WebView
+          ref={webViewRef}
           originWhitelist={['*']}
           allowsInlineMediaPlayback
           mediaPlaybackRequiresUserAction={false}
-          mediaCapturePermissionGrantType="grant"
+          mediaCapturePermissionGrantType={allowSpeech ? 'grant' : 'prompt'}
           allowsFullscreenVideo
           javaScriptEnabled
           domStorageEnabled
           mixedContentMode="always"
           androidLayerType="hardware"
-          source={webViewSource}
+          source={{ uri: zoomUrl }}
           style={styles.webviewFill}
-          onPermissionRequest={(event: { nativeEvent: { grant: () => void } }) => {
-            event.nativeEvent.grant();
+          onLoadEnd={() => {
+            setWebviewReady(true);
+            startLiveAudioSession();
+            webViewRef.current?.injectJavaScript(buildZoomGuestUiLockScript(allowSpeech));
+          }}
+          onPermissionRequest={(event) => {
+            try {
+              const resources = (event.nativeEvent.resources ?? []) as string[];
+              const allowed = filterZoomMediaResources(resources, allowSpeech);
+              if (allowed.length > 0) {
+                event.nativeEvent.grant(allowed);
+              } else if (typeof (event.nativeEvent as { deny?: () => void }).deny === 'function') {
+                (event.nativeEvent as { deny: () => void }).deny();
+              }
+            } catch {
+              // ignore
+            }
           }}
         />
-        <View style={styles.topOverlay} pointerEvents="box-none">
-          <Pressable style={styles.leaveBtn} onPress={leaveLiveRoom}>
-            <Ionicons name="chevron-back" size={20} color="#fff" />
-            <Text style={styles.leaveBtnText}>Leave</Text>
+        {!webviewReady ? (
+          <View style={styles.connectingOverlay} pointerEvents="none">
+            <ActivityIndicator color="#fff" size="large" />
+          </View>
+        ) : null}
+        <View style={styles.guestChrome} pointerEvents="box-none">
+          <Pressable
+            style={styles.iconBtn}
+            onPress={leaveLiveRoom}
+            accessibilityLabel="Leave live class"
+          >
+            <Ionicons name="chevron-back" size={22} color="#fff" />
           </Pressable>
           {!allowSpeech ? (
-            <View style={styles.muteHint}>
-              <Ionicons name="mic-off-outline" size={16} color="#fde68a" />
-              <Text style={styles.muteHintText}>
-                You are muted. The host can allow speaking when ready.
-              </Text>
+            <View style={styles.iconBadge} accessibilityLabel="Listen only — mic and camera off">
+              <Ionicons name="videocam-off-outline" size={16} color="#fde68a" />
+              <Ionicons name="mic-off-outline" size={18} color="#fde68a" />
             </View>
           ) : null}
           {allowMessages ? (
@@ -273,22 +346,23 @@ export default function LiveStreamDetailScreen() {
                 style={styles.msgInput}
                 value={msgBody}
                 onChangeText={setMsgBody}
-                placeholder="Message the host…"
-                placeholderTextColor="#94a3b8"
+                placeholder="…"
+                placeholderTextColor="#64748b"
                 maxLength={500}
                 editable={!msgBusy}
                 returnKeyType="send"
                 onSubmitEditing={() => void handleSendMessage()}
               />
               <Pressable
-                style={[styles.msgSend, (msgBusy || !msgBody.trim()) && styles.msgSendDisabled]}
+                style={[styles.iconBtn, styles.msgSendIcon, (msgBusy || !msgBody.trim()) && styles.msgSendDisabled]}
                 disabled={msgBusy || !msgBody.trim()}
                 onPress={() => void handleSendMessage()}
+                accessibilityLabel="Send message"
               >
                 {msgBusy ? (
                   <ActivityIndicator color={colors.white} size="small" />
                 ) : (
-                  <Text style={styles.msgSendText}>Send</Text>
+                  <Ionicons name="send" size={18} color="#fff" />
                 )}
               </Pressable>
             </View>
@@ -300,7 +374,7 @@ export default function LiveStreamDetailScreen() {
 
   if (showPresentation) {
     return (
-      <View style={styles.root}>
+      <ScrollView style={styles.root} contentContainerStyle={styles.reviewContent}>
         {!isPrevious || reviewing ? (
           <View style={styles.reviewBar}>
             <Pressable style={styles.reviewClose} onPress={() => setReviewing(false)}>
@@ -309,8 +383,19 @@ export default function LiveStreamDetailScreen() {
             <Text style={styles.reviewHint}>Admin preview</Text>
           </View>
         ) : null}
-        <LiveClassPresentation slides={slides} classTopic={session.topic} />
-      </View>
+        {recordedContents.length > 0 ? (
+          <View style={styles.recordedBlock}>
+            <LiveClassRecordedVideos items={recordedContents} classTopic={session.topic} />
+          </View>
+        ) : null}
+        {hasSlides ? (
+          <LiveClassPresentation
+            presentations={presentations}
+            slides={slides}
+            classTopic={recordedContents.length ? undefined : session.topic}
+          />
+        ) : null}
+      </ScrollView>
     );
   }
 
@@ -359,31 +444,49 @@ export default function LiveStreamDetailScreen() {
         </View>
       ) : null}
 
-      {canViewPresentation && (session.slide_count ?? slides.length) > 0 ? (
+      {canViewPresentation &&
+      ((session.slide_count ?? slides.length) > 0 ||
+        (session.presentation_count ?? presentations.length) > 0 ||
+        (session.recorded_content_count ?? recordedContents.length) > 0) ? (
         <View style={styles.detailsCard}>
           <Text style={styles.detailsLabel}>
-            {isPrevious ? 'Presentation' : 'Class content (review)'}
+            {isPrevious ? 'Class recordings & slides' : 'Class content (review)'}
           </Text>
           <Text style={styles.detailsText}>
-            {session.slide_count ?? slides.length} slide
-            {(session.slide_count ?? slides.length) === 1 ? '' : 's'}
+            {(session.recorded_content_count ?? recordedContents.length) > 0
+              ? `${session.recorded_content_count ?? recordedContents.length} recorded video${
+                  (session.recorded_content_count ?? recordedContents.length) === 1 ? '' : 's'
+                }`
+              : null}
+            {(session.recorded_content_count ?? recordedContents.length) > 0 &&
+            ((session.presentation_count ?? presentations.length) > 0 ||
+              (session.slide_count ?? slides.length) > 0)
+              ? ' · '
+              : ''}
+            {(session.presentation_count ?? presentations.length) > 1
+              ? `${session.presentation_count ?? presentations.length} presentations`
+              : (session.slide_count ?? slides.length) > 0
+                ? `${session.slide_count ?? slides.length} slide${
+                    (session.slide_count ?? slides.length) === 1 ? '' : 's'
+                  }`
+                : null}
             {isPrevious
-              ? ' published for this class.'
+              ? ' for this class.'
               : ' — open anytime to review before or during the session.'}
           </Text>
           {!isPrevious ? (
             <Pressable style={styles.reviewBtn} onPress={() => setReviewing(true)}>
-              <Text style={styles.reviewBtnText}>Review presentation</Text>
+              <Text style={styles.reviewBtnText}>Review class content</Text>
             </Pressable>
           ) : null}
         </View>
-      ) : (session.slide_count ?? 0) > 0 && !canViewPresentation ? (
+      ) : (session.slide_count ?? 0) > 0 ||
+        (session.presentation_count ?? 0) > 0 ||
+        (session.recorded_content_count ?? 0) > 0 ? (
         <View style={styles.detailsCard}>
-          <Text style={styles.detailsLabel}>Presentation ready</Text>
+          <Text style={styles.detailsLabel}>Content ready</Text>
           <Text style={styles.detailsText}>
-            {session.slide_count} slide
-            {session.slide_count === 1 ? '' : 's'} will open here after the class ends (for invited
-            users).
+            Recordings and slides will open here after the class ends (for permitted users).
           </Text>
         </View>
       ) : null}
@@ -431,37 +534,46 @@ export default function LiveStreamDetailScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
+  reviewContent: { paddingBottom: spacing.xl, gap: spacing.md },
+  recordedBlock: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
   liveRoot: { flex: 1, backgroundColor: '#020617' },
   webviewFill: { ...StyleSheet.absoluteFillObject, backgroundColor: '#020617' },
-  topOverlay: {
+  connectingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#020617',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  guestChrome: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 48 : 12,
+    top: Platform.OS === 'ios' ? 88 : 64,
     left: 12,
     right: 12,
     zIndex: 20,
-    gap: 8,
-  },
-  leaveBtn: {
-    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    gap: 8,
+  },
+  iconBtn: {
+    width: 40,
+    height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(15,23,42,0.78)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15,23,42,0.72)',
   },
-  leaveBtnText: { color: '#fff', fontWeight: '800', fontSize: 14 },
-  muteHint: {
+  iconBadge: {
+    minWidth: 52,
+    height: 36,
+    paddingHorizontal: 8,
+    borderRadius: 18,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 14,
-    backgroundColor: 'rgba(120,53,15,0.88)',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(120,53,15,0.75)',
   },
-  muteHintText: { flex: 1, color: '#fde68a', fontSize: 12, fontWeight: '700', lineHeight: 17 },
   content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xl },
   topic: { fontSize: 22, fontWeight: '800', color: colors.text },
   meta: { fontSize: 13, color: colors.textMuted, marginTop: -4 },
@@ -521,13 +633,14 @@ const styles = StyleSheet.create({
   },
   reviewBtnText: { color: '#9d174d', fontSize: 15, fontWeight: '800' },
   msgBarTop: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 14,
-    backgroundColor: 'rgba(15,23,42,0.88)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 22,
+    backgroundColor: 'rgba(15,23,42,0.72)',
   },
   msgInput: {
     flex: 1,
@@ -542,14 +655,11 @@ const styles = StyleSheet.create({
     color: '#f8fafc',
     backgroundColor: '#0f172a',
   },
-  msgSend: {
-    height: 42,
-    paddingHorizontal: 14,
-    borderRadius: 12,
+  msgSendIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: '#be185d',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   msgSendDisabled: { opacity: 0.45 },
-  msgSendText: { color: colors.white, fontWeight: '800', fontSize: 14 },
 });

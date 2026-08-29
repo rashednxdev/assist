@@ -62,6 +62,8 @@ export async function createZoomMeeting(opts: {
   topic: string;
   startTime: Date;
   durationMinutes?: number;
+  /** Zoom Business cloud auto-record when host starts the meeting. */
+  autoRecordCloud?: boolean;
 }): Promise<ZoomMeetingCreated> {
   const token = await getAccessToken();
   const body = {
@@ -72,14 +74,18 @@ export async function createZoomMeeting(opts: {
     timezone: 'UTC',
     settings: {
       host_video: true,
-      participant_video: true,
+      /** Guests join without video; host relay only until speech is allowed. */
+      participant_video: false,
       join_before_host: false,
       mute_upon_entry: true,
       waiting_room: false,
       audio: 'both',
-      auto_recording: 'none',
+      auto_recording: opts.autoRecordCloud ? 'cloud' : 'none',
       participant_can_unmute_self: false,
       allow_participants_to_rename: false,
+      allow_host_control_participant_mute_state: true,
+      /** Guests see only host video + shared content — not other guests. */
+      focus_mode: true,
     },
   };
   const res = await fetch('https://api.zoom.us/v2/users/me/meetings', {
@@ -110,9 +116,16 @@ export async function createZoomMeeting(opts: {
   };
 }
 
+function zoomBase64Utf8(value: string): string {
+  return Buffer.from(value.trim(), 'utf8').toString('base64');
+}
+
 /**
  * Zoom Web Client URLs — work with Server-to-Server OAuth only.
  * Full Zoom UI: two-way AV + screen share (no Meeting SDK JWT).
+ *
+ * Guest URLs use prefer=1 + base64 `un` so VoIP audio connects immediately
+ * (closest Web Client equivalent to Meeting SDK no_disconnect_audio).
  */
 export function buildZoomWebClientUrl(opts: {
   meetingNumber: string;
@@ -124,7 +137,7 @@ export function buildZoomWebClientUrl(opts: {
 }): string {
   const mn = String(opts.meetingNumber).replace(/\s+/g, '');
   const params = new URLSearchParams();
-  if (opts.userName?.trim()) params.set('uname', opts.userName.trim());
+  if (opts.userName?.trim()) params.set('un', zoomBase64Utf8(opts.userName));
   if (opts.userEmail?.trim()) params.set('email', opts.userEmail.trim());
 
   if (opts.role === 'host') {
@@ -132,6 +145,7 @@ export function buildZoomWebClientUrl(opts: {
     const qs = params.toString();
     return `https://zoom.us/wc/${mn}/start${qs ? `?${qs}` : ''}`;
   }
+  params.set('prefer', '1');
   if (opts.password) params.set('pwd', opts.password);
   const qs = params.toString();
   return `https://zoom.us/wc/join/${mn}${qs ? `?${qs}` : ''}`;
@@ -186,7 +200,7 @@ export async function fetchZoomZakToken(): Promise<string> {
   return data.token;
 }
 
-/** Host toggle: allow or block guests from unmuting themselves in Zoom. */
+/** Host toggle: guest listen-only vs allowed to speak (mic) in Zoom. */
 export async function updateZoomGuestUnmuteAllowed(
   meetingNumber: string,
   allow: boolean,
@@ -202,11 +216,67 @@ export async function updateZoomGuestUnmuteAllowed(
     body: JSON.stringify({
       settings: {
         participant_can_unmute_self: allow,
+        allow_host_control_participant_mute_state: true,
+        mute_upon_entry: !allow,
+        /** Keep cameras off on join; guests may start video only after host allows speak. */
+        participant_video: false,
+        focus_mode: true,
       },
     }),
   });
   if (!res.ok) {
     const text = await res.text();
     throw badRequest(`Zoom update meeting failed (${res.status}): ${text.slice(0, 240)}`);
+  }
+}
+
+/** Ensure Focus Mode so attendees only see host + shared content. */
+export async function ensureZoomFocusMode(meetingNumber: string): Promise<void> {
+  const token = await getAccessToken();
+  const mn = String(meetingNumber).replace(/\s+/g, '');
+  const res = await fetch(`https://api.zoom.us/v2/meetings/${mn}`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      settings: {
+        focus_mode: true,
+        participant_video: false,
+        mute_upon_entry: true,
+        participant_can_unmute_self: false,
+      },
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    // Non-fatal for start — account may lack Focus Mode entitlement
+    console.warn(`Zoom focus_mode update failed (${res.status}): ${text.slice(0, 200)}`);
+  }
+}
+
+/** Set Zoom meeting auto cloud recording on/off (Business plan). */
+export async function ensureZoomCloudRecording(
+  meetingNumber: string,
+  enabled: boolean,
+): Promise<void> {
+  const token = await getAccessToken();
+  const mn = String(meetingNumber).replace(/\s+/g, '');
+  const res = await fetch(`https://api.zoom.us/v2/meetings/${mn}`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      settings: {
+        auto_recording: enabled ? 'cloud' : 'none',
+      },
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    console.warn(`Zoom auto_recording update failed (${res.status}): ${text.slice(0, 200)}`);
   }
 }

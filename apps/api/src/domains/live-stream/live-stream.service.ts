@@ -11,7 +11,7 @@ import type {
   LiveVideoPlatform,
   UpdateLiveStreamDto,
 } from '@ibas/shared-types';
-import { cleanLiveStreamSlides, PAID_LIVE_CLASS_UNPAID_MESSAGE } from '@ibas/shared-types';
+import { cleanLiveStreamSlides, PAID_LIVE_CLASS_UNPAID_MESSAGE, cleanLiveStreamRecordedContents, normalizeLiveStreamPresentations, flattenLiveStreamSlides } from '@ibas/shared-types';
 import { LiveStream } from './models/LiveStream.model.js';
 import { LiveStreamInvite } from './models/LiveStreamInvite.model.js';
 import { LiveStreamGuest } from './models/LiveStreamGuest.model.js';
@@ -22,6 +22,8 @@ import {
   buildZoomSdkSignature,
   buildZoomWebClientUrl,
   createZoomMeeting,
+  ensureZoomCloudRecording,
+  ensureZoomFocusMode,
   fetchZoomZakToken,
   updateZoomGuestUnmuteAllowed,
   zoomConfigured,
@@ -83,12 +85,24 @@ async function ensureZoomMeeting(doc: InstanceType<typeof LiveStream>) {
   const meeting = await createZoomMeeting({
     topic: doc.topic,
     startTime: doc.scheduled_at,
+    autoRecordCloud: Boolean(doc.auto_record_cloud),
   });
   doc.zoom_meeting_id = meeting.meeting_id;
   doc.zoom_meeting_number = meeting.meeting_number;
   doc.zoom_password = meeting.password;
   doc.zoom_join_url = meeting.join_url;
   await doc.save();
+}
+
+function serializeRecordedContents(
+  items: Array<{ title?: string; youtube_url?: string }> | undefined | null,
+) {
+  return cleanLiveStreamRecordedContents(
+    (items ?? []).map((i) => ({
+      title: i.title ?? '',
+      youtube_url: i.youtube_url ?? '',
+    })),
+  );
 }
 
 function startOfTodayMs() {
@@ -135,6 +149,39 @@ function serializeSlides(
       process: s.process,
     })),
   );
+}
+
+function serializePresentations(doc: {
+  presentations?: Array<{ title?: string; slides?: unknown[] }>;
+  slides?: unknown[];
+}) {
+  return normalizeLiveStreamPresentations({
+    presentations: (doc.presentations ?? []).map((p) => ({
+      title: String(p.title ?? ''),
+      slides: serializeSlides(p.slides as Parameters<typeof serializeSlides>[0]),
+    })),
+    slides: serializeSlides(doc.slides as Parameters<typeof serializeSlides>[0]),
+  });
+}
+
+function applyPresentationsToDoc(
+  doc: InstanceType<typeof LiveStream>,
+  presentationsInput?: Array<{ title?: string; slides?: unknown[] }> | null,
+  slidesInput?: unknown[] | null,
+) {
+  const presentations = normalizeLiveStreamPresentations({
+    presentations: presentationsInput
+      ? presentationsInput.map((p) => ({
+          title: String(p.title ?? ''),
+          slides: serializeSlides(p.slides as Parameters<typeof serializeSlides>[0]),
+        }))
+      : undefined,
+    slides: slidesInput
+      ? serializeSlides(slidesInput as Parameters<typeof serializeSlides>[0])
+      : undefined,
+  });
+  doc.presentations = presentations;
+  doc.slides = flattenLiveStreamSlides({ presentations });
 }
 
 /** Today first (by time), then upcoming, then past. */
@@ -193,7 +240,9 @@ function liveClassAccessType(doc: { access_type?: string }): LiveClassAccessType
 }
 
 function serializeBase(doc: InstanceType<typeof LiveStream>, includeSlides = true) {
-  const slides = serializeSlides(doc.slides);
+  const presentations = serializePresentations(doc);
+  const slides = flattenLiveStreamSlides({ presentations });
+  const recorded = serializeRecordedContents(doc.recorded_contents);
   return {
     id: String(doc._id),
     topic: doc.topic,
@@ -209,10 +258,15 @@ function serializeBase(doc: InstanceType<typeof LiveStream>, includeSlides = tru
     ended_at: doc.ended_at?.toISOString(),
     is_previous: isPreviousClass(doc),
     slide_count: slides.length,
+    presentation_count: presentations.length,
     allow_guest_messages: Boolean(doc.allow_guest_messages),
     allow_guest_speech: Boolean(doc.allow_guest_speech),
     access_type: liveClassAccessType(doc),
-    ...(includeSlides ? { slides } : {}),
+    auto_record_cloud: Boolean(doc.auto_record_cloud),
+    recorded_content_count: recorded.length,
+    ...(includeSlides
+      ? { slides, presentations, recorded_contents: recorded }
+      : {}),
   };
 }
 
@@ -242,7 +296,9 @@ export async function listLiveStreamsForUser(
   for (const doc of items) {
     const perm = await permissionFor(doc, user.id, user, hasPaid);
     const previous = isPreviousClass(doc);
-    const slides = serializeSlides(doc.slides);
+    const presentations = serializePresentations(doc);
+    const slides = flattenLiveStreamSlides({ presentations });
+    const recorded = serializeRecordedContents(doc.recorded_contents);
     const payment = paymentAccessFor(doc, user, hasPaid);
     const viewPresentation =
       !payment.payment_blocked && canViewPresentation(doc, user, perm.permission_status);
@@ -260,9 +316,12 @@ export async function listLiveStreamsForUser(
       can_host: perm.can_host,
       is_previous: previous,
       slide_count: slides.length,
+      presentation_count: presentations.length,
+      recorded_content_count: recorded.length,
       allow_guest_messages: Boolean(doc.allow_guest_messages),
       allow_guest_speech: Boolean(doc.allow_guest_speech),
       access_type: liveClassAccessType(doc),
+      auto_record_cloud: Boolean(doc.auto_record_cloud),
       payment_blocked: payment.payment_blocked,
       ...(payment.payment_blocked
         ? { payment_required_message: payment.payment_required_message }
@@ -285,14 +344,20 @@ export async function getLiveStreamForUser(
   const hasPaid = await userHasPaid(user);
   const perm = await permissionFor(doc, user.id, user, hasPaid);
   const inviteCount = await LiveStreamInvite.countDocuments({ live_stream_id: doc._id });
-  const slides = serializeSlides(doc.slides);
+  const presentations = serializePresentations(doc);
+  const slides = flattenLiveStreamSlides({ presentations });
+  const recorded = serializeRecordedContents(doc.recorded_contents);
   const payment = paymentAccessFor(doc, user, hasPaid);
   const viewPresentation =
     !payment.payment_blocked && canViewPresentation(doc, user, perm.permission_status);
   return {
     ...serializeBase(doc, false),
     slides: viewPresentation ? slides : [],
+    presentations: viewPresentation ? presentations : [],
     slide_count: slides.length,
+    presentation_count: presentations.length,
+    recorded_contents: viewPresentation ? recorded : [],
+    recorded_content_count: recorded.length,
     can_view_presentation: viewPresentation,
     host_name: host ? host.full_name_bn?.trim() || host.full_name_en : undefined,
     invite_count: inviteCount,
@@ -359,7 +424,8 @@ export async function listHostingLiveStreams(
   const hostName = host ? host.full_name_bn?.trim() || host.full_name_en : undefined;
 
   const result: LiveStreamListItem[] = items.map((doc) => {
-    const slides = serializeSlides(doc.slides);
+    const presentations = serializePresentations(doc);
+    const slides = flattenLiveStreamSlides({ presentations });
     const previous = isPreviousClass(doc);
     return {
       id: String(doc._id),
@@ -375,9 +441,11 @@ export async function listHostingLiveStreams(
       can_host: true,
       is_previous: previous,
       slide_count: slides.length,
+      presentation_count: presentations.length,
       allow_guest_messages: Boolean(doc.allow_guest_messages),
       allow_guest_speech: Boolean(doc.allow_guest_speech),
       access_type: liveClassAccessType(doc),
+      auto_record_cloud: Boolean(doc.auto_record_cloud),
       can_view_presentation: true,
       created_at: doc.created_at.toISOString(),
       updated_at: doc.updated_at.toISOString(),
@@ -404,6 +472,10 @@ export async function createLiveStream(dto: CreateLiveStreamDto, actorId: string
   if (platform === 'zoom' && !zoomConfigured()) {
     throw badRequest('Zoom is not configured on the server. Set ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET.');
   }
+  const presentations = normalizeLiveStreamPresentations({
+    presentations: dto.presentations,
+    slides: dto.slides,
+  });
   const doc = await LiveStream.create({
     _id: tempId,
     topic: dto.topic,
@@ -415,9 +487,18 @@ export async function createLiveStream(dto: CreateLiveStreamDto, actorId: string
     host_user_id: hostUserId,
     created_by: actorId,
     is_active: true,
-    slides: dto.slides ? serializeSlides(dto.slides) : [],
+    presentations,
+    slides: flattenLiveStreamSlides({ presentations }),
     access_type: dto.access_type === 'paid' ? 'paid' : 'free',
+    auto_record_cloud: platform === 'zoom' ? Boolean(dto.auto_record_cloud) : false,
+    recorded_contents: dto.recorded_contents
+      ? serializeRecordedContents(dto.recorded_contents)
+      : [],
   });
+
+  if (platform === 'zoom') {
+    await ensureZoomMeeting(doc);
+  }
 
   if (dto.invite_user_ids?.length) {
     await addInvites(String(doc._id), dto.invite_user_ids, actorId);
@@ -436,7 +517,20 @@ export async function updateLiveStream(id: string, dto: UpdateLiveStreamDto) {
   if (dto.topic !== undefined) doc.topic = dto.topic;
   if (dto.details !== undefined) doc.details = dto.details ?? undefined;
   if (dto.scheduled_at !== undefined) doc.scheduled_at = dto.scheduled_at;
-  if (dto.slides !== undefined) doc.slides = serializeSlides(dto.slides);
+  if (dto.presentations !== undefined) {
+    applyPresentationsToDoc(doc, dto.presentations, undefined);
+  } else if (dto.slides !== undefined) {
+    applyPresentationsToDoc(doc, undefined, dto.slides);
+  }
+  if (dto.recorded_contents !== undefined) {
+    doc.recorded_contents = serializeRecordedContents(dto.recorded_contents);
+  }
+  if (dto.auto_record_cloud !== undefined && videoPlatformOf(doc) === 'zoom') {
+    doc.auto_record_cloud = Boolean(dto.auto_record_cloud);
+    if (doc.zoom_meeting_number) {
+      await ensureZoomCloudRecording(doc.zoom_meeting_number, doc.auto_record_cloud);
+    }
+  }
   if (dto.host_user_id !== undefined) {
     const hostUser = await User.findOne({ _id: dto.host_user_id, status: 'active' }).select('_id');
     if (!hostUser) throw badRequest('Host user not found or inactive.');
@@ -482,6 +576,12 @@ export async function startLiveStream(id: string) {
   if (!doc) throw notFound('Live session not found');
   if (videoPlatformOf(doc) === 'zoom') {
     await ensureZoomMeeting(doc);
+    if (doc.zoom_meeting_number) {
+      await ensureZoomFocusMode(doc.zoom_meeting_number);
+      if (doc.auto_record_cloud) {
+        await ensureZoomCloudRecording(doc.zoom_meeting_number, true);
+      }
+    }
   }
   return updateLiveStream(id, { status: 'live' });
 }
@@ -509,6 +609,12 @@ export async function restartLiveStream(id: string) {
   }
   if (videoPlatformOf(doc) === 'zoom') {
     await ensureZoomMeeting(doc);
+    if (doc.zoom_meeting_number) {
+      await ensureZoomFocusMode(doc.zoom_meeting_number);
+      if (doc.auto_record_cloud) {
+        await ensureZoomCloudRecording(doc.zoom_meeting_number, true);
+      }
+    }
   }
   return updateLiveStream(id, { status: 'live' });
 }

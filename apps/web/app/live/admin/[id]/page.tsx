@@ -30,6 +30,8 @@ import {
   type ComparisonTable,
   type ExplanationProcess,
   type LiveStreamSlide,
+  type LiveStreamPresentation,
+  type LiveStreamRecordedContent,
 } from '@ibas/shared-types';
 
 interface SessionDetail {
@@ -40,12 +42,15 @@ interface SessionDetail {
   status: string;
   invite_count?: number;
   slides?: LiveStreamSlide[];
+  presentations?: LiveStreamPresentation[];
   slide_count?: number;
   is_previous?: boolean;
   host_user_id?: string;
   host_name?: string;
   access_type?: 'free' | 'paid';
   video_platform?: 'agora' | 'zoom';
+  auto_record_cloud?: boolean;
+  recorded_contents?: LiveStreamRecordedContent[];
 }
 
 interface SlideDraft {
@@ -54,6 +59,18 @@ interface SlideDraft {
   context: string;
   table?: ComparisonTable;
   process?: ExplanationProcess;
+}
+
+interface PresentationDraft {
+  key: string;
+  title: string;
+  slides: SlideDraft[];
+}
+
+interface RecordedDraft {
+  key: string;
+  title: string;
+  youtube_url: string;
 }
 
 interface InviteRow {
@@ -103,7 +120,9 @@ export default function LiveStreamAdminDetailPage() {
   const [editDetails, setEditDetails] = useState('');
   const [editWhen, setEditWhen] = useState('');
   const [editAccessType, setEditAccessType] = useState<'free' | 'paid'>('free');
-  const [slides, setSlides] = useState<SlideDraft[]>([]);
+  const [autoRecordCloud, setAutoRecordCloud] = useState(false);
+  const [presentations, setPresentations] = useState<PresentationDraft[]>([]);
+  const [recorded, setRecorded] = useState<RecordedDraft[]>([]);
   const [showMarkupHelp, setShowMarkupHelp] = useState(false);
   const [paySort, setPaySort] = useState<'paid' | 'unpaid'>('paid');
   const limit = 100;
@@ -123,13 +142,31 @@ export default function LiveStreamAdminDetailPage() {
       setEditDetails(s.data.details ?? '');
       setEditWhen(toDatetimeLocal(s.data.scheduled_at));
       setEditAccessType(s.data.access_type === 'paid' ? 'paid' : 'free');
-      setSlides(
-        (s.data.slides ?? []).map((slide, i) => ({
-          key: `slide-${i}-${Date.now()}`,
-          title: slide.title ?? '',
-          context: slide.context ?? '',
-          table: slide.table,
-          process: slide.process,
+      setAutoRecordCloud(Boolean(s.data.auto_record_cloud));
+      const loadedPresentations =
+        s.data.presentations && s.data.presentations.length > 0
+          ? s.data.presentations
+          : s.data.slides && s.data.slides.length > 0
+            ? [{ title: 'Presentation 1', slides: s.data.slides }]
+            : [];
+      setPresentations(
+        loadedPresentations.map((p, pi) => ({
+          key: `pres-${pi}-${Date.now()}`,
+          title: p.title ?? `Presentation ${pi + 1}`,
+          slides: (p.slides ?? []).map((slide, i) => ({
+            key: `slide-${pi}-${i}-${Date.now()}`,
+            title: slide.title ?? '',
+            context: slide.context ?? '',
+            table: slide.table,
+            process: slide.process,
+          })),
+        })),
+      );
+      setRecorded(
+        (s.data.recorded_contents ?? []).map((item, i) => ({
+          key: `rec-${i}-${Date.now()}`,
+          title: item.title ?? '',
+          youtube_url: item.youtube_url ?? '',
         })),
       );
     } catch (err) {
@@ -179,12 +216,22 @@ export default function LiveStreamAdminDetailPage() {
           details: editDetails.trim() || null,
           scheduled_at: new Date(editWhen).toISOString(),
           access_type: editAccessType,
-          slides: slides.map((s) => ({
-            title: s.title.trim(),
-            context: s.context.trim(),
-            ...(s.table ? { table: s.table } : {}),
-            ...(s.process ? { process: s.process } : {}),
+          ...(session?.video_platform === 'zoom' ? { auto_record_cloud: autoRecordCloud } : {}),
+          presentations: presentations.map((p, i) => ({
+            title: p.title.trim() || `Presentation ${i + 1}`,
+            slides: p.slides.map((s) => ({
+              title: s.title.trim(),
+              context: s.context.trim(),
+              ...(s.table ? { table: s.table } : {}),
+              ...(s.process ? { process: s.process } : {}),
+            })),
           })),
+          recorded_contents: recorded
+            .filter((r) => r.youtube_url.trim())
+            .map((r) => ({
+              title: r.title.trim(),
+              youtube_url: r.youtube_url.trim(),
+            })),
         }),
       });
       await load();
@@ -195,34 +242,88 @@ export default function LiveStreamAdminDetailPage() {
     }
   }
 
-  function addSlide() {
-    setSlides((prev) => [
+  function addPresentation() {
+    setPresentations((prev) => [
       ...prev,
-      { key: `slide-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, title: '', context: '' },
+      {
+        key: `pres-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        title: `Presentation ${prev.length + 1}`,
+        slides: [
+          {
+            key: `slide-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            title: '',
+            context: '',
+          },
+        ],
+      },
     ]);
   }
 
-  function updateSlide(key: string, patch: Partial<Omit<SlideDraft, 'key'>>) {
-    setSlides((prev) => prev.map((s) => (s.key === key ? { ...s, ...patch } : s)));
+  function updatePresentation(presKey: string, patch: Partial<Pick<PresentationDraft, 'title'>>) {
+    setPresentations((prev) => prev.map((p) => (p.key === presKey ? { ...p, ...patch } : p)));
   }
 
-  function removeSlide(key: string) {
-    setSlides((prev) => prev.filter((s) => s.key !== key));
+  function removePresentation(presKey: string) {
+    setPresentations((prev) => prev.filter((p) => p.key !== presKey));
   }
 
-  function moveSlide(key: string, dir: -1 | 1) {
-    setSlides((prev) => {
-      const idx = prev.findIndex((s) => s.key === key);
-      if (idx < 0) return prev;
-      const next = idx + dir;
-      if (next < 0 || next >= prev.length) return prev;
-      const copy = [...prev];
-      const row = copy[idx];
-      if (!row) return prev;
-      copy.splice(idx, 1);
-      copy.splice(next, 0, row);
-      return copy;
-    });
+  function addSlide(presKey: string) {
+    setPresentations((prev) =>
+      prev.map((p) =>
+        p.key === presKey
+          ? {
+              ...p,
+              slides: [
+                ...p.slides,
+                {
+                  key: `slide-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                  title: '',
+                  context: '',
+                },
+              ],
+            }
+          : p,
+      ),
+    );
+  }
+
+  function updateSlide(presKey: string, slideKey: string, patch: Partial<Omit<SlideDraft, 'key'>>) {
+    setPresentations((prev) =>
+      prev.map((p) =>
+        p.key === presKey
+          ? {
+              ...p,
+              slides: p.slides.map((s) => (s.key === slideKey ? { ...s, ...patch } : s)),
+            }
+          : p,
+      ),
+    );
+  }
+
+  function removeSlide(presKey: string, slideKey: string) {
+    setPresentations((prev) =>
+      prev.map((p) =>
+        p.key === presKey ? { ...p, slides: p.slides.filter((s) => s.key !== slideKey) } : p,
+      ),
+    );
+  }
+
+  function moveSlide(presKey: string, slideKey: string, dir: -1 | 1) {
+    setPresentations((prev) =>
+      prev.map((p) => {
+        if (p.key !== presKey) return p;
+        const idx = p.slides.findIndex((s) => s.key === slideKey);
+        if (idx < 0) return p;
+        const next = idx + dir;
+        if (next < 0 || next >= p.slides.length) return p;
+        const copy = [...p.slides];
+        const row = copy[idx];
+        if (!row) return p;
+        copy.splice(idx, 1);
+        copy.splice(next, 0, row);
+        return { ...p, slides: copy };
+      }),
+    );
   }
 
   function toggleSelect(userId: string) {
@@ -361,6 +462,25 @@ export default function LiveStreamAdminDetailPage() {
               <option value="paid">Paid — paid users only</option>
             </select>
           </div>
+          {session.video_platform === 'zoom' ? (
+            <div className="space-y-1.5 sm:col-span-2">
+              <label className="flex items-start gap-3 rounded-lg border border-border p-3 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={autoRecordCloud}
+                  onChange={(e) => setAutoRecordCloud(e.target.checked)}
+                />
+                <span>
+                  <span className="font-semibold text-slate-900">Auto record to Zoom cloud</span>
+                  <span className="mt-0.5 block text-xs text-muted">
+                    When the host starts this live class, Zoom records to the cloud (Business plan).
+                    After class, download from Zoom, upload to YouTube, then add the link(s) below.
+                  </span>
+                </span>
+              </label>
+            </div>
+          ) : null}
           <div className="space-y-1.5 sm:col-span-2">
             <div className="flex items-center justify-between gap-2">
               <Label htmlFor="edit-details">Details</Label>
@@ -388,191 +508,323 @@ export default function LiveStreamAdminDetailPage() {
 
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
-          <CardTitle className="text-base">Class presentation slides</CardTitle>
+          <CardTitle className="text-base">Class presentations</CardTitle>
           <div className="flex items-center gap-2">
             <MarkupInstructionsButton onClick={() => setShowMarkupHelp(true)} />
-            <Button type="button" variant="outline" size="sm" disabled={busy} onClick={addSlide}>
-              Add slide
+            <Button type="button" variant="outline" size="sm" disabled={busy} onClick={addPresentation}>
+              Add presentation
             </Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted">
-            Publish title + context for each slide, plus optional comparison tables and step
-            processes (same as Books / Questions). Invited users see these as stacked pages on
-            previous classes.
+            One class can have multiple presentations (e.g. Part A, Part B). Each has its own slides
+            with optional tables and processes. Guests can switch between them on previous classes.
           </p>
-          {slides.length === 0 ? (
-            <p className="text-sm text-muted">No slides yet. Add a slide to publish class content.</p>
+          {presentations.length === 0 ? (
+            <p className="text-sm text-muted">
+              No presentations yet. Click &quot;Add presentation&quot; to start.
+            </p>
           ) : null}
-          {slides.map((slide, index) => (
+          {presentations.map((pres, pIndex) => (
             <div
-              key={slide.key}
-              className="space-y-3 rounded-xl border border-border bg-background p-4"
+              key={pres.key}
+              className="space-y-4 rounded-2xl border-2 border-pink-100 bg-pink-50/40 p-4"
             >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs font-bold uppercase tracking-wide text-muted">
-                  Slide {index + 1}
-                </span>
-                <div className="flex flex-wrap gap-1">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={busy || index === 0}
-                    onClick={() => moveSlide(slide.key, -1)}
-                  >
-                    Up
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={busy || index === slides.length - 1}
-                    onClick={() => moveSlide(slide.key, 1)}
-                  >
-                    Down
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => removeSlide(slide.key)}
-                  >
-                    Remove
-                  </Button>
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="min-w-[200px] flex-1 space-y-1.5">
+                  <Label>Presentation {pIndex + 1} title</Label>
+                  <Input
+                    value={pres.title}
+                    onChange={(e) => updatePresentation(pres.key, { title: e.target.value })}
+                    placeholder={`Presentation ${pIndex + 1}`}
+                  />
                 </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor={`slide-title-${slide.key}`}>Title</Label>
-                <Input
-                  id={`slide-title-${slide.key}`}
-                  value={slide.title}
-                  onChange={(e) => updateSlide(slide.key, { title: e.target.value })}
-                  placeholder="Slide title (markup allowed)"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor={`slide-context-${slide.key}`}>Context</Label>
-                <textarea
-                  id={`slide-context-${slide.key}`}
-                  value={slide.context}
-                  onChange={(e) => updateSlide(slide.key, { context: e.target.value })}
-                  rows={6}
-                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  placeholder="Slide context — use // /// //// /--- *bold* []"
-                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => addSlide(pres.key)}
+                >
+                  Add slide
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => removePresentation(pres.key)}
+                >
+                  Remove presentation
+                </Button>
               </div>
 
-              <div className="space-y-2 rounded-lg border border-border p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <Label className="text-xs">Comparison table (optional)</Label>
-                  {hasComparisonTableContent(slide.table) ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() => updateSlide(slide.key, { table: undefined })}
-                    >
-                      Remove table
-                    </Button>
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() => updateSlide(slide.key, { table: emptyComparisonTable(2) })}
-                    >
-                      Add table
-                    </Button>
+              {pres.slides.length === 0 ? (
+                <p className="text-sm text-muted">No slides in this presentation yet.</p>
+              ) : null}
+              {pres.slides.map((slide, index) => (
+                <div
+                  key={slide.key}
+                  className="space-y-3 rounded-xl border border-border bg-background p-4"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-bold uppercase tracking-wide text-muted">
+                      Slide {index + 1}
+                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={busy || index === 0}
+                        onClick={() => moveSlide(pres.key, slide.key, -1)}
+                      >
+                        Up
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={busy || index === pres.slides.length - 1}
+                        onClick={() => moveSlide(pres.key, slide.key, 1)}
+                      >
+                        Down
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => removeSlide(pres.key, slide.key)}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor={`slide-title-${slide.key}`}>Title</Label>
+                    <Input
+                      id={`slide-title-${slide.key}`}
+                      value={slide.title}
+                      onChange={(e) =>
+                        updateSlide(pres.key, slide.key, { title: e.target.value })
+                      }
+                      placeholder="Slide title (markup allowed)"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor={`slide-context-${slide.key}`}>Context</Label>
+                    <textarea
+                      id={`slide-context-${slide.key}`}
+                      value={slide.context}
+                      onChange={(e) =>
+                        updateSlide(pres.key, slide.key, { context: e.target.value })
+                      }
+                      rows={6}
+                      className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      placeholder="Slide context — use // /// //// /--- *bold* []"
+                    />
+                  </div>
+
+                  <div className="space-y-2 rounded-lg border border-border p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <Label className="text-xs">Comparison table (optional)</Label>
+                      {hasComparisonTableContent(slide.table) ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => updateSlide(pres.key, slide.key, { table: undefined })}
+                        >
+                          Remove table
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() =>
+                            updateSlide(pres.key, slide.key, { table: emptyComparisonTable(2) })
+                          }
+                        >
+                          Add table
+                        </Button>
+                      )}
+                    </div>
+                    {slide.table ? (
+                      <ComparisonTableEditor
+                        value={slide.table}
+                        onChange={(table) => updateSlide(pres.key, slide.key, { table })}
+                        disabled={busy}
+                      />
+                    ) : (
+                      <p className="text-xs text-muted">
+                        Add a Differences-style table under this slide.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2 rounded-lg border border-border p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <Label className="text-xs">Process steps (optional)</Label>
+                      {hasProcessContent(slide.process) || slide.process ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => updateSlide(pres.key, slide.key, { process: undefined })}
+                        >
+                          Remove process
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() =>
+                            updateSlide(pres.key, slide.key, {
+                              process: emptyExplanationProcess(),
+                            })
+                          }
+                        >
+                          Add process
+                        </Button>
+                      )}
+                    </div>
+                    {slide.process ? (
+                      <ProcessStepsEditor
+                        value={slide.process}
+                        onChange={(process) => updateSlide(pres.key, slide.key, { process })}
+                        disabled={busy}
+                      />
+                    ) : (
+                      <p className="text-xs text-muted">Add a step-by-step process under this slide.</p>
+                    )}
+                  </div>
+
+                  {(slide.title.trim() ||
+                    slide.context.trim() ||
+                    hasComparisonTableContent(slide.table) ||
+                    hasProcessContent(slide.process)) && (
+                    <div className="space-y-3 rounded-lg border border-dashed border-border bg-muted/30 p-3 text-sm">
+                      <p className="text-xs font-bold uppercase text-muted">Preview</p>
+                      {slide.title.trim() ? (
+                        <div className="text-lg font-bold text-foreground">
+                          <MarkupText text={slide.title} />
+                        </div>
+                      ) : null}
+                      {slide.context.trim() ? <MarkupText text={slide.context} /> : null}
+                      {hasComparisonTableContent(slide.table) ? (
+                        <ComparisonTableView table={slide.table} label="" />
+                      ) : null}
+                      {hasProcessContent(slide.process) ? (
+                        <div className="space-y-2">
+                          {slide.process?.title?.trim() ? (
+                            <p className="font-semibold text-foreground">{slide.process.title}</p>
+                          ) : null}
+                          {slide.process?.details?.trim() ? (
+                            <MarkupText text={slide.process.details} />
+                          ) : null}
+                          <ProcessFlowPreview steps={slide.process?.steps ?? []} />
+                        </div>
+                      ) : null}
+                    </div>
                   )}
                 </div>
-                {slide.table ? (
-                  <ComparisonTableEditor
-                    value={slide.table}
-                    onChange={(table) => updateSlide(slide.key, { table })}
-                    disabled={busy}
-                  />
-                ) : (
-                  <p className="text-xs text-muted">
-                    Add a Differences-style table under this slide (same as Questions / Books).
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-2 rounded-lg border border-border p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <Label className="text-xs">Process steps (optional)</Label>
-                  {hasProcessContent(slide.process) || slide.process ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() => updateSlide(slide.key, { process: undefined })}
-                    >
-                      Remove process
-                    </Button>
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() => updateSlide(slide.key, { process: emptyExplanationProcess() })}
-                    >
-                      Add process
-                    </Button>
-                  )}
-                </div>
-                {slide.process ? (
-                  <ProcessStepsEditor
-                    value={slide.process}
-                    onChange={(process) => updateSlide(slide.key, { process })}
-                    disabled={busy}
-                  />
-                ) : (
-                  <p className="text-xs text-muted">
-                    Add a step-by-step process under this slide (same as Books / model answers).
-                  </p>
-                )}
-              </div>
-
-              {(slide.title.trim() ||
-                slide.context.trim() ||
-                hasComparisonTableContent(slide.table) ||
-                hasProcessContent(slide.process)) && (
-                <div className="space-y-3 rounded-lg border border-dashed border-border bg-muted/30 p-3 text-sm">
-                  <p className="text-xs font-bold uppercase text-muted">Preview</p>
-                  {slide.title.trim() ? (
-                    <div className="text-lg font-bold text-foreground">
-                      <MarkupText text={slide.title} />
-                    </div>
-                  ) : null}
-                  {slide.context.trim() ? <MarkupText text={slide.context} /> : null}
-                  {hasComparisonTableContent(slide.table) ? (
-                    <ComparisonTableView table={slide.table} label="" />
-                  ) : null}
-                  {hasProcessContent(slide.process) ? (
-                    <div className="space-y-2">
-                      {slide.process?.title?.trim() ? (
-                        <p className="font-semibold text-foreground">{slide.process.title}</p>
-                      ) : null}
-                      {slide.process?.details?.trim() ? (
-                        <MarkupText text={slide.process.details} />
-                      ) : null}
-                      <ProcessFlowPreview steps={slide.process?.steps ?? []} />
-                    </div>
-                  ) : null}
-                </div>
-              )}
+              ))}
             </div>
           ))}
           <Button disabled={busy} onClick={() => void saveEdits()}>
-            Save slides &amp; class
+            Save presentations &amp; class
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
+          <CardTitle className="text-base">Recorded class videos (YouTube)</CardTitle>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={busy}
+            onClick={() =>
+              setRecorded((prev) => [
+                ...prev,
+                {
+                  key: `rec-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                  title: '',
+                  youtube_url: '',
+                },
+              ])
+            }
+          >
+            Add video
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted">
+            After the Zoom cloud recording is ready, download it, upload to YouTube, then paste one
+            or more links here. Guests play these as previous class content (screen capture blocked
+            on Android).
+          </p>
+          {recorded.length === 0 ? (
+            <p className="text-sm text-muted">No recorded videos yet. Add a YouTube link when ready.</p>
+          ) : null}
+          {recorded.map((item, index) => (
+            <div
+              key={item.key}
+              className="space-y-2 rounded-xl border border-border bg-background p-4"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-bold uppercase tracking-wide text-muted">
+                  Video {index + 1}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => setRecorded((prev) => prev.filter((r) => r.key !== item.key))}
+                >
+                  Remove
+                </Button>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Title (optional)</Label>
+                <Input
+                  value={item.title}
+                  onChange={(e) =>
+                    setRecorded((prev) =>
+                      prev.map((r) => (r.key === item.key ? { ...r, title: e.target.value } : r)),
+                    )
+                  }
+                  placeholder={`Part ${index + 1}`}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>YouTube URL</Label>
+                <Input
+                  value={item.youtube_url}
+                  onChange={(e) =>
+                    setRecorded((prev) =>
+                      prev.map((r) =>
+                        r.key === item.key ? { ...r, youtube_url: e.target.value } : r,
+                      ),
+                    )
+                  }
+                  placeholder="https://www.youtube.com/watch?v=…"
+                />
+              </div>
+            </div>
+          ))}
+          <Button disabled={busy} onClick={() => void saveEdits()}>
+            Save recorded videos
           </Button>
         </CardContent>
       </Card>

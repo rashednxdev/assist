@@ -1,7 +1,10 @@
-import { View, Text, StyleSheet, ScrollView, useWindowDimensions } from 'react-native';
+import { useMemo, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, useWindowDimensions } from 'react-native';
 import {
   hasComparisonTableContent,
   hasProcessContent,
+  normalizeLiveStreamPresentations,
+  type LiveStreamPresentation,
   type LiveStreamSlide,
 } from '@ibas/shared-types';
 import { BookRichText } from '@/components/books/BookRichText';
@@ -20,21 +23,33 @@ export function slideTypography(title: string, context: string) {
 }
 
 interface LiveClassPresentationProps {
-  slides: LiveStreamSlide[];
+  presentations?: LiveStreamPresentation[];
+  /** @deprecated Prefer `presentations`. */
+  slides?: LiveStreamSlide[];
   classTopic?: string;
 }
 
-/** Stacked presentation pages — one slide card under the next. */
-export function LiveClassPresentation({ slides, classTopic }: LiveClassPresentationProps) {
+/** One or more presentation decks — tabs when multiple. */
+export function LiveClassPresentation({
+  presentations,
+  slides,
+  classTopic,
+}: LiveClassPresentationProps) {
   const { height } = useWindowDimensions();
   const minPage = Math.max(420, Math.round(height * 0.72));
+  const decks = useMemo(
+    () => normalizeLiveStreamPresentations({ presentations, slides }),
+    [presentations, slides],
+  );
+  const [active, setActive] = useState(0);
+  const current = decks[Math.min(active, Math.max(decks.length - 1, 0))];
 
-  if (slides.length === 0) {
+  if (decks.length === 0 || !current) {
     return (
       <View style={styles.empty}>
         <Text style={styles.emptyTitle}>No presentation yet</Text>
         <Text style={styles.emptyBody}>
-          When the admin publishes class slides, they will appear here page by page.
+          When the admin publishes class presentations, they will appear here page by page.
         </Text>
       </View>
     );
@@ -48,16 +63,44 @@ export function LiveClassPresentation({ slides, classTopic }: LiveClassPresentat
     >
       {classTopic ? <Text style={styles.classTopic}>{classTopic}</Text> : null}
       <Text style={styles.deckLabel}>
-        Class presentation · {slides.length} slide{slides.length === 1 ? '' : 's'}
+        {decks.length > 1
+          ? `${decks.length} presentations`
+          : `Class presentation · ${current.slides.length} slide${
+              current.slides.length === 1 ? '' : 's'
+            }`}
       </Text>
-      {slides.map((slide, index) => {
+      {decks.length > 1 ? (
+        <View style={styles.tabs}>
+          {decks.map((deck, index) => (
+            <Pressable
+              key={`deck-${index}-${deck.title}`}
+              style={[styles.tab, index === active && styles.tabActive]}
+              onPress={() => setActive(index)}
+            >
+              <Text
+                style={[styles.tabText, index === active && styles.tabTextActive]}
+                numberOfLines={1}
+              >
+                {deck.title || `Presentation ${index + 1}`}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+      {decks.length > 1 ? (
+        <Text style={styles.activeTitle}>
+          {current.title} · {current.slides.length} slide
+          {current.slides.length === 1 ? '' : 's'}
+        </Text>
+      ) : null}
+      {current.slides.map((slide, index) => {
         const typo = slideTypography(slide.title, slide.context);
         const hasTable = hasComparisonTableContent(slide.table);
         const hasProcess = hasProcessContent(slide.process);
         return (
-          <View key={`slide-${index}`} style={[styles.page, { minHeight: minPage }]}>
+          <View key={`slide-${active}-${index}`} style={[styles.page, { minHeight: minPage }]}>
             <Text style={styles.pageIndex}>
-              {index + 1} / {slides.length}
+              {index + 1} / {current.slides.length}
             </Text>
             {slide.title?.trim() ? (
               <BookRichText
@@ -80,15 +123,8 @@ export function LiveClassPresentation({ slides, classTopic }: LiveClassPresentat
               </View>
             ) : null}
             {hasProcess ? (
-              <View style={styles.processPanel}>
-                {slide.process?.title?.trim() &&
-                slide.process.title.trim().toLowerCase() !== 'process' ? (
-                  <Text style={styles.processTitle}>{slide.process.title}</Text>
-                ) : null}
-                {slide.process?.details?.trim() ? (
-                  <BookRichText html={slide.process.details} style={styles.processDetails} />
-                ) : null}
-                <ProcessFlowPreview steps={slide.process?.steps} />
+              <View style={styles.block}>
+                <ProcessFlowPreview steps={slide.process?.steps ?? []} />
               </View>
             ) : null}
           </View>
@@ -99,86 +135,41 @@ export function LiveClassPresentation({ slides, classTopic }: LiveClassPresentat
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.background },
-  content: {
-    padding: spacing.lg,
-    paddingBottom: spacing.xl * 2,
-    gap: spacing.lg,
-  },
-  classTopic: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.textMuted,
-    textAlign: 'center',
-  },
+  root: { flex: 1 },
+  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xl },
+  classTopic: { fontSize: 18, fontWeight: '800', color: colors.text },
   deckLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#9d174d',
-    textAlign: 'center',
-    marginBottom: spacing.sm,
-  },
-  page: {
-    backgroundColor: colors.surface,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#fbcfe8',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xl,
-    gap: spacing.md,
-    justifyContent: 'center',
-    shadowColor: '#be185d',
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
-  },
-  pageIndex: {
-    alignSelf: 'center',
     fontSize: 12,
     fontWeight: '800',
     color: colors.textMuted,
-    letterSpacing: 0.4,
-    marginBottom: spacing.sm,
+    textTransform: 'uppercase',
   },
-  slideTitle: {
-    fontWeight: '800',
-    color: colors.text,
-    textAlign: 'center',
-  },
-  slideContext: {
-    color: colors.text,
-    textAlign: 'justify',
-  },
-  block: {
-    marginTop: spacing.sm,
-    width: '100%',
-  },
-  processPanel: {
-    marginTop: spacing.sm,
-    width: '100%',
-    gap: spacing.sm,
-    backgroundColor: colors.background,
-    borderRadius: 14,
+  activeTitle: { fontSize: 15, fontWeight: '700', color: colors.text },
+  tabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  tab: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.md,
   },
-  processTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: colors.text,
+  tabActive: { backgroundColor: '#fce7f3', borderColor: '#f9a8d4' },
+  tabText: { fontSize: 13, fontWeight: '700', color: colors.textMuted, maxWidth: 160 },
+  tabTextActive: { color: '#9d174d' },
+  page: {
+    backgroundColor: colors.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    gap: spacing.md,
   },
-  processDetails: {
-    fontSize: 16,
-    lineHeight: 26,
-    color: colors.text,
-  },
-  empty: {
-    padding: spacing.xl,
-    gap: spacing.sm,
-    alignItems: 'center',
-  },
-  emptyTitle: { fontSize: 18, fontWeight: '800', color: colors.text },
-  emptyBody: { fontSize: 14, color: colors.textMuted, textAlign: 'center', lineHeight: 20 },
+  pageIndex: { fontSize: 12, fontWeight: '800', color: colors.textMuted },
+  slideTitle: { fontWeight: '800', color: colors.text },
+  slideContext: { color: colors.text },
+  block: { marginTop: spacing.sm },
+  empty: { padding: spacing.lg, gap: 8 },
+  emptyTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
+  emptyBody: { fontSize: 14, lineHeight: 20, color: colors.textMuted },
 });

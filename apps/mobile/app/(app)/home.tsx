@@ -61,7 +61,8 @@ const MODULES: Array<{
     | 'calendar-outline'
     | 'time-outline'
     | 'trophy-outline'
-    | 'videocam-outline';
+    | 'videocam-outline'
+    | 'albums-outline';
   color: string;
   href: Href;
 }> = [
@@ -87,10 +88,19 @@ const MODULES: Array<{
     id: 'live',
     code: 'LIVE_STREAM' as const,
     title: 'Live class',
-    subtitle: 'Join invited video sessions',
+    subtitle: 'Upcoming & live sessions',
     icon: 'videocam-outline' as const,
+    color: '#0369a1',
+    href: '/(app)/live?scope=upcoming' as Href,
+  },
+  {
+    id: 'live-previous',
+    code: 'LIVE_STREAM' as const,
+    title: 'Previous class',
+    subtitle: 'Recordings & presentations',
+    icon: 'albums-outline' as const,
     color: '#be185d',
-    href: '/(app)/live' as Href,
+    href: '/(app)/live?scope=previous' as Href,
   },
   {
     id: 'questions',
@@ -195,10 +205,11 @@ export default function HomeScreen() {
       );
     });
     if (hasPaidModule) return MODULES;
-    // Until paid: pin free promo modules at the top — QOTD, then Live class.
+    // Until paid: pin free promo modules at the top — QOTD, then Live / Previous class.
     const qotd = MODULES.find((m) => m.code === 'QOTD');
-    const live = MODULES.find((m) => m.code === 'LIVE_STREAM');
-    const pinned = [qotd, live].filter(Boolean) as typeof MODULES;
+    const live = MODULES.find((m) => m.id === 'live');
+    const livePrevious = MODULES.find((m) => m.id === 'live-previous');
+    const pinned = [qotd, live, livePrevious].filter(Boolean) as typeof MODULES;
     const pinnedIds = new Set(pinned.map((m) => m.id));
     return [...pinned, ...MODULES.filter((m) => !pinnedIds.has(m.id))];
   }, [user?.module_access, user?.module_stops, user?.has_paid]);

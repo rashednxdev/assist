@@ -395,11 +395,11 @@ export default function ZoomRoomManagePage() {
 
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-950/40 px-3 py-2.5">
           <div>
-            <div className="text-sm font-semibold text-amber-100">Guest speaking</div>
+            <div className="text-sm font-semibold text-amber-100">Guest mic &amp; camera</div>
             <p className="text-xs text-amber-200/80">
               {session.allow_guest_speech
-                ? 'Allowed — guests can unmute and speak'
-                : 'Muted on entry — turn on when you want guests to speak'}
+                ? 'Allowed for all guests — they can unmute and start video. For one person only, use Zoom Participants.'
+                : 'Off by default — guests join muted with camera off. Allow all here, or enable a specific guest in Zoom Participants.'}
             </p>
           </div>
           <div className="ml-auto flex gap-2">
@@ -410,7 +410,7 @@ export default function ZoomRoomManagePage() {
               disabled={speechBusy || Boolean(session.allow_guest_speech)}
               onClick={() => void toggleGuestSpeech(true)}
             >
-              Allow speak
+              Allow all
             </Button>
             <Button
               size="sm"
@@ -421,7 +421,7 @@ export default function ZoomRoomManagePage() {
               disabled={speechBusy || !session.allow_guest_speech}
               onClick={() => void toggleGuestSpeech(false)}
             >
-              Mute guests
+              Revoke all
             </Button>
           </div>
         </div>

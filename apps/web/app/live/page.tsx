@@ -21,6 +21,7 @@ interface LiveRow {
   can_join: boolean;
   is_previous?: boolean;
   slide_count?: number;
+  presentation_count?: number;
   access_type?: 'free' | 'paid';
 }
 
@@ -72,7 +73,11 @@ function ClassCard({ item, previous }: { item: LiveRow; previous?: boolean }) {
                   {permissionLabel(item.permission_status)}
                 </span>
               ) : null}
-              {(item.slide_count ?? 0) > 0 ? (
+              {(item.presentation_count ?? 0) > 1 ? (
+                <span className="rounded-full border border-pink-100 bg-pink-50 px-2 py-0.5 text-[11px] font-bold text-pink-800">
+                  {item.presentation_count} presentations
+                </span>
+              ) : (item.slide_count ?? 0) > 0 ? (
                 <span className="rounded-full border border-pink-100 bg-pink-50 px-2 py-0.5 text-[11px] font-bold text-pink-800">
                   {item.slide_count} slide{(item.slide_count ?? 0) === 1 ? '' : 's'}
                 </span>

@@ -51,6 +51,7 @@ export default function LiveStreamAdminPage() {
   const [details, setDetails] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
   const [accessType, setAccessType] = useState<'free' | 'paid'>('free');
+  const [autoRecordCloud, setAutoRecordCloud] = useState(false);
   const [creating, setCreating] = useState(false);
   const [showMarkupHelp, setShowMarkupHelp] = useState(false);
 
@@ -87,11 +88,13 @@ export default function LiveStreamAdminPage() {
           scheduled_at: new Date(scheduledAt).toISOString(),
           access_type: accessType,
           video_platform: 'zoom',
+          auto_record_cloud: autoRecordCloud,
         }),
       });
       setTopic('');
       setDetails('');
       setScheduledAt('');
+      setAutoRecordCloud(false);
       await load();
       window.location.href = `/live/admin/${res.data.id}`;
     } catch (err) {
@@ -159,6 +162,23 @@ export default function LiveStreamAdminPage() {
             <p className="text-xs text-muted">
               Mark users paid/unpaid under Admin → Users (amount received &gt; 0).
             </p>
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <label className="flex items-start gap-3 rounded-lg border border-border p-3 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={autoRecordCloud}
+                onChange={(e) => setAutoRecordCloud(e.target.checked)}
+              />
+              <span>
+                <span className="font-semibold text-slate-900">Auto record to Zoom cloud</span>
+                <span className="mt-0.5 block text-xs text-muted">
+                  Optional. When the host starts the class, Zoom records to the cloud. Later add
+                  YouTube links on the class edit page for previous-class playback.
+                </span>
+              </span>
+            </label>
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <div className="flex items-center justify-between gap-2">

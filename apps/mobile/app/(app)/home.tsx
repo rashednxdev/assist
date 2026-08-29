@@ -75,15 +75,6 @@ const MODULES: Array<{
     href: '/(app)/books',
   },
   {
-    id: 'paper',
-    code: 'PAPER' as const,
-    title: 'Exam Papers',
-    subtitle: 'Session-wise model papers',
-    icon: 'document-text-outline' as const,
-    color: '#d97706',
-    href: '/(app)/papers',
-  },
-  {
     id: 'exam',
     code: 'EXAM' as const,
     title: 'Exam Programs',
@@ -93,6 +84,15 @@ const MODULES: Array<{
     href: '/(app)/exams',
   },
   {
+    id: 'live',
+    code: 'LIVE_STREAM' as const,
+    title: 'Live class',
+    subtitle: 'Join invited video sessions',
+    icon: 'videocam-outline' as const,
+    color: '#be185d',
+    href: '/(app)/live' as Href,
+  },
+  {
     id: 'questions',
     code: 'QUESTIONS' as const,
     title: 'Question Bank',
@@ -100,6 +100,15 @@ const MODULES: Array<{
     icon: 'list-outline' as const,
     color: '#7c3aed',
     href: '/(app)/questions',
+  },
+  {
+    id: 'paper',
+    code: 'PAPER' as const,
+    title: 'Exam Papers',
+    subtitle: 'Session-wise model papers',
+    icon: 'document-text-outline' as const,
+    color: '#d97706',
+    href: '/(app)/papers',
   },
   {
     id: 'qotd',
@@ -118,24 +127,6 @@ const MODULES: Array<{
     icon: 'trophy-outline' as const,
     color: examWeekColors.accent,
     href: '/(app)/exam-week' as Href,
-  },
-  {
-    id: 'zoom',
-    code: 'LIVE_STREAM' as const,
-    title: 'Zoom class',
-    subtitle: 'Two-way Zoom video sessions',
-    icon: 'videocam-outline' as const,
-    color: '#2563eb',
-    href: '/(app)/zoom' as Href,
-  },
-  {
-    id: 'live',
-    code: 'LIVE_STREAM' as const,
-    title: 'Live class',
-    subtitle: 'Join invited video sessions',
-    icon: 'videocam-outline' as const,
-    color: '#be185d',
-    href: '/(app)/live' as Href,
   },
   {
     id: 'pension',
@@ -206,9 +197,8 @@ export default function HomeScreen() {
     if (hasPaidModule) return MODULES;
     // Until paid: pin free promo modules at the top — QOTD, then Live class.
     const qotd = MODULES.find((m) => m.code === 'QOTD');
-    const live = MODULES.find((m) => m.code === 'LIVE_STREAM' && m.id === 'live');
-    const zoom = MODULES.find((m) => m.id === 'zoom');
-    const pinned = [qotd, live, zoom].filter(Boolean) as typeof MODULES;
+    const live = MODULES.find((m) => m.code === 'LIVE_STREAM');
+    const pinned = [qotd, live].filter(Boolean) as typeof MODULES;
     const pinnedIds = new Set(pinned.map((m) => m.id));
     return [...pinned, ...MODULES.filter((m) => !pinnedIds.has(m.id))];
   }, [user?.module_access, user?.module_stops, user?.has_paid]);

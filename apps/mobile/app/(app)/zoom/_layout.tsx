@@ -10,7 +10,7 @@ export default function LiveStreamLayout() {
         headerTitleStyle: { fontWeight: '700' },
       }}
     >
-      <Stack.Screen name="index" options={{ title: 'Zoom class' }} />
+      <Stack.Screen name="index" options={{ title: 'Live class' }} />
       <Stack.Screen name="[id]" options={{ title: 'Zoom session' }} />
     </Stack>
   );

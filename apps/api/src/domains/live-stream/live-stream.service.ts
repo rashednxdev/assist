@@ -23,6 +23,7 @@ import {
   buildZoomWebClientUrl,
   createZoomMeeting,
   fetchZoomZakToken,
+  updateZoomGuestUnmuteAllowed,
   zoomConfigured,
 } from './zoom-meeting.js';
 import { badRequest, forbidden, notFound } from '../../shared/errors/AppError.js';
@@ -161,22 +162,29 @@ function sortByCurrentDateFirst<T extends { scheduled_at: Date | string }>(items
 }
 
 async function permissionFor(
-  sessionId: string,
+  doc: { _id: unknown; access_type?: string; host_user_id: unknown },
   userId: string,
-  hostUserId: string,
   user: { is_super_admin?: boolean; user_type?: string },
+  hasPaid: boolean,
 ): Promise<{ permission_status: LivePermissionStatus; can_join: boolean; can_host: boolean }> {
+  const sessionId = String(doc._id);
+  const hostUserId = String(doc.host_user_id);
   const canHost = userId === hostUserId || isPlatformAdmin(user);
   if (userId === hostUserId) {
     return { permission_status: 'host', can_join: true, can_host: true };
+  }
+  if (isPlatformAdmin(user)) {
+    return { permission_status: 'permitted', can_join: true, can_host: true };
+  }
+  // Paid users may join any paid live class without a per-class invite.
+  if (isPaidClass(doc) && hasPaid) {
+    return { permission_status: 'permitted', can_join: true, can_host: false };
   }
   const invite = await LiveStreamInvite.findOne({
     live_stream_id: sessionId,
     user_id: userId,
   }).lean();
   if (invite) return { permission_status: 'permitted', can_join: true, can_host: canHost };
-  // Admins can always enter as audience (guest), and may also host from any browser.
-  if (isPlatformAdmin(user)) return { permission_status: 'permitted', can_join: true, can_host: true };
   return { permission_status: 'not_permitted', can_join: false, can_host: false };
 }
 
@@ -202,6 +210,7 @@ function serializeBase(doc: InstanceType<typeof LiveStream>, includeSlides = tru
     is_previous: isPreviousClass(doc),
     slide_count: slides.length,
     allow_guest_messages: Boolean(doc.allow_guest_messages),
+    allow_guest_speech: Boolean(doc.allow_guest_speech),
     access_type: liveClassAccessType(doc),
     ...(includeSlides ? { slides } : {}),
   };
@@ -231,7 +240,7 @@ export async function listLiveStreamsForUser(
   const hasPaid = await userHasPaid(user);
   const result: LiveStreamListItem[] = [];
   for (const doc of items) {
-    const perm = await permissionFor(String(doc._id), user.id, String(doc.host_user_id), user);
+    const perm = await permissionFor(doc, user.id, user, hasPaid);
     const previous = isPreviousClass(doc);
     const slides = serializeSlides(doc.slides);
     const payment = paymentAccessFor(doc, user, hasPaid);
@@ -252,6 +261,7 @@ export async function listLiveStreamsForUser(
       is_previous: previous,
       slide_count: slides.length,
       allow_guest_messages: Boolean(doc.allow_guest_messages),
+      allow_guest_speech: Boolean(doc.allow_guest_speech),
       access_type: liveClassAccessType(doc),
       payment_blocked: payment.payment_blocked,
       ...(payment.payment_blocked
@@ -272,10 +282,10 @@ export async function getLiveStreamForUser(
   const doc = await LiveStream.findOne({ _id: id, is_active: true });
   if (!doc) throw notFound('Live session not found');
   const host = await User.findById(doc.host_user_id).select('full_name_en full_name_bn');
-  const perm = await permissionFor(String(doc._id), user.id, String(doc.host_user_id), user);
+  const hasPaid = await userHasPaid(user);
+  const perm = await permissionFor(doc, user.id, user, hasPaid);
   const inviteCount = await LiveStreamInvite.countDocuments({ live_stream_id: doc._id });
   const slides = serializeSlides(doc.slides);
-  const hasPaid = await userHasPaid(user);
   const payment = paymentAccessFor(doc, user, hasPaid);
   const viewPresentation =
     !payment.payment_blocked && canViewPresentation(doc, user, perm.permission_status);
@@ -366,6 +376,7 @@ export async function listHostingLiveStreams(
       is_previous: previous,
       slide_count: slides.length,
       allow_guest_messages: Boolean(doc.allow_guest_messages),
+      allow_guest_speech: Boolean(doc.allow_guest_speech),
       access_type: liveClassAccessType(doc),
       can_view_presentation: true,
       created_at: doc.created_at.toISOString(),
@@ -581,12 +592,12 @@ export async function joinLiveStream(
   if (doc.status === 'cancelled') throw badRequest('This session was cancelled.');
   if (doc.status === 'ended') throw badRequest('This session has ended. Ask an admin to restart it.');
 
-  const perm = await permissionFor(String(doc._id), user.id, String(doc.host_user_id), user);
+  const hasPaid = await userHasPaid(user);
+  const perm = await permissionFor(doc, user.id, user, hasPaid);
   if (!perm.can_join) {
     throw forbidden('You are not permitted to join this live session. Ask an admin for access.');
   }
 
-  const hasPaid = await userHasPaid(user);
   const payment = paymentAccessFor(doc, user, hasPaid);
   if (payment.payment_blocked) {
     throw forbidden(payment.payment_required_message ?? PAID_LIVE_CLASS_UNPAID_MESSAGE);
@@ -640,6 +651,8 @@ export async function joinLiveStream(
       password,
       role,
       zak,
+      userName,
+      userEmail: userDoc?.email,
     });
     const sdk = buildZoomSdkSignature(doc.zoom_meeting_number, role);
     return {
@@ -661,6 +674,7 @@ export async function joinLiveStream(
       topic: doc.topic,
       status: doc.status,
       allow_guest_messages: Boolean(doc.allow_guest_messages),
+      allow_guest_speech: Boolean(doc.allow_guest_speech),
     };
   }
 
@@ -682,6 +696,7 @@ export async function joinLiveStream(
     topic: doc.topic,
     status: doc.status,
     allow_guest_messages: Boolean(doc.allow_guest_messages),
+    allow_guest_speech: Boolean(doc.allow_guest_speech),
   };
 }
 
@@ -692,6 +707,27 @@ export async function setGuestMessagesAllowed(
   const doc = await LiveStream.findOne({ _id: id, is_active: true });
   if (!doc) throw notFound('Live session not found');
   doc.allow_guest_messages = allow;
+  await doc.save();
+  return {
+    ...serializeBase(doc, false),
+    invite_count: await LiveStreamInvite.countDocuments({ live_stream_id: doc._id }),
+    permission_status: 'host',
+    can_join: true,
+    can_host: true,
+    can_view_presentation: true,
+  };
+}
+
+export async function setGuestSpeechAllowed(
+  id: string,
+  allow: boolean,
+): Promise<LiveStreamListItem> {
+  const doc = await LiveStream.findOne({ _id: id, is_active: true });
+  if (!doc) throw notFound('Live session not found');
+  if (videoPlatformOf(doc) === 'zoom' && doc.zoom_meeting_number) {
+    await updateZoomGuestUnmuteAllowed(doc.zoom_meeting_number, allow);
+  }
+  doc.allow_guest_speech = allow;
   await doc.save();
   return {
     ...serializeBase(doc, false),
@@ -717,9 +753,14 @@ export async function sendGuestMessage(
     throw badRequest('You can only message the host while the class is live.');
   }
 
-  const perm = await permissionFor(String(doc._id), user.id, String(doc.host_user_id), user);
+  const hasPaid = await userHasPaid(user);
+  const perm = await permissionFor(doc, user.id, user, hasPaid);
   if (!perm.can_join) {
     throw forbidden('You are not permitted to message in this live session.');
+  }
+  const payment = paymentAccessFor(doc, user, hasPaid);
+  if (payment.payment_blocked) {
+    throw forbidden(payment.payment_required_message ?? PAID_LIVE_CLASS_UNPAID_MESSAGE);
   }
   if (user.id === String(doc.host_user_id)) {
     throw badRequest('Host cannot send guest messages to themselves.');

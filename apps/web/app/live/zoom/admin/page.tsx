@@ -153,9 +153,12 @@ export default function LiveStreamAdminPage() {
               onChange={(e) => setAccessType(e.target.value === 'paid' ? 'paid' : 'free')}
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
-              <option value="free">Free — all invited users</option>
-              <option value="paid">Paid — paid users only</option>
+              <option value="free">Free — invited users only</option>
+              <option value="paid">Paid — all paid users (no invite needed)</option>
             </select>
+            <p className="text-xs text-muted">
+              Mark users paid/unpaid under Admin → Users (amount received &gt; 0).
+            </p>
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <div className="flex items-center justify-between gap-2">

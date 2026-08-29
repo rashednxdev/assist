@@ -70,7 +70,7 @@ export default function LiveStreamListScreen() {
     else setLoading(true);
     setError('');
     try {
-      setItems(await fetchLiveStreams('agora'));
+      setItems(await fetchLiveStreams('zoom'));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
     } finally {
@@ -108,7 +108,7 @@ export default function LiveStreamListScreen() {
         ListEmptyComponent={
           <BookEmpty
             title="No live sessions"
-            subtitle="When an admin schedules a class, it will show up here for everyone. Joining still needs an invite."
+            subtitle="When an admin schedules a live class, it will show up here. Joining still needs an invite."
           />
         }
         renderSectionHeader={({ section }) => (

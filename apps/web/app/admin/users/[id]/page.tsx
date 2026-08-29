@@ -408,8 +408,23 @@ export default function EditUserPage() {
                     })
                   }
                 />
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={Number(user.amount_received ?? 0) > 0}
+                    onChange={(e) =>
+                      setUser({
+                        ...user,
+                        amount_received: e.target.checked
+                          ? Math.max(Number(user.amount_received ?? 0), 1)
+                          : 0,
+                      })
+                    }
+                  />
+                  Paid user — can join paid live classes without a per-class invite
+                </label>
                 <p className="text-xs text-muted">
-                  0 = unpaid — mobile shows &quot;Pay to Get Access Module&quot; for paid modules.
+                  0 = unpaid. Paid users also unlock other paid learning modules on mobile.
                 </p>
               </div>
               <div className="space-y-3 rounded-lg border border-border p-4">

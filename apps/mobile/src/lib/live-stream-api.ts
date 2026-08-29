@@ -22,6 +22,7 @@ export interface LiveStreamListItem {
   slides?: LiveStreamSlide[];
   invite_count?: number;
   allow_guest_messages?: boolean;
+  allow_guest_speech?: boolean;
   /** Admins/hosts: always; invitees: after class ends. */
   can_view_presentation?: boolean;
   access_type?: 'free' | 'paid';

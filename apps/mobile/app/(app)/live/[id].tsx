@@ -11,7 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useNavigation } from 'expo-router';
 import { WebView } from 'react-native-webview';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,18 +29,31 @@ import {
   canBypassLiveCaptureBlock,
   setLiveGuestCaptureBlocked,
 } from '@/lib/live-screen-capture';
-import type { AgoraLiveStreamJoinPayload, LiveStreamJoinPayload } from '@ibas/shared-types';
-import { isAgoraJoinPayload } from '@ibas/shared-types';
+import {
+  buildZoomGuestWebViewHtml,
+  ensureAvPermissions,
+  withZoomGuestIdentity,
+  zoomGuestDisplayName,
+} from '@/lib/zoom-guest-webview';
+import type { LiveStreamJoinPayload } from '@ibas/shared-types';
+import { isZoomJoinPayload } from '@ibas/shared-types';
 import { colors, spacing } from '@/theme';
 
-/** Guest playback: 100 = original. Soft gain only — high boost clips into rumble/engine noise. */
-const GUEST_AUDIO_VOLUME = 110;
-
-function permissionCard(status: LiveStreamListItem['permission_status']) {
+function permissionCard(
+  status: LiveStreamListItem['permission_status'],
+  accessType: LiveStreamListItem['access_type'],
+  hasPaid: boolean,
+) {
   if (status === 'permitted' || status === 'host') {
+    const paidAccess =
+      accessType === 'paid' && hasPaid
+        ? 'As a paid user, you can join this paid class when it is live (no invite needed).'
+        : accessType === 'paid'
+          ? 'This is a paid class. Pay or ask an admin to mark your account as paid.'
+          : 'Watch and participate when the class is live. You join muted until the host allows speaking.';
     return {
       title: 'You are permitted to join',
-      body: 'Watch as a viewer when the class is live. Host broadcasting is only from the web admin page.',
+      body: paidAccess,
       bg: '#ecfdf5',
       border: '#a7f3d0',
       color: '#065f46',
@@ -55,216 +68,9 @@ function permissionCard(status: LiveStreamListItem['permission_status']) {
   };
 }
 
-function agoraHtml(join: AgoraLiveStreamJoinPayload) {
-  const payload = JSON.stringify({
-    appId: join.app_id,
-    channel: join.channel,
-    token: join.token,
-    uid: join.uid,
-    role: join.role,
-    boost: GUEST_AUDIO_VOLUME,
-  });
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
-  <style>
-    *{box-sizing:border-box}
-    html,body{margin:0;padding:0;width:100%;height:100%;background:#020617;color:#fff;font-family:system-ui,sans-serif;overflow:hidden}
-    #stage{position:fixed;inset:0;background:#020617}
-    #player{position:absolute;inset:0;width:100%;height:100%}
-    #player video{width:100%!important;height:100%!important;object-fit:contain!important;background:#020617}
-    #status{
-      position:absolute;left:10px;right:10px;top:118px;z-index:2;
-      padding:8px 12px;border-radius:10px;background:rgba(15,23,42,.72);
-      font-size:12px;line-height:1.35;pointer-events:none
-    }
-    #soundGate{
-      position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;
-      background:rgba(2,6,23,.78);padding:24px
-    }
-    #soundGate button{
-      border:0;border-radius:14px;padding:14px 22px;font-size:16px;font-weight:800;
-      background:#be185d;color:#fff
-    }
-    #soundGate.hidden{display:none}
-    #audioHost{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
-  </style>
-  <script src="https://download.agora.io/sdk/release/AgoraRTC_N.js"></script>
-</head>
-<body>
-  <div id="stage">
-    <div id="player"></div>
-    <div id="audioHost"></div>
-    <div id="status">Connecting…</div>
-    <div id="soundGate"><button type="button" id="soundBtn">Tap to hear host</button></div>
-  </div>
-  <script>
-    (async () => {
-      const cfg = ${payload};
-      const boost = cfg.boost || 110;
-      const status = document.getElementById('status');
-      const player = document.getElementById('player');
-      const audioHost = document.getElementById('audioHost');
-      const soundGate = document.getElementById('soundGate');
-      const soundBtn = document.getElementById('soundBtn');
-      const remoteAudio = [];
-      let client = null;
-      let soundReady = false;
-      let left = false;
-
-      function setTrackVolume(track) {
-        try { track.setVolume(boost); } catch (e) {
-          try { track.setVolume(100); } catch (e2) {}
-        }
-      }
-
-      function playAudio(track) {
-        if (!track) return;
-        setTrackVolume(track);
-        try {
-          var el = document.createElement('audio');
-          el.autoplay = true;
-          el.setAttribute('playsinline', 'true');
-          el.controls = false;
-          el.volume = 1;
-          el.muted = false;
-          audioHost.appendChild(el);
-          track.play(el);
-        } catch (e) {
-          try { track.play(); } catch (e2) {}
-        }
-        if (remoteAudio.indexOf(track) < 0) remoteAudio.push(track);
-      }
-
-      async function subscribeUser(user, mediaType) {
-        await client.subscribe(user, mediaType);
-        if (mediaType === 'video' && user.videoTrack) {
-          player.innerHTML = '';
-          user.videoTrack.play(player, { fit: 'contain' });
-          status.textContent = soundReady ? 'Watching live (full screen)' : 'Video on — tap to hear host';
-        }
-        if (mediaType === 'audio' && user.audioTrack) {
-          playAudio(user.audioTrack);
-          if (!soundReady) status.textContent = 'Host audio ready — tap to hear host';
-        }
-      }
-
-      async function subscribeExisting() {
-        if (!client) return;
-        for (var i = 0; i < client.remoteUsers.length; i++) {
-          var user = client.remoteUsers[i];
-          try {
-            if (user.hasAudio) await subscribeUser(user, 'audio');
-            if (user.hasVideo) await subscribeUser(user, 'video');
-          } catch (e) {}
-        }
-      }
-
-      async function leaveChannel() {
-        if (left) return;
-        left = true;
-        try {
-          if (client) {
-            await client.leave();
-            client.removeAllListeners();
-          }
-        } catch (e) {}
-        client = null;
-      }
-
-      async function unlockSound() {
-        soundReady = true;
-        soundGate.classList.add('hidden');
-        try {
-          var Ctx = window.AudioContext || window.webkitAudioContext;
-          if (Ctx) {
-            var ctx = new Ctx();
-            if (ctx.state === 'suspended') await ctx.resume();
-            var osc = ctx.createOscillator();
-            var gain = ctx.createGain();
-            gain.gain.value = 0.0001;
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.start();
-            osc.stop(ctx.currentTime + 0.05);
-          }
-        } catch (e) {}
-        await subscribeExisting();
-        remoteAudio.forEach(function (t) {
-          try { setTrackVolume(t); t.play(); } catch (e) {}
-        });
-        Array.prototype.forEach.call(audioHost.querySelectorAll('audio'), function (el) {
-          try { el.muted = false; el.volume = 1; el.play(); } catch (e) {}
-        });
-        status.textContent = 'Sound on';
-      }
-
-      soundBtn.addEventListener('click', function () { unlockSound(); });
-      window.addEventListener('pagehide', function () { leaveChannel(); });
-      window.addEventListener('beforeunload', function () { leaveChannel(); });
-
-      try {
-        client = AgoraRTC.createClient({ mode: 'live', codec: 'vp8' });
-        await client.setClientRole('audience');
-        client.on('user-published', async function (user, mediaType) {
-          try { await subscribeUser(user, mediaType); } catch (e) {}
-        });
-        client.on('user-unpublished', function (user, mediaType) {
-          if (mediaType === 'video') {
-            player.innerHTML = '';
-            status.textContent = 'Waiting for host…';
-          }
-        });
-        if (!cfg.token || !String(cfg.token).startsWith('007')) {
-          status.textContent = 'Invalid token from API — check AGORA_APP_CERTIFICATE on Render';
-          soundGate.classList.add('hidden');
-          return;
-        }
-        var numericUid = Number(cfg.uid);
-        if (!numericUid || numericUid <= 0) {
-          status.textContent = 'Invalid user id from API';
-          soundGate.classList.add('hidden');
-          return;
-        }
-        async function doJoin() {
-          await client.join(cfg.appId, cfg.channel, cfg.token, numericUid);
-        }
-        try {
-          await doJoin();
-        } catch (e1) {
-          var msg = e1 && e1.message ? e1.message : '';
-          if (/CAN_NOT_GET_GATEWAY|invalid token|gateway/i.test(msg)) {
-            try {
-              if (typeof AgoraRTC.startProxyServer === 'function') {
-                await AgoraRTC.startProxyServer(3);
-              } else if (typeof client.startProxyServer === 'function') {
-                await client.startProxyServer(3);
-              }
-              await doJoin();
-            } catch (e2) {
-              throw e2;
-            }
-          } else {
-            throw e1;
-          }
-        }
-        await subscribeExisting();
-        status.textContent = 'Joined — tap to hear host';
-      } catch (e) {
-        status.textContent = e && e.message ? e.message : 'Join failed';
-        soundGate.classList.add('hidden');
-      }
-    })();
-  </script>
-</body>
-</html>`;
-}
-
 export default function LiveStreamDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
-  const router = useRouter();
   const { user } = useAuth();
   const [session, setSession] = useState<LiveStreamListItem | null>(null);
   const [join, setJoin] = useState<LiveStreamJoinPayload | null>(null);
@@ -274,6 +80,7 @@ export default function LiveStreamDetailScreen() {
   const [msgBody, setMsgBody] = useState('');
   const [msgBusy, setMsgBusy] = useState(false);
   const [allowMessages, setAllowMessages] = useState(false);
+  const [allowSpeech, setAllowSpeech] = useState(false);
   const [reviewing, setReviewing] = useState(false);
 
   const load = useCallback(async () => {
@@ -282,24 +89,25 @@ export default function LiveStreamDetailScreen() {
     setError('');
     try {
       const data = await fetchLiveStream(id);
-      if (data.video_platform === 'zoom') {
-        router.replace(`/(app)/zoom/${id}` as never);
+      if (data.video_platform === 'agora') {
+        setError('This class uses legacy video and is not supported in the app. Ask the host for a new live class.');
+        setSession(null);
         return;
       }
       setSession(data);
       setAllowMessages(Boolean(data.allow_guest_messages));
+      setAllowSpeech(Boolean(data.allow_guest_speech));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
     } finally {
       setLoading(false);
     }
-  }, [id, router]);
+  }, [id]);
 
   useFocusEffect(
     useCallback(() => {
       void load();
       return () => {
-        // Leaving this screen closes the Agora WebView → stops guest minutes.
         setJoin(null);
         void setLiveGuestCaptureBlocked(false);
       };
@@ -315,7 +123,6 @@ export default function LiveStreamDetailScreen() {
     };
   }, [join, user?.user_type, user?.is_super_admin]);
 
-  // Hide nav header while watching so video is full-screen.
   useEffect(() => {
     navigation.setOptions({ headerShown: !join });
   }, [navigation, join]);
@@ -328,14 +135,14 @@ export default function LiveStreamDetailScreen() {
         const data = await fetchLiveStream(id);
         if (cancelled) return;
         setAllowMessages(Boolean(data.allow_guest_messages));
+        setAllowSpeech(Boolean(data.allow_guest_speech));
         setSession(data);
-        // Host ended/paused → leave channel (cost + UX).
         if (data.status !== 'live') {
           setJoin(null);
           Alert.alert(
             data.status === 'paused' ? 'Class paused' : 'Class ended',
             data.status === 'paused'
-              ? 'The host paused this session. You left the video room to save connection time.'
+              ? 'The host paused this session. You left the video room.'
               : 'The host ended this session. You left the video room.',
           );
         }
@@ -350,28 +157,25 @@ export default function LiveStreamDetailScreen() {
     };
   }, [join, id]);
 
-  // Allow portrait + landscape while watching so the full shared screen fits.
   useEffect(() => {
     if (!join) return;
-    let cancelled = false;
     void ScreenOrientation.unlockAsync().catch(() => {});
     return () => {
-      cancelled = true;
       void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
-      void cancelled;
     };
   }, [join]);
 
   const isPrevious = Boolean(session?.is_previous) || session?.status === 'ended';
   const slides = session?.slides ?? [];
   const canViewPresentation = Boolean(session?.can_view_presentation);
-  /** Previous classes open the deck automatically; upcoming admin review uses a button. */
-  const showPresentation =
-    reviewing || (isPrevious && canViewPresentation);
+  const showPresentation = reviewing || (isPrevious && canViewPresentation);
 
   const perm = useMemo(
-    () => (session ? permissionCard(session.permission_status) : null),
-    [session],
+    () =>
+      session
+        ? permissionCard(session.permission_status, session.access_type, user?.has_paid === true)
+        : null,
+    [session, user?.has_paid],
   );
 
   function leaveLiveRoom() {
@@ -383,14 +187,22 @@ export default function LiveStreamDetailScreen() {
     if (!id) return;
     setBusy(true);
     try {
+      const avOk = await ensureAvPermissions();
+      if (!avOk) {
+        Alert.alert(
+          'Camera & microphone',
+          'Please allow camera and microphone access to join the live class.',
+        );
+        return;
+      }
       const payload = await joinLiveStream(id);
-      if (!isAgoraJoinPayload(payload)) {
-        Alert.alert('Wrong class type', 'This is a Zoom class. Open it from Zoom class.');
-        router.replace(`/(app)/zoom/${id}` as never);
+      if (!isZoomJoinPayload(payload)) {
+        Alert.alert('Cannot join', 'This live class is not available in the app.');
         return;
       }
       setJoin({ ...payload, role: 'audience' });
       setAllowMessages(Boolean(payload.allow_guest_messages));
+      setAllowSpeech(Boolean(payload.allow_guest_speech));
     } catch (err) {
       Alert.alert('Cannot join', err instanceof Error ? err.message : 'Try again');
     } finally {
@@ -416,7 +228,11 @@ export default function LiveStreamDetailScreen() {
   if (error && !session) return <BookError message={error} />;
   if (!session || !perm) return null;
 
-  if (join && isAgoraJoinPayload(join)) {
+  if (join && isZoomJoinPayload(join)) {
+    const guestName = zoomGuestDisplayName(join, user);
+    const zoomUrl = withZoomGuestIdentity(join.web_client_url, guestName, join.user_email);
+    const webViewSource = { html: buildZoomGuestWebViewHtml(zoomUrl) };
+
     return (
       <KeyboardAvoidingView
         style={styles.liveRoot}
@@ -426,19 +242,31 @@ export default function LiveStreamDetailScreen() {
           originWhitelist={['*']}
           allowsInlineMediaPlayback
           mediaPlaybackRequiresUserAction={false}
+          mediaCapturePermissionGrantType="grant"
           allowsFullscreenVideo
           javaScriptEnabled
           domStorageEnabled
           mixedContentMode="always"
           androidLayerType="hardware"
-          source={{ html: agoraHtml(join) }}
+          source={webViewSource}
           style={styles.webviewFill}
+          onPermissionRequest={(event: { nativeEvent: { grant: () => void } }) => {
+            event.nativeEvent.grant();
+          }}
         />
         <View style={styles.topOverlay} pointerEvents="box-none">
           <Pressable style={styles.leaveBtn} onPress={leaveLiveRoom}>
             <Ionicons name="chevron-back" size={20} color="#fff" />
             <Text style={styles.leaveBtnText}>Leave</Text>
           </Pressable>
+          {!allowSpeech ? (
+            <View style={styles.muteHint}>
+              <Ionicons name="mic-off-outline" size={16} color="#fde68a" />
+              <Text style={styles.muteHintText}>
+                You are muted. The host can allow speaking when ready.
+              </Text>
+            </View>
+          ) : null}
           {allowMessages ? (
             <View style={styles.msgBarTop}>
               <TextInput
@@ -624,6 +452,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(15,23,42,0.78)',
   },
   leaveBtnText: { color: '#fff', fontWeight: '800', fontSize: 14 },
+  muteHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: 'rgba(120,53,15,0.88)',
+  },
+  muteHintText: { flex: 1, color: '#fde68a', fontSize: 12, fontWeight: '700', lineHeight: 17 },
   content: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xl },
   topic: { fontSize: 22, fontWeight: '800', color: colors.text },
   meta: { fontSize: 13, color: colors.textMuted, marginTop: -4 },

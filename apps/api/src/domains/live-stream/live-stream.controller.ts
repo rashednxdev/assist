@@ -6,6 +6,7 @@ import {
   liveStreamRevokeInvitesSchema,
   sendLiveStreamMessageSchema,
   updateGuestMessagesSchema,
+  updateGuestSpeechSchema,
   updateLiveStreamSchema,
 } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
@@ -55,6 +56,15 @@ export async function setGuestMessagesHandler(req: AuthRequest, res: Response): 
   const data = await liveStreamService.setGuestMessagesAllowed(
     String(req.params.id),
     dto.allow_guest_messages,
+  );
+  res.json({ data });
+}
+
+export async function setGuestSpeechHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = updateGuestSpeechSchema.parse(req.body);
+  const data = await liveStreamService.setGuestSpeechAllowed(
+    String(req.params.id),
+    dto.allow_guest_speech,
   );
   res.json({ data });
 }

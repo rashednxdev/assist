@@ -30,6 +30,8 @@ export interface ILiveStream extends Document {
   ended_at?: Date;
   /** When true, invited guests may send messages to the host while the class is live. */
   allow_guest_messages: boolean;
+  /** When true, guests may unmute and speak (Zoom participant_can_unmute_self). */
+  allow_guest_speech: boolean;
   /** Published class presentation slides (title + context + optional table/process). */
   slides: ILiveStreamSlide[];
   /** `free` = all invitees; `paid` = only paid users may join/watch. */
@@ -70,6 +72,7 @@ const schema = new Schema<ILiveStream>(
     started_at: { type: Date },
     ended_at: { type: Date },
     allow_guest_messages: { type: Boolean, default: false },
+    allow_guest_speech: { type: Boolean, default: false },
     slides: { type: [slideSchema], default: [] },
     access_type: { type: String, enum: ['free', 'paid'], default: 'free' },
   },

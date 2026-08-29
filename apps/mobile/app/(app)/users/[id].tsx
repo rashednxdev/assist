@@ -344,6 +344,26 @@ export default function UserDetailScreen() {
               keyboardType="decimal-pad"
             />
             <View style={styles.switchRow}>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={styles.switchLabel}>Paid user</Text>
+                <Text style={styles.hint}>
+                  Paid users can join paid live classes without a separate invite. Set amount to 0 to
+                  mark unpaid.
+                </Text>
+              </View>
+              <Switch
+                value={Number(detail.amount_received ?? 0) > 0}
+                onValueChange={(v) =>
+                  setDetail({
+                    ...detail,
+                    amount_received: v
+                      ? Math.max(Number(detail.amount_received ?? 0), 1)
+                      : 0,
+                  })
+                }
+              />
+            </View>
+            <View style={styles.switchRow}>
               <Text style={styles.switchLabel}>Allow all exam subjects</Text>
               <Switch
                 value={detail.all_exam_subjects !== false}

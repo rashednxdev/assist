@@ -85,6 +85,10 @@ export const updateGuestMessagesSchema = z.object({
   allow_guest_messages: z.boolean(),
 });
 
+export const updateGuestSpeechSchema = z.object({
+  allow_guest_speech: z.boolean(),
+});
+
 export const sendLiveStreamMessageSchema = z.object({
   body: z.string().trim().min(1).max(500),
 });
@@ -95,6 +99,7 @@ export type LiveStreamInvitesDto = z.infer<typeof liveStreamInvitesSchema>;
 export type LiveStreamRevokeInvitesDto = z.infer<typeof liveStreamRevokeInvitesSchema>;
 export type JoinLiveStreamDto = z.infer<typeof joinLiveStreamSchema>;
 export type UpdateGuestMessagesDto = z.infer<typeof updateGuestMessagesSchema>;
+export type UpdateGuestSpeechDto = z.infer<typeof updateGuestSpeechSchema>;
 export type SendLiveStreamMessageDto = z.infer<typeof sendLiveStreamMessageSchema>;
 export type LiveStreamSlide = z.infer<typeof liveStreamSlideSchema>;
 
@@ -164,6 +169,8 @@ export interface LiveStreamListItem {
   can_view_presentation: boolean;
   /** Host toggle: guests may send messages to the host while live. */
   allow_guest_messages: boolean;
+  /** Host toggle: guests may unmute and speak while live. */
+  allow_guest_speech: boolean;
   /** `free` or `paid` — paid classes block unpaid learners. */
   access_type: LiveClassAccessType;
   /** True when this user is unpaid and the class requires payment. */
@@ -181,6 +188,7 @@ export interface LiveStreamJoinPayloadBase {
   topic: string;
   status: LiveStreamStatus;
   allow_guest_messages: boolean;
+  allow_guest_speech: boolean;
 }
 
 export interface AgoraLiveStreamJoinPayload extends LiveStreamJoinPayloadBase {

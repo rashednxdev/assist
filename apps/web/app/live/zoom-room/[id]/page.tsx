@@ -21,6 +21,7 @@ interface SessionDetail {
   scheduled_at: string;
   status: string;
   allow_guest_messages?: boolean;
+  allow_guest_speech?: boolean;
   can_host?: boolean;
   permission_status?: string;
   video_platform?: 'agora' | 'zoom';
@@ -64,6 +65,7 @@ export default function ZoomRoomManagePage() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [msgBusy, setMsgBusy] = useState(false);
+  const [speechBusy, setSpeechBusy] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [denied, setDenied] = useState(false);
   const messagesListRef = useRef<HTMLUListElement>(null);
@@ -197,6 +199,25 @@ export default function ZoomRoomManagePage() {
       setError(err instanceof Error ? err.message : 'Could not update messaging');
     } finally {
       setMsgBusy(false);
+    }
+  }
+
+  async function toggleGuestSpeech(allow: boolean) {
+    if (!id) return;
+    setSpeechBusy(true);
+    setError('');
+    try {
+      const res = await apiFetch<{ data: SessionDetail }>(`/live-streams/${id}/guest-speech`, {
+        method: 'PATCH',
+        body: JSON.stringify({ allow_guest_speech: allow }),
+      });
+      setSession((prev) =>
+        prev ? { ...prev, allow_guest_speech: res.data.allow_guest_speech ?? allow } : prev,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update guest speaking');
+    } finally {
+      setSpeechBusy(false);
     }
   }
 
@@ -371,6 +392,39 @@ export default function ZoomRoomManagePage() {
           Pause keeps invites; guests cannot watch until you resume. End when finished. Zoom toolbar
           provides screen share, mute, and participant controls on desktop.
         </p>
+
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-950/40 px-3 py-2.5">
+          <div>
+            <div className="text-sm font-semibold text-amber-100">Guest speaking</div>
+            <p className="text-xs text-amber-200/80">
+              {session.allow_guest_speech
+                ? 'Allowed — guests can unmute and speak'
+                : 'Muted on entry — turn on when you want guests to speak'}
+            </p>
+          </div>
+          <div className="ml-auto flex gap-2">
+            <Button
+              size="sm"
+              variant={session.allow_guest_speech ? 'default' : 'outline'}
+              className={!session.allow_guest_speech ? 'border-slate-600 bg-slate-950 text-slate-100' : undefined}
+              disabled={speechBusy || Boolean(session.allow_guest_speech)}
+              onClick={() => void toggleGuestSpeech(true)}
+            >
+              Allow speak
+            </Button>
+            <Button
+              size="sm"
+              variant={!session.allow_guest_speech ? 'default' : 'outline'}
+              className={
+                session.allow_guest_speech ? 'border-slate-600 bg-slate-950 text-slate-100' : undefined
+              }
+              disabled={speechBusy || !session.allow_guest_speech}
+              onClick={() => void toggleGuestSpeech(false)}
+            >
+              Mute guests
+            </Button>
+          </div>
+        </div>
 
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-pink-500/30 bg-pink-950/40 px-3 py-2.5">
           <div>

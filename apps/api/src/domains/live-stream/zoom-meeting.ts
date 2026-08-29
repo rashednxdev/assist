@@ -78,7 +78,7 @@ export async function createZoomMeeting(opts: {
       waiting_room: false,
       audio: 'both',
       auto_recording: 'none',
-      participant_can_unmute_self: true,
+      participant_can_unmute_self: false,
       allow_participants_to_rename: false,
     },
   };
@@ -119,14 +119,22 @@ export function buildZoomWebClientUrl(opts: {
   password?: string;
   role: 'host' | 'audience';
   zak?: string;
+  userName?: string;
+  userEmail?: string;
 }): string {
   const mn = String(opts.meetingNumber).replace(/\s+/g, '');
+  const params = new URLSearchParams();
+  if (opts.userName?.trim()) params.set('uname', opts.userName.trim());
+  if (opts.userEmail?.trim()) params.set('email', opts.userEmail.trim());
+
   if (opts.role === 'host') {
-    const zak = opts.zak ? `?zak=${encodeURIComponent(opts.zak)}` : '';
-    return `https://zoom.us/wc/${mn}/start${zak}`;
+    if (opts.zak) params.set('zak', opts.zak);
+    const qs = params.toString();
+    return `https://zoom.us/wc/${mn}/start${qs ? `?${qs}` : ''}`;
   }
-  const pwd = opts.password ? `?pwd=${encodeURIComponent(opts.password)}` : '';
-  return `https://zoom.us/wc/join/${mn}${pwd}`;
+  if (opts.password) params.set('pwd', opts.password);
+  const qs = params.toString();
+  return `https://zoom.us/wc/join/${mn}${qs ? `?${qs}` : ''}`;
 }
 
 /**
@@ -176,4 +184,29 @@ export async function fetchZoomZakToken(): Promise<string> {
   }
   const data = (await res.json()) as { token: string };
   return data.token;
+}
+
+/** Host toggle: allow or block guests from unmuting themselves in Zoom. */
+export async function updateZoomGuestUnmuteAllowed(
+  meetingNumber: string,
+  allow: boolean,
+): Promise<void> {
+  const token = await getAccessToken();
+  const mn = String(meetingNumber).replace(/\s+/g, '');
+  const res = await fetch(`https://api.zoom.us/v2/meetings/${mn}`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      settings: {
+        participant_can_unmute_self: allow,
+      },
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw badRequest(`Zoom update meeting failed (${res.status}): ${text.slice(0, 240)}`);
+  }
 }

@@ -2,7 +2,7 @@
   "expo": {
     "name": "ProAssist",
     "slug": "ibas-learn",
-    "version": "1.0.0.16",
+    "version": "1.0.0.19",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "scheme": "ibaslearn",
@@ -18,7 +18,11 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "gov.bd.ibas.learn"
+      "bundleIdentifier": "gov.bd.ibas.learn",
+      "infoPlist": {
+        "NSCameraUsageDescription": "ProAssist uses the camera for live classes.",
+        "NSMicrophoneUsageDescription": "ProAssist uses the microphone for live classes."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -26,7 +30,12 @@
         "backgroundColor": "#0B2B52"
       },
       "package": "gov.bd.ibas.learn",
-      "usesCleartextTraffic": true
+      "usesCleartextTraffic": true,
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "plugins": [
       "expo-router",

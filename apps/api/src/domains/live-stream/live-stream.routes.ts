@@ -24,6 +24,7 @@ import {
   revokeInvitesHandler,
   sendGuestMessageHandler,
   setGuestMessagesHandler,
+  setGuestSpeechHandler,
   startLiveStreamHandler,
   updateLiveStreamHandler,
 } from './live-stream.controller.js';
@@ -48,6 +49,11 @@ liveStreamRouter.patch(
   '/:id/guest-messages',
   requireLiveHostOrAdmin,
   asyncHandler(setGuestMessagesHandler),
+);
+liveStreamRouter.patch(
+  '/:id/guest-speech',
+  requireLiveHostOrAdmin,
+  asyncHandler(setGuestSpeechHandler),
 );
 liveStreamRouter.post('/:id/invites', requireAdmin, asyncHandler(addInvitesHandler));
 liveStreamRouter.post('/:id/invites/revoke', requireAdmin, asyncHandler(revokeInvitesHandler));

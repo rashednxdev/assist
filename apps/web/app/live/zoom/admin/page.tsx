@@ -174,8 +174,8 @@ export default function LiveStreamAdminPage() {
               <span>
                 <span className="font-semibold text-slate-900">Auto record to Zoom cloud</span>
                 <span className="mt-0.5 block text-xs text-muted">
-                  Optional. When the host starts the class, Zoom records to the cloud. Later add
-                  YouTube links on the class edit page for previous-class playback.
+                  Optional. When the host starts the class, Zoom records to the cloud. On the class
+                  edit page, add previous-class videos as YouTube or Zoom share/MP4 links.
                 </span>
               </span>
             </label>

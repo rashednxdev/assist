@@ -1,12 +1,20 @@
-import { useCallback, useLayoutEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, SectionList, Pressable, RefreshControl } from 'react-native';
-import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  Pressable,
+  RefreshControl,
+} from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
 import { fetchLiveStreams, type LiveStreamListItem } from '@/lib/live-stream-api';
+import { useAuth } from '@/lib/auth-context';
 import { colors, spacing } from '@/theme';
 
-type LiveScope = 'all' | 'upcoming' | 'previous';
+type LiveTab = 'upcoming' | 'previous';
 
 function formatWhen(iso: string) {
   const d = new Date(iso);
@@ -60,32 +68,29 @@ function sortPrevious(items: LiveStreamListItem[]) {
   );
 }
 
-function parseScope(raw: string | string[] | undefined): LiveScope {
-  const v = Array.isArray(raw) ? raw[0] : raw;
-  if (v === 'upcoming' || v === 'previous') return v;
-  return 'all';
+function canViewPreviousTab(user: {
+  has_paid?: boolean;
+  is_super_admin?: boolean;
+  user_type?: string;
+} | null) {
+  if (!user) return false;
+  if (user.has_paid === true) return true;
+  if (user.is_super_admin) return true;
+  if (user.user_type === 'admin' || user.user_type === 'system_admin') return true;
+  return false;
 }
 
 export default function LiveStreamListScreen() {
   const router = useRouter();
-  const navigation = useNavigation();
-  const params = useLocalSearchParams<{ scope?: string }>();
-  const scope = parseScope(params.scope);
+  const { user } = useAuth();
+  const paidPrevious = canViewPreviousTab(user);
+  const [tab, setTab] = useState<LiveTab>('upcoming');
   const [items, setItems] = useState<LiveStreamListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      title:
-        scope === 'previous'
-          ? 'Previous class'
-          : scope === 'upcoming'
-            ? 'Live class'
-            : 'Live class',
-    });
-  }, [navigation, scope]);
+  const activeTab: LiveTab = tab === 'previous' && !paidPrevious ? 'upcoming' : tab;
 
   const load = useCallback(async (soft = false) => {
     if (soft) setRefreshing(true);
@@ -107,93 +112,80 @@ export default function LiveStreamListScreen() {
     }, [load]),
   );
 
-  const sections = useMemo(() => {
-    const upcoming = sortUpcoming(items.filter((i) => !isPreviousItem(i)));
-    const previous = sortPrevious(items.filter((i) => isPreviousItem(i)));
-    const out: Array<{
-      key: 'upcoming' | 'previous';
-      title: string;
-      hint: string;
-      data: LiveStreamListItem[];
-    }> = [];
-    if (scope !== 'previous' && upcoming.length) {
-      out.push({
-        key: 'upcoming',
-        title: 'Upcoming & live',
-        hint: 'Join when the class is live',
-        data: upcoming,
-      });
-    }
-    if (scope !== 'upcoming' && previous.length) {
-      out.push({
-        key: 'previous',
-        title: 'Previous classes',
-        hint: 'Recordings, slides & presentations',
-        data: previous,
-      });
-    }
-    return out;
-  }, [items, scope]);
+  const upcoming = useMemo(
+    () => sortUpcoming(items.filter((i) => !isPreviousItem(i))),
+    [items],
+  );
+  const previous = useMemo(
+    () => sortPrevious(items.filter((i) => isPreviousItem(i))),
+    [items],
+  );
+  const list = activeTab === 'previous' ? previous : upcoming;
 
   if (loading && items.length === 0) return <BookLoading />;
   if (error && items.length === 0) return <BookError message={error} />;
 
-  const emptyTitle =
-    scope === 'previous'
-      ? 'No previous classes'
-      : scope === 'upcoming'
-        ? 'No upcoming classes'
-        : 'No live sessions';
-  const emptySubtitle =
-    scope === 'previous'
-      ? 'When a live class ends, it appears here with recordings and presentations.'
-      : scope === 'upcoming'
-        ? 'Scheduled and live classes will show here. Joining still needs an invite.'
-        : 'When an admin schedules a live class, it will show up here. Joining still needs an invite.';
-
   return (
     <View style={styles.root}>
-      <SectionList
-        sections={sections}
+      <View style={styles.tabs}>
+        <Pressable
+          style={[styles.tab, activeTab === 'upcoming' && styles.tabActiveUpcoming]}
+          onPress={() => setTab('upcoming')}
+        >
+          <Ionicons
+            name="radio"
+            size={16}
+            color={activeTab === 'upcoming' ? '#0369a1' : colors.textMuted}
+          />
+          <Text style={[styles.tabText, activeTab === 'upcoming' && styles.tabTextUpcoming]}>
+            Upcoming & Live
+          </Text>
+        </Pressable>
+        {paidPrevious ? (
+          <Pressable
+            style={[styles.tab, activeTab === 'previous' && styles.tabActivePrevious]}
+            onPress={() => setTab('previous')}
+          >
+            <Ionicons
+              name="albums"
+              size={16}
+              color={activeTab === 'previous' ? '#9d174d' : colors.textMuted}
+            />
+            <Text style={[styles.tabText, activeTab === 'previous' && styles.tabTextPrevious]}>
+              Previous session
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
+
+      {!paidPrevious ? (
+        <Text style={styles.paidHint}>Previous sessions (recordings & slides) are for paid users.</Text>
+      ) : null}
+
+      <FlatList
+        data={list}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
-        stickySectionHeadersEnabled={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} />}
-        ListEmptyComponent={<BookEmpty title={emptyTitle} subtitle={emptySubtitle} />}
-        renderSectionHeader={({ section }) => (
-          <View
-            style={[
-              styles.sectionHeader,
-              section.key === 'previous' ? styles.sectionHeaderPrevious : styles.sectionHeaderUpcoming,
-            ]}
-          >
-            <View style={styles.sectionTitleRow}>
-              <Ionicons
-                name={section.key === 'previous' ? 'albums' : 'radio'}
-                size={16}
-                color={section.key === 'previous' ? '#9d174d' : '#0369a1'}
-              />
-              <Text
-                style={[
-                  styles.sectionTitle,
-                  section.key === 'previous' ? styles.sectionTitlePrevious : styles.sectionTitleUpcoming,
-                ]}
-              >
-                {section.title}
-              </Text>
-            </View>
-            <Text style={styles.sectionHint}>{section.hint}</Text>
-          </View>
-        )}
-        renderItem={({ item, section }) => {
-          const previous = section.key === 'previous';
+        ListEmptyComponent={
+          <BookEmpty
+            title={activeTab === 'previous' ? 'No previous sessions' : 'No upcoming classes'}
+            subtitle={
+              activeTab === 'previous'
+                ? 'When a live class ends, recordings and presentations appear here.'
+                : 'Scheduled and live classes will show here. Joining still needs an invite.'
+            }
+          />
+        }
+        renderItem={({ item }) => {
+          const previousRow = activeTab === 'previous';
           const perm = permissionMeta(item.permission_status);
-          const liveNow = !previous && item.status === 'live';
+          const liveNow = !previousRow && item.status === 'live';
           return (
             <Pressable
               style={({ pressed }) => [
                 styles.card,
-                previous ? styles.cardPrevious : styles.cardUpcoming,
+                previousRow ? styles.cardPrevious : styles.cardUpcoming,
                 liveNow && styles.cardLive,
                 pressed && styles.pressed,
               ]}
@@ -202,14 +194,14 @@ export default function LiveStreamListScreen() {
               <View
                 style={[
                   styles.iconWrap,
-                  previous ? styles.iconWrapPrevious : styles.iconWrapUpcoming,
+                  previousRow ? styles.iconWrapPrevious : styles.iconWrapUpcoming,
                   liveNow && styles.iconWrapLive,
                 ]}
               >
                 <Ionicons
-                  name={previous ? 'play-circle-outline' : liveNow ? 'radio' : 'videocam'}
+                  name={previousRow ? 'play-circle-outline' : liveNow ? 'radio' : 'videocam'}
                   size={22}
-                  color={previous ? '#9d174d' : liveNow ? '#047857' : '#0369a1'}
+                  color={previousRow ? '#9d174d' : liveNow ? '#047857' : '#0369a1'}
                 />
               </View>
               <View style={styles.body}>
@@ -219,20 +211,24 @@ export default function LiveStreamListScreen() {
                   <View
                     style={[
                       styles.statusBadge,
-                      previous ? styles.statusBadgePrevious : liveNow ? styles.statusBadgeLive : styles.statusBadgeUpcoming,
+                      previousRow
+                        ? styles.statusBadgePrevious
+                        : liveNow
+                          ? styles.statusBadgeLive
+                          : styles.statusBadgeUpcoming,
                     ]}
                   >
                     <Text
                       style={[
                         styles.statusText,
-                        previous
+                        previousRow
                           ? styles.statusTextPrevious
                           : liveNow
                             ? styles.statusTextLive
                             : styles.statusTextUpcoming,
                       ]}
                     >
-                      {previous ? 'Previous' : liveNow ? 'Live now' : item.status}
+                      {previousRow ? 'Previous' : liveNow ? 'Live now' : item.status}
                     </Text>
                   </View>
                   <View
@@ -252,7 +248,7 @@ export default function LiveStreamListScreen() {
                       {item.access_type === 'paid' ? 'Paid' : 'Free'}
                     </Text>
                   </View>
-                  {!previous ? (
+                  {!previousRow ? (
                     <View style={[styles.permBadge, { backgroundColor: perm.bg }]}>
                       <Text style={[styles.permText, { color: perm.color }]}>{perm.label}</Text>
                     </View>
@@ -287,9 +283,9 @@ export default function LiveStreamListScreen() {
                 </View>
               </View>
               <Ionicons
-                name={previous ? 'play' : 'chevron-forward'}
+                name={previousRow ? 'play' : 'chevron-forward'}
                 size={18}
-                color={previous ? '#9d174d' : colors.textMuted}
+                color={previousRow ? '#9d174d' : colors.textMuted}
               />
             </Pressable>
           );
@@ -301,35 +297,43 @@ export default function LiveStreamListScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
-  list: { padding: spacing.md, paddingBottom: spacing.xl, gap: 10 },
-  sectionHeader: {
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginTop: spacing.sm,
-    marginBottom: 8,
-    gap: 2,
+  tabs: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: 6,
   },
-  sectionHeaderUpcoming: {
-    backgroundColor: '#e0f2fe',
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
     borderWidth: 1,
+    borderColor: colors.border,
+  },
+  tabActiveUpcoming: {
+    backgroundColor: '#e0f2fe',
     borderColor: '#7dd3fc',
   },
-  sectionHeaderPrevious: {
+  tabActivePrevious: {
     backgroundColor: '#fce7f3',
-    borderWidth: 1,
     borderColor: '#f9a8d4',
   },
-  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
+  tabText: { fontSize: 13, fontWeight: '800', color: colors.textMuted },
+  tabTextUpcoming: { color: '#0369a1' },
+  tabTextPrevious: { color: '#9d174d' },
+  paidHint: {
+    marginHorizontal: spacing.md,
+    marginBottom: 4,
+    fontSize: 12,
+    color: colors.textMuted,
   },
-  sectionTitleUpcoming: { color: '#0369a1' },
-  sectionTitlePrevious: { color: '#9d174d' },
-  sectionHint: { fontSize: 12, color: colors.textMuted, marginLeft: 22 },
+  list: { padding: spacing.md, paddingBottom: spacing.xl },
   card: {
     flexDirection: 'row',
     alignItems: 'center',

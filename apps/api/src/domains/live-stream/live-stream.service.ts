@@ -95,12 +95,24 @@ async function ensureZoomMeeting(doc: InstanceType<typeof LiveStream>) {
 }
 
 function serializeRecordedContents(
-  items: Array<{ title?: string; youtube_url?: string }> | undefined | null,
+  items:
+    | Array<{
+        title?: string;
+        source?: 'youtube' | 'zoom';
+        url?: string;
+        youtube_url?: string;
+        passcode?: string;
+      }>
+    | undefined
+    | null,
 ) {
   return cleanLiveStreamRecordedContents(
     (items ?? []).map((i) => ({
       title: i.title ?? '',
-      youtube_url: i.youtube_url ?? '',
+      source: i.source,
+      url: i.url ?? i.youtube_url ?? '',
+      youtube_url: i.youtube_url ?? i.url ?? '',
+      passcode: i.passcode,
     })),
   );
 }
@@ -120,16 +132,23 @@ export function isPreviousClass(doc: {
   return new Date(doc.scheduled_at).getTime() < startOfTodayMs();
 }
 
-/** Invitees after class ends; admins/hosts anytime (including upcoming) for review. */
+/**
+ * Previous-class recordings/presentations:
+ * - Admins/hosts anytime
+ * - Paid users without invite
+ * - Invitees (unpaid) on free previous classes
+ */
 function canViewPresentation(
   doc: { status: string; scheduled_at: Date | string; host_user_id: unknown },
   user: { id: string; is_super_admin?: boolean; user_type?: string },
   permissionStatus: LivePermissionStatus,
+  hasPaid: boolean,
 ): boolean {
-  if (permissionStatus === 'not_permitted') return false;
-  if (isPreviousClass(doc)) return true;
   if (isPlatformAdmin(user)) return true;
   if (user.id === String(doc.host_user_id)) return true;
+  if (isPreviousClass(doc) && hasPaid) return true;
+  if (permissionStatus === 'not_permitted') return false;
+  if (isPreviousClass(doc)) return true;
   return false;
 }
 
@@ -209,7 +228,13 @@ function sortByCurrentDateFirst<T extends { scheduled_at: Date | string }>(items
 }
 
 async function permissionFor(
-  doc: { _id: unknown; access_type?: string; host_user_id: unknown },
+  doc: {
+    _id: unknown;
+    access_type?: string;
+    host_user_id: unknown;
+    status?: string;
+    scheduled_at?: Date | string;
+  },
   userId: string,
   user: { is_super_admin?: boolean; user_type?: string },
   hasPaid: boolean,
@@ -226,6 +251,15 @@ async function permissionFor(
   // Paid users may join any paid live class without a per-class invite.
   if (isPaidClass(doc) && hasPaid) {
     return { permission_status: 'permitted', can_join: true, can_host: false };
+  }
+  // Paid users may open any previous class (recordings) without invite.
+  if (
+    hasPaid &&
+    doc.status != null &&
+    doc.scheduled_at != null &&
+    isPreviousClass({ status: doc.status, scheduled_at: doc.scheduled_at })
+  ) {
+    return { permission_status: 'permitted', can_join: false, can_host: false };
   }
   const invite = await LiveStreamInvite.findOne({
     live_stream_id: sessionId,
@@ -301,7 +335,8 @@ export async function listLiveStreamsForUser(
     const recorded = serializeRecordedContents(doc.recorded_contents);
     const payment = paymentAccessFor(doc, user, hasPaid);
     const viewPresentation =
-      !payment.payment_blocked && canViewPresentation(doc, user, perm.permission_status);
+      !payment.payment_blocked &&
+      canViewPresentation(doc, user, perm.permission_status, hasPaid);
     result.push({
       id: String(doc._id),
       topic: doc.topic,
@@ -349,7 +384,8 @@ export async function getLiveStreamForUser(
   const recorded = serializeRecordedContents(doc.recorded_contents);
   const payment = paymentAccessFor(doc, user, hasPaid);
   const viewPresentation =
-    !payment.payment_blocked && canViewPresentation(doc, user, perm.permission_status);
+    !payment.payment_blocked &&
+    canViewPresentation(doc, user, perm.permission_status, hasPaid);
   return {
     ...serializeBase(doc, false),
     slides: viewPresentation ? slides : [],

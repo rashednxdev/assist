@@ -31,6 +31,7 @@ import {
   setLiveGuestCaptureBlocked,
 } from '@/lib/live-screen-capture';
 import {
+  buildZoomGuestAutoNameJoinScript,
   buildZoomGuestUiLockScript,
   ensureGuestListenPermissions,
   ensureGuestSpeakPermissions,
@@ -166,7 +167,9 @@ export default function LiveStreamDetailScreen() {
 
   useEffect(() => {
     if (!join) return;
+    const guestName = isZoomJoinPayload(join) ? zoomGuestDisplayName(join, user) : 'Guest';
     const t = setTimeout(() => {
+      webViewRef.current?.injectJavaScript(buildZoomGuestAutoNameJoinScript(guestName));
       webViewRef.current?.injectJavaScript(buildZoomGuestUiLockScript(allowSpeech));
     }, 400);
     // Re-assert audio routing after Zoom WebRTC starts
@@ -177,7 +180,7 @@ export default function LiveStreamDetailScreen() {
       clearTimeout(audioKick);
       clearTimeout(audioKick2);
     };
-  }, [join, allowSpeech]);
+  }, [join, allowSpeech, user]);
 
   useEffect(() => {
     if (!join || !allowSpeech) return;
@@ -204,12 +207,46 @@ export default function LiveStreamDetailScreen() {
     presentations.length > 0 || slides.length > 0 || (session?.slide_count ?? 0) > 0;
   const recordedContents = session?.recorded_contents ?? [];
   const canViewPresentation = Boolean(session?.can_view_presentation);
-  const showPresentation =
-    reviewing ||
-    (isPrevious && canViewPresentation && (hasSlides || recordedContents.length > 0));
+  const isPaidOrAdmin =
+    user?.has_paid === true ||
+    Boolean(user?.is_super_admin) ||
+    user?.user_type === 'admin' ||
+    user?.user_type === 'system_admin';
+  /** Previous classes open recordings/presentations directly — no Join button. */
+  const showPresentation = reviewing || (isPrevious && isPaidOrAdmin);
+  const startAroundLabel = session
+    ? new Date(session.scheduled_at).toLocaleString(undefined, {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '';
+  const joinBtnLabel = (() => {
+    if (!session) return 'Join live class';
+    if (session.permission_status === 'not_permitted') return 'Join locked';
+    if (session.payment_blocked) return 'Payment required';
+    if (session.status === 'paused') return 'Waiting for resume';
+    if (session.status === 'ended') return 'Session ended';
+    if (session.status === 'live') return 'Join live class';
+    return `Class will Start Around ${startAroundLabel}`;
+  })();
+  const canPressJoin =
+    Boolean(session) &&
+    !busy &&
+    Boolean(session?.can_join) &&
+    !session?.payment_blocked &&
+    session?.permission_status !== 'not_permitted' &&
+    session?.status === 'live';
 
   useEffect(() => {
-    if (Platform.OS !== 'android') return;
+    navigation.setOptions({
+      title: isPrevious ? 'Previous session' : 'Live session',
+    });
+  }, [navigation, isPrevious]);
+
+  useEffect(() => {
     if (!showPresentation || canBypassLiveCaptureBlock(user)) return;
     void setLiveGuestCaptureBlocked(true);
     return () => {
@@ -305,6 +342,7 @@ export default function LiveStreamDetailScreen() {
           onLoadEnd={() => {
             setWebviewReady(true);
             startLiveAudioSession();
+            webViewRef.current?.injectJavaScript(buildZoomGuestAutoNameJoinScript(guestName));
             webViewRef.current?.injectJavaScript(buildZoomGuestUiLockScript(allowSpeech));
           }}
           onPermissionRequest={(event) => {
@@ -375,7 +413,7 @@ export default function LiveStreamDetailScreen() {
   if (showPresentation) {
     return (
       <ScrollView style={styles.root} contentContainerStyle={styles.reviewContent}>
-        {!isPrevious || reviewing ? (
+        {reviewing && !isPrevious ? (
           <View style={styles.reviewBar}>
             <Pressable style={styles.reviewClose} onPress={() => setReviewing(false)}>
               <Text style={styles.reviewCloseText}>Close review</Text>
@@ -383,18 +421,57 @@ export default function LiveStreamDetailScreen() {
             <Text style={styles.reviewHint}>Admin preview</Text>
           </View>
         ) : null}
-        {recordedContents.length > 0 ? (
-          <View style={styles.recordedBlock}>
-            <LiveClassRecordedVideos items={recordedContents} classTopic={session.topic} />
+        {isPrevious ? (
+          <View style={styles.previousHeader}>
+            <Text style={styles.previousTitle}>{session.topic}</Text>
+            <Text style={styles.previousMeta}>
+              {new Date(session.scheduled_at).toLocaleString()}
+            </Text>
           </View>
         ) : null}
-        {hasSlides ? (
+        {!canViewPresentation ? (
+          <View style={[styles.permCard, { backgroundColor: '#fff1f2', borderColor: '#fecdd3', margin: spacing.lg }]}>
+            <Text style={[styles.permTitle, { color: '#9f1239' }]}>Content locked</Text>
+            <Text style={[styles.permBody, { color: '#9f1239' }]}>
+              {isPaidOrAdmin
+                ? 'Recordings for this class are not available yet, or access could not be verified. Pull to refresh or try again.'
+                : 'Previous class recordings are available for paid users.'}
+            </Text>
+          </View>
+        ) : null}
+        {canViewPresentation && recordedContents.length === 0 && !hasSlides ? (
+          <View style={{ padding: spacing.lg }}>
+            <Text style={styles.detailsText}>
+              No recordings or presentations published for this class yet.
+            </Text>
+          </View>
+        ) : null}
+        {canViewPresentation && recordedContents.length > 0 ? (
+          <View style={styles.recordedBlock}>
+            <LiveClassRecordedVideos items={recordedContents} />
+          </View>
+        ) : null}
+        {canViewPresentation && hasSlides ? (
           <LiveClassPresentation
             presentations={presentations}
             slides={slides}
             classTopic={recordedContents.length ? undefined : session.topic}
           />
         ) : null}
+      </ScrollView>
+    );
+  }
+
+  if (isPrevious && !isPaidOrAdmin) {
+    return (
+      <ScrollView style={styles.root} contentContainerStyle={styles.content}>
+        <Text style={styles.topic}>{session.topic}</Text>
+        <View style={[styles.permCard, { backgroundColor: '#fffbeb', borderColor: '#fcd34d' }]}>
+          <Text style={[styles.permTitle, { color: '#92400e' }]}>Paid users only</Text>
+          <Text style={[styles.permBody, { color: '#92400e' }]}>
+            Previous class recordings and presentations are available for paid users.
+          </Text>
+        </View>
       </ScrollView>
     );
   }
@@ -413,7 +490,7 @@ export default function LiveStreamDetailScreen() {
         </Text>
         <Text style={[styles.permBody, { color: perm.color }]}>
           {isPrevious && !canViewPresentation
-            ? 'You can see this previous class in the list, but an admin must invite you to open the presentation.'
+            ? 'Previous class recordings are available for paid users without an invite.'
             : perm.body}
         </Text>
       </View>
@@ -492,42 +569,21 @@ export default function LiveStreamDetailScreen() {
       ) : null}
 
       <Pressable
-        style={[
-          styles.joinBtn,
-          (busy ||
-            !session.can_join ||
-            session.payment_blocked ||
-            session.permission_status === 'not_permitted' ||
-            session.status === 'paused' ||
-            session.status === 'ended') &&
-            styles.joinBtnDisabled,
-        ]}
-        disabled={
-          busy ||
-          !session.can_join ||
-          session.payment_blocked ||
-          session.permission_status === 'not_permitted' ||
-          session.status === 'paused' ||
-          session.status === 'ended'
-        }
+        style={[styles.joinBtn, !canPressJoin && styles.joinBtnDisabled]}
+        disabled={!canPressJoin}
         onPress={() => void handleJoin()}
       >
         {busy ? (
           <ActivityIndicator color={colors.white} />
         ) : (
-          <Text style={styles.joinBtnText}>
-            {session.permission_status === 'not_permitted'
-              ? 'Join locked'
-              : session.payment_blocked
-                ? 'Payment required'
-                : session.status === 'paused'
-                ? 'Waiting for resume'
-                : session.status === 'ended'
-                  ? 'Session ended'
-                  : 'Join live class'}
-          </Text>
+          <Text style={styles.joinBtnText}>{joinBtnLabel}</Text>
         )}
       </Pressable>
+      {session.status === 'scheduled' ? (
+        <Text style={styles.joinHint}>
+          Join opens when the host starts the class. Your name is filled automatically.
+        </Text>
+      ) : null}
     </ScrollView>
   );
 }
@@ -604,7 +660,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   joinBtnDisabled: { opacity: 0.5 },
-  joinBtnText: { color: colors.white, fontSize: 16, fontWeight: '800' },
+  joinBtnText: { color: colors.white, fontSize: 16, fontWeight: '800', textAlign: 'center' },
+  joinHint: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: -4,
+  },
+  previousHeader: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    gap: 4,
+  },
+  previousTitle: { fontSize: 20, fontWeight: '800', color: colors.text },
+  previousMeta: { fontSize: 13, color: colors.textMuted },
   reviewBar: {
     flexDirection: 'row',
     alignItems: 'center',

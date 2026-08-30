@@ -61,8 +61,7 @@ const MODULES: Array<{
     | 'calendar-outline'
     | 'time-outline'
     | 'trophy-outline'
-    | 'videocam-outline'
-    | 'albums-outline';
+    | 'videocam-outline';
   color: string;
   href: Href;
 }> = [
@@ -76,31 +75,22 @@ const MODULES: Array<{
     href: '/(app)/books',
   },
   {
-    id: 'exam',
-    code: 'EXAM' as const,
-    title: 'Exam Programs',
-    subtitle: 'SAS, SRAS & exam structure',
-    icon: 'school-outline' as const,
-    color: '#059669',
-    href: '/(app)/exams',
+    id: 'paper',
+    code: 'PAPER' as const,
+    title: 'Exam Papers',
+    subtitle: 'Session-wise model papers',
+    icon: 'document-text-outline' as const,
+    color: '#d97706',
+    href: '/(app)/papers',
   },
   {
     id: 'live',
     code: 'LIVE_STREAM' as const,
     title: 'Live class',
-    subtitle: 'Upcoming & live sessions',
+    subtitle: 'Upcoming, live & previous',
     icon: 'videocam-outline' as const,
     color: '#0369a1',
-    href: '/(app)/live?scope=upcoming' as Href,
-  },
-  {
-    id: 'live-previous',
-    code: 'LIVE_STREAM' as const,
-    title: 'Previous class',
-    subtitle: 'Recordings & presentations',
-    icon: 'albums-outline' as const,
-    color: '#be185d',
-    href: '/(app)/live?scope=previous' as Href,
+    href: '/(app)/live' as Href,
   },
   {
     id: 'questions',
@@ -112,13 +102,13 @@ const MODULES: Array<{
     href: '/(app)/questions',
   },
   {
-    id: 'paper',
-    code: 'PAPER' as const,
-    title: 'Exam Papers',
-    subtitle: 'Session-wise model papers',
-    icon: 'document-text-outline' as const,
-    color: '#d97706',
-    href: '/(app)/papers',
+    id: 'exam',
+    code: 'EXAM' as const,
+    title: 'Exam Programs',
+    subtitle: 'SAS, SRAS & exam structure',
+    icon: 'school-outline' as const,
+    color: '#059669',
+    href: '/(app)/exams',
   },
   {
     id: 'qotd',
@@ -205,11 +195,10 @@ export default function HomeScreen() {
       );
     });
     if (hasPaidModule) return MODULES;
-    // Until paid: pin free promo modules at the top — QOTD, then Live / Previous class.
+    // Until paid: pin free promo modules at the top — QOTD, then Live class.
     const qotd = MODULES.find((m) => m.code === 'QOTD');
     const live = MODULES.find((m) => m.id === 'live');
-    const livePrevious = MODULES.find((m) => m.id === 'live-previous');
-    const pinned = [qotd, live, livePrevious].filter(Boolean) as typeof MODULES;
+    const pinned = [qotd, live].filter(Boolean) as typeof MODULES;
     const pinnedIds = new Set(pinned.map((m) => m.id));
     return [...pinned, ...MODULES.filter((m) => !pinnedIds.has(m.id))];
   }, [user?.module_access, user?.module_stops, user?.has_paid]);

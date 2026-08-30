@@ -50,10 +50,23 @@ export const liveStreamPresentationSchema = z.object({
 
 export const liveStreamPresentationsSchema = z.array(liveStreamPresentationSchema).max(20);
 
-/** YouTube (or similar) recording links for previous-class playback — multiple per class. */
+export const LIVE_RECORDING_SOURCES = ['youtube', 'zoom'] as const;
+export type LiveRecordingSource = (typeof LIVE_RECORDING_SOURCES)[number];
+
+/** Previous-class video: YouTube embed or Zoom recording / MP4 share link. */
 export const liveStreamRecordedContentSchema = z.object({
   title: z.string().trim().max(200).default(''),
-  youtube_url: z.string().trim().url().max(500),
+  source: z.enum(LIVE_RECORDING_SOURCES).optional(),
+  /** Preferred playback URL (YouTube watch/embed or Zoom rec/share/MP4). */
+  url: z.string().trim().max(800).optional(),
+  /** @deprecated Same as `url` — kept for older admin payloads. */
+  youtube_url: z.string().trim().max(800).optional(),
+  /**
+   * Zoom cloud recording passcode (optional). Paid users never type this —
+   * the app unlocks the share page automatically. Prefer pasting a Zoom share
+   * link that already includes `?pwd=` (Embed passcode in shareable link).
+   */
+  passcode: z.string().trim().max(100).optional(),
 });
 
 export const liveStreamRecordedContentsSchema = z.array(liveStreamRecordedContentSchema).max(20);
@@ -197,24 +210,96 @@ export function normalizeLiveStreamPresentations(opts: {
   return [{ title: 'Presentation 1', slides: legacy }];
 }
 
+export function isZoomRecordingUrl(raw: string): boolean {
+  try {
+    const host = new URL(raw).hostname.replace(/^www\./, '').toLowerCase();
+    const path = new URL(raw).pathname.toLowerCase();
+    if (!host.includes('zoom.us') && !host.includes('zoom.com')) return false;
+    return (
+      path.includes('/rec/') ||
+      path.includes('/recording') ||
+      path.includes('/play/') ||
+      path.includes('/share/') ||
+      /\.(mp4|m3u8|webm|mov)$/i.test(path)
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function isDirectVideoFileUrl(raw: string): boolean {
+  try {
+    const path = new URL(raw).pathname;
+    return /\.(mp4|m3u8|webm|mov)(\?|$)/i.test(path) || /\.(mp4|m3u8|webm|mov)$/i.test(path);
+  } catch {
+    return false;
+  }
+}
+
+export function recordedContentUrl(item: {
+  url?: string | null;
+  youtube_url?: string | null;
+}): string {
+  return (item.url ?? item.youtube_url ?? '').trim();
+}
+
+export function recordedContentSource(item: {
+  source?: LiveRecordingSource | null;
+  url?: string | null;
+  youtube_url?: string | null;
+}): LiveRecordingSource {
+  if (item.source === 'zoom' || item.source === 'youtube') return item.source;
+  const raw = recordedContentUrl(item);
+  if (isZoomRecordingUrl(raw)) return 'zoom';
+  if (youtubeVideoIdFromUrl(raw)) return 'youtube';
+  return 'youtube';
+}
+
+/**
+ * Attach Zoom recording passcode for one-click playback when the share URL
+ * does not already include `pwd` (from Zoom “Embed passcode in shareable link”).
+ */
+export function zoomRecordingUnlockedUrl(raw: string, passcode?: string | null): string {
+  const url = (raw ?? '').trim();
+  const code = (passcode ?? '').trim();
+  if (!url || !code) return url;
+  try {
+    const u = new URL(url);
+    if (u.searchParams.get('pwd')) return url;
+    u.searchParams.set('pwd', code);
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
 export function cleanLiveStreamRecordedContents(
   items?: LiveStreamRecordedContent[] | null,
 ): LiveStreamRecordedContent[] {
-  return (items ?? [])
-    .map((item) => {
-      const title = (item.title ?? '').trim();
-      const youtube_url = (item.youtube_url ?? '').trim();
-      if (!youtube_url) return null;
-      try {
-        // eslint-disable-next-line no-new
-        new URL(youtube_url);
-      } catch {
-        return null;
-      }
-      return { title, youtube_url };
-    })
-    .filter((x): x is LiveStreamRecordedContent => x != null)
-    .slice(0, 20);
+  const out: LiveStreamRecordedContent[] = [];
+  for (const item of items ?? []) {
+    const title = (item.title ?? '').trim();
+    const raw = recordedContentUrl(item);
+    if (!raw) continue;
+    try {
+      // eslint-disable-next-line no-new
+      new URL(raw);
+    } catch {
+      continue;
+    }
+    const source = recordedContentSource({ ...item, url: raw });
+    const passcode = (item.passcode ?? '').trim();
+    const unlocked = source === 'zoom' ? zoomRecordingUnlockedUrl(raw, passcode) : raw;
+    out.push({
+      title,
+      source,
+      url: unlocked,
+      youtube_url: unlocked,
+      ...(source === 'zoom' && passcode ? { passcode } : {}),
+    });
+    if (out.length >= 20) break;
+  }
+  return out;
 }
 
 /** Extract YouTube video id from common URL shapes for embed playback. */
@@ -247,7 +332,39 @@ export function youtubeVideoIdFromUrl(raw: string): string | null {
 
 export function youtubeEmbedUrl(raw: string): string | null {
   const id = youtubeVideoIdFromUrl(raw);
-  return id ? `https://www.youtube.com/embed/${id}?rel=0` : null;
+  if (!id) return null;
+  // Mobile-friendly embed: native controls (play/pause/seek), inline play, no related spam.
+  const params = new URLSearchParams({
+    rel: '0',
+    controls: '1',
+    playsinline: '1',
+    modestbranding: '1',
+    fs: '1',
+    iv_load_policy: '3',
+  });
+  return `https://www.youtube.com/embed/${id}?${params.toString()}`;
+}
+
+export type RecordedContentPlayback =
+  | { kind: 'youtube'; src: string }
+  | { kind: 'html5'; src: string }
+  | { kind: 'page'; src: string };
+
+/** How the app/web player should load this previous-class video. */
+export function recordedContentPlayback(
+  item: LiveStreamRecordedContent,
+): RecordedContentPlayback | null {
+  const raw = recordedContentUrl(item);
+  if (!raw) return null;
+  const source = recordedContentSource(item);
+  if (source === 'youtube' || youtubeVideoIdFromUrl(raw)) {
+    const embed = youtubeEmbedUrl(raw);
+    if (embed) return { kind: 'youtube', src: embed };
+  }
+  if (isDirectVideoFileUrl(raw)) return { kind: 'html5', src: raw };
+  const unlocked =
+    source === 'zoom' ? zoomRecordingUnlockedUrl(raw, item.passcode) : raw;
+  return { kind: 'page', src: unlocked };
 }
 
 export interface LiveStreamGuestItem {

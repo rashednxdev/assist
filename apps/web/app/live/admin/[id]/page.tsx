@@ -32,6 +32,9 @@ import {
   type LiveStreamSlide,
   type LiveStreamPresentation,
   type LiveStreamRecordedContent,
+  type LiveRecordingSource,
+  recordedContentSource,
+  recordedContentUrl,
 } from '@ibas/shared-types';
 
 interface SessionDetail {
@@ -70,7 +73,10 @@ interface PresentationDraft {
 interface RecordedDraft {
   key: string;
   title: string;
-  youtube_url: string;
+  source: LiveRecordingSource;
+  url: string;
+  /** Zoom recording passcode — paid users never enter this. */
+  passcode: string;
 }
 
 interface InviteRow {
@@ -166,7 +172,9 @@ export default function LiveStreamAdminDetailPage() {
         (s.data.recorded_contents ?? []).map((item, i) => ({
           key: `rec-${i}-${Date.now()}`,
           title: item.title ?? '',
-          youtube_url: item.youtube_url ?? '',
+          source: recordedContentSource(item),
+          url: recordedContentUrl(item),
+          passcode: item.passcode ?? '',
         })),
       );
     } catch (err) {
@@ -227,10 +235,15 @@ export default function LiveStreamAdminDetailPage() {
             })),
           })),
           recorded_contents: recorded
-            .filter((r) => r.youtube_url.trim())
+            .filter((r) => r.url.trim())
             .map((r) => ({
               title: r.title.trim(),
-              youtube_url: r.youtube_url.trim(),
+              source: r.source,
+              url: r.url.trim(),
+              youtube_url: r.url.trim(),
+              ...(r.source === 'zoom' && r.passcode.trim()
+                ? { passcode: r.passcode.trim() }
+                : {}),
             })),
         }),
       });
@@ -747,7 +760,7 @@ export default function LiveStreamAdminDetailPage() {
 
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
-          <CardTitle className="text-base">Recorded class videos (YouTube)</CardTitle>
+          <CardTitle className="text-base">Recorded class videos</CardTitle>
           <Button
             type="button"
             variant="outline"
@@ -759,7 +772,9 @@ export default function LiveStreamAdminDetailPage() {
                 {
                   key: `rec-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
                   title: '',
-                  youtube_url: '',
+                  source: 'youtube',
+                  url: '',
+                  passcode: '',
                 },
               ])
             }
@@ -769,12 +784,12 @@ export default function LiveStreamAdminDetailPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted">
-            After the Zoom cloud recording is ready, download it, upload to YouTube, then paste one
-            or more links here. Guests play these as previous class content (screen capture blocked
-            on Android).
+            Choose <strong>YouTube</strong> or <strong>Zoom</strong> for each video. Previous class
+            playback is <strong>paid users only</strong> — they watch in-app with no Zoom passcode
+            prompt when the link/passcode is set up correctly below.
           </p>
           {recorded.length === 0 ? (
-            <p className="text-sm text-muted">No recorded videos yet. Add a YouTube link when ready.</p>
+            <p className="text-sm text-muted">No recorded videos yet. Add a YouTube or Zoom link when ready.</p>
           ) : null}
           {recorded.map((item, index) => (
             <div
@@ -796,6 +811,37 @@ export default function LiveStreamAdminDetailPage() {
                 </Button>
               </div>
               <div className="space-y-1.5">
+                <Label>Content view</Label>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={item.source === 'youtube' ? 'default' : 'outline'}
+                    disabled={busy}
+                    onClick={() =>
+                      setRecorded((prev) =>
+                        prev.map((r) => (r.key === item.key ? { ...r, source: 'youtube' } : r)),
+                      )
+                    }
+                  >
+                    YouTube
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={item.source === 'zoom' ? 'default' : 'outline'}
+                    disabled={busy}
+                    onClick={() =>
+                      setRecorded((prev) =>
+                        prev.map((r) => (r.key === item.key ? { ...r, source: 'zoom' } : r)),
+                      )
+                    }
+                  >
+                    Zoom recording
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-1.5">
                 <Label>Title (optional)</Label>
                 <Input
                   value={item.title}
@@ -808,18 +854,50 @@ export default function LiveStreamAdminDetailPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>YouTube URL</Label>
+                <Label>{item.source === 'zoom' ? 'Zoom recording URL' : 'YouTube URL'}</Label>
                 <Input
-                  value={item.youtube_url}
+                  value={item.url}
                   onChange={(e) =>
                     setRecorded((prev) =>
-                      prev.map((r) =>
-                        r.key === item.key ? { ...r, youtube_url: e.target.value } : r,
-                      ),
+                      prev.map((r) => (r.key === item.key ? { ...r, url: e.target.value } : r)),
                     )
                   }
-                  placeholder="https://www.youtube.com/watch?v=…"
+                  placeholder={
+                    item.source === 'zoom'
+                      ? 'https://zoom.us/rec/share/…?pwd=… or MP4 link'
+                      : 'https://www.youtube.com/watch?v=…'
+                  }
                 />
+                {item.source === 'zoom' ? (
+                  <>
+                    <div className="space-y-1.5 pt-1">
+                      <Label>Zoom passcode (optional)</Label>
+                      <Input
+                        value={item.passcode}
+                        onChange={(e) =>
+                          setRecorded((prev) =>
+                            prev.map((r) =>
+                              r.key === item.key ? { ...r, passcode: e.target.value } : r,
+                            ),
+                          )
+                        }
+                        placeholder="Only if the share link has no ?pwd="
+                        autoComplete="off"
+                      />
+                    </div>
+                    <p className="text-xs text-muted">
+                      Paid users never type a passcode. Best option in Zoom:{' '}
+                      <strong>Settings → Recording → Embed passcode in the shareable link</strong>,
+                      then paste the full share URL (already includes <code>?pwd=</code>). Or paste
+                      the share URL + passcode here — the app unlocks automatically. Turn off
+                      “Viewers can download” in Zoom.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-xs text-muted">
+                    Upload the Zoom file to YouTube (Unlisted), then paste the watch link.
+                  </p>
+                )}
               </div>
             </div>
           ))}

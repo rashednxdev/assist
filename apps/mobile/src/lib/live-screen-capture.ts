@@ -15,9 +15,9 @@ export function canBypassLiveCaptureBlock(user: {
   );
 }
 
-/** Android FLAG_SECURE — blocks screenshots and most built-in screen recorders. */
+/** Blocks screenshots / screen recording (Android FLAG_SECURE; iOS ScreenCapture API). */
 export async function setLiveGuestCaptureBlocked(block: boolean): Promise<void> {
-  if (Platform.OS !== 'android') return;
+  if (Platform.OS !== 'android' && Platform.OS !== 'ios') return;
   if (block && captureBlocked) return;
   if (!block && !captureBlocked) return;
   try {

@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic';
 import {
   type LivePermissionStatus,
   type LiveStreamPresentation,
+  type LiveStreamRecordedContent,
   type LiveStreamSlide,
   type LiveStreamStatus,
   type ZoomLiveStreamJoinPayload,
@@ -18,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
 import { LiveClassPresentations } from '@/components/live/live-class-presentations';
+import { LiveClassRecordedVideos } from '@/components/live/live-class-recorded-videos';
 
 const ZoomMeetingRoom = dynamic(
   () => import('@/components/live/zoom-meeting-room').then((m) => m.ZoomMeetingRoom),
@@ -37,6 +39,7 @@ interface SessionDetail {
   is_previous?: boolean;
   slides?: LiveStreamSlide[];
   presentations?: LiveStreamPresentation[];
+  recorded_contents?: LiveStreamRecordedContent[];
   slide_count?: number;
   presentation_count?: number;
   allow_guest_messages?: boolean;
@@ -201,6 +204,7 @@ export default function ZoomStreamWatchPage() {
   const isPrevious = Boolean(session.is_previous) || session.status === 'ended';
   const slides = session.slides ?? [];
   const presentations = session.presentations ?? [];
+  const recordedContents = session.recorded_contents ?? [];
   const canViewPresentation = Boolean(session.can_view_presentation);
   const canHost = Boolean(session.can_host);
 
@@ -209,19 +213,24 @@ export default function ZoomStreamWatchPage() {
       <div className="mx-auto max-w-3xl space-y-6">
         <PageHeader
           title={session.topic}
-          description={`${new Date(session.scheduled_at).toLocaleString()} · Previous class`}
+          description={`${new Date(session.scheduled_at).toLocaleString()} · Previous session`}
         />
         {error ? <Alert variant="error">{error}</Alert> : null}
         {!canViewPresentation ? (
           <div className={`rounded-2xl border p-4 ${perm.tone}`}>
             <div className="text-base font-bold">Presentation locked</div>
             <p className="mt-1 text-sm opacity-90">
-              Everyone can see this class in the list. An admin must invite you to open the
-              presentation.
+              Previous class recordings are available for paid users (no invite needed). If you
+              already paid, refresh this page.
             </p>
           </div>
         ) : (
-          <LiveClassPresentations presentations={presentations} slides={slides} />
+          <div className="space-y-8">
+            {recordedContents.length > 0 ? (
+              <LiveClassRecordedVideos items={recordedContents} />
+            ) : null}
+            <LiveClassPresentations presentations={presentations} slides={slides} />
+          </div>
         )}
       </div>
     );
@@ -365,12 +374,16 @@ export default function ZoomStreamWatchPage() {
         </CardContent>
       </Card>
 
-      {canViewPresentation && (presentations.length > 0 || slides.length > 0) ? (
+      {canViewPresentation &&
+      (presentations.length > 0 || slides.length > 0 || recordedContents.length > 0) ? (
         <div className="space-y-6">
           <PageHeader
             title="Class content (review)"
             description="Admins can preview presentations for upcoming sessions."
           />
+          {recordedContents.length > 0 ? (
+            <LiveClassRecordedVideos items={recordedContents} />
+          ) : null}
           <LiveClassPresentations presentations={presentations} slides={slides} />
         </div>
       ) : null}

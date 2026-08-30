@@ -58,18 +58,18 @@ const learnLinks = [
     moduleCode: 'BOOKS',
   },
   {
-    href: '/questions',
-    label: 'Question bank',
-    desc: 'MCQ, short notes linked to rules',
-    icon: HelpCircle,
-    moduleCode: 'QUESTIONS',
-  },
-  {
     href: '/exams',
     label: 'Exam programs',
     desc: 'SAS, SRAS syllabus & structure',
     icon: GraduationCap,
     moduleCode: 'EXAM',
+  },
+  {
+    href: '/questions',
+    label: 'Question bank',
+    desc: 'MCQ, short notes linked to rules',
+    icon: HelpCircle,
+    moduleCode: 'QUESTIONS',
   },
   {
     href: '/papers',
@@ -100,10 +100,13 @@ interface HostingRow {
   scheduled_at: string;
   status: string;
   is_previous?: boolean;
+  video_platform?: 'agora' | 'zoom';
 }
 
-function openLiveRoom(sessionId: string) {
-  window.open(`/live-room/${sessionId}`, '_blank', 'noopener,noreferrer');
+function openLiveRoom(sessionId: string, platform?: 'agora' | 'zoom') {
+  const path =
+    platform === 'agora' ? `/live-room/${sessionId}` : `/live/zoom-room/${sessionId}`;
+  window.open(path, '_blank', 'noopener,noreferrer');
 }
 
 export function UserDashboard({
@@ -128,7 +131,7 @@ export function UserDashboard({
   const [hosting, setHosting] = useState<HostingRow[]>([]);
 
   useEffect(() => {
-    apiFetch<{ data: HostingRow[] }>('/live-streams/hosting')
+    apiFetch<{ data: HostingRow[] }>('/live-streams/hosting?video_platform=zoom')
       .then((res) =>
         setHosting(
           res.data.filter(
@@ -154,7 +157,7 @@ export function UserDashboard({
           <div className="flex flex-wrap gap-2 pt-2">
             {hosting.length > 0 && (
               <Button asChild size="sm" variant="outline" className="bg-white text-primary-dark hover:bg-white/90 border-0">
-                <Link href="/live/hosting">Host live classes ({hosting.length})</Link>
+                <Link href="/live/zoom/hosting">Host live classes ({hosting.length})</Link>
               </Button>
             )}
             {showWorkflow && (
@@ -182,7 +185,7 @@ export function UserDashboard({
           <div className="mb-4 flex items-center justify-between gap-2">
             <h2 className="text-lg font-semibold">Your host classes</h2>
             <Button asChild variant="ghost" size="sm">
-              <Link href="/live/hosting">
+              <Link href="/live/zoom/hosting">
                 View all <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
@@ -200,7 +203,11 @@ export function UserDashboard({
                       {new Date(item.scheduled_at).toLocaleString()} · {item.status}
                     </div>
                   </div>
-                  <Button type="button" size="sm" onClick={() => openLiveRoom(item.id)}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => openLiveRoom(item.id, item.video_platform ?? 'zoom')}
+                  >
                     Open control room
                   </Button>
                 </CardContent>

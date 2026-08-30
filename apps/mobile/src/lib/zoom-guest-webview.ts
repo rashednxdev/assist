@@ -104,6 +104,63 @@ export function filterZoomMediaResources(
 }
 
 /**
+ * Fill Zoom name field (if shown) and tap Join — name is also passed via URL `un=`.
+ */
+export function buildZoomGuestAutoNameJoinScript(displayName: string): string {
+  const safe = JSON.stringify(displayName.trim() || 'Guest');
+  return `(function(){
+    var name=${safe};
+    function fillName(){
+      try{
+        var inputs=document.querySelectorAll('input[type="text"],input:not([type]),input[placeholder]');
+        for(var i=0;i<inputs.length;i++){
+          var el=inputs[i];
+          var ph=((el.getAttribute('placeholder')||'')+' '+(el.getAttribute('aria-label')||'')+' '+(el.getAttribute('name')||'')).toLowerCase();
+          if(ph.indexOf('name')!==-1 || ph.indexOf('display')!==-1 || el.value===''){
+            var setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value');
+            if(setter&&setter.set) setter.set.call(el,name);
+            else el.value=name;
+            el.dispatchEvent(new Event('input',{bubbles:true}));
+            el.dispatchEvent(new Event('change',{bubbles:true}));
+            return true;
+          }
+        }
+      }catch(e){}
+      return false;
+    }
+    function clickJoinMeeting(){
+      try{
+        var nodes=document.querySelectorAll('button,a,[role="button"]');
+        for(var i=0;i<nodes.length;i++){
+          var t=((nodes[i].getAttribute('aria-label')||'')+' '+(nodes[i].textContent||'')).toLowerCase().replace(/\\s+/g,' ').trim();
+          if(!t) continue;
+          if(t==='join' || t.indexOf('join meeting')!==-1 || t.indexOf('join webinar')!==-1 ||
+             (t.indexOf('join')===0 && t.indexOf('audio')===-1 && t.indexOf('computer')===-1)){
+            nodes[i].click();
+            return true;
+          }
+        }
+      }catch(e){}
+      return false;
+    }
+    if(!window.__proassistNameJoinTimer){
+      var tries=0;
+      window.__proassistNameJoinTimer=setInterval(function(){
+        tries++;
+        fillName();
+        clickJoinMeeting();
+        if(tries>=15){
+          clearInterval(window.__proassistNameJoinTimer);
+          window.__proassistNameJoinTimer=null;
+        }
+      }, 700);
+    }
+    fillName();
+    clickJoinMeeting();
+  })();true;`;
+}
+
+/**
  * Guest lock: join listen-only (mic muted, video off).
  * When allowSpeech, unlock Start Video / unmute controls.
  */

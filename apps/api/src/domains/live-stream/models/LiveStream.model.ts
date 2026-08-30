@@ -21,7 +21,11 @@ export interface ILiveStreamPresentation {
 
 export interface ILiveStreamRecordedContent {
   title: string;
+  source?: 'youtube' | 'zoom';
+  url?: string;
   youtube_url: string;
+  /** Zoom cloud recording passcode — app unlocks for paid users; never shown in UI. */
+  passcode?: string;
 }
 
 export interface ILiveStream extends Document {
@@ -41,7 +45,7 @@ export interface ILiveStream extends Document {
   zoom_join_url?: string;
   /** When true, Zoom meeting uses cloud auto-recording. */
   auto_record_cloud: boolean;
-  /** YouTube links for previous-class playback (after Zoom cloud → YouTube upload). */
+  /** Previous-class videos: YouTube and/or Zoom recording links. */
   recorded_contents: ILiveStreamRecordedContent[];
   host_user_id: Types.ObjectId;
   created_by: Types.ObjectId;
@@ -85,7 +89,10 @@ const presentationSchema = new Schema(
 const recordedContentSchema = new Schema(
   {
     title: { type: String, default: '', trim: true },
+    source: { type: String, enum: ['youtube', 'zoom'], default: 'youtube' },
+    url: { type: String, trim: true },
     youtube_url: { type: String, required: true, trim: true },
+    passcode: { type: String, trim: true },
   },
   { _id: false },
 );

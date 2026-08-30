@@ -105,7 +105,13 @@ function serializeRecordedContents(
       }>
     | undefined
     | null,
-) {
+): Array<{
+  title: string;
+  source?: 'youtube' | 'zoom';
+  url: string;
+  youtube_url: string;
+  passcode?: string;
+}> {
   return cleanLiveStreamRecordedContents(
     (items ?? []).map((i) => ({
       title: i.title ?? '',
@@ -114,7 +120,16 @@ function serializeRecordedContents(
       youtube_url: i.youtube_url ?? i.url ?? '',
       passcode: i.passcode,
     })),
-  );
+  ).map((item) => {
+    const url = (item.url ?? item.youtube_url ?? '').trim();
+    return {
+      title: item.title,
+      source: item.source,
+      url,
+      youtube_url: url,
+      ...(item.passcode ? { passcode: item.passcode } : {}),
+    };
+  });
 }
 
 function startOfTodayMs() {

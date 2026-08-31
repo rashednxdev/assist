@@ -92,6 +92,12 @@ const learnLinks = [
     icon: Calculator,
     moduleCode: 'PENSION',
   },
+  {
+    href: '/salary',
+    label: 'Salary On 2026',
+    desc: 'NPS 2015 → 2026 basic pay conversion (public)',
+    icon: Calculator,
+  },
 ] as const;
 
 interface HostingRow {
@@ -122,7 +128,8 @@ export function UserDashboard({
   const workflow = summary?.workflow;
   const grants = user.module_access ?? [];
   const visibleLearn = learnLinks.filter(
-    (link) => isSuperAdmin(user) || hasModuleRead(grants, link.moduleCode),
+    (link) =>
+      !link.moduleCode || isSuperAdmin(user) || hasModuleRead(grants, link.moduleCode),
   );
   const grantLabel = (code: string) =>
     grants.find((g) => g.module_code === code)?.module_name_en;

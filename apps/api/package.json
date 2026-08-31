@@ -18,6 +18,7 @@
     "migrate:question-edit-module": "tsx scripts/migrations/add-question-edit-module.ts",
     "migrate:answer-pdf-module": "tsx scripts/migrations/add-answer-pdf-module.ts",
     "migrate:live-stream-module": "tsx scripts/migrations/add-live-stream-module.ts",
+    "migrate:salary-module": "tsx scripts/migrations/add-salary-module.ts",
     "migrate:status-changed-by": "tsx scripts/migrations/migrate-status-changed-by.ts",
     "test:db": "tsx scripts/test-connection.ts"
   },

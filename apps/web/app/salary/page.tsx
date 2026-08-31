@@ -1,0 +1,394 @@
+'use client';
+
+import { useMemo, useState } from 'react';
+import Link from 'next/link';
+import { Calculator, HeartHandshake, Share2 } from 'lucide-react';
+import {
+  PAY_GRADES,
+  NPS_2015,
+  NPS_2026,
+  calculateSalary2026AllPhases,
+  formatTaka,
+  isFixedPayGrade,
+  salaryConversionRate,
+  type PayGrade,
+  type Salary2026Result,
+} from '@ibas/shared-types';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Alert } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+
+function ResultStat({
+  label,
+  value,
+  emphasize,
+}: {
+  label: string;
+  value: string;
+  emphasize?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-xl border p-4 ${
+        emphasize ? 'border-emerald-300 bg-emerald-50' : 'border-border bg-slate-50/80'
+      }`}
+    >
+      <div className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</div>
+      <div className={`mt-1 font-semibold ${emphasize ? 'text-2xl text-emerald-900' : 'text-lg'}`}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function PhaseResultCard({ result }: { result: Salary2026Result; index: number }) {
+  const stageLabel = result.phase_title; // Stage-1 / Stage-2 / Stage-3
+
+  if (result.phase === '2027-07-01') {
+    const basic2026 = result.basic_on_2026_07 ?? result.matched_new_stage ?? result.new_pay;
+    const basic2027 = result.basic_on_2027_07 ?? result.new_pay;
+    const moved = basic2027 !== basic2026;
+    return (
+      <Card className="border-sky-200 shadow-sm">
+        <CardHeader className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge className="bg-emerald-700 text-white hover:bg-emerald-700">{stageLabel}</Badge>
+            <Badge variant="outline">01-07-2026 → 01-07-2027</Badge>
+          </div>
+          <CardTitle className="text-base">Matched stage to next stage</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="rounded-xl border border-sky-200 bg-sky-50/80 px-4 py-4 text-center text-base font-semibold leading-relaxed text-slate-900 sm:text-lg">
+            <span className="text-slate-600">01-07-2026 basic</span>{' '}
+            <span className="font-mono text-emerald-800">৳ {formatTaka(basic2026)}</span>{' '}
+            <span className="text-sky-700">→</span>{' '}
+            <span className="text-slate-600">01-07-2027 basic</span>{' '}
+            <span className="font-mono text-emerald-900">৳ {formatTaka(basic2027)}</span>
+            <span className="mx-2 text-slate-400">
+              {moved ? '(next stage)' : '(last stage — no next)'}
+            </span>
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="border-emerald-200 shadow-sm">
+      <CardHeader className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge className="bg-emerald-700 text-white hover:bg-emerald-700">{stageLabel}</Badge>
+          <Badge variant="outline">{result.phase_label}</Badge>
+          <Badge variant="outline">{result.rate_percent}% Step 5</Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <ResultStat label="Old basic (30-06-26)" value={`৳ ${formatTaka(result.old_pay)}`} />
+          <ResultStat
+            label="Matched 2026 stage"
+            value={
+              result.matched_new_stage != null ? `৳ ${formatTaka(result.matched_new_stage)}` : '—'
+            }
+          />
+          <ResultStat
+            label={`New basic (${result.phase_label})`}
+            value={`৳ ${formatTaka(result.new_pay)}`}
+            emphasize
+          />
+        </div>
+
+        <div className="overflow-x-auto rounded-xl border border-border">
+          <table className="w-full min-w-[640px] text-sm">
+            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-muted">
+              <tr>
+                <th className="px-3 py-2 font-semibold">Step</th>
+                <th className="px-3 py-2 font-semibold">Description</th>
+                <th className="px-3 py-2 font-semibold">Calculation</th>
+                <th className="px-3 py-2 text-right font-semibold">Amount (৳)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {result.steps.map((row) => (
+                <tr key={`${result.phase}-${row.step}-${row.label}`} className="border-t border-border">
+                  <td className="px-3 py-2 font-semibold text-slate-700">{row.step}</td>
+                  <td className="px-3 py-2">
+                    <div>{row.label}</div>
+                    {row.note ? <div className="text-xs text-muted">{row.note}</div> : null}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-xs text-slate-600">
+                    {row.calculation?.trim() ? row.calculation : '—'}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono font-semibold">
+                    {formatTaka(row.value)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {result.increment_skipped && !result.fixed ? (
+          <p className="text-xs text-amber-800">
+            Matched stage is the last stage on the 2026 scale — no increment was added.
+          </p>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function SalaryOn2026Page() {
+  const [grade, setGrade] = useState<PayGrade>(5);
+  const [oldPay, setOldPay] = useState<number>(NPS_2015[5][5]!);
+  const [error, setError] = useState('');
+  const [results, setResults] = useState<Salary2026Result[] | null>(null);
+  const [shareNote, setShareNote] = useState('');
+
+  const oldStages = NPS_2015[grade];
+  const newStages = NPS_2026[grade];
+  const fixed = isFixedPayGrade(grade);
+  const ratePct2026 = Math.round(salaryConversionRate(grade, '2026-07-01') * 100);
+  const ratePct2027 = Math.round(salaryConversionRate(grade, '2027-01-01') * 100);
+
+  const scalePreview = useMemo(
+    () => ({
+      old: oldStages.join('–'),
+      neu: newStages.join('–'),
+    }),
+    [oldStages, newStages],
+  );
+
+  function onGradeChange(next: PayGrade) {
+    setGrade(next);
+    setOldPay(NPS_2015[next][0]!);
+    setResults(null);
+    setError('');
+  }
+
+  function handleCalculate() {
+    setError('');
+    setResults(null);
+    try {
+      setResults(calculateSalary2026AllPhases({ grade, old_pay: oldPay }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not calculate');
+    }
+  }
+
+  async function handleShare() {
+    const url = typeof window !== 'undefined' ? window.location.href : '/salary';
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: 'Salary On 2026 — ProAssist',
+          text: 'Your Basic on Proposed National Pay scale-2026',
+          url,
+        });
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      setShareNote('Link copied — share it with anyone.');
+      setTimeout(() => setShareNote(''), 2500);
+    } catch {
+      setShareNote('');
+    }
+  }
+
+  return (
+    <div className="flex min-h-screen flex-col bg-[#f4f7f5] text-slate-900">
+      <header className="border-b border-emerald-900/10 bg-[#0b3d2e] text-white">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
+          <Link href="/salary" className="min-w-0">
+            <div className="text-sm font-bold tracking-wide">ProAssist</div>
+            <div className="text-[11px] text-emerald-100/80">Salary calculator</div>
+          </Link>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void handleShare()}
+            className="gap-1.5 border-white/30 bg-white/5 text-white hover:bg-white/15 hover:text-white"
+          >
+            <Share2 className="h-3.5 w-3.5" />
+            Share
+          </Button>
+        </div>
+      </header>
+
+      <div className="border-b border-emerald-200 bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-600">
+        <div className="mx-auto max-w-5xl px-4 py-8 text-center sm:px-6 sm:py-10">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-100/90">
+            National Pay Scale
+          </p>
+          <h1 className="mt-2 text-balance text-2xl font-extrabold leading-snug text-white sm:text-3xl">
+            Your Basic on Proposed National Pay scale-2026
+          </h1>
+          <p className="mx-auto mt-4 inline-block rounded-full bg-amber-300 px-4 py-1.5 text-sm font-extrabold text-amber-950 shadow-sm ring-2 ring-amber-100/80">
+            Draft calculation. It may vary.
+          </p>
+          <p className="mx-auto mt-3 max-w-2xl text-sm text-emerald-50/90 sm:text-base">
+            Public calculator — no login required. Three conversions shown in order:
+          </p>
+          <p className="mx-auto mt-1 max-w-2xl text-sm font-semibold text-emerald-50 sm:text-base">
+            <span className="whitespace-nowrap">01-07-2026</span>
+            {', '}
+            <span className="whitespace-nowrap">01-01-2027</span>
+            {', then '}
+            <span className="whitespace-nowrap">01-07-2027</span>
+            {'.'}
+          </p>
+          {shareNote ? <p className="mt-2 text-xs text-emerald-100">{shareNote}</p> : null}
+        </div>
+      </div>
+
+      <main className="mx-auto w-full max-w-5xl flex-1 space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+        <Alert className="border-amber-200 bg-amber-50 text-amber-950 shadow-sm">
+          <p className="text-sm leading-relaxed">
+            <span className="rounded bg-amber-200 px-1.5 py-0.5 font-extrabold text-amber-950">
+              Draft calculation. It may vary.
+            </span>{' '}
+            This is an indicative tool only — final pay is decided by Government orders.
+          </p>
+        </Alert>
+
+        <Alert className="border-emerald-200 bg-white text-emerald-950 shadow-sm">
+          <ol className="list-decimal space-y-1.5 pl-4 text-sm leading-relaxed">
+            <li>
+              <strong>Stage-1 (01-07-2026):</strong> Step 5 rate <strong>40%</strong> (grades 1–9) /{' '}
+              <strong>50%</strong> (grades 10–20).
+            </li>
+            <li>
+              <strong>Stage-2 (01-01-2027):</strong> Step 5 rate <strong>70%</strong> (grades 1–9) /{' '}
+              <strong>75%</strong> (grades 10–20).
+            </li>
+            <li>
+              <strong>Stage-3:</strong> On 01-07-2027, Next Stage of 01-07-2026.
+            </li>
+          </ol>
+        </Alert>
+
+        <Card className="shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-base">Your current pay (NPS 2015)</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="grade">Grade</Label>
+                <select
+                  id="grade"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={grade}
+                  onChange={(e) => onGradeChange(Number(e.target.value) as PayGrade)}
+                >
+                  {PAY_GRADES.map((g) => (
+                    <option key={g} value={g}>
+                      Grade {g}
+                      {isFixedPayGrade(g) ? ' (Fixed)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="oldPay">Current basic (select stage)</Label>
+                <select
+                  id="oldPay"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={oldPay}
+                  onChange={(e) => {
+                    setOldPay(Number(e.target.value));
+                    setResults(null);
+                    setError('');
+                  }}
+                >
+                  {oldStages.map((amt, i) => (
+                    <option key={`${amt}-${i}`} value={amt}>
+                      {formatTaka(amt)}
+                      {i === 0 ? ' (minimum)' : ''}
+                      {i === oldStages.length - 1 && oldStages.length > 1 ? ' (last)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">Grade {grade}</Badge>
+              <Badge variant="outline">01-07-26 · {ratePct2026}%</Badge>
+              <Badge variant="outline">01-01-27 · {ratePct2027}%</Badge>
+              {fixed ? (
+                <Badge className="bg-amber-100 text-amber-900 hover:bg-amber-100">Fixed pay</Badge>
+              ) : null}
+            </div>
+
+            <div className="space-y-2 rounded-xl border border-dashed border-border bg-slate-50/50 p-3 text-xs text-muted">
+              <p>
+                <span className="font-semibold text-slate-700">NPS 2015:</span> {scalePreview.old}
+              </p>
+              <p>
+                <span className="font-semibold text-slate-700">NPS 2026:</span> {scalePreview.neu}
+              </p>
+            </div>
+
+            {error ? <Alert variant="error">{error}</Alert> : null}
+
+            <Button type="button" onClick={handleCalculate} className="gap-2">
+              <Calculator className="h-4 w-4" />
+              Calculate all phases
+            </Button>
+          </CardContent>
+        </Card>
+
+        {results?.map((result, index) => (
+          <PhaseResultCard key={result.phase} result={result} index={index} />
+        ))}
+
+        {results ? (
+          <section
+            aria-label="Thanks to Government"
+            className="relative overflow-hidden rounded-2xl border border-rose-200/80 bg-gradient-to-br from-rose-50 via-white to-amber-50 px-5 py-8 text-center shadow-sm sm:px-8"
+          >
+            <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-rose-200/40 blur-2xl" />
+            <div className="pointer-events-none absolute -bottom-10 -left-6 h-28 w-28 rounded-full bg-amber-200/50 blur-2xl" />
+            <div className="relative mx-auto flex max-w-2xl flex-col items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-rose-100 text-rose-700 ring-4 ring-rose-50">
+                <HeartHandshake className="h-6 w-6" aria-hidden />
+              </div>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-rose-700/80">
+                With gratitude
+              </p>
+              <h2 className="text-balance text-xl font-extrabold text-slate-900 sm:text-2xl">
+                Thank you, Government of Bangladesh
+              </h2>
+              <p className="text-pretty text-sm leading-relaxed text-slate-700 sm:text-base">
+                From <strong>all government employees</strong> — we gratefully acknowledge the
+                proposed National Pay Scale 2026 and the continued efforts to improve the
+                livelihood and dignity of public servants across the country.
+              </p>
+              <p className="text-sm font-semibold italic text-rose-800/90">
+                — All Government Employees
+              </p>
+            </div>
+          </section>
+        ) : null}
+      </main>
+
+      <footer className="mt-auto border-t border-emerald-900/10 bg-[#0b3d2e] text-emerald-50">
+        <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-5 text-center sm:flex-row sm:items-center sm:justify-between sm:text-left sm:px-6">
+          <div>
+            <div className="text-sm font-bold text-white">ProAssist</div>
+            <div className="text-xs text-emerald-100/75">
+              Rules, exams, and compliance assistant
+            </div>
+          </div>
+          <div className="text-xs text-emerald-100/70">
+            Salary On 2026 · Free public tool · Share the link with anyone
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}

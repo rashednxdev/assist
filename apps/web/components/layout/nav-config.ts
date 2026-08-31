@@ -69,6 +69,7 @@ export const navGroups: NavGroup[] = [
       { href: '/live/zoom/hosting', label: 'Host live', icon: Radio, moduleCode: 'LIVE_STREAM' },
       { href: '/pension', label: 'Pension calculator', icon: Calculator, moduleCode: 'PENSION' },
       { href: '/joining-period', label: 'Joining period', icon: Calculator, moduleCode: 'PENSION' },
+      { href: '/salary', label: 'Salary On 2026', icon: Calculator },
     ],
   },
   {

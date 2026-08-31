@@ -32,6 +32,7 @@ export const MODULE_CODES = [
   'QUESTION_EDIT',
   'ANSWER_PDF',
   'LIVE_STREAM',
+  'SALARY',
 ] as const;
 export type ModuleCode = (typeof MODULE_CODES)[number];
 

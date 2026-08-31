@@ -42,7 +42,15 @@ interface Summary {
   workflow?: WorkflowSummary;
 }
 
-const learnLinks = [
+interface LearnLink {
+  href: string;
+  label: string;
+  desc: string;
+  icon: typeof Library;
+  moduleCode?: string;
+}
+
+const learnLinks: LearnLink[] = [
   {
     href: '/books',
     label: 'Rule library',
@@ -98,7 +106,7 @@ const learnLinks = [
     desc: 'NPS 2015 → 2026 basic pay conversion (public)',
     icon: Calculator,
   },
-] as const;
+];
 
 interface HostingRow {
   id: string;
@@ -421,7 +429,7 @@ export function UserDashboard({
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {visibleLearn.map((link) => {
             const Icon = link.icon;
-            const title = grantLabel(link.moduleCode) ?? link.label;
+            const title = (link.moduleCode ? grantLabel(link.moduleCode) : undefined) ?? link.label;
             return (
               <Link
                 key={link.href}

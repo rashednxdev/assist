@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Calculator, HeartHandshake, Share2 } from 'lucide-react';
+import { Calculator, HeartHandshake, Share2, ArrowRight } from 'lucide-react';
 import {
   PAY_GRADES,
   NPS_2015,
@@ -19,6 +19,32 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+
+const STAGE_HEADER: Record<
+  Salary2026Result['phase'],
+  { bar: string; title: string }
+> = {
+  '2026-07-01': { bar: 'bg-emerald-600', title: 'Stage-1 · 01-07-2026' },
+  '2027-01-01': { bar: 'bg-amber-600', title: 'Stage-2 · 01-01-2027' },
+  '2027-07-01': { bar: 'bg-violet-600', title: 'Stage-3 · 01-07-2027' },
+};
+
+function StageHeader({ result }: { result: Salary2026Result }) {
+  const { bar, title } = STAGE_HEADER[result.phase];
+  return (
+    <div className={`${bar} px-4 py-2.5 text-white sm:px-5`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-bold">{title}</span>
+        {result.phase !== '2027-07-01' ? (
+          <>
+            <span className="text-white/50">|</span>
+            <span className="text-sm text-white/90">{result.rate_percent}% Step 6</span>
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 function ResultStat({
   label,
@@ -43,48 +69,48 @@ function ResultStat({
   );
 }
 
-function PhaseResultCard({ result }: { result: Salary2026Result; index: number }) {
-  const stageLabel = result.phase_title; // Stage-1 / Stage-2 / Stage-3
-
+function PhaseResultCard({ result }: { result: Salary2026Result }) {
   if (result.phase === '2027-07-01') {
     const basic2026 = result.basic_on_2026_07 ?? result.matched_new_stage ?? result.new_pay;
     const basic2027 = result.basic_on_2027_07 ?? result.new_pay;
     const moved = basic2027 !== basic2026;
+    const delta = basic2027 - basic2026;
+
     return (
-      <Card className="border-sky-200 shadow-sm">
-        <CardHeader className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge className="bg-emerald-700 text-white hover:bg-emerald-700">{stageLabel}</Badge>
-            <Badge variant="outline">01-07-2026 → 01-07-2027</Badge>
+      <Card className="overflow-hidden border border-border shadow-sm">
+        <StageHeader result={result} />
+        <CardContent className="space-y-4 p-4 sm:p-5">
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+            <div className="rounded-lg border border-border bg-slate-50 p-3">
+              <p className="text-xs text-muted">01-07-2026 basic</p>
+              <p className="mt-1 font-mono text-lg font-bold text-slate-900">
+                ৳ {formatTaka(basic2026)}
+              </p>
+            </div>
+            <ArrowRight className="mx-auto h-5 w-5 text-violet-500" aria-hidden />
+            <div
+              className={`rounded-lg border p-3 ${
+                moved ? 'border-violet-200 bg-violet-50' : 'border-amber-200 bg-amber-50'
+              }`}
+            >
+              <p className="text-xs text-muted">01-07-2027 basic</p>
+              <p className="mt-1 font-mono text-lg font-bold text-slate-900">
+                ৳ {formatTaka(basic2027)}
+              </p>
+              <p className="mt-1 text-xs font-medium text-muted">
+                {moved ? `+ ৳ ${formatTaka(delta)} (next stage)` : 'Last stage — no change'}
+              </p>
+            </div>
           </div>
-          <CardTitle className="text-base">Matched stage to next stage</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="rounded-xl border border-sky-200 bg-sky-50/80 px-4 py-4 text-center text-base font-semibold leading-relaxed text-slate-900 sm:text-lg">
-            <span className="text-slate-600">01-07-2026 basic</span>{' '}
-            <span className="font-mono text-emerald-800">৳ {formatTaka(basic2026)}</span>{' '}
-            <span className="text-sky-700">→</span>{' '}
-            <span className="text-slate-600">01-07-2027 basic</span>{' '}
-            <span className="font-mono text-emerald-900">৳ {formatTaka(basic2027)}</span>
-            <span className="mx-2 text-slate-400">
-              {moved ? '(next stage)' : '(last stage — no next)'}
-            </span>
-          </p>
         </CardContent>
       </Card>
     );
   }
 
   return (
-    <Card className="border-emerald-200 shadow-sm">
-      <CardHeader className="space-y-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge className="bg-emerald-700 text-white hover:bg-emerald-700">{stageLabel}</Badge>
-          <Badge variant="outline">{result.phase_label}</Badge>
-          <Badge variant="outline">{result.rate_percent}% Step 5</Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <Card className="overflow-hidden border border-border shadow-sm">
+      <StageHeader result={result} />
+      <CardContent className="space-y-4 p-4 sm:p-5">
         <div className="grid gap-3 sm:grid-cols-3">
           <ResultStat label="Old basic (30-06-26)" value={`৳ ${formatTaka(result.old_pay)}`} />
           <ResultStat
@@ -132,7 +158,8 @@ function PhaseResultCard({ result }: { result: Salary2026Result; index: number }
 
         {result.increment_skipped && !result.fixed ? (
           <p className="text-xs text-amber-800">
-            Matched stage is the last stage on the 2026 scale — no increment was added.
+            Matched stage is the last stage on the 2026 scale — Step 5 uses the Step 4 amount (no
+            next stage).
           </p>
         ) : null}
       </CardContent>
@@ -257,12 +284,12 @@ export default function SalaryOn2026Page() {
         <Alert className="border-emerald-200 bg-white text-emerald-950 shadow-sm">
           <ol className="list-decimal space-y-1.5 pl-4 text-sm leading-relaxed">
             <li>
-              <strong>Stage-1 (01-07-2026):</strong> Step 5 rate <strong>40%</strong> (grades 1–9) /{' '}
-              <strong>50%</strong> (grades 10–20).
+              <strong>Stage-1 (01-07-2026):</strong> Step 5 = next stage after matched stage; Step 6
+              rate <strong>40%</strong> (grades 1–9) / <strong>50%</strong> (grades 10–20).
             </li>
             <li>
-              <strong>Stage-2 (01-01-2027):</strong> Step 5 rate <strong>70%</strong> (grades 1–9) /{' '}
-              <strong>75%</strong> (grades 10–20).
+              <strong>Stage-2 (01-01-2027):</strong> Same steps; Step 6 rate <strong>70%</strong>{' '}
+              (grades 1–9) / <strong>75%</strong> (grades 10–20).
             </li>
             <li>
               <strong>Stage-3:</strong> On 01-07-2027, Next Stage of 01-07-2026.
@@ -271,16 +298,19 @@ export default function SalaryOn2026Page() {
         </Alert>
 
         <Card className="shadow-sm">
-          <CardHeader>
+          <CardHeader className="space-y-0.5 pb-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Start here</p>
             <CardTitle className="text-base">Your current pay (NPS 2015)</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="grid gap-4 sm:grid-cols-2">
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="grade">Grade</Label>
+                <Label htmlFor="grade" className="text-sm font-medium">
+                  Grade
+                </Label>
                 <select
                   id="grade"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  className="flex h-10 w-full rounded-md border-2 border-amber-400 bg-amber-50/60 px-3 text-sm font-semibold ring-2 ring-amber-200 focus:border-amber-500 focus:outline-none focus:ring-amber-300"
                   value={grade}
                   onChange={(e) => onGradeChange(Number(e.target.value) as PayGrade)}
                 >
@@ -293,10 +323,12 @@ export default function SalaryOn2026Page() {
                 </select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="oldPay">Current basic (select stage)</Label>
+                <Label htmlFor="oldPay" className="text-sm font-medium">
+                  Current basic (select stage)
+                </Label>
                 <select
                   id="oldPay"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  className="flex h-10 w-full rounded-md border-2 border-emerald-400 bg-emerald-50/60 px-3 text-sm font-semibold ring-2 ring-emerald-200 focus:border-emerald-500 focus:outline-none focus:ring-emerald-300"
                   value={oldPay}
                   onChange={(e) => {
                     setOldPay(Number(e.target.value));
@@ -306,7 +338,7 @@ export default function SalaryOn2026Page() {
                 >
                   {oldStages.map((amt, i) => (
                     <option key={`${amt}-${i}`} value={amt}>
-                      {formatTaka(amt)}
+                      ৳ {formatTaka(amt)}
                       {i === 0 ? ' (minimum)' : ''}
                       {i === oldStages.length - 1 && oldStages.length > 1 ? ' (last)' : ''}
                     </option>
@@ -324,7 +356,7 @@ export default function SalaryOn2026Page() {
               ) : null}
             </div>
 
-            <div className="space-y-2 rounded-xl border border-dashed border-border bg-slate-50/50 p-3 text-xs text-muted">
+            <div className="space-y-1 rounded-lg border border-dashed border-border bg-slate-50/50 p-3 text-xs text-muted">
               <p>
                 <span className="font-semibold text-slate-700">NPS 2015:</span> {scalePreview.old}
               </p>
@@ -342,8 +374,8 @@ export default function SalaryOn2026Page() {
           </CardContent>
         </Card>
 
-        {results?.map((result, index) => (
-          <PhaseResultCard key={result.phase} result={result} index={index} />
+        {results?.map((result) => (
+          <PhaseResultCard key={result.phase} result={result} />
         ))}
 
         {results ? (

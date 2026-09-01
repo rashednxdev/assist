@@ -11,12 +11,9 @@ const fontSans = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: 'ProAssist',
-  description: 'Rules, exams, and compliance assistant',
-  icons: {
-    icon: '/brand/proassist-logo.png',
-    apple: '/brand/proassist-logo.png',
-  },
+  title: 'Site',
+  description: 'This site is currently inactive.',
+  robots: { index: false, follow: false },
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {

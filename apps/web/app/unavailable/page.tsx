@@ -1,6 +1,5 @@
 import { SiteInactiveNotice } from '@/components/shared/site-inactive-notice';
 
-/** Public root — inactive notice (admins sign in at /login). */
-export default function HomePage() {
+export default function UnavailablePage() {
   return <SiteInactiveNotice />;
 }

@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api-client';
-import { fetchMe, getAccessToken, type MeUser } from '@/lib/auth';
-import { isPlatformAdmin } from '@/components/auth/auth-brand-panel';
+import { fetchMe, getAccessToken, clearAccessToken, logoutRequest, type MeUser } from '@/lib/auth';
+import { isPlatformAdmin } from '@/lib/capabilities';
 import { AppShell } from '@/components/layout/app-shell';
 import { UserDashboard } from '@/components/dashboard/user-dashboard';
 import { AdminDashboard } from '@/components/dashboard/admin-dashboard';
@@ -72,8 +72,10 @@ export default function DashboardPage() {
     ])
       .then(([meRes, sumRes, progressRes]) => {
         const me = meRes.data;
-        if (me.status === 'pending_verify' || !me.is_verified) {
-          router.replace('/register/verify');
+        if (!isPlatformAdmin(me)) {
+          void logoutRequest()
+            .catch(() => clearAccessToken())
+            .finally(() => router.replace('/unavailable'));
           return;
         }
         setUser(me);

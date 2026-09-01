@@ -8,8 +8,8 @@ import { useTranslations } from 'next-intl';
 import { Menu, X, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { logoutRequest, fetchMe, getAccessToken, type MeUser } from '@/lib/auth';
-import { buildVisibleNav } from '@/lib/capabilities';
+import { logoutRequest, fetchMe, getAccessToken, clearAccessToken, type MeUser } from '@/lib/auth';
+import { buildVisibleNav, isPlatformAdmin } from '@/lib/capabilities';
 import { navGroups, type NavItem } from './nav-config';
 
 function NavLink({
@@ -124,13 +124,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (!getAccessToken()) return;
     fetchMe()
       .then((res) => {
+        if (!isPlatformAdmin(res.data)) {
+          void logoutRequest()
+            .catch(() => clearAccessToken())
+            .finally(() => router.replace('/unavailable'));
+          return;
+        }
         setMe({
           ...res.data,
           module_access: res.data.module_access ?? [],
         });
       })
       .catch(() => {});
-  }, []);
+  }, [router]);
 
   const visibleNav =
     me !== null ? buildVisibleNav(me, me.module_access, navGroups) : [{ title: 'Overview', items: navGroups[0]!.items }];

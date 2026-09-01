@@ -154,3 +154,21 @@ body {
 .book-nav-footer {
   @apply border-t border-amber-900/10 pt-4;
 }
+
+/* Salary calculator — print / save as PDF matches on-screen layout */
+@media print {
+  @page {
+    margin: 10mm;
+    size: A4;
+  }
+
+  .salary-print-root {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .salary-print-root .salary-print-avoid-break {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

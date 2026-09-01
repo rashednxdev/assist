@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Calculator, HeartHandshake, Share2, ArrowRight } from 'lucide-react';
+import { Calculator, Download, HeartHandshake, Share2, ArrowRight } from 'lucide-react';
 import {
   PAY_GRADES,
   NPS_2015,
@@ -77,7 +77,7 @@ function PhaseResultCard({ result }: { result: Salary2026Result }) {
     const delta = basic2027 - basic2026;
 
     return (
-      <Card className="overflow-hidden border border-border shadow-sm">
+      <Card className="salary-print-avoid-break overflow-hidden border border-border shadow-sm">
         <StageHeader result={result} />
         <CardContent className="space-y-4 p-4 sm:p-5">
           <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
@@ -108,7 +108,7 @@ function PhaseResultCard({ result }: { result: Salary2026Result }) {
   }
 
   return (
-    <Card className="overflow-hidden border border-border shadow-sm">
+    <Card className="salary-print-avoid-break overflow-hidden border border-border shadow-sm">
       <StageHeader result={result} />
       <CardContent className="space-y-4 p-4 sm:p-5">
         <div className="grid gap-3 sm:grid-cols-3">
@@ -173,6 +173,8 @@ export default function SalaryOn2026Page() {
   const [error, setError] = useState('');
   const [results, setResults] = useState<Salary2026Result[] | null>(null);
   const [shareNote, setShareNote] = useState('');
+  const [calculating, setCalculating] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   const oldStages = NPS_2015[grade];
   const newStages = NPS_2026[grade];
@@ -188,6 +190,17 @@ export default function SalaryOn2026Page() {
     [oldStages, newStages],
   );
 
+  const oldPayLabel = useMemo(() => {
+    const idx = oldStages.indexOf(oldPay);
+    const suffix =
+      idx === 0
+        ? ' (minimum)'
+        : idx === oldStages.length - 1 && oldStages.length > 1
+          ? ' (last)'
+          : '';
+    return `৳ ${formatTaka(oldPay)}${suffix}`;
+  }, [oldPay, oldStages]);
+
   function onGradeChange(next: PayGrade) {
     setGrade(next);
     setOldPay(NPS_2015[next][0]!);
@@ -195,14 +208,49 @@ export default function SalaryOn2026Page() {
     setError('');
   }
 
-  function handleCalculate() {
+  async function handleCalculate() {
     setError('');
     setResults(null);
+    setCalculating(true);
     try {
-      setResults(calculateSalary2026AllPhases({ grade, old_pay: oldPay }));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not calculate');
+      const res = await fetch('/api/proxy/v1/salary/calculate-all-phases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ grade, old_pay: oldPay }),
+      });
+      if (res.ok) {
+        const json = (await res.json()) as { data: { results: Salary2026Result[] } };
+        setResults(json.data.results);
+        return;
+      }
+      const local = calculateSalary2026AllPhases({ grade, old_pay: oldPay });
+      setResults(local);
+    } catch {
+      try {
+        setResults(calculateSalary2026AllPhases({ grade, old_pay: oldPay }));
+      } catch (inner) {
+        setError(inner instanceof Error ? inner.message : 'Could not calculate');
+      }
+    } finally {
+      setCalculating(false);
     }
+  }
+
+  function handleGivePdf() {
+    setPdfLoading(true);
+    const prevTitle = document.title;
+    document.title = `ProAssist Salary 2026 — Grade ${grade}`;
+
+    void fetch('/api/proxy/v1/salary/pdf', { method: 'POST' }).catch(() => {});
+
+    const finish = () => {
+      document.title = prevTitle;
+      setPdfLoading(false);
+      window.removeEventListener('afterprint', finish);
+    };
+    window.addEventListener('afterprint', finish);
+    window.print();
+    window.setTimeout(finish, 1500);
   }
 
   async function handleShare() {
@@ -225,7 +273,7 @@ export default function SalaryOn2026Page() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#f4f7f5] text-slate-900">
+    <div className="salary-print-root flex min-h-screen flex-col bg-[#f4f7f5] text-slate-900">
       <header className="border-b border-emerald-900/10 bg-[#0b3d2e] text-white">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <Link href="/salary" className="min-w-0">
@@ -237,7 +285,7 @@ export default function SalaryOn2026Page() {
             variant="outline"
             size="sm"
             onClick={() => void handleShare()}
-            className="gap-1.5 border-white/30 bg-white/5 text-white hover:bg-white/15 hover:text-white"
+            className="gap-1.5 border-white/30 bg-white/5 text-white hover:bg-white/15 hover:text-white print:hidden"
           >
             <Share2 className="h-3.5 w-3.5" />
             Share
@@ -267,7 +315,7 @@ export default function SalaryOn2026Page() {
             <span className="whitespace-nowrap">01-07-2027</span>
             {'.'}
           </p>
-          {shareNote ? <p className="mt-2 text-xs text-emerald-100">{shareNote}</p> : null}
+          {shareNote ? <p className="mt-2 text-xs text-emerald-100 print:hidden">{shareNote}</p> : null}
         </div>
       </div>
 
@@ -297,7 +345,7 @@ export default function SalaryOn2026Page() {
           </ol>
         </Alert>
 
-        <Card className="shadow-sm">
+        <Card className="salary-print-avoid-break shadow-sm">
           <CardHeader className="space-y-0.5 pb-3">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Start here</p>
             <CardTitle className="text-base">Your current pay (NPS 2015)</CardTitle>
@@ -310,7 +358,7 @@ export default function SalaryOn2026Page() {
                 </Label>
                 <select
                   id="grade"
-                  className="flex h-10 w-full rounded-md border-2 border-amber-400 bg-amber-50/60 px-3 text-sm font-semibold ring-2 ring-amber-200 focus:border-amber-500 focus:outline-none focus:ring-amber-300"
+                  className="flex h-10 w-full rounded-md border-2 border-amber-400 bg-amber-50/60 px-3 text-sm font-semibold ring-2 ring-amber-200 focus:border-amber-500 focus:outline-none focus:ring-amber-300 print:hidden"
                   value={grade}
                   onChange={(e) => onGradeChange(Number(e.target.value) as PayGrade)}
                 >
@@ -321,14 +369,18 @@ export default function SalaryOn2026Page() {
                     </option>
                   ))}
                 </select>
+                <p className="hidden rounded-md border border-amber-300 bg-amber-50/80 px-3 py-2 text-sm font-semibold print:block">
+                  Grade {grade}
+                  {fixed ? ' (Fixed)' : ''}
+                </p>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="oldPay" className="text-sm font-medium">
-                  Current basic (select stage)
+                  Current basic (30 June 2026)
                 </Label>
                 <select
                   id="oldPay"
-                  className="flex h-10 w-full rounded-md border-2 border-emerald-400 bg-emerald-50/60 px-3 text-sm font-semibold ring-2 ring-emerald-200 focus:border-emerald-500 focus:outline-none focus:ring-emerald-300"
+                  className="flex h-10 w-full rounded-md border-2 border-emerald-400 bg-emerald-50/60 px-3 text-sm font-semibold ring-2 ring-emerald-200 focus:border-emerald-500 focus:outline-none focus:ring-emerald-300 print:hidden"
                   value={oldPay}
                   onChange={(e) => {
                     setOldPay(Number(e.target.value));
@@ -344,6 +396,9 @@ export default function SalaryOn2026Page() {
                     </option>
                   ))}
                 </select>
+                <p className="hidden rounded-md border border-emerald-300 bg-emerald-50/80 px-3 py-2 text-sm font-semibold print:block">
+                  {oldPayLabel}
+                </p>
               </div>
             </div>
 
@@ -365,14 +420,35 @@ export default function SalaryOn2026Page() {
               </p>
             </div>
 
-            {error ? <Alert variant="error">{error}</Alert> : null}
+            {error ? (
+              <Alert variant="error" className="print:hidden">
+                {error}
+              </Alert>
+            ) : null}
 
-            <Button type="button" onClick={handleCalculate} className="gap-2">
-              <Calculator className="h-4 w-4" />
-              Calculate all phases
-            </Button>
+            <div className="flex flex-wrap gap-2 print:hidden">
+              <Button type="button" onClick={() => void handleCalculate()} disabled={calculating} className="gap-2">
+                <Calculator className="h-4 w-4" />
+                {calculating ? 'Calculating…' : 'Calculate all phases'}
+              </Button>
+            </div>
           </CardContent>
         </Card>
+
+        {results ? (
+          <div className="flex justify-center print:hidden">
+            <Button
+              type="button"
+              size="lg"
+              onClick={handleGivePdf}
+              disabled={pdfLoading}
+              className="gap-2 px-8"
+            >
+              <Download className="h-4 w-4" />
+              {pdfLoading ? 'Opening print…' : 'Give me a PDF'}
+            </Button>
+          </div>
+        ) : null}
 
         {results?.map((result) => (
           <PhaseResultCard key={result.phase} result={result} />
@@ -381,7 +457,7 @@ export default function SalaryOn2026Page() {
         {results ? (
           <section
             aria-label="Thanks to Government"
-            className="relative overflow-hidden rounded-2xl border border-rose-200/80 bg-gradient-to-br from-rose-50 via-white to-amber-50 px-5 py-8 text-center shadow-sm sm:px-8"
+            className="salary-print-avoid-break relative overflow-hidden rounded-2xl border border-rose-200/80 bg-gradient-to-br from-rose-50 via-white to-amber-50 px-5 py-8 text-center shadow-sm sm:px-8"
           >
             <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-rose-200/40 blur-2xl" />
             <div className="pointer-events-none absolute -bottom-10 -left-6 h-28 w-28 rounded-full bg-amber-200/50 blur-2xl" />

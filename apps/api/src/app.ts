@@ -30,6 +30,7 @@ import { userQuestionsRouter } from './domains/user-questions/user-questions.rou
 import { termsRouter } from './domains/terms/terms.routes.js';
 import { appSettingsRouter } from './domains/app-settings/app-settings.routes.js';
 import { liveStreamRouter } from './domains/live-stream/live-stream.routes.js';
+import { salaryRouter } from './domains/salary/salary.routes.js';
 
 export function createApp(): Application {
   const app = express();
@@ -85,6 +86,7 @@ export function createApp(): Application {
   app.use('/api/v1/terms', termsRouter);
   app.use('/api/v1/app-settings', appSettingsRouter);
   app.use('/api/v1/live-streams', liveStreamRouter);
+  app.use('/api/v1/salary', salaryRouter);
 
   app.use(errorHandler);
   return app;

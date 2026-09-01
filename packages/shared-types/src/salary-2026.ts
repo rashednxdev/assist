@@ -8,6 +8,8 @@
  *               if last stage, keep 01-01-2027 percentage rule
  */
 
+import { z } from 'zod';
+
 export type PayGrade = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20;
 
 export type SalaryPhase = '2026-07-01' | '2027-01-01' | '2027-07-01';
@@ -486,4 +488,18 @@ export function calculateSalary2026(input: Salary2026Input): Salary2026Result {
 /** All three conversion phases, in order. */
 export function calculateSalary2026AllPhases(input: Omit<Salary2026Input, 'phase'>): Salary2026Result[] {
   return SALARY_PHASES.map((phase) => calculateSalary2026({ ...input, phase }));
+}
+
+export const salaryCalculateSchema = z.object({
+  grade: z.number().int().min(1).max(20),
+  old_pay: z.number().positive(),
+});
+
+export type SalaryCalculateDto = z.infer<typeof salaryCalculateSchema>;
+
+export interface SalaryUsageStatsRecord {
+  calculate_all_phases_count: number;
+  pdf_download_count: number;
+  last_calculate_at: string | null;
+  last_pdf_at: string | null;
 }

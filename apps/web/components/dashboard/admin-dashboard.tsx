@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import {
   ArrowRight,
+  Calculator,
   GraduationCap,
   Inbox,
   MapPin,
@@ -23,6 +24,7 @@ const adminLinks = [
   { href: '/workflow/inbox', label: 'Workflow inbox', desc: 'Pending approvals', icon: Inbox },
   { href: '/admin/setup/geography', label: 'Geography', desc: 'Divisions & districts', icon: MapPin },
   { href: '/admin/audit', label: 'Audit log', desc: 'System activity trail', icon: ScrollText },
+  { href: '/admin/salary-stats', label: 'Salary calculator', desc: 'Public tool usage counts', icon: Calculator },
 ];
 
 export function AdminDashboard({ user }: { user: MeUser }) {

@@ -376,7 +376,7 @@ export default function SalaryOn2026Page() {
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="oldPay" className="text-sm font-medium">
-                  Current basic (30 June 2026)
+                  Basic on 30 June 2026
                 </Label>
                 <select
                   id="oldPay"

@@ -32,7 +32,7 @@ const STAGE_HEADER: Record<
 function StageHeader({ result }: { result: Salary2026Result }) {
   const { bar, title } = STAGE_HEADER[result.phase];
   return (
-    <div className={`${bar} px-4 py-2.5 text-white sm:px-5`}>
+    <div className={`${bar} salary-print-stage-header px-4 py-2.5 text-white sm:px-5`}>
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-bold">{title}</span>
         {result.phase !== '2027-07-01' ? (
@@ -57,8 +57,8 @@ function ResultStat({
 }) {
   return (
     <div
-      className={`rounded-xl border p-4 ${
-        emphasize ? 'border-emerald-300 bg-emerald-50' : 'border-border bg-slate-50/80'
+      className={`salary-print-stat rounded-xl border p-4 ${
+        emphasize ? 'salary-print-stat-emphasis border-emerald-300 bg-emerald-50' : 'border-border bg-slate-50/80'
       }`}
     >
       <div className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</div>
@@ -69,7 +69,13 @@ function ResultStat({
   );
 }
 
-function PhaseResultCard({ result }: { result: Salary2026Result }) {
+function PhaseResultCard({
+  result,
+  stageClass,
+}: {
+  result: Salary2026Result;
+  stageClass?: string;
+}) {
   if (result.phase === '2027-07-01') {
     const basic2026 = result.basic_on_2026_07 ?? result.matched_new_stage ?? result.new_pay;
     const basic2027 = result.basic_on_2027_07 ?? result.new_pay;
@@ -77,19 +83,21 @@ function PhaseResultCard({ result }: { result: Salary2026Result }) {
     const delta = basic2027 - basic2026;
 
     return (
-      <Card className="salary-print-avoid-break overflow-hidden border border-border shadow-sm">
+      <Card
+        className={`salary-print-stage overflow-hidden border border-border shadow-sm${stageClass ? ` ${stageClass}` : ''}`}
+      >
         <StageHeader result={result} />
         <CardContent className="space-y-4 p-4 sm:p-5">
           <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
-            <div className="rounded-lg border border-border bg-slate-50 p-3">
+            <div className="rounded-lg border border-border bg-slate-50 salary-print-stage3-box p-3">
               <p className="text-xs text-muted">01-07-2026 basic</p>
               <p className="mt-1 font-mono text-lg font-bold text-slate-900">
                 ৳ {formatTaka(basic2026)}
               </p>
             </div>
-            <ArrowRight className="mx-auto h-5 w-5 text-violet-500" aria-hidden />
+            <ArrowRight className="salary-print-hide mx-auto h-5 w-5 text-violet-500" aria-hidden />
             <div
-              className={`rounded-lg border p-3 ${
+              className={`salary-print-stage3-box rounded-lg border p-3 ${
                 moved ? 'border-violet-200 bg-violet-50' : 'border-amber-200 bg-amber-50'
               }`}
             >
@@ -108,7 +116,9 @@ function PhaseResultCard({ result }: { result: Salary2026Result }) {
   }
 
   return (
-    <Card className="salary-print-avoid-break overflow-hidden border border-border shadow-sm">
+    <Card
+      className={`salary-print-stage overflow-hidden border border-border shadow-sm${stageClass ? ` ${stageClass}` : ''}`}
+    >
       <StageHeader result={result} />
       <CardContent className="space-y-4 p-4 sm:p-5">
         <div className="grid gap-3 sm:grid-cols-3">
@@ -236,6 +246,22 @@ export default function SalaryOn2026Page() {
     }
   }
 
+  function updatePrintPageBreaks() {
+    const stage2 = document.querySelector('.salary-print-stage-2');
+    if (!stage2) return;
+
+    const printRoot = document.querySelector('.salary-print-root');
+    if (!printRoot) return;
+
+    // A4 printable height: 297mm − 16mm margins ≈ 281mm
+    const printableHeightPx = 281 * 3.7795275591;
+    const rootTop = printRoot.getBoundingClientRect().top;
+    const stage2Bottom = stage2.getBoundingClientRect().bottom - rootTop;
+
+    // Only force page 2 when Stage 2 fully ends on page 1; otherwise Stage 3 follows immediately
+    stage2.classList.toggle('salary-print-break-after', stage2Bottom <= printableHeightPx + 4);
+  }
+
   function handleGivePdf() {
     setPdfLoading(true);
     const prevTitle = document.title;
@@ -243,12 +269,19 @@ export default function SalaryOn2026Page() {
 
     void fetch('/api/proxy/v1/salary/pdf', { method: 'POST' }).catch(() => {});
 
+    const onBeforePrint = () => updatePrintPageBreaks();
+
     const finish = () => {
       document.title = prevTitle;
       setPdfLoading(false);
+      document.querySelector('.salary-print-stage-2')?.classList.remove('salary-print-break-after');
+      window.removeEventListener('beforeprint', onBeforePrint);
       window.removeEventListener('afterprint', finish);
     };
+
+    window.addEventListener('beforeprint', onBeforePrint);
     window.addEventListener('afterprint', finish);
+    updatePrintPageBreaks();
     window.print();
     window.setTimeout(finish, 1500);
   }
@@ -293,7 +326,7 @@ export default function SalaryOn2026Page() {
         </div>
       </header>
 
-      <div className="border-b border-emerald-200 bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-600">
+      <div className="salary-print-hero border-b border-emerald-200 bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-600">
         <div className="mx-auto max-w-5xl px-4 py-8 text-center sm:px-6 sm:py-10">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-100/90">
             National Pay Scale
@@ -304,7 +337,7 @@ export default function SalaryOn2026Page() {
           <p className="mx-auto mt-4 inline-block rounded-full bg-amber-300 px-4 py-1.5 text-sm font-extrabold text-amber-950 shadow-sm ring-2 ring-amber-100/80">
             Draft calculation. It may vary.
           </p>
-          <p className="mx-auto mt-3 max-w-2xl text-sm text-emerald-50/90 sm:text-base">
+          <p className="salary-print-hide mx-auto mt-3 max-w-2xl text-sm text-emerald-50/90 sm:text-base">
             Public calculator — no login required. Three conversions shown in order:
           </p>
           <p className="mx-auto mt-1 max-w-2xl text-sm font-semibold text-emerald-50 sm:text-base">
@@ -320,7 +353,7 @@ export default function SalaryOn2026Page() {
       </div>
 
       <main className="mx-auto w-full max-w-5xl flex-1 space-y-6 px-4 py-6 sm:px-6 sm:py-8">
-        <Alert className="border-amber-200 bg-amber-50 text-amber-950 shadow-sm">
+        <Alert className="salary-print-hide border-amber-200 bg-amber-50 text-amber-950 shadow-sm">
           <p className="text-sm leading-relaxed">
             <span className="rounded bg-amber-200 px-1.5 py-0.5 font-extrabold text-amber-950">
               Draft calculation. It may vary.
@@ -329,7 +362,7 @@ export default function SalaryOn2026Page() {
           </p>
         </Alert>
 
-        <Alert className="border-emerald-200 bg-white text-emerald-950 shadow-sm">
+        <Alert className="salary-print-rules border-emerald-200 bg-white text-emerald-950 shadow-sm">
           <ol className="list-decimal space-y-1.5 pl-4 text-sm leading-relaxed">
             <li>
               <strong>Stage-1 (01-07-2026):</strong> Step 5 = next stage after matched stage; Step 6
@@ -345,7 +378,7 @@ export default function SalaryOn2026Page() {
           </ol>
         </Alert>
 
-        <Card className="salary-print-avoid-break shadow-sm">
+        <Card className="salary-print-input shadow-sm">
           <CardHeader className="space-y-0.5 pb-3">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Start here</p>
             <CardTitle className="text-base">Your current pay (NPS 2015)</CardTitle>
@@ -411,7 +444,7 @@ export default function SalaryOn2026Page() {
               ) : null}
             </div>
 
-            <div className="space-y-1 rounded-lg border border-dashed border-border bg-slate-50/50 p-3 text-xs text-muted">
+            <div className="salary-print-scale space-y-1 rounded-lg border border-dashed border-border bg-slate-50/50 p-3 text-xs text-muted">
               <p>
                 <span className="font-semibold text-slate-700">NPS 2015:</span> {scalePreview.old}
               </p>
@@ -450,17 +483,23 @@ export default function SalaryOn2026Page() {
           </div>
         ) : null}
 
-        {results?.map((result) => (
-          <PhaseResultCard key={result.phase} result={result} />
+        {results?.map((result, index) => (
+          <PhaseResultCard
+            key={result.phase}
+            result={result}
+            stageClass={
+              index === 1 ? 'salary-print-stage-2' : index === 2 ? 'salary-print-stage-3' : undefined
+            }
+          />
         ))}
 
         {results ? (
           <section
             aria-label="Thanks to Government"
-            className="salary-print-avoid-break relative overflow-hidden rounded-2xl border border-rose-200/80 bg-gradient-to-br from-rose-50 via-white to-amber-50 px-5 py-8 text-center shadow-sm sm:px-8"
+            className="salary-print-thanks relative overflow-hidden rounded-2xl border border-rose-200/80 bg-gradient-to-br from-rose-50 via-white to-amber-50 px-5 py-8 text-center shadow-sm sm:px-8"
           >
-            <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-rose-200/40 blur-2xl" />
-            <div className="pointer-events-none absolute -bottom-10 -left-6 h-28 w-28 rounded-full bg-amber-200/50 blur-2xl" />
+            <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-rose-200/40 blur-2xl salary-print-hide" />
+            <div className="pointer-events-none absolute -bottom-10 -left-6 h-28 w-28 rounded-full bg-amber-200/50 blur-2xl salary-print-hide" />
             <div className="relative mx-auto flex max-w-2xl flex-col items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-rose-100 text-rose-700 ring-4 ring-rose-50">
                 <HeartHandshake className="h-6 w-6" aria-hidden />

@@ -4,8 +4,8 @@
  * Phases:
  * - 01-07-2026: Step 5 = next stage after matched Step 4; Step 6 rate 40% (grades 1–9) / 50% (10–20)
  * - 01-01-2027: same layout; Step 6 rate 70% (grades 1–9) / 75% (10–20)
- * - 01-07-2027: if Step 4 is not last stage, Step 5 = next stage after Step 4;
- *               if last stage, keep 01-01-2027 percentage rule
+ * - 01-07-2027: 01-07-2026 basic = Step 5 (next stage after matched Step 4);
+ *               01-07-2027 basic = next stage after that Step 5 amount
  */
 
 import { z } from 'zod';
@@ -249,11 +249,11 @@ export interface Salary2026Result {
   matched_new_stage: number | null;
   increment: number;
   increment_skipped: boolean;
-  /** 01-07-2027 Stage-3: Step 5 taken as next stage after matched stage. */
+  /** Stage-3 only: Step 5 taken as next stage after matched stage. */
   used_next_stage_for_step5: boolean;
-  /** Stage-3 only: basic as on 01-07-2026 = matched NPS 2026 stage. */
+  /** Stage-3 only: basic as on 01-07-2026 = Step 5 amount. */
   basic_on_2026_07?: number;
-  /** Stage-3 only: basic as on 01-07-2027 = next stage (or matched if last). */
+  /** Stage-3 only: basic as on 01-07-2027 = next stage after Step 5 (or Step 5 if last). */
   basic_on_2027_07?: number;
   steps: Salary2026StepRow[];
 }
@@ -443,10 +443,12 @@ export function calculateSalary2026(input: Salary2026Input): Salary2026Result {
   const matched = stageOrNextHigher(newScale, step3);
   const step4 = matched.amount;
   const isLast = matched.index >= newScale.length - 1;
-  const nextStage = isLast ? step4 : newScale[matched.index + 1]!;
+  const step5 = isLast ? step4 : newScale[matched.index + 1]!;
+  const step5Index = isLast ? matched.index : matched.index + 1;
+  const step5IsLast = step5Index >= newScale.length - 1;
+  const nextAfterStep5 = step5IsLast ? step5 : newScale[step5Index + 1]!;
 
-  // Stage-3 (01-07-2027): single-line — 01-07-2026 = matched stage; 01-07-2027 = next (if not last).
-  // No Pay Scale 2015 comparison in this stage's presentation.
+  // Stage-3 (01-07-2027): 01-07-2026 basic = Step 5; 01-07-2027 basic = next stage after Step 5.
   if (phase === '2027-07-01') {
     return {
       grade,
@@ -459,13 +461,13 @@ export function calculateSalary2026(input: Salary2026Input): Salary2026Result {
       old_pay: oldPay,
       old_minimum: oldMinimum,
       new_minimum: newMinimum,
-      new_pay: nextStage,
+      new_pay: nextAfterStep5,
       matched_new_stage: step4,
-      increment: isLast ? 0 : nextStage - step4,
-      increment_skipped: isLast,
+      increment: step5IsLast ? 0 : nextAfterStep5 - step5,
+      increment_skipped: step5IsLast,
       used_next_stage_for_step5: !isLast,
-      basic_on_2026_07: step4,
-      basic_on_2027_07: nextStage,
+      basic_on_2026_07: step5,
+      basic_on_2027_07: nextAfterStep5,
       steps: [],
     };
   }

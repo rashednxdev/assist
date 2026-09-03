@@ -373,7 +373,8 @@ export default function SalaryOn2026Page() {
               (grades 1–9) / <strong>75%</strong> (grades 10–20).
             </li>
             <li>
-              <strong>Stage-3:</strong> On 01-07-2027, Next Stage of 01-07-2026.
+              <strong>Stage-3:</strong> 01-07-2026 basic = Step 5 amount; 01-07-2027 basic = next
+              stage after that.
             </li>
           </ol>
         </Alert>

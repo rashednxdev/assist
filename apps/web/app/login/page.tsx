@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FormField } from '@/components/shared/form-field';
+import { Alert } from '@/components/ui/alert';
 import {
   clearAccessToken,
   loginRequest,
@@ -18,14 +19,18 @@ export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
+    setError('');
     try {
-      const res = await loginRequest(email, password);
+      const res = await loginRequest(email.trim(), password);
       const user = res.data.user;
+
+      // Non-admins may not use the web app — treat like inactive site.
       if (!isPlatformAdmin(user)) {
         setAccessToken(res.data.accessToken);
         try {
@@ -36,12 +41,13 @@ export default function LoginPage() {
         router.replace('/unavailable');
         return;
       }
+
       setAccessToken(res.data.accessToken);
-      router.push('/dashboard');
-    } catch {
-      // Do not reveal whether credentials were valid — same destination as non-admin.
+      router.replace('/dashboard');
+    } catch (err) {
       clearAccessToken();
-      router.replace('/unavailable');
+      // Keep admins on the form so they can fix credentials / see API errors.
+      setError(err instanceof Error ? err.message : 'Sign in failed. Try again.');
     } finally {
       setLoading(false);
     }
@@ -55,15 +61,16 @@ export default function LoginPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <FormField label="Mobile" htmlFor="email" required>
+            <FormField label="Mobile or email" htmlFor="email" required>
               <Input
                 id="email"
-                type="tel"
+                type="text"
+                inputMode="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="01XXXXXXXXX"
+                placeholder="01XXXXXXXXX or email"
                 required
-                autoComplete="tel"
+                autoComplete="username"
               />
             </FormField>
             <FormField label="Password" htmlFor="password" required>
@@ -76,6 +83,7 @@ export default function LoginPage() {
                 autoComplete="current-password"
               />
             </FormField>
+            {error ? <Alert variant="error">{error}</Alert> : null}
             <Button type="submit" className="h-10 w-full" disabled={loading}>
               {loading ? 'Signing in…' : 'Sign in'}
             </Button>

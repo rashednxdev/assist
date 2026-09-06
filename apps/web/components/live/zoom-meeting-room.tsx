@@ -72,6 +72,12 @@ export function ZoomMeetingRoom({ config, onError, onLeave }: ZoomMeetingRoomPro
         <p className="text-sm font-semibold text-slate-900">
           {config.role === 'host' ? 'Zoom host classroom' : 'Zoom classroom'}
         </p>
+        {config.userName?.trim() ? (
+          <p className="mt-1 text-sm font-medium text-slate-800">
+            Signed in as: {config.userName.trim()}
+            {config.role === 'host' ? ' (host)' : ' (guest)'}
+          </p>
+        ) : null}
         <p className="mt-1 text-sm text-slate-600">
           Opens Zoom Web Client with mic, camera, and screen share. Keep this tab open for
           messages and session controls.

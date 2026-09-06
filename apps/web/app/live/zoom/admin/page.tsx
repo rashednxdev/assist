@@ -230,7 +230,7 @@ export default function LiveStreamAdminPage() {
                   <div className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-400">
                     {item.status}
                     {item.access_type === 'paid' ? ' · Paid class' : ' · Free class'}
-                    {item.host_name ? ` · Host: ${item.host_name}` : ''}
+                    {item.host_name ? ` · Host: ${item.host_name}` : ' · Host: Not assigned'}
                     {typeof item.invite_count === 'number' ? ` · ${item.invite_count} invited` : ''}
                   </div>
                 </Link>

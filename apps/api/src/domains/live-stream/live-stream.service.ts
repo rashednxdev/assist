@@ -36,6 +36,46 @@ function isPlatformAdmin(user: { is_super_admin?: boolean; user_type?: string })
   );
 }
 
+/** Display name for hosts/guests — never blank when email/phone exist. */
+function personDisplayName(u: {
+  full_name_en?: string | null;
+  full_name_bn?: string | null;
+  email?: string | null;
+  phone?: string | null;
+} | null | undefined): string | undefined {
+  if (!u) return undefined;
+  const en = u.full_name_en?.trim();
+  const bn = u.full_name_bn?.trim();
+  const email = u.email?.trim();
+  const phone = u.phone?.trim();
+  return en || bn || email || phone || undefined;
+}
+
+/** Zoom Web Client `un` prefers Latin names so the label shows reliably for guests. */
+function zoomParticipantName(u: {
+  full_name_en?: string | null;
+  full_name_bn?: string | null;
+  email?: string | null;
+  phone?: string | null;
+} | null | undefined): string {
+  if (!u) return 'Guest';
+  const en = u.full_name_en?.trim();
+  const bn = u.full_name_bn?.trim();
+  const email = u.email?.trim();
+  const phone = u.phone?.trim();
+  if (en) return en;
+  if (bn) return bn;
+  if (email) return email.split('@')[0] || email;
+  if (phone) return phone;
+  return 'Guest';
+}
+
+async function resolveHostName(hostUserId: unknown): Promise<string | undefined> {
+  if (!hostUserId) return undefined;
+  const host = await User.findById(hostUserId).select('full_name_en full_name_bn email phone');
+  return personDisplayName(host);
+}
+
 function isPaidClass(doc: { access_type?: string }) {
   return doc.access_type === 'paid';
 }
@@ -334,10 +374,10 @@ export async function listLiveStreamsForUser(
   const hostIds = [...new Set(items.map((i) => String(i.host_user_id)))];
   const hosts =
     hostIds.length > 0
-      ? await User.find({ _id: { $in: hostIds } }).select('full_name_en full_name_bn')
+      ? await User.find({ _id: { $in: hostIds } }).select('full_name_en full_name_bn email phone')
       : [];
   const hostName = new Map(
-    hosts.map((h) => [String(h._id), h.full_name_bn?.trim() || h.full_name_en]),
+    hosts.map((h) => [String(h._id), personDisplayName(h) ?? '']),
   );
 
   const hasPaid = await userHasPaid(user);
@@ -360,7 +400,7 @@ export async function listLiveStreamsForUser(
       status: doc.status,
       video_platform: videoPlatformOf(doc),
       host_user_id: String(doc.host_user_id),
-      host_name: hostName.get(String(doc.host_user_id)),
+      host_name: hostName.get(String(doc.host_user_id)) || undefined,
       permission_status: perm.permission_status,
       can_join: perm.can_join && doc.status === 'live' && !payment.payment_blocked,
       can_host: perm.can_host,
@@ -390,7 +430,7 @@ export async function getLiveStreamForUser(
 ) {
   const doc = await LiveStream.findOne({ _id: id, is_active: true });
   if (!doc) throw notFound('Live session not found');
-  const host = await User.findById(doc.host_user_id).select('full_name_en full_name_bn');
+  const host_name = await resolveHostName(doc.host_user_id);
   const hasPaid = await userHasPaid(user);
   const perm = await permissionFor(doc, user.id, user, hasPaid);
   const inviteCount = await LiveStreamInvite.countDocuments({ live_stream_id: doc._id });
@@ -410,7 +450,7 @@ export async function getLiveStreamForUser(
     recorded_contents: viewPresentation ? recorded : [],
     recorded_content_count: recorded.length,
     can_view_presentation: viewPresentation,
-    host_name: host ? host.full_name_bn?.trim() || host.full_name_en : undefined,
+    host_name,
     invite_count: inviteCount,
     permission_status: perm.permission_status,
     can_join: perm.can_join && doc.status === 'live' && !payment.payment_blocked,
@@ -437,17 +477,17 @@ export async function listAdminLiveStreams(limit: number, skip: number, opts?: {
   const hostIds = [...new Set(items.map((i) => String(i.host_user_id)))];
   const hosts =
     hostIds.length > 0
-      ? await User.find({ _id: { $in: hostIds } }).select('full_name_en full_name_bn')
+      ? await User.find({ _id: { $in: hostIds } }).select('full_name_en full_name_bn email phone')
       : [];
   const hostName = new Map(
-    hosts.map((h) => [String(h._id), h.full_name_bn?.trim() || h.full_name_en]),
+    hosts.map((h) => [String(h._id), personDisplayName(h) ?? '']),
   );
   return {
     total,
     items: sortByCurrentDateFirst(
       items.map((doc) => ({
         ...serializeBase(doc, false),
-        host_name: hostName.get(String(doc.host_user_id)),
+        host_name: hostName.get(String(doc.host_user_id)) || undefined,
         invite_count: countMap.get(String(doc._id)) ?? 0,
         permission_status: 'host' as const,
         can_join: true,
@@ -471,8 +511,8 @@ export async function listHostingLiveStreams(
     .sort({ scheduled_at: -1 })
     .limit(100);
 
-  const host = await User.findById(user.id).select('full_name_en full_name_bn');
-  const hostName = host ? host.full_name_bn?.trim() || host.full_name_en : undefined;
+  const host = await User.findById(user.id).select('full_name_en full_name_bn email phone');
+  const hostName = personDisplayName(host);
 
   const result: LiveStreamListItem[] = items.map((doc) => {
     const presentations = serializePresentations(doc);
@@ -604,9 +644,14 @@ export async function updateLiveStream(id: string, dto: UpdateLiveStreamDto) {
     }
   }
   await doc.save();
+  const host_name = await resolveHostName(doc.host_user_id);
   return {
     ...serializeBase(doc, true),
+    host_name,
     can_view_presentation: true,
+    can_host: true,
+    permission_status: 'host' as const,
+    can_join: doc.status === 'live',
   };
 }
 
@@ -688,7 +733,7 @@ export async function listInvites(id: string) {
     return {
       id: String(inv._id),
       user_id: String(inv.user_id),
-      name: u ? u.full_name_bn?.trim() || u.full_name_en : 'Unknown',
+      name: personDisplayName(u) || 'Unknown',
       email: u?.email,
       phone: u?.phone,
       invited_at: inv.created_at.toISOString(),
@@ -796,8 +841,9 @@ export async function joinLiveStream(
     if (!doc.zoom_meeting_number) {
       throw badRequest('Zoom meeting is not ready yet. The host must start the class first.');
     }
-    const userDoc = await User.findById(user.id).select('full_name_en full_name_bn email');
-    const userName = userDoc?.full_name_bn?.trim() || userDoc?.full_name_en || 'Guest';
+    const userDoc = await User.findById(user.id).select('full_name_en full_name_bn email phone');
+    const userName = zoomParticipantName(userDoc);
+    const host_name = await resolveHostName(doc.host_user_id);
     let zak: string | undefined;
     if (role === 'host') {
       zak = await fetchZoomZakToken();
@@ -832,6 +878,7 @@ export async function joinLiveStream(
       status: doc.status,
       allow_guest_messages: Boolean(doc.allow_guest_messages),
       allow_guest_speech: Boolean(doc.allow_guest_speech),
+      host_name,
     };
   }
 
@@ -841,6 +888,7 @@ export async function joinLiveStream(
     uid,
     role,
   });
+  const host_name = await resolveHostName(doc.host_user_id);
 
   return {
     video_platform: 'agora',
@@ -854,6 +902,7 @@ export async function joinLiveStream(
     status: doc.status,
     allow_guest_messages: Boolean(doc.allow_guest_messages),
     allow_guest_speech: Boolean(doc.allow_guest_speech),
+    host_name,
   };
 }
 
@@ -943,11 +992,11 @@ export async function sendGuestMessage(
     created_at: new Date(),
   });
 
-  const from = await User.findById(user.id).select('full_name_en full_name_bn');
+  const from = await User.findById(user.id).select('full_name_en full_name_bn email phone');
   return {
     id: String(msg._id),
     from_user_id: user.id,
-    from_name: from ? from.full_name_bn?.trim() || from.full_name_en : 'Guest',
+    from_name: personDisplayName(from) || 'Guest',
     body: msg.body,
     created_at: msg.created_at.toISOString(),
   };
@@ -985,7 +1034,7 @@ export async function listGuestMessages(
 
   const userIds = [...new Set(messages.map((m) => String(m.from_user_id)))];
   const users = userIds.length
-    ? await User.find({ _id: { $in: userIds } }).select('full_name_en full_name_bn')
+    ? await User.find({ _id: { $in: userIds } }).select('full_name_en full_name_bn email phone')
     : [];
   const byId = new Map(users.map((u) => [String(u._id), u]));
 
@@ -994,7 +1043,7 @@ export async function listGuestMessages(
     return {
       id: String(m._id),
       from_user_id: String(m.from_user_id),
-      from_name: u ? u.full_name_bn?.trim() || u.full_name_en : 'Guest',
+      from_name: personDisplayName(u) || 'Guest',
       body: m.body,
       created_at: m.created_at.toISOString(),
     };
@@ -1015,7 +1064,7 @@ export async function listGuests(id: string): Promise<LiveStreamGuestItem[]> {
     return {
       id: String(g._id),
       user_id: String(g.user_id),
-      name: u ? u.full_name_bn?.trim() || u.full_name_en : 'Unknown',
+      name: personDisplayName(u) || 'Unknown',
       email: u?.email,
       phone: u?.phone,
       role: g.role,

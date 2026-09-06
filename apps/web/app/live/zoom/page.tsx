@@ -51,7 +51,7 @@ function ClassCard({ item, previous }: { item: LiveRow; previous?: boolean }) {
             <div className="font-semibold text-slate-900">{item.topic}</div>
             <div className="text-sm text-slate-500">
               {new Date(item.scheduled_at).toLocaleString()}
-              {item.host_name ? ` · ${item.host_name}` : ''}
+              {` · Host: ${item.host_name?.trim() || 'Not assigned'}`}
             </div>
             <div className="flex flex-wrap gap-2 pt-1">
               <span className="rounded-full border px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">

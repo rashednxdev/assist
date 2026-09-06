@@ -207,13 +207,14 @@ export default function ZoomStreamWatchPage() {
   const recordedContents = session.recorded_contents ?? [];
   const canViewPresentation = Boolean(session.can_view_presentation);
   const canHost = Boolean(session.can_host);
+  const hostLabel = session.host_name?.trim() || 'Not assigned';
 
   if (isPrevious) {
     return (
       <div className="mx-auto max-w-3xl space-y-6">
         <PageHeader
           title={session.topic}
-          description={`${new Date(session.scheduled_at).toLocaleString()} · Previous session`}
+          description={`${new Date(session.scheduled_at).toLocaleString()} · Previous session · Host: ${hostLabel}`}
         />
         {error ? <Alert variant="error">{error}</Alert> : null}
         {!canViewPresentation ? (
@@ -240,9 +241,14 @@ export default function ZoomStreamWatchPage() {
     <div className="space-y-6">
       <PageHeader
         title={session.topic}
-        description={`${new Date(session.scheduled_at).toLocaleString()} · ${session.status}`}
+        description={`${new Date(session.scheduled_at).toLocaleString()} · ${session.status} · Host: ${hostLabel}`}
       />
       {error ? <Alert variant="error">{error}</Alert> : null}
+
+      <div className="rounded-xl border border-sky-100 bg-sky-50/70 px-4 py-3 text-sm text-sky-950">
+        <span className="font-semibold">Class host: </span>
+        {hostLabel}
+      </div>
 
       {session.payment_blocked ? (
         <Alert variant="warning" className="border-amber-200 bg-amber-50 text-amber-950">
@@ -368,9 +374,10 @@ export default function ZoomStreamWatchPage() {
               Guest messaging is off. The host can allow messages from the admin page.
             </p>
           ) : null}
-          {session.host_name ? (
-            <p className="text-xs text-muted-foreground">Host: {session.host_name}</p>
-          ) : null}
+          <p className="text-sm text-slate-700">
+            <span className="font-semibold text-slate-900">Host: </span>
+            {join?.host_name?.trim() || hostLabel}
+          </p>
         </CardContent>
       </Card>
 

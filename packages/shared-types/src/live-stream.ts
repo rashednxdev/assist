@@ -439,6 +439,8 @@ export interface LiveStreamJoinPayloadBase {
   status: LiveStreamStatus;
   allow_guest_messages: boolean;
   allow_guest_speech: boolean;
+  /** Assigned class host display name (for guests). Optional for older clients. */
+  host_name?: string;
 }
 
 export interface AgoraLiveStreamJoinPayload extends LiveStreamJoinPayloadBase {

@@ -307,6 +307,12 @@ export default function SalaryOn2026Page() {
 
   return (
     <div className="salary-print-root flex min-h-screen flex-col bg-[#f4f7f5] text-slate-900">
+      <div className="salary-print-watermark" aria-hidden>
+        <span>ProAssist. Developed by Rashed. Office of the Controller General of Accounts.</span>
+        <span>ProAssist. Developed by Rashed. Office of the Controller General of Accounts.</span>
+        <span>ProAssist. Developed by Rashed. Office of the Controller General of Accounts.</span>
+        <span>ProAssist. Developed by Rashed. Office of the Controller General of Accounts.</span>
+      </div>
       <header className="border-b border-emerald-900/10 bg-[#0b3d2e] text-white">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <Link href="/salary" className="min-w-0">
@@ -334,8 +340,8 @@ export default function SalaryOn2026Page() {
           <h1 className="mt-2 text-balance text-2xl font-extrabold leading-snug text-white sm:text-3xl">
             Your Basic on Proposed National Pay scale-2026
           </h1>
-          <p className="mx-auto mt-4 inline-block rounded-full bg-amber-300 px-4 py-1.5 text-sm font-extrabold text-amber-950 shadow-sm ring-2 ring-amber-100/80">
-            Draft calculation. It may vary.
+          <p className="mx-auto mt-4 inline-block rounded-full bg-emerald-200 px-4 py-1.5 text-sm font-extrabold text-emerald-950 shadow-sm ring-2 ring-emerald-100/80">
+            Published calculation
           </p>
           <p className="salary-print-hide mx-auto mt-3 max-w-2xl text-sm text-emerald-50/90 sm:text-base">
             Public calculator — no login required. Three conversions shown in order:
@@ -353,12 +359,12 @@ export default function SalaryOn2026Page() {
       </div>
 
       <main className="mx-auto w-full max-w-5xl flex-1 space-y-6 px-4 py-6 sm:px-6 sm:py-8">
-        <Alert className="salary-print-hide border-amber-200 bg-amber-50 text-amber-950 shadow-sm">
+        <Alert className="salary-print-hide border-emerald-200 bg-emerald-50 text-emerald-950 shadow-sm">
           <p className="text-sm leading-relaxed">
-            <span className="rounded bg-amber-200 px-1.5 py-0.5 font-extrabold text-amber-950">
-              Draft calculation. It may vary.
+            <span className="rounded bg-emerald-200 px-1.5 py-0.5 font-extrabold text-emerald-950">
+              Published calculation
             </span>{' '}
-            This is an indicative tool only — final pay is decided by Government orders.
+            Based on the National Pay Scale 2026 conversion stages shown below.
           </p>
         </Alert>
 
@@ -460,11 +466,16 @@ export default function SalaryOn2026Page() {
               </Alert>
             ) : null}
 
-            <div className="flex flex-wrap gap-2 print:hidden">
-              <Button type="button" onClick={() => void handleCalculate()} disabled={calculating} className="gap-2">
-                <Calculator className="h-4 w-4" />
-                {calculating ? 'Calculating…' : 'Calculate all phases'}
-              </Button>
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-2 print:hidden">
+                <Button type="button" onClick={() => void handleCalculate()} disabled={calculating} className="gap-2">
+                  <Calculator className="h-4 w-4" />
+                  {calculating ? 'Calculating…' : 'Calculate by ProAssist'}
+                </Button>
+              </div>
+              <p className="text-xs font-medium text-teal-700">
+                Developed by Rashed. Office of the Controller General of Accounts.
+              </p>
             </div>
           </CardContent>
         </Card>

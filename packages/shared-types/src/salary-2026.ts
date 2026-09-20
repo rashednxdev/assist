@@ -520,6 +520,12 @@ export type HousingStatus = 'hra_eligible' | 'govt_accommodation';
 
 export type EducationChildren = 0 | 1 | 2;
 
+/** Grades 2–10: regular post vs additional current charge. */
+export type ChargeType = 'regular' | 'current_charge';
+
+/** Substantive grade for tiffin/conveyance when pay grade is 1–10. */
+export type SubstantiveGrade = 11 | 12 | 13 | 14 | 15;
+
 export interface EmployeeGrossInput {
   grade: PayGrade;
   /** Basic on 30 June 2026 (NPS 2015 stage). */
@@ -529,6 +535,16 @@ export interface EmployeeGrossInput {
   education_children: EducationChildren;
   /** Uniformed 4th-class employees only. */
   washing_allowance: boolean;
+  /**
+   * Grades 2–10 only. Default regular.
+   * Current charge adds ৳ 1,500 / month.
+   */
+  charge_type?: ChargeType;
+  /**
+   * When pay grade is 7–10: substantive grade 11–15 unlocks
+   * tiffin + conveyance. Ignored when pay grade is already 11–15.
+   */
+  substantive_grade?: SubstantiveGrade | null;
 }
 
 export interface AllowanceLine {
@@ -675,12 +691,25 @@ export function calculateAllowancesExcludingBasic(input: EmployeeGrossInput): {
           : '2 children (maximum)',
   });
 
-  const tiffin = grade >= 11 ? 200 : 0;
+  const chargeType = input.charge_type ?? 'regular';
+  if (grade >= 2 && grade <= 10 && chargeType === 'current_charge') {
+    lines.push({
+      code: 'current_charge',
+      label: 'Current Charge Allowance',
+      amount: 1500,
+      note: 'Grades 2–10 — additional current charge',
+    });
+  }
+
+  const tiffinGrade = resolveTiffinConveyanceGrade(input);
+  const tiffinEligible = tiffinGrade != null;
   lines.push({
     code: 'tiffin',
     label: 'Tiffin Allowance',
-    amount: tiffin,
-    note: grade >= 11 ? 'Grades 11–20' : 'Not applicable (Grades 1–10)',
+    amount: tiffinEligible ? 200 : 0,
+    note: tiffinEligible
+      ? `Eligible — substantive/pay Grade ${tiffinGrade} (11–15)`
+      : 'Not applicable (requires Grade 11–15)',
   });
 
   const washing = input.washing_allowance ? 100 : 0;
@@ -693,18 +722,32 @@ export function calculateAllowancesExcludingBasic(input: EmployeeGrossInput): {
       : 'Not selected',
   });
 
-  const conveyance = grade >= 11 ? 300 : 0;
   lines.push({
     code: 'conveyance',
     label: 'Conveyance Allowance',
-    amount: conveyance,
-    note: grade >= 11 ? 'Grades 11–20' : 'Not applicable (Grades 1–10)',
+    amount: tiffinEligible ? 300 : 0,
+    note: tiffinEligible
+      ? `Eligible — substantive/pay Grade ${tiffinGrade} (11–15)`
+      : 'Not applicable (requires Grade 11–15)',
   });
 
   return {
     lines,
     allowances_total: lines.reduce((sum, line) => sum + line.amount, 0),
   };
+}
+
+/** Pay grade 11–15, or substantive 11–15 when pay grade is 7–10. */
+export function resolveTiffinConveyanceGrade(
+  input: Pick<EmployeeGrossInput, 'grade' | 'substantive_grade'>,
+): SubstantiveGrade | null {
+  const grade = input.grade;
+  if (grade >= 11 && grade <= 15) return grade as SubstantiveGrade;
+  if (grade >= 7 && grade <= 10) {
+    const s = input.substantive_grade;
+    if (s === 11 || s === 12 || s === 13 || s === 14 || s === 15) return s;
+  }
+  return null;
 }
 
 /** Monthly + annual/periodic benefits on Basic (30 June 2026) and Grade. */

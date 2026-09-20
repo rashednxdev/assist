@@ -9,7 +9,6 @@ import {
   NPS_2026,
   calculateSalary2026AllPhases,
   calculateEmployeeGross,
-  calculateAllowancesExcludingBasic,
   formatTaka,
   hraAreaLabel,
   isFixedPayGrade,
@@ -18,17 +17,11 @@ import {
   type EmployeeGrossResult,
   type HousingStatus,
   type HraArea,
+  type ChargeType,
+  type SubstantiveGrade,
   type PayGrade,
   type Salary2026Result,
 } from '@ibas/shared-types';
-
-type AllowanceOpts = {
-  grade: PayGrade;
-  housing_status: HousingStatus;
-  hra_area: HraArea;
-  education_children: EducationChildren;
-  washing_allowance: boolean;
-};
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -109,86 +102,72 @@ function ResultStat({
   );
 }
 
-function StageAllowancesBlock({
-  basic,
-  basicLabel,
-  opts,
+/** Stage summary only — fixed allowances from 30 June 2026 (same every stage). */
+function StageTotalAllowanceSummary({
+  stageBasic,
+  fixedAllowancesTotal,
   gpfDeduction,
 }: {
-  basic: number;
-  basicLabel: string;
-  opts: AllowanceOpts;
+  stageBasic: number;
+  fixedAllowancesTotal: number;
   gpfDeduction: number;
 }) {
-  const { lines, allowances_total } = calculateAllowancesExcludingBasic({
-    ...opts,
-    basic,
-  });
-  const monthlyWithAllowances = basic + allowances_total;
   const gpf = Number.isFinite(gpfDeduction) && gpfDeduction > 0 ? Math.round(gpfDeduction) : 0;
-  const netPayable = monthlyWithAllowances - gpf;
+  const basicPlusAllowances = stageBasic + fixedAllowancesTotal;
+  const netPayable = basicPlusAllowances - gpf;
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-emerald-200 bg-emerald-50/40">
-      <div className="border-b border-emerald-200 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-900">
-        Allowances on {basicLabel} (৳ {formatTaka(basic)}) — excluding basic
+    <div className="rounded-xl border border-teal-200 bg-teal-50/50 p-3 sm:p-4">
+      <div className="grid gap-2 sm:grid-cols-2">
+        <div className="rounded-lg border border-border bg-white px-3 py-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Basic</p>
+          <p className="mt-0.5 font-mono text-lg font-bold text-slate-900">
+            ৳ {formatTaka(stageBasic)}
+          </p>
+          <p className="text-[11px] text-muted">This stage — not included in Total Allowance</p>
+        </div>
+        <div className="rounded-lg border border-teal-300 bg-teal-100/80 px-3 py-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-teal-900">
+            Total Allowance (01 June to 31-12-2027)
+          </p>
+          <p className="mt-0.5 font-mono text-lg font-bold text-teal-950">
+            ৳ {formatTaka(fixedAllowancesTotal)}
+          </p>
+          <p className="text-[11px] text-teal-800/80">Fixed on Basic 30 June 2026</p>
+        </div>
       </div>
-      <table className="w-full min-w-[480px] text-sm">
-        <thead className="bg-white/70 text-left text-xs uppercase tracking-wide text-muted">
-          <tr>
-            <th className="px-3 py-2 font-semibold">Allowance</th>
-            <th className="px-3 py-2 font-semibold">Note</th>
-            <th className="px-3 py-2 text-right font-semibold">Amount (৳)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {lines.map((row) => (
-            <tr key={row.code} className="border-t border-emerald-100">
-              <td className="px-3 py-2 font-medium text-slate-800">{row.label}</td>
-              <td className="px-3 py-2 text-xs text-muted">{row.note ?? '—'}</td>
-              <td className="px-3 py-2 text-right font-mono font-semibold">
-                {formatTaka(row.amount)}
-              </td>
-            </tr>
-          ))}
-          <tr className="border-t border-emerald-200 bg-white/80">
-            <td className="px-3 py-2 font-semibold text-slate-800" colSpan={2}>
-              Allowances total
-            </td>
-            <td className="px-3 py-2 text-right font-mono font-bold text-slate-900">
-              {formatTaka(allowances_total)}
-            </td>
-          </tr>
-          <tr className="border-t-2 border-emerald-300 bg-emerald-100/80">
-            <td className="px-3 py-2.5 font-bold text-emerald-950" colSpan={2}>
-              New basic + allowances (৳ {formatTaka(basic)} + ৳ {formatTaka(allowances_total)})
-            </td>
-            <td className="px-3 py-2.5 text-right font-mono text-lg font-bold text-emerald-900">
-              {formatTaka(monthlyWithAllowances)}
-            </td>
-          </tr>
-          {gpf > 0 ? (
-            <>
-              <tr className="border-t border-rose-200 bg-rose-50/70">
-                <td className="px-3 py-2 font-medium text-rose-900" colSpan={2}>
-                  GPF deduction
-                </td>
-                <td className="px-3 py-2 text-right font-mono font-semibold text-rose-800">
-                  − {formatTaka(gpf)}
-                </td>
-              </tr>
-              <tr className="border-t-2 border-slate-300 bg-slate-100/90">
-                <td className="px-3 py-2.5 font-bold text-slate-950" colSpan={2}>
-                  Net payable
-                </td>
-                <td className="px-3 py-2.5 text-right font-mono text-lg font-bold text-slate-900">
-                  {formatTaka(netPayable)}
-                </td>
-              </tr>
-            </>
-          ) : null}
-        </tbody>
-      </table>
+      <div className="mt-2 rounded-lg border border-emerald-300 bg-emerald-100/80 px-3 py-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-900">
+          Basic + Total Allowance
+        </p>
+        <p className="mt-0.5 font-mono text-lg font-bold text-emerald-950">
+          ৳ {formatTaka(basicPlusAllowances)}
+        </p>
+        <p className="text-[11px] text-emerald-800/80">
+          ৳ {formatTaka(stageBasic)} + ৳ {formatTaka(fixedAllowancesTotal)}
+        </p>
+      </div>
+      {gpf > 0 ? (
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-rose-800">
+              GPF deduction
+            </p>
+            <p className="mt-0.5 font-mono text-lg font-bold text-rose-900">
+              − ৳ {formatTaka(gpf)}
+            </p>
+          </div>
+          <div className="rounded-lg border border-slate-300 bg-slate-100 px-3 py-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+              Net payable
+            </p>
+            <p className="mt-0.5 font-mono text-lg font-bold text-slate-900">
+              ৳ {formatTaka(netPayable)}
+            </p>
+            <p className="text-[11px] text-muted">Basic + Total Allowance − GPF</p>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -196,12 +175,12 @@ function StageAllowancesBlock({
 function PhaseResultCard({
   result,
   stageClass,
-  allowanceOpts,
+  fixedAllowancesTotal,
   gpfDeduction,
 }: {
   result: Salary2026Result;
   stageClass?: string;
-  allowanceOpts: AllowanceOpts;
+  fixedAllowancesTotal: number;
   gpfDeduction: number;
 }) {
   if (result.phase === '2027-07-01') {
@@ -239,10 +218,9 @@ function PhaseResultCard({
             </div>
           </div>
 
-          <StageAllowancesBlock
-            basic={basic2027}
-            basicLabel="New basic (01-07-2027)"
-            opts={allowanceOpts}
+          <StageTotalAllowanceSummary
+            stageBasic={basic2027}
+            fixedAllowancesTotal={fixedAllowancesTotal}
             gpfDeduction={gpfDeduction}
           />
         </CardContent>
@@ -301,10 +279,9 @@ function PhaseResultCard({
           </table>
         </div>
 
-        <StageAllowancesBlock
-          basic={result.new_pay}
-          basicLabel={`New basic (${result.phase_label})`}
-          opts={allowanceOpts}
+        <StageTotalAllowanceSummary
+          stageBasic={result.new_pay}
+          fixedAllowancesTotal={fixedAllowancesTotal}
           gpfDeduction={gpfDeduction}
         />
 
@@ -319,13 +296,24 @@ function PhaseResultCard({
   );
 }
 
-function GrossResultCard({ gross }: { gross: EmployeeGrossResult }) {
+function GrossResultCard({
+  gross,
+  gpfDeduction,
+}: {
+  gross: EmployeeGrossResult;
+  gpfDeduction: number;
+}) {
+  const allowanceLines = gross.monthly_lines.filter((row) => row.code !== 'basic');
+  const allowanceOnlyTotal = allowanceLines.reduce((sum, row) => sum + row.amount, 0);
+  const gpf = Number.isFinite(gpfDeduction) && gpfDeduction > 0 ? Math.round(gpfDeduction) : 0;
+  const netPayable = gross.basic + allowanceOnlyTotal - gpf;
+
   return (
     <Card className="salary-print-avoid-break overflow-hidden border border-teal-200 shadow-sm">
       <div className="bg-teal-700 px-4 py-2.5 text-white sm:px-5">
-        <div className="text-sm font-bold">Monthly gross (Basic on 30 June 2026)</div>
+        <div className="text-sm font-bold">Total Allowance (01 June to 31-12-2027)</div>
         <p className="mt-0.5 text-xs text-teal-100/90">
-          Grade {gross.grade} · Housing:{' '}
+          Fixed on Basic 30 June 2026 · Grade {gross.grade} · Housing:{' '}
           {gross.housing_status === 'govt_accommodation'
             ? 'Government accommodation'
             : hraAreaLabel(gross.hra_area)}
@@ -342,7 +330,16 @@ function GrossResultCard({ gross }: { gross: EmployeeGrossResult }) {
               </tr>
             </thead>
             <tbody>
-              {gross.monthly_lines.map((row) => (
+              <tr className="border-t border-border bg-slate-50/80">
+                <td className="px-3 py-2 font-medium text-slate-800">
+                  Basic pay (30 June 2026) — shown, not summed
+                </td>
+                <td className="px-3 py-2 text-xs text-muted">Reference basic for allowances</td>
+                <td className="px-3 py-2 text-right font-mono font-semibold">
+                  {formatTaka(gross.basic)}
+                </td>
+              </tr>
+              {allowanceLines.map((row) => (
                 <tr key={row.code} className="border-t border-border">
                   <td className="px-3 py-2 font-medium text-slate-800">{row.label}</td>
                   <td className="px-3 py-2 text-xs text-muted">{row.note ?? '—'}</td>
@@ -353,12 +350,32 @@ function GrossResultCard({ gross }: { gross: EmployeeGrossResult }) {
               ))}
               <tr className="border-t-2 border-teal-200 bg-teal-50">
                 <td className="px-3 py-2.5 font-bold text-teal-950" colSpan={2}>
-                  Monthly gross
+                  Total Allowance (01 June to 31-12-2027)
                 </td>
                 <td className="px-3 py-2.5 text-right font-mono text-lg font-bold text-teal-900">
-                  {formatTaka(gross.monthly_gross)}
+                  {formatTaka(allowanceOnlyTotal)}
                 </td>
               </tr>
+              {gpf > 0 ? (
+                <>
+                  <tr className="border-t border-rose-200 bg-rose-50/70">
+                    <td className="px-3 py-2 font-medium text-rose-900" colSpan={2}>
+                      GPF deduction
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold text-rose-800">
+                      − {formatTaka(gpf)}
+                    </td>
+                  </tr>
+                  <tr className="border-t-2 border-slate-300 bg-slate-100/90">
+                    <td className="px-3 py-2.5 font-bold text-slate-950" colSpan={2}>
+                      Net payable (Basic + Total Allowance − GPF)
+                    </td>
+                    <td className="px-3 py-2.5 text-right font-mono text-lg font-bold text-slate-900">
+                      {formatTaka(netPayable)}
+                    </td>
+                  </tr>
+                </>
+              ) : null}
             </tbody>
           </table>
         </div>
@@ -385,16 +402,6 @@ function GrossResultCard({ gross }: { gross: EmployeeGrossResult }) {
             </tbody>
           </table>
         </div>
-
-        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
-          <p>
-            <span className="font-semibold text-slate-800">Estimated average monthly</span>
-            <span className="text-muted"> (incl. festival ÷ 12, Baishakh ÷ 12, rest & recreation ÷ 36): </span>
-            <span className="font-mono font-bold text-slate-900">
-              ৳ {formatTaka(gross.estimated_average_monthly)}
-            </span>
-          </p>
-        </div>
       </CardContent>
     </Card>
   );
@@ -407,6 +414,8 @@ export default function SalaryOn2026Page() {
   const [hraArea, setHraArea] = useState<HraArea>('dhaka');
   const [educationChildren, setEducationChildren] = useState<EducationChildren>(0);
   const [washingAllowance, setWashingAllowance] = useState(false);
+  const [chargeType, setChargeType] = useState<ChargeType>('regular');
+  const [substantiveGrade, setSubstantiveGrade] = useState<SubstantiveGrade | null>(null);
   const [gpfDeductionInput, setGpfDeductionInput] = useState('');
   const [error, setError] = useState('');
   const [results, setResults] = useState<Salary2026Result[] | null>(null);
@@ -444,6 +453,8 @@ export default function SalaryOn2026Page() {
   function onGradeChange(next: PayGrade) {
     setGrade(next);
     setOldPay(NPS_2015[next][0]!);
+    setChargeType('regular');
+    setSubstantiveGrade(null);
     setResults(null);
     setGross(null);
     setError('');
@@ -457,6 +468,8 @@ export default function SalaryOn2026Page() {
       hra_area: hraArea,
       education_children: educationChildren,
       washing_allowance: washingAllowance,
+      charge_type: chargeType,
+      substantive_grade: substantiveGrade,
     });
   }
 
@@ -713,9 +726,77 @@ export default function SalaryOn2026Page() {
                   Confirm for gross pay
                 </p>
                 <p className="mt-0.5 text-sm font-semibold text-slate-900">
-                  Allowances on Basic (30 June 2026)
+                  Allowances with Basic (30 June 2026)
                 </p>
               </div>
+
+              {grade >= 2 && grade <= 10 ? (
+                <fieldset className="space-y-2">
+                  <legend className="text-sm font-medium text-slate-800">
+                    Post type (Grades 2–10)
+                  </legend>
+                  <label className="flex cursor-pointer items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="chargeType"
+                      className="mt-0.5"
+                      checked={chargeType === 'regular'}
+                      onChange={() => {
+                        setChargeType('regular');
+                        setGross(null);
+                        setResults(null);
+                      }}
+                    />
+                    Regular (default)
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="chargeType"
+                      className="mt-0.5"
+                      checked={chargeType === 'current_charge'}
+                      onChange={() => {
+                        setChargeType('current_charge');
+                        setGross(null);
+                        setResults(null);
+                      }}
+                    />
+                    Current charge — extra ৳ 1,500 / month
+                  </label>
+                </fieldset>
+              ) : null}
+
+              {grade >= 7 && grade <= 10 ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="substantiveGrade" className="text-sm font-medium">
+                    Substantive grade (for tiffin &amp; conveyance)
+                  </Label>
+                  <select
+                    id="substantiveGrade"
+                    className="flex h-10 w-full rounded-md border border-teal-300 bg-white px-3 text-sm font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-200"
+                    value={substantiveGrade ?? ''}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setSubstantiveGrade(
+                        v === '' ? null : (Number(v) as SubstantiveGrade),
+                      );
+                      setGross(null);
+                      setResults(null);
+                    }}
+                  >
+                    <option value="">Not applicable / not Grade 11–15</option>
+                    <option value={11}>Grade 11</option>
+                    <option value={12}>Grade 12</option>
+                    <option value={13}>Grade 13</option>
+                    <option value={14}>Grade 14</option>
+                    <option value={15}>Grade 15</option>
+                  </select>
+                  <p className="text-xs text-muted">
+                    Grades 7–10: if substantive grade is 11–15, tiffin ৳ 200 and conveyance ৳ 300
+                    apply.
+                  </p>
+                </div>
+              ) : null}
 
               <fieldset className="space-y-2">
                 <legend className="text-sm font-medium text-slate-800">Housing</legend>
@@ -859,9 +940,10 @@ export default function SalaryOn2026Page() {
               </div>
 
               <p className="text-xs text-teal-900/80">
-                Medical ৳ 1,500 is included for all. Tiffin ৳ 200 and Conveyance ৳ 300 apply
-                automatically for Grades 11–20. Festival (2× basic / year), Pahela Baishakh (20%),
-                and Rest &amp; Recreation (1× basic every 3 years) are shown separately after
+                Medical ৳ 1,500 is included for all. Tiffin ৳ 200 and Conveyance ৳ 300 apply for
+                Grades 11–15 (or substantive Grade 11–15 when pay grade is 7–10). Grades 2–10 may
+                add Current charge ৳ 1,500. Festival (2× basic / year), Pahela Baishakh (20%), and
+                Rest &amp; Recreation (1× basic every 3 years) are shown separately after
                 calculation.
               </p>
             </div>
@@ -901,19 +983,19 @@ export default function SalaryOn2026Page() {
           </div>
         ) : null}
 
-        {gross ? <GrossResultCard gross={gross} /> : null}
+        {gross ? <GrossResultCard gross={gross} gpfDeduction={gpfDeduction} /> : null}
 
         {results?.map((result, index) => (
           <PhaseResultCard
             key={result.phase}
             result={result}
-            allowanceOpts={{
-              grade,
-              housing_status: housingStatus,
-              hra_area: hraArea,
-              education_children: educationChildren,
-              washing_allowance: washingAllowance,
-            }}
+            fixedAllowancesTotal={
+              gross
+                ? gross.monthly_lines
+                    .filter((row) => row.code !== 'basic')
+                    .reduce((sum, row) => sum + row.amount, 0)
+                : 0
+            }
             gpfDeduction={gpfDeduction}
             stageClass={
               index === 1 ? 'salary-print-stage-2' : index === 2 ? 'salary-print-stage-3' : undefined
@@ -922,32 +1004,40 @@ export default function SalaryOn2026Page() {
         ))}
 
         {results ? (
-          <section
-            aria-label="Thanks to Government"
-            className="salary-print-thanks relative overflow-hidden rounded-2xl border border-rose-200/80 bg-gradient-to-br from-rose-50 via-white to-amber-50 px-5 py-8 text-center shadow-sm sm:px-8"
-          >
-            <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-rose-200/40 blur-2xl salary-print-hide" />
-            <div className="pointer-events-none absolute -bottom-10 -left-6 h-28 w-28 rounded-full bg-amber-200/50 blur-2xl salary-print-hide" />
-            <div className="relative mx-auto flex max-w-2xl flex-col items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-rose-100 text-rose-700 ring-4 ring-rose-50">
-                <HeartHandshake className="h-6 w-6" aria-hidden />
+          <>
+            <Alert className="border-amber-300 bg-amber-50 text-amber-950 shadow-sm">
+              <p className="text-sm font-semibold leading-relaxed">
+                This is a draft. Final calculation will be fixed by iBASS++.
+              </p>
+            </Alert>
+
+            <section
+              aria-label="Thanks to Government"
+              className="salary-print-thanks relative overflow-hidden rounded-2xl border border-rose-200/80 bg-gradient-to-br from-rose-50 via-white to-amber-50 px-5 py-8 text-center shadow-sm sm:px-8"
+            >
+              <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-rose-200/40 blur-2xl salary-print-hide" />
+              <div className="pointer-events-none absolute -bottom-10 -left-6 h-28 w-28 rounded-full bg-amber-200/50 blur-2xl salary-print-hide" />
+              <div className="relative mx-auto flex max-w-2xl flex-col items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-rose-100 text-rose-700 ring-4 ring-rose-50">
+                  <HeartHandshake className="h-6 w-6" aria-hidden />
+                </div>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-rose-700/80">
+                  With gratitude
+                </p>
+                <h2 className="text-balance text-xl font-extrabold text-slate-900 sm:text-2xl">
+                  Thank you, Government of Bangladesh
+                </h2>
+                <p className="text-pretty text-sm leading-relaxed text-slate-700 sm:text-base">
+                  From <strong>all government employees</strong> — we gratefully acknowledge the
+                  proposed National Pay Scale 2026 and the continued efforts to improve the
+                  livelihood and dignity of public servants across the country.
+                </p>
+                <p className="text-sm font-semibold italic text-rose-800/90">
+                  — All Government Employees
+                </p>
               </div>
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-rose-700/80">
-                With gratitude
-              </p>
-              <h2 className="text-balance text-xl font-extrabold text-slate-900 sm:text-2xl">
-                Thank you, Government of Bangladesh
-              </h2>
-              <p className="text-pretty text-sm leading-relaxed text-slate-700 sm:text-base">
-                From <strong>all government employees</strong> — we gratefully acknowledge the
-                proposed National Pay Scale 2026 and the continued efforts to improve the
-                livelihood and dignity of public servants across the country.
-              </p>
-              <p className="text-sm font-semibold italic text-rose-800/90">
-                — All Government Employees
-              </p>
-            </div>
-          </section>
+            </section>
+          </>
         ) : null}
       </main>
 

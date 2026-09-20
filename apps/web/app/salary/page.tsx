@@ -8,17 +8,57 @@ import {
   NPS_2015,
   NPS_2026,
   calculateSalary2026AllPhases,
+  calculateEmployeeGross,
+  calculateAllowancesExcludingBasic,
   formatTaka,
+  hraAreaLabel,
   isFixedPayGrade,
   salaryConversionRate,
+  type EducationChildren,
+  type EmployeeGrossResult,
+  type HousingStatus,
+  type HraArea,
   type PayGrade,
   type Salary2026Result,
 } from '@ibas/shared-types';
+
+type AllowanceOpts = {
+  grade: PayGrade;
+  housing_status: HousingStatus;
+  hra_area: HraArea;
+  education_children: EducationChildren;
+  washing_allowance: boolean;
+};
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+
+/** Accept ASCII + Bangla digits from any keyboard; strip other characters. */
+function parseAmountInput(raw: string): number {
+  const bangla: Record<string, string> = {
+    '০': '0',
+    '১': '1',
+    '২': '2',
+    '৩': '3',
+    '৪': '4',
+    '৫': '5',
+    '৬': '6',
+    '৭': '7',
+    '৮': '8',
+    '৯': '9',
+  };
+  const normalized = String(raw)
+    .split('')
+    .map((ch) => bangla[ch] ?? ch)
+    .join('')
+    .replace(/,/g, '')
+    .replace(/[^\d.]/g, '');
+  const n = Number(normalized);
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+}
 
 const STAGE_HEADER: Record<
   Salary2026Result['phase'],
@@ -69,12 +109,100 @@ function ResultStat({
   );
 }
 
+function StageAllowancesBlock({
+  basic,
+  basicLabel,
+  opts,
+  gpfDeduction,
+}: {
+  basic: number;
+  basicLabel: string;
+  opts: AllowanceOpts;
+  gpfDeduction: number;
+}) {
+  const { lines, allowances_total } = calculateAllowancesExcludingBasic({
+    ...opts,
+    basic,
+  });
+  const monthlyWithAllowances = basic + allowances_total;
+  const gpf = Number.isFinite(gpfDeduction) && gpfDeduction > 0 ? Math.round(gpfDeduction) : 0;
+  const netPayable = monthlyWithAllowances - gpf;
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-emerald-200 bg-emerald-50/40">
+      <div className="border-b border-emerald-200 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-900">
+        Allowances on {basicLabel} (৳ {formatTaka(basic)}) — excluding basic
+      </div>
+      <table className="w-full min-w-[480px] text-sm">
+        <thead className="bg-white/70 text-left text-xs uppercase tracking-wide text-muted">
+          <tr>
+            <th className="px-3 py-2 font-semibold">Allowance</th>
+            <th className="px-3 py-2 font-semibold">Note</th>
+            <th className="px-3 py-2 text-right font-semibold">Amount (৳)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {lines.map((row) => (
+            <tr key={row.code} className="border-t border-emerald-100">
+              <td className="px-3 py-2 font-medium text-slate-800">{row.label}</td>
+              <td className="px-3 py-2 text-xs text-muted">{row.note ?? '—'}</td>
+              <td className="px-3 py-2 text-right font-mono font-semibold">
+                {formatTaka(row.amount)}
+              </td>
+            </tr>
+          ))}
+          <tr className="border-t border-emerald-200 bg-white/80">
+            <td className="px-3 py-2 font-semibold text-slate-800" colSpan={2}>
+              Allowances total
+            </td>
+            <td className="px-3 py-2 text-right font-mono font-bold text-slate-900">
+              {formatTaka(allowances_total)}
+            </td>
+          </tr>
+          <tr className="border-t-2 border-emerald-300 bg-emerald-100/80">
+            <td className="px-3 py-2.5 font-bold text-emerald-950" colSpan={2}>
+              New basic + allowances (৳ {formatTaka(basic)} + ৳ {formatTaka(allowances_total)})
+            </td>
+            <td className="px-3 py-2.5 text-right font-mono text-lg font-bold text-emerald-900">
+              {formatTaka(monthlyWithAllowances)}
+            </td>
+          </tr>
+          {gpf > 0 ? (
+            <>
+              <tr className="border-t border-rose-200 bg-rose-50/70">
+                <td className="px-3 py-2 font-medium text-rose-900" colSpan={2}>
+                  GPF deduction
+                </td>
+                <td className="px-3 py-2 text-right font-mono font-semibold text-rose-800">
+                  − {formatTaka(gpf)}
+                </td>
+              </tr>
+              <tr className="border-t-2 border-slate-300 bg-slate-100/90">
+                <td className="px-3 py-2.5 font-bold text-slate-950" colSpan={2}>
+                  Net payable
+                </td>
+                <td className="px-3 py-2.5 text-right font-mono text-lg font-bold text-slate-900">
+                  {formatTaka(netPayable)}
+                </td>
+              </tr>
+            </>
+          ) : null}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function PhaseResultCard({
   result,
   stageClass,
+  allowanceOpts,
+  gpfDeduction,
 }: {
   result: Salary2026Result;
   stageClass?: string;
+  allowanceOpts: AllowanceOpts;
+  gpfDeduction: number;
 }) {
   if (result.phase === '2027-07-01') {
     const basic2026 = result.basic_on_2026_07 ?? result.matched_new_stage ?? result.new_pay;
@@ -110,6 +238,13 @@ function PhaseResultCard({
               </p>
             </div>
           </div>
+
+          <StageAllowancesBlock
+            basic={basic2027}
+            basicLabel="New basic (01-07-2027)"
+            opts={allowanceOpts}
+            gpfDeduction={gpfDeduction}
+          />
         </CardContent>
       </Card>
     );
@@ -166,6 +301,13 @@ function PhaseResultCard({
           </table>
         </div>
 
+        <StageAllowancesBlock
+          basic={result.new_pay}
+          basicLabel={`New basic (${result.phase_label})`}
+          opts={allowanceOpts}
+          gpfDeduction={gpfDeduction}
+        />
+
         {result.increment_skipped && !result.fixed ? (
           <p className="text-xs text-amber-800">
             Matched stage is the last stage on the 2026 scale — Step 5 uses the Step 4 amount (no
@@ -177,11 +319,98 @@ function PhaseResultCard({
   );
 }
 
+function GrossResultCard({ gross }: { gross: EmployeeGrossResult }) {
+  return (
+    <Card className="salary-print-avoid-break overflow-hidden border border-teal-200 shadow-sm">
+      <div className="bg-teal-700 px-4 py-2.5 text-white sm:px-5">
+        <div className="text-sm font-bold">Monthly gross (Basic on 30 June 2026)</div>
+        <p className="mt-0.5 text-xs text-teal-100/90">
+          Grade {gross.grade} · Housing:{' '}
+          {gross.housing_status === 'govt_accommodation'
+            ? 'Government accommodation'
+            : hraAreaLabel(gross.hra_area)}
+        </p>
+      </div>
+      <CardContent className="space-y-4 p-4 sm:p-5">
+        <div className="overflow-x-auto rounded-xl border border-border">
+          <table className="w-full min-w-[480px] text-sm">
+            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-muted">
+              <tr>
+                <th className="px-3 py-2 font-semibold">Component</th>
+                <th className="px-3 py-2 font-semibold">Note</th>
+                <th className="px-3 py-2 text-right font-semibold">Amount (৳)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {gross.monthly_lines.map((row) => (
+                <tr key={row.code} className="border-t border-border">
+                  <td className="px-3 py-2 font-medium text-slate-800">{row.label}</td>
+                  <td className="px-3 py-2 text-xs text-muted">{row.note ?? '—'}</td>
+                  <td className="px-3 py-2 text-right font-mono font-semibold">
+                    {formatTaka(row.amount)}
+                  </td>
+                </tr>
+              ))}
+              <tr className="border-t-2 border-teal-200 bg-teal-50">
+                <td className="px-3 py-2.5 font-bold text-teal-950" colSpan={2}>
+                  Monthly gross
+                </td>
+                <td className="px-3 py-2.5 text-right font-mono text-lg font-bold text-teal-900">
+                  {formatTaka(gross.monthly_gross)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div className="overflow-x-auto rounded-xl border border-border">
+          <table className="w-full min-w-[480px] text-sm">
+            <thead className="bg-amber-50 text-left text-xs uppercase tracking-wide text-muted">
+              <tr>
+                <th className="px-3 py-2 font-semibold">Annual / periodic benefit</th>
+                <th className="px-3 py-2 font-semibold">Note</th>
+                <th className="px-3 py-2 text-right font-semibold">Amount (৳)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {gross.annual_lines.map((row) => (
+                <tr key={row.code} className="border-t border-border">
+                  <td className="px-3 py-2 font-medium text-slate-800">{row.label}</td>
+                  <td className="px-3 py-2 text-xs text-muted">{row.note ?? '—'}</td>
+                  <td className="px-3 py-2 text-right font-mono font-semibold">
+                    {formatTaka(row.amount)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+          <p>
+            <span className="font-semibold text-slate-800">Estimated average monthly</span>
+            <span className="text-muted"> (incl. festival ÷ 12, Baishakh ÷ 12, rest & recreation ÷ 36): </span>
+            <span className="font-mono font-bold text-slate-900">
+              ৳ {formatTaka(gross.estimated_average_monthly)}
+            </span>
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function SalaryOn2026Page() {
   const [grade, setGrade] = useState<PayGrade>(5);
   const [oldPay, setOldPay] = useState<number>(NPS_2015[5][5]!);
+  const [housingStatus, setHousingStatus] = useState<HousingStatus>('hra_eligible');
+  const [hraArea, setHraArea] = useState<HraArea>('dhaka');
+  const [educationChildren, setEducationChildren] = useState<EducationChildren>(0);
+  const [washingAllowance, setWashingAllowance] = useState(false);
+  const [gpfDeductionInput, setGpfDeductionInput] = useState('');
   const [error, setError] = useState('');
   const [results, setResults] = useState<Salary2026Result[] | null>(null);
+  const [gross, setGross] = useState<EmployeeGrossResult | null>(null);
   const [shareNote, setShareNote] = useState('');
   const [calculating, setCalculating] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -191,6 +420,7 @@ export default function SalaryOn2026Page() {
   const fixed = isFixedPayGrade(grade);
   const ratePct2026 = Math.round(salaryConversionRate(grade, '2026-07-01') * 100);
   const ratePct2027 = Math.round(salaryConversionRate(grade, '2027-01-01') * 100);
+  const gpfDeduction = useMemo(() => parseAmountInput(gpfDeductionInput), [gpfDeductionInput]);
 
   const scalePreview = useMemo(
     () => ({
@@ -215,14 +445,28 @@ export default function SalaryOn2026Page() {
     setGrade(next);
     setOldPay(NPS_2015[next][0]!);
     setResults(null);
+    setGross(null);
     setError('');
+  }
+
+  function buildGross() {
+    return calculateEmployeeGross({
+      grade,
+      basic: oldPay,
+      housing_status: housingStatus,
+      hra_area: hraArea,
+      education_children: educationChildren,
+      washing_allowance: washingAllowance,
+    });
   }
 
   async function handleCalculate() {
     setError('');
     setResults(null);
+    setGross(null);
     setCalculating(true);
     try {
+      let phaseResults: Salary2026Result[];
       const res = await fetch('/api/proxy/v1/salary/calculate-all-phases', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -230,14 +474,16 @@ export default function SalaryOn2026Page() {
       });
       if (res.ok) {
         const json = (await res.json()) as { data: { results: Salary2026Result[] } };
-        setResults(json.data.results);
-        return;
+        phaseResults = json.data.results;
+      } else {
+        phaseResults = calculateSalary2026AllPhases({ grade, old_pay: oldPay });
       }
-      const local = calculateSalary2026AllPhases({ grade, old_pay: oldPay });
-      setResults(local);
+      setResults(phaseResults);
+      setGross(buildGross());
     } catch {
       try {
         setResults(calculateSalary2026AllPhases({ grade, old_pay: oldPay }));
+        setGross(buildGross());
       } catch (inner) {
         setError(inner instanceof Error ? inner.message : 'Could not calculate');
       }
@@ -425,6 +671,7 @@ export default function SalaryOn2026Page() {
                   onChange={(e) => {
                     setOldPay(Number(e.target.value));
                     setResults(null);
+                    setGross(null);
                     setError('');
                   }}
                 >
@@ -457,6 +704,165 @@ export default function SalaryOn2026Page() {
               </p>
               <p>
                 <span className="font-semibold text-slate-700">NPS 2026:</span> {scalePreview.neu}
+              </p>
+            </div>
+
+            <div className="space-y-4 rounded-xl border border-teal-200 bg-teal-50/40 p-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-teal-800">
+                  Confirm for gross pay
+                </p>
+                <p className="mt-0.5 text-sm font-semibold text-slate-900">
+                  Allowances on Basic (30 June 2026)
+                </p>
+              </div>
+
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium text-slate-800">Housing</legend>
+                <label className="flex cursor-pointer items-start gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="housing"
+                    className="mt-1"
+                    checked={housingStatus === 'hra_eligible'}
+                    onChange={() => {
+                      setHousingStatus('hra_eligible');
+                      setGross(null);
+                      setResults(null);
+                    }}
+                  />
+                  <span>Eligible for House Rent Allowance (select posting area)</span>
+                </label>
+                <label className="flex cursor-pointer items-start gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="housing"
+                    className="mt-1"
+                    checked={housingStatus === 'govt_accommodation'}
+                    onChange={() => {
+                      setHousingStatus('govt_accommodation');
+                      setGross(null);
+                      setResults(null);
+                    }}
+                  />
+                  <span>
+                    Government-provided accommodation (HRA not payable; house-rent deduction may
+                    apply)
+                  </span>
+                </label>
+              </fieldset>
+
+              {housingStatus === 'hra_eligible' ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="hraArea" className="text-sm font-medium">
+                    Posting / HRA area
+                  </Label>
+                  <select
+                    id="hraArea"
+                    className="flex h-10 w-full rounded-md border border-teal-300 bg-white px-3 text-sm font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-200"
+                    value={hraArea}
+                    onChange={(e) => {
+                      setHraArea(e.target.value as HraArea);
+                      setGross(null);
+                      setResults(null);
+                    }}
+                  >
+                    <option value="dhaka">Dhaka Metropolitan Area</option>
+                    <option value="major_city">
+                      Chittagong, Khulna, Rajshahi, Sylhet, Barisal, Rangpur, Narayanganj, Gazipur,
+                      Savar
+                    </option>
+                    <option value="other">Other areas (District / Upazila)</option>
+                  </select>
+                </div>
+              ) : null}
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="educationChildren" className="text-sm font-medium">
+                    Education assistance (children)
+                  </Label>
+                  <select
+                    id="educationChildren"
+                    className="flex h-10 w-full rounded-md border border-teal-300 bg-white px-3 text-sm font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-200"
+                    value={educationChildren}
+                    onChange={(e) => {
+                      setEducationChildren(Number(e.target.value) as EducationChildren);
+                      setGross(null);
+                      setResults(null);
+                    }}
+                  >
+                    <option value={0}>None — ৳ 0</option>
+                    <option value={1}>1 child — ৳ 500 / month</option>
+                    <option value={2}>2 children (max) — ৳ 1,000 / month</option>
+                  </select>
+                </div>
+
+                <fieldset className="space-y-2">
+                  <legend className="text-sm font-medium text-slate-800">
+                    Washing allowance (uniformed 4th Class)
+                  </legend>
+                  <label className="flex cursor-pointer items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="washing"
+                      checked={!washingAllowance}
+                      onChange={() => {
+                        setWashingAllowance(false);
+                        setGross(null);
+                        setResults(null);
+                      }}
+                    />
+                    No
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="washing"
+                      checked={washingAllowance}
+                      onChange={() => {
+                        setWashingAllowance(true);
+                        setGross(null);
+                        setResults(null);
+                      }}
+                    />
+                    Yes — ৳ 100 / month
+                  </label>
+                </fieldset>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="gpf-deduction" className="text-sm font-medium">
+                  GPF deduction (optional)
+                </Label>
+                <Input
+                  id="gpf-deduction"
+                  type="text"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  placeholder="Type GPF amount, e.g. 5000"
+                  className="border-teal-300 bg-white font-medium tabular-nums focus-visible:border-teal-500 focus-visible:ring-teal-200"
+                  value={gpfDeductionInput}
+                  onChange={(e) => setGpfDeductionInput(e.target.value)}
+                />
+                <p className="text-xs text-muted">
+                  Enter any amount with your keyboard. Deducted from (New basic + allowances) → Net
+                  payable
+                  {gpfDeduction > 0 ? (
+                    <span className="font-semibold text-teal-800">
+                      {' '}
+                      (GPF ৳ {formatTaka(gpfDeduction)})
+                    </span>
+                  ) : null}
+                  .
+                </p>
+              </div>
+
+              <p className="text-xs text-teal-900/80">
+                Medical ৳ 1,500 is included for all. Tiffin ৳ 200 and Conveyance ৳ 300 apply
+                automatically for Grades 11–20. Festival (2× basic / year), Pahela Baishakh (20%),
+                and Rest &amp; Recreation (1× basic every 3 years) are shown separately after
+                calculation.
               </p>
             </div>
 
@@ -495,10 +901,20 @@ export default function SalaryOn2026Page() {
           </div>
         ) : null}
 
+        {gross ? <GrossResultCard gross={gross} /> : null}
+
         {results?.map((result, index) => (
           <PhaseResultCard
             key={result.phase}
             result={result}
+            allowanceOpts={{
+              grade,
+              housing_status: housingStatus,
+              hra_area: hraArea,
+              education_children: educationChildren,
+              washing_allowance: washingAllowance,
+            }}
+            gpfDeduction={gpfDeduction}
             stageClass={
               index === 1 ? 'salary-print-stage-2' : index === 2 ? 'salary-print-stage-3' : undefined
             }

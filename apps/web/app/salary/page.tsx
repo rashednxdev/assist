@@ -296,17 +296,9 @@ function PhaseResultCard({
   );
 }
 
-function GrossResultCard({
-  gross,
-  gpfDeduction,
-}: {
-  gross: EmployeeGrossResult;
-  gpfDeduction: number;
-}) {
+function GrossResultCard({ gross }: { gross: EmployeeGrossResult }) {
   const allowanceLines = gross.monthly_lines.filter((row) => row.code !== 'basic');
   const allowanceOnlyTotal = allowanceLines.reduce((sum, row) => sum + row.amount, 0);
-  const gpf = Number.isFinite(gpfDeduction) && gpfDeduction > 0 ? Math.round(gpfDeduction) : 0;
-  const netPayable = gross.basic + allowanceOnlyTotal - gpf;
 
   return (
     <Card className="salary-print-avoid-break overflow-hidden border border-teal-200 shadow-sm">
@@ -356,26 +348,6 @@ function GrossResultCard({
                   {formatTaka(allowanceOnlyTotal)}
                 </td>
               </tr>
-              {gpf > 0 ? (
-                <>
-                  <tr className="border-t border-rose-200 bg-rose-50/70">
-                    <td className="px-3 py-2 font-medium text-rose-900" colSpan={2}>
-                      GPF deduction
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono font-semibold text-rose-800">
-                      − {formatTaka(gpf)}
-                    </td>
-                  </tr>
-                  <tr className="border-t-2 border-slate-300 bg-slate-100/90">
-                    <td className="px-3 py-2.5 font-bold text-slate-950" colSpan={2}>
-                      Net payable (Basic + Total Allowance − GPF)
-                    </td>
-                    <td className="px-3 py-2.5 text-right font-mono text-lg font-bold text-slate-900">
-                      {formatTaka(netPayable)}
-                    </td>
-                  </tr>
-                </>
-              ) : null}
             </tbody>
           </table>
         </div>
@@ -927,8 +899,7 @@ export default function SalaryOn2026Page() {
                   onChange={(e) => setGpfDeductionInput(e.target.value)}
                 />
                 <p className="text-xs text-muted">
-                  Enter any amount with your keyboard. Deducted from (New basic + allowances) → Net
-                  payable
+                  Applied on each of the 3 stages only (Basic + Total Allowance − GPF → Net payable)
                   {gpfDeduction > 0 ? (
                     <span className="font-semibold text-teal-800">
                       {' '}
@@ -983,7 +954,7 @@ export default function SalaryOn2026Page() {
           </div>
         ) : null}
 
-        {gross ? <GrossResultCard gross={gross} gpfDeduction={gpfDeduction} /> : null}
+        {gross ? <GrossResultCard gross={gross} /> : null}
 
         {results?.map((result, index) => (
           <PhaseResultCard

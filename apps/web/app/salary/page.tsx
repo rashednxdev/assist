@@ -932,7 +932,7 @@ export default function SalaryOn2026Page() {
                   {calculating ? 'Calculating…' : 'Calculate by ProAssist'}
                 </Button>
               </div>
-              <p className="text-xs font-medium text-teal-700">
+              <p className="inline-block rounded-md bg-emerald-200 px-2.5 py-1 text-xs font-semibold text-emerald-950 ring-1 ring-emerald-400/60">
                 Developed by Rashed. Office of the Controller General of Accounts.
               </p>
             </div>

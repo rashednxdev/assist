@@ -1,5 +1,6 @@
 import mongoose, { Schema, type Document, type Types } from 'mongoose';
 import type { UserType } from '@ibas/shared-constants';
+import { BLOOD_GROUPS, type BloodGroup } from '@ibas/shared-types';
 
 export interface WorkflowRoleTag {
   role_id: Types.ObjectId;
@@ -38,10 +39,62 @@ export interface IUser extends Document {
   client_app_version?: string;
   client_platform?: 'mobile' | 'web';
   client_app_version_at?: Date;
+  /** Current posting — required before posting in the community. */
+  office_id?: Types.ObjectId | null;
+  designation_id?: Types.ObjectId | null;
+  /** Contact directory privacy: keep mobile / email out of the directory. */
+  directory_hide_phone?: boolean;
+  directory_hide_email?: boolean;
+  blood_group?: BloodGroup | null;
+  father_name?: string;
+  mother_name?: string;
+  home_district_id?: Types.ObjectId | null;
+  /** Government service joining date (for non-cadre: joining date in `joining_designation_id`). */
+  joining_date?: Date | null;
+  service_type?: 'cadre' | 'non_cadre' | null;
+  bcs_batch?: number | null;
+  /** Non-cadre: the post the user joined service in. */
+  joining_designation_id?: Types.ObjectId | null;
+  alternate_phone?: string;
+  emergency_contact_name?: string;
+  emergency_contact_relation?: string;
+  emergency_contact_phone?: string;
+  bio?: string;
+  /** Blood bank donor settings; eligibility dates are derived from `blood_donations`. */
+  blood_donor?: IBloodDonor | null;
   created_by: Types.ObjectId;
   created_at: Date;
   updated_at: Date;
 }
+
+export interface IBloodDonor {
+  is_donor: boolean;
+  available: boolean;
+  district_id?: Types.ObjectId | null;
+  thana_id?: Types.ObjectId | null;
+  area?: string;
+  show_phone: boolean;
+  note?: string;
+  last_donation_date?: Date | null;
+  next_eligible_date?: Date | null;
+  donation_count: number;
+}
+
+const bloodDonorSchema = new Schema<IBloodDonor>(
+  {
+    is_donor: { type: Boolean, default: false },
+    available: { type: Boolean, default: true },
+    district_id: { type: Schema.Types.ObjectId, ref: 'District', default: null },
+    thana_id: { type: Schema.Types.ObjectId, ref: 'Thana', default: null },
+    area: { type: String, trim: true },
+    show_phone: { type: Boolean, default: true },
+    note: { type: String, trim: true },
+    last_donation_date: { type: Date, default: null },
+    next_eligible_date: { type: Date, default: null },
+    donation_count: { type: Number, default: 0 },
+  },
+  { _id: false },
+);
 
 const workflowRoleTagSchema = new Schema<WorkflowRoleTag>(
   {
@@ -86,6 +139,24 @@ const userSchema = new Schema<IUser>(
     client_app_version: { type: String, maxlength: 80 },
     client_platform: { type: String, enum: ['mobile', 'web'] },
     client_app_version_at: { type: Date },
+    office_id: { type: Schema.Types.ObjectId, ref: 'Office', default: null },
+    designation_id: { type: Schema.Types.ObjectId, ref: 'Designation', default: null },
+    directory_hide_phone: { type: Boolean, default: false },
+    directory_hide_email: { type: Boolean, default: false },
+    blood_group: { type: String, enum: [...BLOOD_GROUPS, null], default: null },
+    father_name: { type: String, trim: true },
+    mother_name: { type: String, trim: true },
+    home_district_id: { type: Schema.Types.ObjectId, ref: 'District', default: null },
+    joining_date: { type: Date, default: null },
+    service_type: { type: String, enum: ['cadre', 'non_cadre', null], default: null },
+    bcs_batch: { type: Number, default: null, min: 1, max: 99 },
+    joining_designation_id: { type: Schema.Types.ObjectId, ref: 'Designation', default: null },
+    alternate_phone: { type: String, trim: true },
+    emergency_contact_name: { type: String, trim: true },
+    emergency_contact_relation: { type: String, trim: true },
+    emergency_contact_phone: { type: String, trim: true },
+    bio: { type: String, trim: true },
+    blood_donor: { type: bloodDonorSchema, default: null },
     created_by: { type: Schema.Types.ObjectId, required: true },
   },
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } },
@@ -93,5 +164,10 @@ const userSchema = new Schema<IUser>(
 
 userSchema.index({ user_type: 1, status: 1 });
 userSchema.index({ 'workflow_roles.role_code': 1, status: 1 });
+userSchema.index({ office_id: 1 }, { sparse: true });
+userSchema.index({ designation_id: 1 }, { sparse: true });
+userSchema.index({ service_type: 1, bcs_batch: 1 }, { partialFilterExpression: { service_type: 'cadre' } });
+userSchema.index({ service_type: 1, joining_designation_id: 1, joining_date: 1 }, { partialFilterExpression: { service_type: 'non_cadre' } });
+userSchema.index({ 'blood_donor.is_donor': 1, blood_group: 1, 'blood_donor.district_id': 1 }, { partialFilterExpression: { 'blood_donor.is_donor': true } });
 
 export const User = mongoose.model<IUser>('User', userSchema, 'users');

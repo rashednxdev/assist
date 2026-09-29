@@ -40,6 +40,9 @@ import { toolkitRouter } from './domains/toolkit/toolkit.routes.js';
 import { scheduleRouter } from './domains/schedule/schedule.routes.js';
 import { billingRouter } from './domains/billing/billing.routes.js';
 import { communityRouter } from './domains/community/community.routes.js';
+import { orgRouter } from './domains/org/org.routes.js';
+import { contactsRouter } from './domains/contacts/contacts.routes.js';
+import { bloodBankRouter } from './domains/blood-bank/blood-bank.routes.js';
 
 export function createApp(): Application {
   const app = express();
@@ -114,6 +117,9 @@ export function createApp(): Application {
   app.use('/api/v1/schedule', scheduleRouter);
   app.use('/api/v1/billing', billingRouter);
   app.use('/api/v1/community', communityRouter);
+  app.use('/api/v1/org', orgRouter);
+  app.use('/api/v1/contacts', contactsRouter);
+  app.use('/api/v1/blood-bank', bloodBankRouter);
 
   app.use(errorHandler);
   return app;

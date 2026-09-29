@@ -42,6 +42,9 @@ import {
   Wallet,
   MessagesSquare,
   ShieldAlert,
+  Building2,
+  BookUser,
+  Droplet,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -76,6 +79,8 @@ export const navGroups: NavGroup[] = [
       { href: '/notifications', label: 'Notifications', icon: Bell },
       { href: '/schedule', label: 'Schedule', icon: CalendarDays },
       { href: '/community', label: 'Community', icon: MessagesSquare },
+      { href: '/community/blood-bank', label: 'Blood bank', icon: Droplet },
+      { href: '/contacts', label: 'Contacts', icon: BookUser },
       { href: '/progress', label: 'My progress', icon: BarChart3 },
       { href: '/search', label: 'Search', icon: Search },
       { href: '/packages', label: 'Packages', icon: ShoppingBag },
@@ -199,6 +204,7 @@ export const navGroups: NavGroup[] = [
     adminOnly: true,
     items: [
       { href: '/admin/users', label: 'Users', icon: Users, moduleCode: 'USER' },
+      { href: '/admin/offices', label: 'Offices & designations', icon: Building2, requirePlatformAdmin: true },
       { href: '/admin/packages', label: 'Packages & payments', icon: Wallet, requirePlatformAdmin: true },
       { href: '/admin/community', label: 'Community moderation', icon: ShieldAlert, requirePlatformAdmin: true },
       { href: '/admin/setup/modules', label: 'Modules', icon: Layers, moduleCode: 'SETUP', requireCreate: true },

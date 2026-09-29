@@ -6,8 +6,19 @@ export interface ICommunityLinkRef {
   id: Types.ObjectId;
 }
 
+/** Author's office and designation at the time of posting. */
+export interface ICommunityAuthorWork {
+  office_id: Types.ObjectId;
+  office_name: string;
+  office_short?: string;
+  designation_id: Types.ObjectId;
+  designation_name: string;
+  designation_short?: string;
+}
+
 export interface ICommunityThread extends Document {
   title: string;
+  author_work?: ICommunityAuthorWork | null;
   body: string;
   category_id: Types.ObjectId;
   author_id: Types.ObjectId;
@@ -38,12 +49,25 @@ export const linkRefSchema = new Schema<ICommunityLinkRef>(
   { _id: false },
 );
 
+export const authorWorkSchema = new Schema<ICommunityAuthorWork>(
+  {
+    office_id: { type: Schema.Types.ObjectId, ref: 'Office', required: true },
+    office_name: { type: String, required: true },
+    office_short: { type: String },
+    designation_id: { type: Schema.Types.ObjectId, ref: 'Designation', required: true },
+    designation_name: { type: String, required: true },
+    designation_short: { type: String },
+  },
+  { _id: false },
+);
+
 const schema = new Schema<ICommunityThread>(
   {
     title: { type: String, required: true, trim: true },
     body: { type: String, required: true },
     category_id: { type: Schema.Types.ObjectId, ref: 'CommunityCategory', required: true },
     author_id: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    author_work: { type: authorWorkSchema, default: null },
     tags: { type: [String], default: [] },
     links: { type: [linkRefSchema], default: [] },
     accepted_answer_id: { type: Schema.Types.ObjectId, ref: 'CommunityAnswer', default: null },

@@ -14,6 +14,7 @@ import type {
 import { User } from '../users/models/User.model.js';
 import { Credentials } from '../users/models/Credentials.model.js';
 import { UserAddress } from '../users/models/UserAddress.model.js';
+import { District } from '../setup/models/District.model.js';
 import { SubscriptionPlan } from '../subscription/models/SubscriptionPlan.model.js';
 import { UserSubscription } from '../subscription/models/UserSubscription.model.js';
 import { BookInfo } from '../books/models/BookInfo.model.js';
@@ -65,6 +66,16 @@ function serializeUser(user: InstanceType<typeof User>) {
     employee_id: user.employee_id,
     dob: user.dob,
     gender: user.gender,
+    blood_group: user.blood_group ?? null,
+    father_name: user.father_name,
+    mother_name: user.mother_name,
+    home_district_id: user.home_district_id ? String(user.home_district_id) : null,
+    joining_date: user.joining_date ?? null,
+    alternate_phone: user.alternate_phone,
+    emergency_contact_name: user.emergency_contact_name,
+    emergency_contact_relation: user.emergency_contact_relation,
+    emergency_contact_phone: user.emergency_contact_phone,
+    bio: user.bio,
     user_type: user.user_type,
     status: user.status,
     is_verified: user.is_verified,
@@ -261,9 +272,27 @@ export async function updateMyProfile(userId: string, dto: UpdateMyProfileDto) {
   if (dto.full_name_en !== undefined) user.full_name_en = dto.full_name_en;
   if (dto.full_name_bn !== undefined) user.full_name_bn = dto.full_name_bn;
   if (dto.nid !== undefined) user.nid = dto.nid || undefined;
-  if (dto.dob !== undefined) user.dob = dto.dob;
-  if (dto.gender !== undefined) user.gender = dto.gender;
+  if (dto.dob !== undefined) user.dob = dto.dob ?? undefined;
+  if (dto.gender !== undefined) user.gender = dto.gender ?? undefined;
   if (dto.employee_id !== undefined) user.employee_id = dto.employee_id || undefined;
+  if (dto.blood_group !== undefined) user.blood_group = dto.blood_group;
+  if (dto.home_district_id !== undefined) {
+    if (dto.home_district_id && !(await District.exists({ _id: dto.home_district_id }))) throw badRequest('Unknown home district');
+    user.home_district_id = dto.home_district_id ? new mongoose.Types.ObjectId(dto.home_district_id) : null;
+  }
+  if (dto.joining_date !== undefined) user.joining_date = dto.joining_date;
+  const texts = [
+    'father_name',
+    'mother_name',
+    'alternate_phone',
+    'emergency_contact_name',
+    'emergency_contact_relation',
+    'emergency_contact_phone',
+    'bio',
+  ] as const;
+  for (const key of texts) {
+    if (dto[key] !== undefined) user[key] = dto[key] || undefined;
+  }
 
   await user.save();
   return serializeUser(user);

@@ -11,7 +11,7 @@ import { Alert } from '@/components/ui/alert';
 import { PostBody } from '@/components/community/post-body';
 import { LinkChips } from '@/components/community/link-chips';
 import { PostEditor } from '@/components/community/post-editor';
-import { Avatar, AuthorName, VoteButton } from '@/components/community/community-bits';
+import { Avatar, AuthorName, AuthorWork, VoteButton } from '@/components/community/community-bits';
 
 export function AnswerCard({
   answer,
@@ -104,6 +104,7 @@ export function AnswerCard({
         <Avatar author={answer.author} />
         <div className="min-w-0 leading-tight">
           <AuthorName author={answer.author} />
+          <AuthorWork author={answer.author} className="block text-xs" />
           <p className="text-xs text-muted">
             answered {timeAgo(answer.created_at)}
             {answer.edited_at && ` · edited ${timeAgo(answer.edited_at)}`}

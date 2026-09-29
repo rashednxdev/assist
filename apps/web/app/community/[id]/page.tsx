@@ -27,7 +27,7 @@ import type {
   CommunityLinkRecord,
   CommunityThreadDetail,
 } from '@ibas/shared-types';
-import { apiFetch } from '@/lib/api-client';
+import { ApiError, apiFetch } from '@/lib/api-client';
 import { fetchMe } from '@/lib/auth';
 import { timeAgo } from '@/lib/community';
 import { cn } from '@/lib/utils';
@@ -38,7 +38,10 @@ import { PostBody } from '@/components/community/post-body';
 import { LinkChips } from '@/components/community/link-chips';
 import { PostEditor } from '@/components/community/post-editor';
 import { AnswerCard } from '@/components/community/answer-card';
-import { Avatar, AuthorName, ReportDialog, VoteButton } from '@/components/community/community-bits';
+import { Avatar, AuthorName, AuthorWork, ReportDialog, VoteButton } from '@/components/community/community-bits';
+import { PostingAs, useCanPost } from '@/components/community/posting-as';
+import { useWorkIdentity } from '@/lib/use-work-identity';
+import { PROFILE_WORK_IDENTITY_REQUIRED } from '@ibas/shared-types';
 
 export default function CommunityThreadPage() {
   const { id } = useParams<{ id: string }>();
@@ -57,6 +60,8 @@ export default function CommunityThreadPage() {
   const [answerLinks, setAnswerLinks] = useState<CommunityLinkRecord[]>([]);
   const [posting, setPosting] = useState(false);
   const [answerError, setAnswerError] = useState('');
+  const { ready: canPost } = useCanPost();
+  const { refresh: refreshIdentity } = useWorkIdentity();
 
   const load = useCallback(
     (countView: boolean) =>
@@ -128,6 +133,7 @@ export default function CommunityThreadPage() {
 
   async function postAnswer() {
     setAnswerError('');
+    if (!canPost) return setAnswerError('Add your designation and office above before posting.');
     if (answerBody.trim().length < 2) return setAnswerError('Write your answer first.');
     setPosting(true);
     try {
@@ -141,6 +147,7 @@ export default function CommunityThreadPage() {
       setHash(`answer-${r.data.id}`);
       requestAnimationFrame(() => document.getElementById(`answer-${r.data.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
     } catch (e) {
+      if (e instanceof ApiError && e.code === PROFILE_WORK_IDENTITY_REQUIRED) void refreshIdentity();
       setAnswerError(e instanceof Error ? e.message : 'Could not post your answer');
     } finally {
       setPosting(false);
@@ -233,9 +240,12 @@ export default function CommunityThreadPage() {
             <h1 className="text-xl font-bold leading-snug tracking-tight sm:text-2xl">{thread.title}</h1>
 
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
-              <span className="inline-flex items-center gap-2">
+              <span className="inline-flex min-w-0 items-center gap-2">
                 <Avatar author={thread.author} size="sm" />
-                <AuthorName author={thread.author} />
+                <span className="min-w-0 leading-tight">
+                  <AuthorName author={thread.author} />
+                  <AuthorWork author={thread.author} className="block text-xs" />
+                </span>
               </span>
               <span>asked {timeAgo(thread.created_at)}</span>
               {thread.edited_at && <span>· edited {timeAgo(thread.edited_at)}</span>}
@@ -364,6 +374,7 @@ export default function CommunityThreadPage() {
         {canAnswer ? (
           <div className="space-y-3">
             <h2 className="text-base font-semibold">Your answer</h2>
+            <PostingAs />
             <PostEditor
               body={answerBody}
               onBodyChange={setAnswerBody}
@@ -374,7 +385,7 @@ export default function CommunityThreadPage() {
             />
             {answerError && <Alert variant="error">{answerError}</Alert>}
             <div className="flex justify-end">
-              <Button onClick={postAnswer} disabled={posting}>
+              <Button onClick={postAnswer} disabled={posting || !canPost}>
                 {posting && <Loader2 className="h-4 w-4 animate-spin" />}
                 Post answer
               </Button>

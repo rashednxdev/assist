@@ -1,9 +1,10 @@
 import mongoose, { Schema, type Document, type Types } from 'mongoose';
-import { linkRefSchema, type ICommunityLinkRef } from './CommunityThread.model.js';
+import { authorWorkSchema, linkRefSchema, type ICommunityAuthorWork, type ICommunityLinkRef } from './CommunityThread.model.js';
 
 export interface ICommunityAnswer extends Document {
   thread_id: Types.ObjectId;
   author_id: Types.ObjectId;
+  author_work?: ICommunityAuthorWork | null;
   body: string;
   links: ICommunityLinkRef[];
   vote_score: number;
@@ -20,6 +21,7 @@ const schema = new Schema<ICommunityAnswer>(
   {
     thread_id: { type: Schema.Types.ObjectId, ref: 'CommunityThread', required: true },
     author_id: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    author_work: { type: authorWorkSchema, default: null },
     body: { type: String, required: true },
     links: { type: [linkRefSchema], default: [] },
     vote_score: { type: Number, default: 0 },

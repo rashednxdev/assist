@@ -18,6 +18,7 @@ import {
   Search,
   Trophy,
   X,
+  Droplet,
 } from 'lucide-react';
 import {
   COMMUNITY_SORTS,
@@ -35,7 +36,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Alert } from '@/components/ui/alert';
 import { EmptyState } from '@/components/shared/empty-state';
 import { LinkKindIcons } from '@/components/community/link-chips';
-import { Avatar, AuthorName } from '@/components/community/community-bits';
+import { Avatar, AuthorName, AuthorWork } from '@/components/community/community-bits';
 
 const FILTER_LABELS: Record<CommunityFilter, string> = {
   all: 'All discussions',
@@ -128,9 +129,10 @@ function ThreadCard({ t }: { t: CommunityThreadSummary }) {
         )}
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5 text-xs text-muted">
-          <span className="inline-flex items-center gap-1.5">
+          <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
             <Avatar author={t.author} size="sm" />
             <AuthorName author={t.author} />
+            <AuthorWork author={t.author} short className="max-w-[16rem]" />
           </span>
           <span>asked {timeAgo(t.created_at)}</span>
           {t.last_answer_by && t.answer_count > 0 && (
@@ -205,8 +207,11 @@ function Sidebar({ overview, activeCategory, onCategory, onTag }: { overview: Co
             {overview.top_contributors.map((a) => (
               <li key={a.id} className="flex items-center gap-2.5 text-sm">
                 <Avatar author={a} size="sm" />
-                <span className="min-w-0 flex-1 truncate">
-                  <AuthorName author={a} />
+                <span className="min-w-0 flex-1 leading-tight">
+                  <span className="block truncate">
+                    <AuthorName author={a} />
+                  </span>
+                  <AuthorWork author={a} short className="block text-xs" />
                 </span>
                 <span className="text-xs text-muted" title={`${a.answers} answers · ${a.accepted} accepted`}>
                   {a.answers} <MessageSquare className="inline h-3 w-3" />
@@ -329,11 +334,18 @@ export function CommunityBrowser() {
               </div>
             )}
           </div>
-          <Button asChild size="lg" className="bg-white text-teal-800 shadow-md hover:bg-teal-50">
-            <Link href="/community/new">
-              <Plus className="h-4 w-4" /> Start a discussion
-            </Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild size="lg" className="bg-white text-teal-800 shadow-md hover:bg-teal-50">
+              <Link href="/community/new">
+                <Plus className="h-4 w-4" /> Start a discussion
+              </Link>
+            </Button>
+            <Button asChild size="lg" className="bg-red-600 text-white shadow-md hover:bg-red-700">
+              <Link href="/community/blood-bank">
+                <Droplet className="h-4 w-4 fill-white" /> Blood bank
+              </Link>
+            </Button>
+          </div>
         </div>
         <form
           className="relative mt-5"

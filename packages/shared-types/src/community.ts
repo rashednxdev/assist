@@ -167,6 +167,11 @@ export interface CommunityAuthor {
   name: string;
   initials: string;
   is_admin: boolean;
+  /** Designation and office as they were when the post was written. */
+  designation?: string;
+  designation_short?: string;
+  office?: string;
+  office_short?: string;
 }
 
 export interface CommunityThreadSummary {

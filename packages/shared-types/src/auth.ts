@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { bloodGroupSchema } from './blood-bank.js';
 
 export const authTokensSchema = z.object({
   accessToken: z.string(),
@@ -134,14 +135,33 @@ export const resetPasswordSchema = z
 
 export type ResetPasswordDto = z.infer<typeof resetPasswordSchema>;
 
+const blankToNull = (v: unknown) => (v === '' ? null : v);
+const optionalDate = z.preprocess(blankToNull, z.coerce.date({ errorMap: () => ({ message: 'Enter a valid date' }) }).nullable()).optional();
+const optionalText = (max: number) => z.string().trim().max(max, `Keep it under ${max} characters`).optional();
+const optionalMobile = z
+  .string()
+  .trim()
+  .regex(/^(01[3-9]\d{8})?$/, 'Enter a valid mobile number (01XXXXXXXXX)')
+  .optional();
+
 export const updateMyProfileSchema = z.object({
-  full_name_en: z.string().min(2).optional(),
+  full_name_en: z.string().trim().min(2).optional(),
   full_name_bn: z.string().optional(),
   phone: z.string().regex(/^01[3-9]\d{8}$/).optional(),
   nid: z.string().optional(),
-  dob: z.coerce.date().optional(),
-  gender: z.enum(['male', 'female', 'other']).optional(),
+  dob: optionalDate.refine((d) => !d || d < new Date(), 'Date of birth must be in the past'),
+  gender: z.preprocess(blankToNull, z.enum(['male', 'female', 'other']).nullable()).optional(),
   employee_id: z.string().optional(),
+  blood_group: z.preprocess(blankToNull, bloodGroupSchema.nullable()).optional(),
+  father_name: optionalText(120),
+  mother_name: optionalText(120),
+  home_district_id: z.preprocess(blankToNull, z.string().regex(/^[a-f\d]{24}$/i, 'Invalid district').nullable()).optional(),
+  joining_date: optionalDate,
+  alternate_phone: optionalMobile,
+  emergency_contact_name: optionalText(120),
+  emergency_contact_relation: optionalText(60),
+  emergency_contact_phone: optionalMobile,
+  bio: optionalText(500),
 });
 
 export type UpdateMyProfileDto = z.infer<typeof updateMyProfileSchema>;

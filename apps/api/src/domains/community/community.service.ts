@@ -8,6 +8,7 @@ import {
   communityThreadInputSchema,
   communityThreadModerationSchema,
   communityThreadQuerySchema,
+  PROFILE_WORK_IDENTITY_REQUIRED,
   type CommunityAnswerRecord,
   type CommunityAuthor,
   type CommunityCategoryRecord,
@@ -28,7 +29,13 @@ import { ToolkitItem } from '../toolkit/models/ToolkitItem.model.js';
 import { Circular } from '../policy/models/Circular.model.js';
 import { deliverSystemNotification } from '../notifications/notifications.service.js';
 import { CommunityCategory, type ICommunityCategory } from './models/CommunityCategory.model.js';
-import { CommunityThread, type ICommunityLinkRef, type ICommunityThread } from './models/CommunityThread.model.js';
+import { workLabels, workSnapshot } from '../org/org.service.js';
+import {
+  CommunityThread,
+  type ICommunityAuthorWork,
+  type ICommunityLinkRef,
+  type ICommunityThread,
+} from './models/CommunityThread.model.js';
 import { CommunityAnswer, type ICommunityAnswer } from './models/CommunityAnswer.model.js';
 import { CommunityVote } from './models/CommunityVote.model.js';
 import { CommunityFollow } from './models/CommunityFollow.model.js';
@@ -108,11 +115,38 @@ function toAuthor(u: AuthorDoc | undefined, id: string): CommunityAuthor {
 async function loadAuthors(ids: Array<Types.ObjectId | string | undefined | null>): Promise<Map<string, CommunityAuthor>> {
   const unique = [...new Set(ids.filter(Boolean).map(String))];
   if (unique.length === 0) return new Map();
-  const users = await User.find({ _id: { $in: unique } })
-    .select('full_name_en full_name_bn email user_type is_super_admin')
-    .lean<AuthorDoc[]>();
+  const [users, labels] = await Promise.all([
+    User.find({ _id: { $in: unique } })
+      .select('full_name_en full_name_bn email user_type is_super_admin')
+      .lean<AuthorDoc[]>(),
+    workLabels(unique),
+  ]);
   const byId = new Map(users.map((u) => [String(u._id), u]));
-  return new Map(unique.map((id) => [id, toAuthor(byId.get(id), id)]));
+  return new Map(
+    unique.map((id) => {
+      const author = toAuthor(byId.get(id), id);
+      const w = labels.get(id);
+      return [
+        id,
+        w
+          ? { ...author, designation: w.designation_name, designation_short: w.designation_short, office: w.office_name, office_short: w.office_short }
+          : author,
+      ];
+    }),
+  );
+}
+
+/** Author as shown on a post: the office/designation saved with the post wins over the current profile. */
+function postAuthor(authors: Map<string, CommunityAuthor>, authorId: Types.ObjectId, work?: ICommunityAuthorWork | null): CommunityAuthor {
+  const base = authors.get(String(authorId)) ?? toAuthor(undefined, String(authorId));
+  if (!work) return base;
+  return {
+    ...base,
+    designation: work.designation_name,
+    designation_short: work.designation_short || undefined,
+    office: work.office_name,
+    office_short: work.office_short || undefined,
+  };
 }
 
 /* ---------------------------------- links ---------------------------------- */
@@ -374,7 +408,7 @@ async function toSummaries(docs: ICommunityThread[], user: AuthUser): Promise<Co
     category: cats.get(String(d.category_id)),
     tags: d.tags ?? [],
     link_kinds: [...new Set(pickLinks(d.links ?? [], resolved).map((l) => l.kind))],
-    author: authors.get(String(d.author_id)) ?? toAuthor(undefined, String(d.author_id)),
+    author: postAuthor(authors, d.author_id, d.author_work),
     answer_count: d.answer_count,
     vote_score: d.vote_score,
     view_count: d.view_count,
@@ -420,7 +454,7 @@ export async function getThread(id: string, user: AuthUser, countView = true): P
     id: String(a._id),
     body: a.body,
     links: pickLinks(a.links ?? [], resolved),
-    author: authors.get(String(a.author_id)) ?? toAuthor(undefined, String(a.author_id)),
+    author: postAuthor(authors, a.author_id, a.author_work),
     vote_score: a.vote_score,
     voted: states.voted.has(String(a._id)),
     is_accepted: a.is_accepted,
@@ -436,7 +470,7 @@ export async function getThread(id: string, user: AuthUser, countView = true): P
     links: pickLinks(doc.links ?? [], resolved),
     category: cats.get(String(doc.category_id)),
     tags: doc.tags ?? [],
-    author: authors.get(String(doc.author_id)) ?? toAuthor(undefined, String(doc.author_id)),
+    author: postAuthor(authors, doc.author_id, doc.author_work),
     answer_count: doc.answer_count,
     vote_score: doc.vote_score,
     view_count: doc.view_count,
@@ -479,6 +513,19 @@ function assertActive(user: AuthUser): void {
   if (user.status !== 'active') throw forbidden('Verify your account to take part in the community');
 }
 
+/** Members must post with their office and designation; admins may post without. */
+async function requireWork(user: AuthUser): Promise<ICommunityAuthorWork | null> {
+  const work = await workSnapshot(user.id);
+  if (!work && !isAdminUser(user)) {
+    throw new AppError(
+      400,
+      PROFILE_WORK_IDENTITY_REQUIRED,
+      'Add your office and designation before posting in the community.',
+    );
+  }
+  return work;
+}
+
 export async function createThread(user: AuthUser, body: unknown): Promise<CommunityThreadDetail> {
   assertActive(user);
   const parsed = communityThreadInputSchema.safeParse(body);
@@ -487,11 +534,13 @@ export async function createThread(user: AuthUser, body: unknown): Promise<Commu
   await assertCategory(d.category_id);
   await assertLinks(d.links);
   await assertDailyLimit('thread', user);
+  const work = await requireWork(user);
   const doc = await CommunityThread.create({
     title: d.title,
     body: d.body,
     category_id: d.category_id,
     author_id: user.id,
+    author_work: work,
     tags: d.tags,
     links: d.links,
     follower_count: 1,
@@ -567,9 +616,11 @@ export async function createAnswer(threadId: string, body: unknown, user: AuthUs
   if (!parsed.success) throw badRequest(zodMessage(parsed.error));
   await assertLinks(parsed.data.links);
   await assertDailyLimit('answer', user);
+  const work = await requireWork(user);
   const answer = await CommunityAnswer.create({
     thread_id: thread._id,
     author_id: user.id,
+    author_work: work,
     body: parsed.data.body,
     links: parsed.data.links,
   });

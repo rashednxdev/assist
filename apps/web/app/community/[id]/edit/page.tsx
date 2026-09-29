@@ -41,6 +41,7 @@ export default function EditDiscussionPage() {
             links: thread.links,
           }}
           submitLabel="Save changes"
+          requireIdentity={false}
           onCancel={() => router.push(`/community/${id}`)}
           onSubmit={async (payload) => {
             await apiFetch(`/community/threads/${id}`, { method: 'PUT', body: JSON.stringify(payload) });

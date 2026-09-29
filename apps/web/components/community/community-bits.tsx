@@ -36,6 +36,23 @@ export function Avatar({ author, size = 'md' }: { author: CommunityAuthor; size?
   );
 }
 
+/** "Designation, Office" — short forms when `short` and available. */
+export function authorWork(a: CommunityAuthor, short = false): string {
+  const d = short ? a.designation_short || a.designation : a.designation;
+  const o = short ? a.office_short || a.office : a.office;
+  return [d, o].filter(Boolean).join(', ');
+}
+
+export function AuthorWork({ author, short, className }: { author: CommunityAuthor; short?: boolean; className?: string }) {
+  const text = authorWork(author, short);
+  if (!text) return null;
+  return (
+    <span className={cn('truncate text-muted', className)} title={authorWork(author)}>
+      {text}
+    </span>
+  );
+}
+
 export function AuthorName({ author }: { author: CommunityAuthor }) {
   return (
     <span className="inline-flex items-center gap-1 font-medium text-foreground">

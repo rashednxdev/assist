@@ -4,10 +4,13 @@ import { useEffect, useState } from 'react';
 import { Hash, Loader2, X } from 'lucide-react';
 import {
   COMMUNITY_MAX_TAGS,
+  PROFILE_WORK_IDENTITY_REQUIRED,
   type CommunityCategoryRecord,
   type CommunityLinkRecord,
 } from '@ibas/shared-types';
-import { apiFetch } from '@/lib/api-client';
+import { ApiError, apiFetch } from '@/lib/api-client';
+import { useWorkIdentity } from '@/lib/use-work-identity';
+import { PostingAs, useCanPost } from '@/components/community/posting-as';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,12 +36,17 @@ export function ThreadForm({
   submitLabel,
   onSubmit,
   onCancel,
+  requireIdentity = true,
 }: {
   initial?: Partial<ThreadFormValues>;
   submitLabel: string;
   onSubmit: (payload: { title: string; body: string; category_id: string; tags: string[]; links: Array<{ type: string; id: string }> }) => Promise<void>;
   onCancel?: () => void;
+  /** New posts need the author's office + designation; edits keep the ones saved with the post. */
+  requireIdentity?: boolean;
 }) {
+  const { ready: canPost } = useCanPost();
+  const { refresh: refreshIdentity } = useWorkIdentity();
   const [categories, setCategories] = useState<CommunityCategoryRecord[]>([]);
   const [title, setTitle] = useState(initial?.title ?? '');
   const [body, setBody] = useState(initial?.body ?? '');
@@ -81,6 +89,7 @@ export function ThreadForm({
     if (title.trim().length < 8) return setError('Give your discussion a clear title (8+ characters).');
     if (body.trim().length < 10) return setError('Add a few more details (10+ characters).');
     if (!categoryId) return setError('Pick a category.');
+    if (requireIdentity && !canPost) return setError('Add your designation and office above before publishing.');
     setBusy(true);
     try {
       await onSubmit({
@@ -91,6 +100,7 @@ export function ThreadForm({
         links: links.map((l) => ({ type: l.type, id: l.id })),
       });
     } catch (err) {
+      if (err instanceof ApiError && err.code === PROFILE_WORK_IDENTITY_REQUIRED) void refreshIdentity();
       setError(err instanceof Error ? err.message : 'Could not save');
       setBusy(false);
     }
@@ -102,6 +112,7 @@ export function ThreadForm({
     <form onSubmit={submit}>
       <Card>
         <CardContent className="space-y-5 p-5 sm:p-6">
+          {requireIdentity && <PostingAs />}
           <div className="space-y-1.5">
             <Label htmlFor="title">Title</Label>
             <Input
@@ -192,7 +203,7 @@ export function ThreadForm({
                 Cancel
               </Button>
             )}
-            <Button type="submit" disabled={busy}>
+            <Button type="submit" disabled={busy || (requireIdentity && !canPost)}>
               {busy && <Loader2 className="h-4 w-4 animate-spin" />}
               {submitLabel}
             </Button>

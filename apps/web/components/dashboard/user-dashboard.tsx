@@ -23,6 +23,7 @@ import {
   Lock,
   MessageSquarePlus,
   MessagesSquare,
+  BookUser,
   PauseCircle,
   PlayCircle,
   Radio,
@@ -51,6 +52,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ExamRoutineCountdown } from '@/components/dashboard/exam-routine-countdown';
+import { BloodDashboardCard } from '@/components/blood-bank/blood-dashboard-card';
 import {
   AccessRequiredDialog,
   type AccessRequiredVariant,
@@ -107,6 +109,7 @@ interface HomeModule {
 const MODULES: HomeModule[] = [
   { id: 'schedule', title: 'Schedule', subtitle: 'Meetings, bill dates, R&R reminders', icon: CalendarClock, color: '#0f766e', href: '/schedule' },
   { id: 'community', title: 'Community', subtitle: 'Ask, share & discuss what’s new', icon: MessagesSquare, color: '#0e7490', href: '/community' },
+  { id: 'contacts', title: 'Contacts', subtitle: 'Offices, sub-offices & colleagues', icon: BookUser, color: '#0f766e', href: '/contacts' },
   { id: 'ibas', title: 'iBAS++ Workspace', subtitle: 'Procedures, rules & tools by area', icon: Briefcase, color: '#1e40af', href: '/ibas' },
   { id: 'toolkit', title: 'Checklists & Templates', subtitle: 'Pre-audit, broadsheet replies, guides', icon: ClipboardCheck, color: '#047857', href: '/toolkit' },
   { id: 'circulars', code: 'CIRCULARS', title: 'Circular Archive', subtitle: 'Govt. circulars, SROs & orders', icon: Archive, color: '#4338ca', href: '/circulars' },
@@ -362,6 +365,8 @@ export function UserDashboard({
       </Link>
 
       <ExamRoutineCountdown />
+
+      <BloodDashboardCard />
 
       {hosting.length > 0 ? (
         <div>

@@ -1,4 +1,4 @@
-import type { AuthUser, ModuleAccessGrant } from '@ibas/shared-types';
+import type { AuthUser, ModuleAccessGrant, ModuleStop } from '@ibas/shared-types';
 import { parseJsonResponse } from './parse-json-response';
 
 const TOKEN_KEY = 'ibas_access_token';
@@ -67,7 +67,11 @@ export type MeUser = AuthUser & {
   email_verified: boolean;
   phone_verified: boolean;
   module_access: ModuleAccessGrant[];
+  module_stops?: ModuleStop[];
+  /** Admin-marked paid, or any active package. */
   has_paid?: boolean;
+  /** Admin-marked paid (legacy manual payment); manual grants only count when true. */
+  legacy_paid?: boolean;
   unpaid_message?: string;
   all_exam_subjects?: boolean;
   exam_subject_ids?: string[];

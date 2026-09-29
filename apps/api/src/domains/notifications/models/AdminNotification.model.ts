@@ -17,6 +17,9 @@ export interface IAdminNotification extends Document {
   revoked_at?: Date;
   revoked_by?: Types.ObjectId;
   removed_unread_count: number;
+  /** 'schedule' / 'billing' / 'community' rows are automatic and stay out of the admin broadcast history. */
+  source?: 'admin' | 'schedule' | 'billing' | 'community';
+  link?: string;
 }
 
 const schema = new Schema<IAdminNotification>(
@@ -34,6 +37,8 @@ const schema = new Schema<IAdminNotification>(
     revoked_at: { type: Date },
     revoked_by: { type: Schema.Types.ObjectId, ref: 'User' },
     removed_unread_count: { type: Number, default: 0 },
+    source: { type: String, enum: ['admin', 'schedule', 'billing', 'community'] },
+    link: { type: String },
   },
   { timestamps: false },
 );

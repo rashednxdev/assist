@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { ChevronDown, ChevronUp, Plus } from 'lucide-react';
+import { useIbasAreas } from '@/lib/use-ibas-areas';
+import { AreaCheckboxes } from '@/components/ibas/area-checkboxes';
 import type { WorkflowField } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { generateTaskCode, moduleId, slugifyTaskCode } from '@/lib/workflow-utils';
@@ -21,6 +23,8 @@ interface TaskItem {
   module_name_en: string;
   total_steps: number;
   is_published: boolean;
+  ibas_areas?: string[];
+  tags?: string[];
 }
 
 interface StepItem {
@@ -55,7 +59,11 @@ const emptyTaskForm = () => ({
   code: generateTaskCode(),
   module_id: '',
   description_en: '',
+  ibas_areas: [] as string[],
+  tags: '',
 });
+
+const splitTags = (s: string) => [...new Set(s.split(',').map((t) => t.trim()).filter(Boolean))];
 
 const emptyStepForm = () => ({
   title_en: '',
@@ -82,6 +90,7 @@ export default function WorkflowAdminPage() {
 
   const [taskForm, setTaskForm] = useState(emptyTaskForm);
   const [stepForm, setStepForm] = useState(emptyStepForm);
+  const { areas: ibasAreas } = useIbasAreas();
 
   const loadTasks = useCallback(() => {
     return apiFetch<{ data: TaskItem[] }>('/workflow/tasks').then((r) => setTasks(r.data));
@@ -125,6 +134,8 @@ export default function WorkflowAdminPage() {
         code: res.data.task.code ?? '',
         module_id: res.data.task.module_id ?? '',
         description_en: res.data.task.description_en ?? '',
+        ibas_areas: res.data.task.ibas_areas ?? [],
+        tags: (res.data.task.tags ?? []).join(', '),
       });
       setSteps(res.data.steps);
     } catch (err) {
@@ -134,19 +145,27 @@ export default function WorkflowAdminPage() {
     }
   }
 
-  function beginCreateTask() {
+  function beginCreateTask(presetArea?: string) {
     clearFeedback();
     setSelectedId(null);
     setIsCreateMode(true);
     setSteps([]);
-    const defaultModule = modules[0] ? moduleId(modules[0]) : '';
+    const areaModule = presetArea ? modules.find((m) => m.code === presetArea) : undefined;
+    const defaultModule = areaModule ?? modules[0];
     setTaskForm({
-      name_en: '',
-      code: generateTaskCode(),
-      module_id: defaultModule,
-      description_en: '',
+      ...emptyTaskForm(),
+      module_id: defaultModule ? moduleId(defaultModule) : '',
+      ibas_areas: presetArea ? [presetArea] : [],
     });
   }
+
+  const presetHandled = useRef(false);
+  useEffect(() => {
+    if (loading || presetHandled.current) return;
+    presetHandled.current = true;
+    const area = new URLSearchParams(window.location.search).get('area');
+    if (area && modules.length > 0) beginCreateTask(area);
+  }, [loading, modules]);
 
   function onTaskNameChange(name: string) {
     setTaskForm((prev) => ({ ...prev, name_en: name }));
@@ -177,6 +196,8 @@ export default function WorkflowAdminPage() {
           code,
           module_id: taskForm.module_id,
           description_en: taskForm.description_en.trim(),
+          ibas_areas: taskForm.ibas_areas,
+          tags: splitTags(taskForm.tags),
         }),
       });
       await loadTasks();
@@ -202,10 +223,12 @@ export default function WorkflowAdminPage() {
     }
     setBusy(true);
     try {
-      const payload: Record<string, string> = {
+      const payload: Record<string, string | string[]> = {
         name_en: taskForm.name_en.trim(),
         module_id: taskForm.module_id,
         description_en: taskForm.description_en.trim() || taskForm.name_en.trim(),
+        ibas_areas: taskForm.ibas_areas,
+        tags: splitTags(taskForm.tags),
       };
       if (taskForm.code.trim()) payload.code = taskForm.code.trim().toUpperCase();
 
@@ -345,6 +368,22 @@ export default function WorkflowAdminPage() {
                   <div className="text-xs text-muted">
                     {t.total_steps} steps · {t.is_published ? 'Published' : 'Draft'}
                   </div>
+                  {(t.ibas_areas?.length ?? 0) > 0 && (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {t.ibas_areas!.map((code) => {
+                        const a = ibasAreas.find((x) => x.code === code);
+                        return (
+                          <span
+                            key={code}
+                            className="rounded px-1.5 py-0.5 text-[10px] font-medium text-white"
+                            style={{ backgroundColor: a?.color ?? '#64748b' }}
+                          >
+                            {a?.name_en ?? code}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
                 </button>
               ))
             )}
@@ -353,7 +392,7 @@ export default function WorkflowAdminPage() {
               size="sm"
               variant={isCreateMode ? 'default' : 'outline'}
               disabled={busy || modules.length === 0}
-              onClick={beginCreateTask}
+              onClick={() => beginCreateTask()}
             >
               <Plus className="h-4 w-4" />
               New task
@@ -430,6 +469,27 @@ export default function WorkflowAdminPage() {
                     value={taskForm.description_en}
                     placeholder="What this task does and who it is for"
                     onChange={(e) => setTaskForm({ ...taskForm, description_en: e.target.value })}
+                  />
+                </div>
+                <fieldset className="space-y-2 rounded-lg border border-border p-3" disabled={busy}>
+                  <legend className="px-1 text-sm font-medium">iBAS++ Workspace areas</legend>
+                  <p className="text-xs text-muted">
+                    Once published, the task is listed under Procedures in each area ticked here, and users with access
+                    to that area can find it.
+                  </p>
+                  <AreaCheckboxes
+                    layout="wrap"
+                    value={taskForm.ibas_areas}
+                    onChange={(next) => setTaskForm((prev) => ({ ...prev, ibas_areas: next }))}
+                  />
+                </fieldset>
+                <div className="space-y-1">
+                  <Label>Keywords (comma separated)</Label>
+                  <Input
+                    value={taskForm.tags}
+                    disabled={busy}
+                    placeholder="e.g. salary bill, EFT, pay fixation"
+                    onChange={(e) => setTaskForm({ ...taskForm, tags: e.target.value })}
                   />
                 </div>
                 <div className="flex flex-wrap gap-2">

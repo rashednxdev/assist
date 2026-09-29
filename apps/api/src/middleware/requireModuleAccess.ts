@@ -1,7 +1,8 @@
 import type { Response, NextFunction, RequestHandler } from 'express';
 import { isFreeModuleCode } from '@ibas/shared-constants';
 import type { AuthRequest } from './auth.js';
-import { forbidden, unauthorized } from '../shared/errors/AppError.js';
+import { AppError, forbidden, unauthorized } from '../shared/errors/AppError.js';
+import { areaModuleCodes, hasPackageAccess, isPurchasable } from '../domains/billing/entitlements.service.js';
 import { UserModuleAccess } from '../domains/users/models/UserModuleAccess.model.js';
 import { Module } from '../domains/setup/models/Module.model.js';
 import { User } from '../domains/users/models/User.model.js';
@@ -43,6 +44,15 @@ async function hasBypassStopGrant(userId: string, moduleCodes: string[]): Promis
   return Boolean(grant);
 }
 
+export const PACKAGE_REQUIRED_MESSAGE = 'Buy a package to open this module.';
+
+async function packageRequiredOr(moduleCodes: string[], fallback: AppError): Promise<AppError> {
+  return isPurchasable(moduleCodes, await areaModuleCodes())
+    ? new AppError(403, 'PACKAGE_REQUIRED', PACKAGE_REQUIRED_MESSAGE)
+    : fallback;
+}
+
+/** Legacy gate: users marked paid by an admin (amount_received > 0). Package buyers pass earlier. */
 async function assertPaidIfNeeded(userId: string, moduleCodes: string[]): Promise<void> {
   if (moduleCodes.every((code) => isFreeModuleCode(code))) return;
   const user = await User.findById(userId).select('amount_received user_type is_super_admin');
@@ -51,10 +61,14 @@ async function assertPaidIfNeeded(userId: string, moduleCodes: string[]): Promis
   }
   if (user.is_super_admin || user.user_type === 'system_admin' || user.user_type === 'admin') return;
   if (Number(user.amount_received ?? 0) > 0) return;
-  throw forbidden('Pay to Get Access Module');
+  throw await packageRequiredOr(moduleCodes, forbidden('Pay to Get Access Module'));
 }
 
-export { assertPaidIfNeeded };
+async function noGrantError(moduleCodes: string[]): Promise<AppError> {
+  return packageRequiredOr(moduleCodes, forbidden('You do not have access to this module. Ask an admin to grant access.'));
+}
+
+export { assertPaidIfNeeded, noGrantError };
 
 /** Gate a read route behind an active, granted UserModuleAccess row for the given module code. */
 export function requireModuleAccess(moduleCode: string): RequestHandler {
@@ -87,6 +101,11 @@ export function requireModuleAccess(moduleCode: string): RequestHandler {
         return;
       }
 
+      if (await hasPackageAccess(req.user.id, [moduleCode])) {
+        next();
+        return;
+      }
+
       await assertPaidIfNeeded(req.user.id, [moduleCode]);
 
       const grant = await UserModuleAccess.findOne({
@@ -96,7 +115,7 @@ export function requireModuleAccess(moduleCode: string): RequestHandler {
         can_read: true,
       });
       if (!grant) {
-        next(forbidden('You do not have access to this module. Ask an admin to grant access.'));
+        next(await noGrantError([moduleCode]));
         return;
       }
       next();
@@ -139,6 +158,11 @@ export function requireModuleAccessAny(...moduleCodes: string[]): RequestHandler
         return;
       }
 
+      if (await hasPackageAccess(req.user.id, moduleCodes)) {
+        next();
+        return;
+      }
+
       await assertPaidIfNeeded(req.user.id, moduleCodes);
 
       const grant = await UserModuleAccess.findOne({
@@ -148,7 +172,7 @@ export function requireModuleAccessAny(...moduleCodes: string[]): RequestHandler
         can_read: true,
       });
       if (!grant) {
-        next(forbidden('You do not have access to this module. Ask an admin to grant access.'));
+        next(await noGrantError(moduleCodes));
         return;
       }
       next();

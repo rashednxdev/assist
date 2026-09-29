@@ -33,13 +33,15 @@ function serializeNotification(
 
 function serializeRecipient(
   row: InstanceType<typeof NotificationRecipient>,
-  notification: { title: string; message: string },
+  notification: { title: string; message: string; source?: 'admin' | 'schedule' | 'billing' | 'community'; link?: string },
 ) {
   return {
     id: String(row._id),
     notification_id: String(row.notification_id),
     title: notification.title,
     message: notification.message,
+    source: notification.source,
+    link: notification.link,
     is_read: row.is_read,
     read_at: row.read_at?.toISOString(),
     created_at: row.created_at.toISOString(),
@@ -87,6 +89,51 @@ export async function sendNotification(dto: SendNotificationDto, createdBy: stri
   return serializeNotification(notification);
 }
 
+/**
+ * Delivers an automatic (non-broadcast) notification to already-resolved users: an in-app row per
+ * user plus mobile push. Used by schedule reminders.
+ */
+export async function deliverSystemNotification(input: {
+  userIds: string[];
+  title: string;
+  message: string;
+  createdBy: string;
+  link?: string;
+  data?: Record<string, unknown>;
+  source?: 'schedule' | 'billing' | 'community';
+}): Promise<{ recipients: number }> {
+  const active = await User.find({ _id: { $in: input.userIds }, status: 'active' }).select('_id').lean();
+  const userIds = active.map((u) => String(u._id));
+  if (userIds.length === 0) return { recipients: 0 };
+
+  const notification = await AdminNotification.create({
+    title: input.title.slice(0, 200),
+    message: input.message.slice(0, 2000),
+    target_type: 'specific',
+    created_by: input.createdBy,
+    sent_at: new Date(),
+    recipient_count: userIds.length,
+    status: 'sent',
+    source: input.source ?? 'schedule',
+    link: input.link,
+  });
+  for (let i = 0; i < userIds.length; i += RECIPIENT_INSERT_CHUNK_SIZE) {
+    await NotificationRecipient.insertMany(
+      userIds.slice(i, i + RECIPIENT_INSERT_CHUNK_SIZE).map((userId) => ({ notification_id: notification._id, user_id: userId })),
+      { ordered: false },
+    );
+  }
+  const { sent, failed } = await sendPushToUsers(userIds, input.title, input.message, {
+    notification_id: String(notification._id),
+    ...(input.link ? { link: input.link } : {}),
+    ...input.data,
+  });
+  notification.push_sent_count = sent;
+  notification.push_failed_count = failed;
+  await notification.save();
+  return { recipients: userIds.length };
+}
+
 async function unreadCountsByNotification(ids: InstanceType<typeof AdminNotification>['_id'][]) {
   if (ids.length === 0) return new Map<string, number>();
   const rows = await NotificationRecipient.aggregate<{ _id: unknown; count: number }>([
@@ -97,9 +144,10 @@ async function unreadCountsByNotification(ids: InstanceType<typeof AdminNotifica
 }
 
 export async function listSentNotifications(limit: number, offset: number) {
+  const broadcasts = { source: { $nin: ['schedule', 'billing', 'community'] } };
   const [items, total] = await Promise.all([
-    AdminNotification.find().sort({ sent_at: -1 }).skip(offset).limit(limit),
-    AdminNotification.countDocuments(),
+    AdminNotification.find(broadcasts).sort({ sent_at: -1 }).skip(offset).limit(limit),
+    AdminNotification.countDocuments(broadcasts),
   ]);
   const unreadMap = await unreadCountsByNotification(items.map((row) => row._id));
   return {
@@ -171,7 +219,7 @@ export async function listMyNotifications(
   const notifications = await AdminNotification.find({
     _id: { $in: notificationIds },
     status: { $ne: 'removed' },
-  }).select('title message');
+  }).select('title message source link');
   const notificationMap = new Map(notifications.map((n) => [String(n._id), n]));
 
   const items = rows

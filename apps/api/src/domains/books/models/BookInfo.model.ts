@@ -19,6 +19,8 @@ export interface IBookInfo extends Document {
   /** Visibility to non-admin users (mobile app, web reader). New books start unpublished. */
   is_published: boolean;
   tags: string[];
+  /** Policy Library shelves (POLICY_COLLECTIONS codes) this book appears on. */
+  policy_collections: string[];
   created_at: Date;
   updated_at: Date;
 }
@@ -42,12 +44,14 @@ const schema = new Schema<IBookInfo>(
     superseded_by: { type: Schema.Types.ObjectId },
     is_published: { type: Boolean, default: false },
     tags: { type: [String], default: [] },
+    policy_collections: { type: [String], default: [] },
   },
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } },
 );
 
 schema.index({ book_type_id: 1, is_active: 1 });
 schema.index({ tags: 1 });
+schema.index({ policy_collections: 1 });
 schema.index({ is_superseded: 1 });
 schema.index({ is_published: 1 });
 

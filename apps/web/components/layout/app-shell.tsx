@@ -5,23 +5,27 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { Menu, X, LogOut } from 'lucide-react';
+import { Menu, X, LogOut, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { logoutRequest, fetchMe, getAccessToken, clearAccessToken, type MeUser } from '@/lib/auth';
-import { buildVisibleNav, isPlatformAdmin } from '@/lib/capabilities';
+import { buildVisibleNav } from '@/lib/capabilities';
 import { navGroups, type NavItem } from './nav-config';
+
+function matchesPath(pathname: string, href: string): boolean {
+  return pathname === href || pathname.startsWith(href + '/');
+}
 
 function NavLink({
   item,
-  pathname,
+  activeHref,
   onNavigate,
 }: {
   item: NavItem;
-  pathname: string;
+  activeHref: string | null;
   onNavigate?: () => void;
 }) {
-  const active = pathname === item.href || pathname.startsWith(item.href + '/');
+  const active = item.href === activeHref;
   const Icon = item.icon;
   return (
     <Link
@@ -37,6 +41,34 @@ function NavLink({
       <Icon className={cn('h-[18px] w-[18px] shrink-0', active && 'text-sidebar-active')} />
       <span className="truncate">{item.label}</span>
     </Link>
+  );
+}
+
+function SidebarSearch({ onNavigate }: { onNavigate?: () => void }) {
+  const router = useRouter();
+  const [q, setQ] = useState('');
+  return (
+    <form
+      className="px-3 pt-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const term = q.trim();
+        router.push(term ? `/search?q=${encodeURIComponent(term)}` : '/search');
+        setQ('');
+        onNavigate?.();
+      }}
+    >
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-sidebar-muted" />
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search rules, circulars…"
+          aria-label="Search"
+          className="h-9 w-full rounded-lg border border-white/10 bg-white/5 pl-9 pr-3 text-sm text-sidebar-foreground placeholder:text-sidebar-muted focus:border-sidebar-active/60 focus:outline-none"
+        />
+      </div>
+    </form>
   );
 }
 
@@ -57,6 +89,12 @@ function SidebarContent({
   appName: string;
   tagline: string;
 }) {
+  const activeHref =
+    visibleNav
+      .flatMap((g) => g.items.map((i) => i.href))
+      .filter((href) => matchesPath(pathname, href))
+      .sort((a, b) => b.length - a.length)[0] ?? null;
+
   return (
     <>
       <div className="flex items-center gap-3 border-b border-white/10 px-4 py-5">
@@ -74,6 +112,8 @@ function SidebarContent({
         </div>
       </div>
 
+      <SidebarSearch onNavigate={onNavigate} />
+
       <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-4">
         {visibleNav.map((group) => (
           <div key={group.title}>
@@ -85,7 +125,7 @@ function SidebarContent({
                 <NavLink
                   key={`${group.title}-${item.href}-${item.label}`}
                   item={item}
-                  pathname={pathname}
+                  activeHref={activeHref}
                   onNavigate={onNavigate}
                 />
               ))}
@@ -124,18 +164,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (!getAccessToken()) return;
     fetchMe()
       .then((res) => {
-        if (!isPlatformAdmin(res.data)) {
-          void logoutRequest()
-            .catch(() => clearAccessToken())
-            .finally(() => router.replace('/unavailable'));
-          return;
-        }
         setMe({
           ...res.data,
           module_access: res.data.module_access ?? [],
         });
       })
-      .catch(() => {});
+      .catch(() => {
+        clearAccessToken();
+        router.replace('/login');
+      });
   }, [router]);
 
   const visibleNav =
@@ -158,7 +195,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background">
       {/* Mobile header */}
-      <header className="sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-border bg-surface/95 px-4 backdrop-blur-md lg:hidden">
+      <header className="sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-border bg-surface/95 px-4 backdrop-blur-md lg:hidden print:hidden">
         <button
           type="button"
           className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-foreground"
@@ -170,6 +207,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-bold text-foreground">{tApp('name')}</p>
         </div>
+        <Link
+          href="/search"
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-foreground"
+          aria-label="Search"
+        >
+          <Search className="h-5 w-5" />
+        </Link>
       </header>
 
       {/* Mobile drawer */}
@@ -195,12 +239,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col bg-sidebar lg:flex">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col bg-sidebar lg:flex print:hidden">
         <SidebarContent {...sidebarProps} />
       </aside>
 
-      <main className="lg:pl-64">
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">{children}</div>
+      <main className="lg:pl-64 print:pl-0">
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 print:max-w-none print:p-0">{children}</div>
       </main>
     </div>
   );

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Timer } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { formatDdMmYyyy } from '@/lib/date-display';
@@ -55,15 +56,17 @@ export function ExamRoutineCountdown() {
       </h2>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {upcoming.map((r) => (
-          <Card key={r.exam_name_id} className="border-amber-100">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted">{r.exam_name}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold text-amber-700">{countdownLabel(r.days)}</p>
-              <p className="mt-1 text-sm text-muted">Starts {formatDdMmYyyy(r.start_date)}</p>
-            </CardContent>
-          </Card>
+          <Link key={r.exam_name_id} href={`/exam-routine/${r.exam_name_id}`}>
+            <Card className="h-full border-amber-100 transition-all hover:border-amber-300 hover:shadow-md">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted">{r.exam_name}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-3xl font-bold text-amber-700">{countdownLabel(r.days)}</p>
+                <p className="mt-1 text-sm text-muted">Starts {formatDdMmYyyy(r.start_date)}</p>
+              </CardContent>
+            </Card>
+          </Link>
         ))}
       </div>
     </div>

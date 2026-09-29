@@ -4,6 +4,14 @@ import { Task } from './models/Task.model.js';
 import { TaskStep } from './models/TaskStep.model.js';
 import { Module } from '../setup/models/Module.model.js';
 import { notFound, badRequest } from '../../shared/errors/AppError.js';
+import { assertAreaCodes } from '../policy/areas.service.js';
+
+async function cleanAreas(areas: string[] | undefined): Promise<string[] | undefined> {
+  if (areas === undefined) return undefined;
+  const unique = [...new Set(areas)];
+  await assertAreaCodes(unique);
+  return unique;
+}
 
 async function ensureUniqueTaskCode(baseCode: string): Promise<string> {
   const normalized = baseCode.toUpperCase().replace(/[^A-Z0-9_]/g, '_').slice(0, 30) || 'TASK';
@@ -35,6 +43,7 @@ function serializeTask(task: InstanceType<typeof Task>, stepCount?: number) {
     is_published: task.is_published,
     version: task.version,
     tags: task.tags,
+    ibas_areas: task.ibas_areas ?? [],
     run_count: task.run_count,
     created_at: task.created_at,
     updated_at: task.updated_at,
@@ -87,6 +96,7 @@ export async function createTask(dto: CreateTaskDto, createdBy: string) {
   const mod = await Module.findById(dto.module_id);
   if (!mod) throw notFound('Module not found');
 
+  const ibas_areas = (await cleanAreas(dto.ibas_areas)) ?? [];
   const code = await ensureUniqueTaskCode(dto.code);
 
   const task = await Task.create({
@@ -105,6 +115,7 @@ export async function createTask(dto: CreateTaskDto, createdBy: string) {
     is_published: false,
     version: 1,
     tags: dto.tags ?? [],
+    ibas_areas,
     created_by: new mongoose.Types.ObjectId(createdBy),
     run_count: 0,
   });
@@ -138,6 +149,8 @@ export async function updateTask(id: string, dto: UpdateTaskDto, updatedBy: stri
   if (dto.description_bn !== undefined) task.description_bn = dto.description_bn;
   if (dto.estimated_time !== undefined) task.estimated_time = dto.estimated_time;
   if (dto.tags !== undefined) task.tags = dto.tags;
+  const areas = await cleanAreas(dto.ibas_areas);
+  if (areas !== undefined) task.ibas_areas = areas;
   if (dto.is_active !== undefined) task.is_active = dto.is_active;
   task.updated_by = new mongoose.Types.ObjectId(updatedBy);
 

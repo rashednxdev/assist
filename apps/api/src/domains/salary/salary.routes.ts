@@ -16,6 +16,11 @@ const publicLimit = rateLimit({
   max: 120,
   standardHeaders: true,
   legacyHeaders: false,
+  handler: (_req, res, _next, options) => {
+    res.status(options.statusCode).json({
+      error: { code: 'RATE_LIMITED', message: 'Too many requests. Please wait a few minutes and try again.' },
+    });
+  },
 });
 
 salaryRouter.post('/calculate-all-phases', publicLimit, asyncHandler(calculateAllPhasesHandler));

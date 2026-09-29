@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import {
+  type LiveClassPackageBrief,
   type LivePermissionStatus,
   type LiveStreamPresentation,
   type LiveStreamRecordedContent,
@@ -20,6 +21,7 @@ import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
 import { LiveClassPresentations } from '@/components/live/live-class-presentations';
 import { LiveClassRecordedVideos } from '@/components/live/live-class-recorded-videos';
+import { LivePackageCta } from '@/components/live/live-package-cta';
 
 const ZoomMeetingRoom = dynamic(
   () => import('@/components/live/zoom-meeting-room').then((m) => m.ZoomMeetingRoom),
@@ -47,6 +49,7 @@ interface SessionDetail {
   access_type?: 'free' | 'paid';
   payment_blocked?: boolean;
   payment_required_message?: string;
+  packages?: LiveClassPackageBrief[];
   video_platform?: 'agora' | 'zoom';
 }
 
@@ -217,7 +220,9 @@ export default function ZoomStreamWatchPage() {
           description={`${new Date(session.scheduled_at).toLocaleString()} · Previous session · Host: ${hostLabel}`}
         />
         {error ? <Alert variant="error">{error}</Alert> : null}
-        {!canViewPresentation ? (
+        {!canViewPresentation && session.payment_blocked && session.packages?.length ? (
+          <LivePackageCta packages={session.packages} message="Buy the package to watch this class's recordings and join every class in it." />
+        ) : !canViewPresentation ? (
           <div className={`rounded-2xl border p-4 ${perm.tone}`}>
             <div className="text-base font-bold">Presentation locked</div>
             <p className="mt-1 text-sm opacity-90">
@@ -250,7 +255,9 @@ export default function ZoomStreamWatchPage() {
         {hostLabel}
       </div>
 
-      {session.payment_blocked ? (
+      {session.payment_blocked && session.packages?.length ? (
+        <LivePackageCta packages={session.packages} message={session.payment_required_message} />
+      ) : session.payment_blocked ? (
         <Alert variant="warning" className="border-amber-200 bg-amber-50 text-amber-950">
           <p className="text-base font-bold">Paid class — payment required</p>
           <p className="mt-2 text-sm leading-relaxed">

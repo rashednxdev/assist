@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Video, Layers, Radio } from 'lucide-react';
-import type { LivePermissionStatus, LiveStreamStatus } from '@ibas/shared-types';
+import type { LiveClassPackageBrief, LivePermissionStatus, LiveStreamStatus } from '@ibas/shared-types';
+import { LivePackageChip } from '@/components/live/live-package-cta';
 import { apiFetch } from '@/lib/api-client';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent } from '@/components/ui/card';
@@ -23,6 +24,7 @@ interface LiveRow {
   slide_count?: number;
   presentation_count?: number;
   access_type?: 'free' | 'paid';
+  packages?: LiveClassPackageBrief[];
 }
 
 function permissionLabel(status: LivePermissionStatus) {
@@ -66,6 +68,7 @@ function ClassCard({ item, previous }: { item: LiveRow; previous?: boolean }) {
               >
                 {item.access_type === 'paid' ? 'Paid' : 'Free'}
               </span>
+              <LivePackageChip packages={item.packages} />
               {!previous ? (
                 <span
                   className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${permissionClass(item.permission_status)}`}

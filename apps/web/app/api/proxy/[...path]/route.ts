@@ -143,6 +143,9 @@ async function proxyRequest(req: NextRequest, path: string): Promise<NextRespons
   }
 
   if (text && !contentType.includes('application/json') && !looksLikeJson(text)) {
+    if (upstream.status === 429) {
+      return jsonError(429, 'RATE_LIMITED', 'Too many requests. Please wait a few minutes and try again.');
+    }
     const isHtml = text.trimStart().startsWith('<');
     return jsonError(
       502,

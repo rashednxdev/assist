@@ -11,6 +11,9 @@ out/
 *.aab
 apps/mobile/release/
 
+# Uploaded files
+apps/api/storage/
+
 # Env
 .env.local
 .env.*.local

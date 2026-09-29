@@ -5,7 +5,9 @@ import {
   requireModuleAccess,
   assertPaidIfNeeded,
   findAllStoppedModule,
+  noGrantError,
 } from '../../middleware/requireModuleAccess.js';
+import { hasPackageAccess } from '../billing/entitlements.service.js';
 import { requireModulePermission } from '../../middleware/requireModulePermission.js';
 import { asyncHandler } from '../../shared/asyncHandler.js';
 import { forbidden, unauthorized } from '../../shared/errors/AppError.js';
@@ -126,6 +128,10 @@ const canReadQuestionDetail: RequestHandler = async (
     for (const moduleCode of ['QUESTIONS', 'QUESTION_EDIT'] as const) {
       const stopped = await findAllStoppedModule([moduleCode]);
       if (stopped) continue;
+      if (moduleCode === 'QUESTIONS' && (await hasPackageAccess(req.user.id, [moduleCode]))) {
+        next();
+        return;
+      }
       if (await hasModulePermission(req.user.id, moduleCode, 'can_read')) {
         await assertPaidIfNeeded(req.user.id, [moduleCode]);
         next();
@@ -139,7 +145,7 @@ const canReadQuestionDetail: RequestHandler = async (
     }
 
     await assertPaidIfNeeded(req.user.id, ['QUESTIONS']);
-    next(forbidden('You do not have access to this module. Ask an admin to grant access.'));
+    next(await noGrantError(['QUESTIONS']));
   } catch (err) {
     next(err);
   }

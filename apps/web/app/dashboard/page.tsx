@@ -3,12 +3,14 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api-client';
-import { fetchMe, getAccessToken, clearAccessToken, logoutRequest, type MeUser } from '@/lib/auth';
+import { fetchMe, getAccessToken, clearAccessToken, type MeUser } from '@/lib/auth';
 import { isPlatformAdmin } from '@/lib/capabilities';
+import type { ProgressDashboardData } from '@/lib/progress';
 import { AppShell } from '@/components/layout/app-shell';
 import { UserDashboard } from '@/components/dashboard/user-dashboard';
 import { AdminDashboard } from '@/components/dashboard/admin-dashboard';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
 
 interface Summary {
   profile_complete_percent: number;
@@ -23,66 +25,38 @@ interface Summary {
   };
 }
 
-export interface ProgressDashboardData {
-  mcq: {
-    submitted: number;
-    correct: number;
-    incorrect: number;
-    accuracy_percent: number;
-  };
-  papers: {
-    attempted: number;
-    rated_questions: number;
-    total_questions: number;
-    average_progress_percent: number;
-  };
-  exam_attempts: {
-    total_attempts: number;
-    papers_attempted: number;
-    papers_passed: number;
-    items: Array<{
-      paper_id: string;
-      paper_name: string;
-      attempts_count: number;
-      best_scored_marks: number;
-      best_total_marks: number;
-      best_percent: number;
-      is_pass: boolean;
-      last_submitted_at: string;
-    }>;
-  };
-}
-
 export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<MeUser | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [progress, setProgress] = useState<ProgressDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [learnerView, setLearnerView] = useState(false);
 
   useEffect(() => {
     if (!getAccessToken()) {
       router.replace('/login');
       return;
     }
-    Promise.all([
-      fetchMe(),
-      apiFetch<{ data: Summary }>('/account/summary').catch(() => null),
-      apiFetch<{ data: ProgressDashboardData }>('/evaluation/dashboard').catch(() => null),
-    ])
-      .then(([meRes, sumRes, progressRes]) => {
-        const me = meRes.data;
-        if (!isPlatformAdmin(me)) {
-          void logoutRequest()
-            .catch(() => clearAccessToken())
-            .finally(() => router.replace('/unavailable'));
+    fetchMe()
+      .then(async (meRes) => {
+        const me = { ...meRes.data, module_access: meRes.data.module_access ?? [] };
+        if (me.status === 'pending_verify') {
+          router.replace('/register/verify');
           return;
         }
         setUser(me);
+        const [sumRes, progressRes] = await Promise.all([
+          apiFetch<{ data: Summary }>('/account/summary').catch(() => null),
+          apiFetch<{ data: ProgressDashboardData }>('/evaluation/dashboard').catch(() => null),
+        ]);
         if (sumRes) setSummary(sumRes.data);
         if (progressRes) setProgress(progressRes.data);
       })
-      .catch(() => router.replace('/login'))
+      .catch(() => {
+        clearAccessToken();
+        router.replace('/login');
+      })
       .finally(() => setLoading(false));
   }, [router]);
 
@@ -104,12 +78,24 @@ export default function DashboardPage() {
 
   if (!user) return null;
 
+  const admin = isPlatformAdmin(user);
+
   return (
     <AppShell>
-      {isPlatformAdmin(user) ? (
-        <AdminDashboard user={user} />
+      {admin && !learnerView ? (
+        <AdminDashboard user={user} onLearnerView={() => setLearnerView(true)} />
       ) : (
-        <UserDashboard user={user} summary={summary} progress={progress} />
+        <div className="space-y-4">
+          {admin && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
+              <span>You are viewing the learner home. Admins can open every module.</span>
+              <Button size="sm" variant="outline" onClick={() => setLearnerView(false)}>
+                Back to admin panel
+              </Button>
+            </div>
+          )}
+          <UserDashboard user={user} summary={summary} progress={progress} />
+        </div>
       )}
     </AppShell>
   );

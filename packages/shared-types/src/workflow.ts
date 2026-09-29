@@ -45,6 +45,8 @@ export const createTaskSchema = z.object({
   description_bn: z.string().optional(),
   estimated_time: z.number().int().positive().optional(),
   tags: z.array(z.string()).optional(),
+  /** iBAS++ Workspace areas whose Procedures tab lists this task. */
+  ibas_areas: z.array(z.string().regex(/^IBAS_[A-Z0-9_]{2,30}$/)).max(20).optional(),
 });
 
 export const updateTaskSchema = createTaskSchema.partial().extend({

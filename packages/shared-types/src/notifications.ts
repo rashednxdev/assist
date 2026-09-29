@@ -68,6 +68,10 @@ export interface NotificationRecipientRecord {
   notification_id: string;
   title: string;
   message: string;
+  /** 'schedule' for automatic schedule reminders; missing for admin broadcasts. */
+  source?: 'admin' | 'schedule' | 'billing' | 'community';
+  /** In-app path to open, e.g. /schedule?event=… */
+  link?: string;
   is_read: boolean;
   read_at?: string;
   created_at: string;

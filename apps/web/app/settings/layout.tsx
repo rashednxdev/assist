@@ -11,7 +11,7 @@ const tabs = [
   { href: '/settings/profile', label: 'Profile', icon: User },
   { href: '/settings/password', label: 'Password', icon: Lock },
   { href: '/settings/address', label: 'Address', icon: MapPin },
-  { href: '/settings/subscription', label: 'Subscription', icon: CreditCard },
+  { href: '/settings/payments', label: 'Payments & access', icon: CreditCard },
 ];
 
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {
@@ -23,7 +23,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
         <div className="mx-auto max-w-4xl space-y-6">
         <div>
           <h1 className="text-2xl font-bold">Account settings</h1>
-          <p className="text-muted">Manage your profile, security, address, and subscription plan.</p>
+          <p className="text-muted">Manage your profile, security, address, packages and payment history.</p>
         </div>
         <nav className="flex flex-wrap gap-2 border-b border-border pb-3">
           {tabs.map((tab) => {

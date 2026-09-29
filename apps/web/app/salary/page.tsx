@@ -450,27 +450,20 @@ export default function SalaryOn2026Page() {
     setGross(null);
     setCalculating(true);
     try {
-      let phaseResults: Salary2026Result[];
-      const res = await fetch('/api/proxy/v1/salary/calculate-all-phases', {
+      // Always compute on the client so Step 5–7 rules match the shipped web bundle.
+      // Remote API images can lag after deploy; do not use their results for display.
+      const phaseResults = calculateSalary2026AllPhases({ grade, old_pay: oldPay });
+      setResults(phaseResults);
+      setGross(buildGross());
+
+      // Usage tracking only (ignore response body)
+      void fetch('/api/proxy/v1/salary/calculate-all-phases', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ grade, old_pay: oldPay }),
-      });
-      if (res.ok) {
-        const json = (await res.json()) as { data: { results: Salary2026Result[] } };
-        phaseResults = json.data.results;
-      } else {
-        phaseResults = calculateSalary2026AllPhases({ grade, old_pay: oldPay });
-      }
-      setResults(phaseResults);
-      setGross(buildGross());
-    } catch {
-      try {
-        setResults(calculateSalary2026AllPhases({ grade, old_pay: oldPay }));
-        setGross(buildGross());
-      } catch (inner) {
-        setError(inner instanceof Error ? inner.message : 'Could not calculate');
-      }
+      }).catch(() => {});
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not calculate');
     } finally {
       setCalculating(false);
     }

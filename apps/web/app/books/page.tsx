@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { BookOpen, Search, Plus } from 'lucide-react';
+import { BookOpen, FileText, Search, Plus } from 'lucide-react';
+import { CircularBrowser } from '@/components/circulars/circular-browser';
 import { apiFetch } from '@/lib/api-client';
 import { fetchMe } from '@/lib/auth';
 import { PageHeader } from '@/components/shared/page-header';
@@ -40,6 +41,19 @@ export default function BooksPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [subjectCatalog, setSubjectCatalog] = useState<SubjectCatalogItem[]>([]);
   const [filterSubjectId, setFilterSubjectId] = useState('');
+  const [tab, setTab] = useState<'books' | 'circulars'>('books');
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('tab') === 'circulars') setTab('circulars');
+  }, []);
+
+  function switchTab(next: 'books' | 'circulars') {
+    setTab(next);
+    const url = new URL(window.location.href);
+    if (next === 'circulars') url.searchParams.set('tab', 'circulars');
+    else url.searchParams.delete('tab');
+    window.history.replaceState(null, '', url.toString());
+  }
 
   const load = useCallback((search?: string, examSubjectId?: string) => {
     setLoading(true);
@@ -75,14 +89,14 @@ export default function BooksPage() {
     <div className="space-y-6">
       <PageHeader
         title="Books & regulations"
-        description="Browse GFR and other government financial rules."
+        description="Browse GFR, government financial rules, circulars and orders."
         action={
           <div className="flex flex-wrap gap-2">
             {isAdmin && (
               <Button asChild size="sm">
-                <Link href="/books/admin">
+                <Link href={tab === 'circulars' ? '/books/admin?mode=circular' : '/books/admin'}>
                   <Plus className="h-4 w-4" />
-                  Add book
+                  {tab === 'circulars' ? 'Add circular / order' : 'Add book'}
                 </Link>
               </Button>
             )}
@@ -96,6 +110,33 @@ export default function BooksPage() {
         }
       />
 
+      <div className="inline-flex rounded-lg border border-border bg-background p-1" role="tablist">
+        {(
+          [
+            { key: 'books', label: 'Books', icon: BookOpen },
+            { key: 'circulars', label: 'Circulars & orders', icon: FileText },
+          ] as const
+        ).map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={tab === key}
+            onClick={() => switchTab(key)}
+            className={`inline-flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
+              tab === key ? 'bg-primary text-primary-foreground' : 'text-muted hover:text-foreground'
+            }`}
+          >
+            <Icon className="h-4 w-4" /> {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'circulars' ? (
+        <Suspense fallback={<Skeleton className="h-40 w-full" />}>
+          <CircularBrowser />
+        </Suspense>
+      ) : (
       <Card className={`${bookTheme.panel} border-amber-900/15 bg-[#fffef8]`}>
         <CardHeader className={`border-b pb-4 ${bookTheme.divider}`}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -199,6 +240,7 @@ export default function BooksPage() {
           )}
         </CardContent>
       </Card>
+      )}
     </div>
   );
 }

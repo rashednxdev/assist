@@ -31,6 +31,15 @@ import { termsRouter } from './domains/terms/terms.routes.js';
 import { appSettingsRouter } from './domains/app-settings/app-settings.routes.js';
 import { liveStreamRouter } from './domains/live-stream/live-stream.routes.js';
 import { salaryRouter } from './domains/salary/salary.routes.js';
+import { adminOverviewRouter } from './domains/admin-overview/admin-overview.routes.js';
+import { circularsRouter } from './domains/policy/circulars.routes.js';
+import { policyRouter } from './domains/policy/policy.routes.js';
+import { ibasRouter } from './domains/policy/ibas.routes.js';
+import { searchRouter } from './domains/policy/search.routes.js';
+import { toolkitRouter } from './domains/toolkit/toolkit.routes.js';
+import { scheduleRouter } from './domains/schedule/schedule.routes.js';
+import { billingRouter } from './domains/billing/billing.routes.js';
+import { communityRouter } from './domains/community/community.routes.js';
 
 export function createApp(): Application {
   const app = express();
@@ -51,13 +60,22 @@ export function createApp(): Application {
   app.use(cookieParser());
   app.use(pinoHttp({ logger }));
 
+  // Only credential endpoints — /auth/me runs on every page load and must not share this budget.
   app.use(
-    '/api/v1/auth',
+    ['/api/v1/auth/login', '/api/v1/auth/register', '/api/v1/auth/password'],
     rateLimit({
       windowMs: 15 * 60 * 1000,
       max: 100,
       standardHeaders: true,
       legacyHeaders: false,
+      handler: (_req, res, _next, options) => {
+        res.status(options.statusCode).json({
+          error: {
+            code: 'RATE_LIMITED',
+            message: 'Too many sign-in attempts. Please wait a few minutes and try again.',
+          },
+        });
+      },
     }),
   );
 
@@ -87,6 +105,15 @@ export function createApp(): Application {
   app.use('/api/v1/app-settings', appSettingsRouter);
   app.use('/api/v1/live-streams', liveStreamRouter);
   app.use('/api/v1/salary', salaryRouter);
+  app.use('/api/v1/admin/overview', adminOverviewRouter);
+  app.use('/api/v1/circulars', circularsRouter);
+  app.use('/api/v1/policy', policyRouter);
+  app.use('/api/v1/ibas', ibasRouter);
+  app.use('/api/v1/search', searchRouter);
+  app.use('/api/v1/toolkit', toolkitRouter);
+  app.use('/api/v1/schedule', scheduleRouter);
+  app.use('/api/v1/billing', billingRouter);
+  app.use('/api/v1/community', communityRouter);
 
   app.use(errorHandler);
   return app;

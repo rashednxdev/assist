@@ -2,7 +2,8 @@ import type { Response, NextFunction, RequestHandler } from 'express';
 import type { AuthRequest } from './auth.js';
 import { forbidden, unauthorized } from '../shared/errors/AppError.js';
 import { hasModulePermission } from '../domains/users/module-access.service.js';
-import { assertPaidIfNeeded, findAllStoppedModule } from './requireModuleAccess.js';
+import { assertPaidIfNeeded, findAllStoppedModule, noGrantError } from './requireModuleAccess.js';
+import { hasPackageAccess } from '../domains/billing/entitlements.service.js';
 
 type ModulePermission = 'can_read' | 'can_create' | 'can_update' | 'can_delete' | 'can_grade' | 'can_publish';
 
@@ -34,6 +35,15 @@ export function requireModulePermission(
     }
 
     try {
+      const readable: string[] = [];
+      for (const { moduleCode, permission } of checks) {
+        if (permission === 'can_read' && !(await findAllStoppedModule([moduleCode]))) readable.push(moduleCode);
+      }
+      if (readable.length > 0 && (await hasPackageAccess(req.user.id, readable))) {
+        next();
+        return;
+      }
+
       await assertPaidIfNeeded(
         req.user.id,
         checks.map((c) => c.moduleCode),
@@ -46,6 +56,10 @@ export function requireModulePermission(
           next();
           return;
         }
+      }
+      if (readable.length > 0) {
+        next(await noGrantError(readable));
+        return;
       }
       next(forbidden('You do not have access to this action. Ask an admin to grant access.'));
     } catch (err) {

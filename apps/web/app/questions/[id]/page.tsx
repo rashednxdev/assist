@@ -116,7 +116,9 @@ export default function QuestionDetailPage() {
   useEffect(() => {
     Promise.all([
       reload().catch(() => setQuestion(null)),
-      apiFetch<{ data: QuestionType[] }>('/questions/types').then((r) => setTypes(r.data)),
+      apiFetch<{ data: QuestionType[] }>('/questions/types')
+        .then((r) => setTypes(r.data))
+        .catch(() => undefined),
     ]).finally(() => setLoading(false));
     fetchMe()
       .then((res) => {

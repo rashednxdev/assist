@@ -16,6 +16,8 @@ export interface ITask extends Document {
   is_published: boolean;
   version: number;
   tags: string[];
+  /** iBAS++ Workspace area codes this task is listed under (in addition to its own module's area). */
+  ibas_areas: string[];
   created_by: Types.ObjectId;
   updated_by?: Types.ObjectId;
   run_count: number;
@@ -41,6 +43,7 @@ const schema = new Schema<ITask>(
     is_published: { type: Boolean, default: false },
     version: { type: Number, default: 1 },
     tags: { type: [String], default: [] },
+    ibas_areas: { type: [String], default: [] },
     created_by: { type: Schema.Types.ObjectId, required: true },
     updated_by: { type: Schema.Types.ObjectId },
     run_count: { type: Number, default: 0 },
@@ -50,5 +53,6 @@ const schema = new Schema<ITask>(
 );
 
 schema.index({ module_id: 1, is_active: 1, is_published: 1 });
+schema.index({ ibas_areas: 1 });
 
 export const Task = mongoose.model<ITask>('Task', schema, 'tasks');

@@ -1,6 +1,5 @@
-import { SiteInactiveNotice } from '@/components/shared/site-inactive-notice';
+import { redirect } from 'next/navigation';
 
-/** Public root — inactive notice (admins sign in at /login). */
 export default function HomePage() {
-  return <SiteInactiveNotice />;
+  redirect('/dashboard');
 }

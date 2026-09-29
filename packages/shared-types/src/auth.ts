@@ -40,6 +40,9 @@ export const moduleAccessGrantSchema = z.object({
   can_publish: z.boolean(),
   /** Keep access while the module is centrally stopped. */
   bypass_stop: z.boolean().optional(),
+  /** 'package' = opened by a purchased package (read only, until `expires_at`). */
+  source: z.enum(['grant', 'package']).optional(),
+  expires_at: z.string().optional(),
 });
 
 export type ModuleAccessGrant = z.infer<typeof moduleAccessGrantSchema>;

@@ -64,6 +64,8 @@ export interface ILiveStream extends Document {
   presentations: ILiveStreamPresentation[];
   /** `free` = all invitees; `paid` = only paid users may join/watch. */
   access_type: LiveClassAccessType;
+  /** Live class packages that include this class; an active entitlement for any opens it. */
+  package_ids: Types.ObjectId[];
   created_at: Date;
   updated_at: Date;
 }
@@ -125,6 +127,7 @@ const schema = new Schema<ILiveStream>(
     slides: { type: [slideSchema], default: [] },
     presentations: { type: [presentationSchema], default: [] },
     access_type: { type: String, enum: ['free', 'paid'], default: 'free' },
+    package_ids: { type: [Schema.Types.ObjectId], default: [], ref: 'AccessPackage' },
   },
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } },
 );
@@ -132,5 +135,6 @@ const schema = new Schema<ILiveStream>(
 schema.index({ scheduled_at: -1, is_active: 1 });
 schema.index({ status: 1, is_active: 1 });
 schema.index({ video_platform: 1, is_active: 1 });
+schema.index({ package_ids: 1 });
 
 export const LiveStream = mongoose.model<ILiveStream>('LiveStream', schema, 'live_streams');

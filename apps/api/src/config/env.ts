@@ -14,6 +14,11 @@ const envSchema = z.object({
   OCR_MIN_TEXT_CHARS: z.coerce.number().min(0).default(40),
   /** Directory for public content cache JSON files (no user/auth data). */
   CONTENT_CACHE_DIR: z.string().optional(),
+  /** Directory for uploaded files (schedule PDFs). Use a persistent disk in production. Defaults to ./storage. */
+  UPLOAD_DIR: z.string().optional(),
+  SCHEDULE_MAX_FILE_MB: z.coerce.number().min(1).max(50).default(20),
+  /** Set to "false" to disable the schedule reminder runner on this instance. */
+  SCHEDULE_RUNNER: z.enum(['true', 'false']).default('true'),
   /**
    * Gmail SMTP for outgoing email (password-reset OTP, etc.). Unset in dev logs the code instead
    * of sending. The "from" address is always SMTP_USER itself — Gmail rejects/rewrites mismatched

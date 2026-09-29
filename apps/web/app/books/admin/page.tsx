@@ -3,8 +3,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Plus, BookOpen, Layers, Send, Upload } from 'lucide-react';
+import { Plus, BookOpen, FileText, Layers, Send, Upload } from 'lucide-react';
 import { RowActions } from '@/components/shared/row-actions';
+import { CircularUploadPanel } from '@/components/circulars/circular-upload-panel';
 import { confirmDelete } from '@/lib/confirm-action';
 import { BOOK_LANGUAGES } from '@ibas/shared-constants';
 import { apiFetch } from '@/lib/api-client';
@@ -66,6 +67,19 @@ export default function BooksAdminPage() {
   const [error, setError] = useState('');
   const [typeError, setTypeError] = useState('');
   const [publishBusyId, setPublishBusyId] = useState<string | null>(null);
+  const [mode, setMode] = useState<'book' | 'circular'>('book');
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('mode') === 'circular') setMode('circular');
+  }, []);
+
+  function switchMode(next: 'book' | 'circular') {
+    setMode(next);
+    const url = new URL(window.location.href);
+    if (next === 'circular') url.searchParams.set('mode', 'circular');
+    else url.searchParams.delete('mode');
+    window.history.replaceState(null, '', url.toString());
+  }
 
   const [typeForm, setTypeForm] = useState({
     name: '',
@@ -301,14 +315,44 @@ export default function BooksAdminPage() {
     <div className="space-y-6">
       <PageHeader
         title="Book admin"
-        description="Define book types, then add publications to the library."
+        description={
+          mode === 'book'
+            ? 'Define book types, then add publications to the library.'
+            : 'Upload circulars and government orders with their order details, tags, checklist and notes.'
+        }
         action={
           <Button asChild variant="outline" size="sm">
-            <Link href="/books">Back to library</Link>
+            <Link href={mode === 'book' ? '/books' : '/books?tab=circulars'}>Back to library</Link>
           </Button>
         }
       />
 
+      <div className="inline-flex rounded-lg border border-border bg-background p-1" role="tablist" aria-label="What are you adding?">
+        {(
+          [
+            { key: 'book', label: 'Book', icon: BookOpen },
+            { key: 'circular', label: 'Circular / Order', icon: FileText },
+          ] as const
+        ).map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={mode === key}
+            onClick={() => switchMode(key)}
+            className={`inline-flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
+              mode === key ? 'bg-primary text-primary-foreground' : 'text-muted hover:text-foreground'
+            }`}
+          >
+            <Icon className="h-4 w-4" /> {label}
+          </button>
+        ))}
+      </div>
+
+      {mode === 'circular' ? (
+        <CircularUploadPanel />
+      ) : (
+      <>
       {typeMessage && <Alert variant="success">{typeMessage}</Alert>}
       {typeError && <Alert variant="error">{typeError}</Alert>}
       {message && <Alert variant="success">{message}</Alert>}
@@ -636,6 +680,8 @@ export default function BooksAdminPage() {
           </CardContent>
         </Card>
       </div>
+      </>
+      )}
     </div>
   );
 }

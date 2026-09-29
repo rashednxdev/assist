@@ -426,11 +426,25 @@ export interface LiveStreamListItem {
   /** True when this user is unpaid and the class requires payment. */
   payment_blocked?: boolean;
   payment_required_message?: string;
+  /** Live packages this class belongs to; buying any of them opens the class. */
+  packages?: LiveClassPackageBrief[];
   /** True for session host and platform admins — may request Agora host token. */
   can_host: boolean;
   created_at: string;
   updated_at: string;
 }
+
+export interface LiveClassPackageBrief {
+  id: string;
+  name: string;
+  price: number;
+  duration_days: number;
+  /** The signed-in user has an active entitlement for this package. */
+  owned?: boolean;
+}
+
+export const LIVE_PACKAGE_REQUIRED_MESSAGE =
+  'This class is part of a live class package. Buy the package to join this and every other class in it.';
 
 export interface LiveStreamJoinPayloadBase {
   video_platform: LiveVideoPlatform;

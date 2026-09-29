@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import type {
   CreateLiveStreamDto,
   LiveClassAccessType,
+  LiveClassPackageBrief,
   LivePermissionStatus,
   LiveStreamGuestItem,
   LiveStreamGuestMessageItem,
@@ -11,7 +12,9 @@ import type {
   LiveVideoPlatform,
   UpdateLiveStreamDto,
 } from '@ibas/shared-types';
-import { cleanLiveStreamSlides, PAID_LIVE_CLASS_UNPAID_MESSAGE, cleanLiveStreamRecordedContents, normalizeLiveStreamPresentations, flattenLiveStreamSlides } from '@ibas/shared-types';
+import { cleanLiveStreamSlides, PAID_LIVE_CLASS_UNPAID_MESSAGE, LIVE_PACKAGE_REQUIRED_MESSAGE, cleanLiveStreamRecordedContents, normalizeLiveStreamPresentations, flattenLiveStreamSlides } from '@ibas/shared-types';
+import { loadEntitlementSnapshot } from '../billing/entitlements.service.js';
+import { livePackageBriefs } from '../billing/billing.service.js';
 import { LiveStream } from './models/LiveStream.model.js';
 import { LiveStreamInvite } from './models/LiveStreamInvite.model.js';
 import { LiveStreamGuest } from './models/LiveStreamGuest.model.js';
@@ -80,24 +83,61 @@ function isPaidClass(doc: { access_type?: string }) {
   return doc.access_type === 'paid';
 }
 
+/** Legacy: marked paid by an admin. */
 async function userHasPaid(user: { id: string; is_super_admin?: boolean; user_type?: string }) {
   if (isPlatformAdmin(user)) return true;
   const u = await User.findById(user.id).select('amount_received');
   return Number(u?.amount_received ?? 0) > 0;
 }
 
+/** Live packages the user currently owns. */
+async function ownedLivePackages(user: { id: string; is_super_admin?: boolean; user_type?: string }): Promise<Set<string>> {
+  if (isPlatformAdmin(user)) return new Set();
+  const snap = await loadEntitlementSnapshot(user.id);
+  return new Set(snap.live.keys());
+}
+
+function classPackageIds(doc: { package_ids?: unknown[] }): string[] {
+  return (doc.package_ids ?? []).map(String);
+}
+
+function ownsClassPackage(doc: { package_ids?: unknown[] }, owned: Set<string>): boolean {
+  return classPackageIds(doc).some((id) => owned.has(id));
+}
+
 function paymentAccessFor(
-  doc: { access_type?: string; host_user_id: unknown },
+  doc: { access_type?: string; host_user_id: unknown; package_ids?: unknown[] },
   user: { id: string; is_super_admin?: boolean; user_type?: string },
   hasPaid: boolean,
+  owned: Set<string> = new Set(),
+  permissionStatus?: LivePermissionStatus,
 ) {
-  if (!isPaidClass(doc)) return { payment_blocked: false as const };
   if (isPlatformAdmin(user)) return { payment_blocked: false as const };
   if (user.id === String(doc.host_user_id)) return { payment_blocked: false as const };
+  if (classPackageIds(doc).length > 0) {
+    if (ownsClassPackage(doc, owned)) return { payment_blocked: false as const };
+    if (isPaidClass(doc) ? hasPaid : permissionStatus === 'permitted') return { payment_blocked: false as const };
+    return { payment_blocked: true as const, payment_required_message: LIVE_PACKAGE_REQUIRED_MESSAGE };
+  }
+  if (!isPaidClass(doc)) return { payment_blocked: false as const };
   if (hasPaid) return { payment_blocked: false as const };
   return {
     payment_blocked: true as const,
     payment_required_message: PAID_LIVE_CLASS_UNPAID_MESSAGE,
+  };
+}
+
+async function packageBriefsFor(
+  docs: Array<{ package_ids?: unknown[] }>,
+  owned: Set<string>,
+): Promise<(doc: { package_ids?: unknown[] }) => LiveClassPackageBrief[] | undefined> {
+  const briefs = await livePackageBriefs(docs.flatMap(classPackageIds));
+  return (doc) => {
+    const list = classPackageIds(doc).flatMap((id) => {
+      const b = briefs.get(id);
+      return b ? [{ ...b, owned: owned.has(id) }] : [];
+    });
+    return list.length ? list : undefined;
   };
 }
 
@@ -289,10 +329,12 @@ async function permissionFor(
     host_user_id: unknown;
     status?: string;
     scheduled_at?: Date | string;
+    package_ids?: unknown[];
   },
   userId: string,
   user: { is_super_admin?: boolean; user_type?: string },
   hasPaid: boolean,
+  owned: Set<string> = new Set(),
 ): Promise<{ permission_status: LivePermissionStatus; can_join: boolean; can_host: boolean }> {
   const sessionId = String(doc._id);
   const hostUserId = String(doc.host_user_id);
@@ -302,6 +344,10 @@ async function permissionFor(
   }
   if (isPlatformAdmin(user)) {
     return { permission_status: 'permitted', can_join: true, can_host: true };
+  }
+  // Buyers of any package this class belongs to may join and watch it.
+  if (ownsClassPackage(doc, owned)) {
+    return { permission_status: 'permitted', can_join: true, can_host: false };
   }
   // Paid users may join any paid live class without a per-class invite.
   if (isPaidClass(doc) && hasPaid) {
@@ -381,14 +427,17 @@ export async function listLiveStreamsForUser(
   );
 
   const hasPaid = await userHasPaid(user);
+  const owned = await ownedLivePackages(user);
+  const packagesOf = await packageBriefsFor(items, owned);
   const result: LiveStreamListItem[] = [];
   for (const doc of items) {
-    const perm = await permissionFor(doc, user.id, user, hasPaid);
+    const perm = await permissionFor(doc, user.id, user, hasPaid, owned);
     const previous = isPreviousClass(doc);
     const presentations = serializePresentations(doc);
     const slides = flattenLiveStreamSlides({ presentations });
     const recorded = serializeRecordedContents(doc.recorded_contents);
-    const payment = paymentAccessFor(doc, user, hasPaid);
+    const payment = paymentAccessFor(doc, user, hasPaid, owned, perm.permission_status);
+    const packages = packagesOf(doc);
     const viewPresentation =
       !payment.payment_blocked &&
       canViewPresentation(doc, user, perm.permission_status, hasPaid);
@@ -416,6 +465,7 @@ export async function listLiveStreamsForUser(
       ...(payment.payment_blocked
         ? { payment_required_message: payment.payment_required_message }
         : {}),
+      ...(packages ? { packages } : {}),
       can_view_presentation: viewPresentation,
       created_at: doc.created_at.toISOString(),
       updated_at: doc.updated_at.toISOString(),
@@ -432,12 +482,14 @@ export async function getLiveStreamForUser(
   if (!doc) throw notFound('Live session not found');
   const host_name = await resolveHostName(doc.host_user_id);
   const hasPaid = await userHasPaid(user);
-  const perm = await permissionFor(doc, user.id, user, hasPaid);
+  const owned = await ownedLivePackages(user);
+  const perm = await permissionFor(doc, user.id, user, hasPaid, owned);
   const inviteCount = await LiveStreamInvite.countDocuments({ live_stream_id: doc._id });
   const presentations = serializePresentations(doc);
   const slides = flattenLiveStreamSlides({ presentations });
   const recorded = serializeRecordedContents(doc.recorded_contents);
-  const payment = paymentAccessFor(doc, user, hasPaid);
+  const payment = paymentAccessFor(doc, user, hasPaid, owned, perm.permission_status);
+  const packages = (await packageBriefsFor([doc], owned))(doc);
   const viewPresentation =
     !payment.payment_blocked &&
     canViewPresentation(doc, user, perm.permission_status, hasPaid);
@@ -459,6 +511,7 @@ export async function getLiveStreamForUser(
     ...(payment.payment_blocked
       ? { payment_required_message: payment.payment_required_message }
       : {}),
+    ...(packages ? { packages } : {}),
   };
 }
 
@@ -795,14 +848,14 @@ export async function joinLiveStream(
   if (doc.status === 'ended') throw badRequest('This session has ended. Ask an admin to restart it.');
 
   const hasPaid = await userHasPaid(user);
-  const perm = await permissionFor(doc, user.id, user, hasPaid);
-  if (!perm.can_join) {
-    throw forbidden('You are not permitted to join this live session. Ask an admin for access.');
-  }
-
-  const payment = paymentAccessFor(doc, user, hasPaid);
+  const owned = await ownedLivePackages(user);
+  const perm = await permissionFor(doc, user.id, user, hasPaid, owned);
+  const payment = paymentAccessFor(doc, user, hasPaid, owned, perm.permission_status);
   if (payment.payment_blocked) {
     throw forbidden(payment.payment_required_message ?? PAID_LIVE_CLASS_UNPAID_MESSAGE);
+  }
+  if (!perm.can_join) {
+    throw forbidden('You are not permitted to join this live session. Ask an admin for access.');
   }
 
   const wantsHost = Boolean(opts?.as_host);
@@ -960,11 +1013,12 @@ export async function sendGuestMessage(
   }
 
   const hasPaid = await userHasPaid(user);
-  const perm = await permissionFor(doc, user.id, user, hasPaid);
+  const owned = await ownedLivePackages(user);
+  const perm = await permissionFor(doc, user.id, user, hasPaid, owned);
   if (!perm.can_join) {
     throw forbidden('You are not permitted to message in this live session.');
   }
-  const payment = paymentAccessFor(doc, user, hasPaid);
+  const payment = paymentAccessFor(doc, user, hasPaid, owned, perm.permission_status);
   if (payment.payment_blocked) {
     throw forbidden(payment.payment_required_message ?? PAID_LIVE_CLASS_UNPAID_MESSAGE);
   }

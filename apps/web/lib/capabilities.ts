@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import { Route } from 'lucide-react';
-import type { ModuleAccessGrant } from '@ibas/shared-types';
+import { moduleAccessGroup } from '@ibas/shared-constants';
+import type { ModuleAccessGrant, ModuleStop } from '@ibas/shared-types';
 import type { MeUser } from '@/lib/auth';
 import type { NavGroup, NavItem } from '@/components/layout/nav-config';
 
@@ -37,6 +38,58 @@ function grantFor(
   return grants.find((g) => g.module_code === moduleCode);
 }
 
+/** Learning modules open to every signed-in user (same as mobile). */
+export const FREE_LEARNING_MODULE_CODES = ['QOTD', 'EXAM_ROUTINE', 'LIVE_STREAM'] as const;
+
+export function isFreeLearningModule(code: string): boolean {
+  return (FREE_LEARNING_MODULE_CODES as readonly string[]).includes(code);
+}
+
+export function findModuleStop(stops: ModuleStop[], code: string): ModuleStop | undefined {
+  return stops.find((s) => s.module_code === code);
+}
+
+/** Centrally stopped for everyone unless this user's grant has bypass_stop. */
+export function isModuleEffectivelyStopped(
+  stops: ModuleStop[],
+  grants: ModuleAccessGrant[],
+  code: string,
+): boolean {
+  if (!findModuleStop(stops, code)) return false;
+  return !grants.some((g) => g.module_code === code && g.can_read && g.bypass_stop);
+}
+
+export type LearningAccess =
+  | { state: 'open' }
+  | { state: 'stopped'; reason?: string }
+  | { state: 'unpaid' }
+  | { state: 'denied' };
+
+/** Package tab that sells a module, or null when no package opens it. */
+export function packageTabFor(code: string): 'exam_prep' | 'basic' | null {
+  return moduleAccessGroup(code);
+}
+
+/**
+ * Same order as the API: stopped → free → bought package → legacy (admin-marked paid + grant).
+ * "unpaid" means the user should buy a package. Admins always open.
+ */
+export function learningModuleAccess(user: MeUser, code: string): LearningAccess {
+  if (isPlatformAdmin(user)) return { state: 'open' };
+  const grants = user.module_access ?? [];
+  const stops = user.module_stops ?? [];
+  if (isModuleEffectivelyStopped(stops, grants, code)) {
+    return { state: 'stopped', reason: findModuleStop(stops, code)?.stopped_reason };
+  }
+  if (isFreeLearningModule(code)) return { state: 'open' };
+  const mine = grants.filter((g) => g.module_code === code && g.can_read);
+  if (mine.some((g) => g.source === 'package')) return { state: 'open' };
+  const legacyPaid = user.legacy_paid ?? user.has_paid !== false;
+  if (legacyPaid && mine.length > 0) return { state: 'open' };
+  if (!legacyPaid || packageTabFor(code)) return { state: 'unpaid' };
+  return { state: 'denied' };
+}
+
 export function hasModuleRead(grants: ModuleAccessGrant[], moduleCode: string): boolean {
   if (moduleCode === 'QOTD' || moduleCode === 'EXAM_ROUTINE' || moduleCode === 'LIVE_STREAM') return true;
   return grantFor(grants, moduleCode)?.can_read === true;
@@ -63,6 +116,10 @@ export function canSeeNavItem(
   if (item.requireWorkflowRole && !hasActiveWorkflowRole(user)) return false;
 
   if (item.requirePlatformAdmin && !isPlatformAdmin(user)) return false;
+
+  if (item.anyModuleCodes) {
+    return isPlatformAdmin(user) || item.anyModuleCodes.some((code) => hasModuleRead(grants, code));
+  }
 
   if (!item.moduleCode) return true;
 

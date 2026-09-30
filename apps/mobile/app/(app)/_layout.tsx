@@ -76,6 +76,9 @@ export default function AppLayout() {
       <Stack.Screen name="circulars" />
       <Stack.Screen name="policy" />
       <Stack.Screen name="ibas" />
+      <Stack.Screen name="toolkit" />
+      <Stack.Screen name="salary" />
+      <Stack.Screen name="pricing" />
     </Stack>
   );
 }

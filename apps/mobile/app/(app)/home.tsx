@@ -195,12 +195,12 @@ const SERVICES: Array<{
     href: '/(app)/contacts' as Href,
   },
   {
-    id: 'blood-bank',
-    title: 'Blood bank',
-    subtitle: 'Find donors, request blood',
-    icon: 'water-outline',
-    color: '#dc2626',
-    href: '/(app)/blood-bank' as Href,
+    id: 'pricing',
+    title: 'Pricing',
+    subtitle: 'Packages, payments & access',
+    icon: 'pricetags-outline',
+    color: '#e2136e',
+    href: '/(app)/pricing' as Href,
   },
 ];
 
@@ -247,6 +247,22 @@ const OFFICE_TOOLS: Array<{
     icon: 'briefcase-outline',
     color: '#0369a1',
     href: '/(app)/ibas' as Href,
+  },
+  {
+    id: 'toolkit',
+    title: 'Checklists & templates',
+    subtitle: 'Checklists, fill-in templates & guides',
+    icon: 'clipboard-outline',
+    color: '#0f766e',
+    href: '/(app)/toolkit' as Href,
+  },
+  {
+    id: 'salary',
+    title: 'Salary On 2026',
+    subtitle: 'Basic on proposed pay scale 2026',
+    icon: 'cash-outline',
+    color: '#047857',
+    href: '/(app)/salary' as Href,
   },
 ];
 

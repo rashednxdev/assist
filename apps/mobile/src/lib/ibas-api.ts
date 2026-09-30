@@ -2,7 +2,7 @@ import { Linking } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import type { Href } from 'expo-router';
 import { TOOLKIT_CATEGORIES } from '@ibas/shared-constants';
-import type { CircularRecord, IbasAreaDetail, IbasAreaSummary, ToolkitItemDetail, ToolkitResolvedRef } from '@ibas/shared-types';
+import type { CircularRecord, IbasAreaDetail, IbasAreaSummary, ToolkitItemDetail, ToolkitItemSummary, ToolkitResolvedRef } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api';
 import { webUrl } from '@/lib/web-href';
 import type { TopicDetail } from '@/types/books';
@@ -31,6 +31,20 @@ export async function fetchAreaRule(code: string, topicId: string): Promise<Area
 export async function fetchAreaCircular(code: string, id: string): Promise<CircularRecord> {
   const r = await apiFetch<{ data: CircularRecord }>(`/ibas/areas/${encodeURIComponent(code)}/circulars/${id}`);
   return r.data;
+}
+
+export async function fetchToolkit(filters: { kind?: string; area?: string }): Promise<ToolkitItemSummary[]> {
+  const qs = new URLSearchParams();
+  if (filters.kind) qs.set('kind', filters.kind);
+  if (filters.area) qs.set('area', filters.area);
+  const query = qs.toString();
+  const r = await apiFetch<{ data: ToolkitItemSummary[] }>(`/toolkit${query ? `?${query}` : ''}`);
+  return r.data;
+}
+
+export function toolkitSizeLabel(item: Pick<ToolkitItemSummary, 'kind' | 'size'>): string {
+  const unit = item.kind === 'checklist' ? 'item' : item.kind === 'template' ? 'field' : 'section';
+  return `${item.size} ${unit}${item.size === 1 ? '' : 's'}`;
 }
 
 export async function fetchToolkitItem(id: string): Promise<ToolkitItemDetail> {

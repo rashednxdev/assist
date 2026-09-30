@@ -51,6 +51,10 @@ export default function AppLayout() {
           headerBackTitle: 'Home',
         }}
       />
+      <Stack.Screen name="account" />
+      <Stack.Screen name="contacts" />
+      <Stack.Screen name="blood-bank" />
+      <Stack.Screen name="community" />
       <Stack.Screen name="saved" />
       <Stack.Screen name="history" />
       <Stack.Screen name="notifications" />

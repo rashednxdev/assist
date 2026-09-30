@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { PerformanceCard } from '@/components/home/PerformanceCard';
 import { ModuleTile } from '@/components/home/ModuleTile';
 import { ExamCountdownCard } from '@/components/home/ExamCountdownCard';
+import { BloodHomeCard } from '@/components/blood/BloodHomeCard';
 import { AccessRequiredScreen, type AccessRequiredVariant } from '@/components/home/AccessRequiredScreen';
 import { ModuleWelcomeTips } from '@/components/home/ModuleWelcomeTips';
 import { APP_UPDATE_URL, APP_VERSION_LABEL } from '@/lib/app-version';
@@ -163,6 +164,40 @@ const MODULES: Array<{
     icon: 'create-outline' as const,
     color: '#B45309',
     href: '/(app)/question-update' as Href,
+  },
+];
+
+const SERVICES: Array<{
+  id: string;
+  title: string;
+  subtitle: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+  href: Href;
+}> = [
+  {
+    id: 'community',
+    title: 'Community',
+    subtitle: 'Ask, answer & share',
+    icon: 'chatbubbles-outline',
+    color: '#0f766e',
+    href: '/(app)/community' as Href,
+  },
+  {
+    id: 'contacts',
+    title: 'Contacts',
+    subtitle: 'Offices, colleagues & batchmates',
+    icon: 'book-outline',
+    color: '#0d9488',
+    href: '/(app)/contacts' as Href,
+  },
+  {
+    id: 'blood-bank',
+    title: 'Blood bank',
+    subtitle: 'Find donors, request blood',
+    icon: 'water-outline',
+    color: '#dc2626',
+    href: '/(app)/blood-bank' as Href,
   },
 ];
 
@@ -481,6 +516,22 @@ export default function HomeScreen() {
             onPress={() => router.push('/(app)/history' as Href)}
           />
         </View>
+
+        <Text style={styles.sectionTitle}>Community & services</Text>
+        <View style={styles.grid}>
+          {SERVICES.map((s) => (
+            <ModuleTile
+              key={s.id}
+              title={s.title}
+              subtitle={s.subtitle}
+              icon={s.icon}
+              color={s.color}
+              enabled
+              onPress={() => router.push(s.href)}
+            />
+          ))}
+        </View>
+        <BloodHomeCard />
 
         <Text style={styles.sectionTitle}>Marathon Review</Text>
         <Pressable

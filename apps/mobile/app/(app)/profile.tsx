@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -7,10 +7,57 @@ import {
   RefreshControl,
   Pressable,
 } from 'react-native';
+import { useFocusEffect, useRouter, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { bcsBatchLabel, type ServiceInfo } from '@ibas/shared-types';
 import { useAuth } from '@/lib/auth-context';
 import { fetchAccountSummary, type AccountSummary } from '@/lib/auth-api';
+import { fetchServiceInfo, officeLabel, useWorkIdentity } from '@/lib/org-api';
+import { fetchPersonalProfile, formatDate, GENDER_LABEL, type PersonalProfile } from '@/lib/profile-api';
 import { colors, spacing } from '@/theme';
+
+function LinkCard({
+  icon,
+  title,
+  lines,
+  missing,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  lines: string[];
+  missing?: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable style={({ pressed }) => [styles.linkCard, pressed && styles.linkPressed]} onPress={onPress}>
+      <View style={styles.linkIcon}>
+        <Ionicons name={icon} size={20} color={colors.primary} />
+      </View>
+      <View style={styles.linkBody}>
+        <Text style={styles.linkTitle}>{title}</Text>
+        {missing ? (
+          <Text style={styles.linkMissing}>{missing}</Text>
+        ) : (
+          lines.map((l) => (
+            <Text key={l} style={styles.linkLine} numberOfLines={2}>
+              {l}
+            </Text>
+          ))
+        )}
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+    </Pressable>
+  );
+}
+
+function serviceLines(s: ServiceInfo | null): string[] {
+  if (!s?.complete) return [];
+  if (s.service_type === 'cadre') {
+    return [`BCS cadre · ${bcsBatchLabel(s.bcs_batch ?? 0)}`, `Joined ${formatDate(s.joining_date)}`];
+  }
+  return [`Non-cadre · joined as ${s.joining_designation?.name ?? '—'}`, `Joined ${formatDate(s.joining_date)}`];
+}
 
 function InfoRow({
   icon,
@@ -46,21 +93,41 @@ function StatusPill({ ok, label }: { ok: boolean; label: string }) {
 }
 
 export default function ProfileScreen() {
+  const router = useRouter();
   const { user, refreshUser } = useAuth();
+  const { identity, refresh: refreshIdentity } = useWorkIdentity();
   const [summary, setSummary] = useState<AccountSummary | null>(null);
+  const [personal, setPersonal] = useState<PersonalProfile | null>(null);
+  const [service, setService] = useState<ServiceInfo | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const [sum] = await Promise.all([
+    const [sum, p, s] = await Promise.all([
       fetchAccountSummary().catch(() => null),
+      fetchPersonalProfile().catch(() => null),
+      fetchServiceInfo().catch(() => null),
       refreshUser().catch(() => null),
+      refreshIdentity().catch(() => null),
     ]);
     setSummary(sum);
-  }, [refreshUser]);
+    setPersonal(p);
+    setService(s);
+  }, [refreshUser, refreshIdentity]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
+
+  const personalLines = personal
+    ? [
+        [personal.dob ? `Born ${formatDate(personal.dob)}` : '', personal.gender ? GENDER_LABEL[personal.gender] : '']
+          .filter(Boolean)
+          .join(' · '),
+        personal.blood_group ? `Blood group ${personal.blood_group}` : 'Blood group not set',
+      ].filter(Boolean)
+    : [];
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -97,6 +164,35 @@ export default function ProfileScreen() {
             ) : null}
           </View>
         </View>
+
+        <LinkCard
+          icon="id-card-outline"
+          title="Personal information"
+          lines={personalLines}
+          missing={personal ? undefined : 'Date of birth, blood group, emergency contact…'}
+          onPress={() => router.push('/(app)/account/personal' as Href)}
+        />
+        <LinkCard
+          icon="business-outline"
+          title="Office & designation"
+          lines={identity?.office && identity.designation ? [identity.designation.name, officeLabel(identity.office)] : []}
+          missing={identity?.office && identity.designation ? undefined : 'Required for community and contacts'}
+          onPress={() => router.push('/(app)/account/work' as Href)}
+        />
+        <LinkCard
+          icon="school-outline"
+          title="Service information"
+          lines={serviceLines(service)}
+          missing={service?.complete ? undefined : 'Cadre / non-cadre, batch and joining date'}
+          onPress={() => router.push('/(app)/account/service' as Href)}
+        />
+        <LinkCard
+          icon="water-outline"
+          title="Blood bank & donor settings"
+          lines={personal?.blood_group ? [`Blood group ${personal.blood_group}`] : []}
+          missing={personal?.blood_group ? undefined : 'Add your blood group to find donors and request blood'}
+          onPress={() => router.push('/(app)/blood-bank/settings' as Href)}
+        />
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Account</Text>
@@ -302,5 +398,44 @@ const styles = StyleSheet.create({
   moduleCode: {
     fontSize: 11,
     color: colors.textMuted,
+  },
+  linkCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm + 4,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+  },
+  linkPressed: {
+    opacity: 0.9,
+  },
+  linkIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#e8f2fa',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  linkBody: {
+    flex: 1,
+    gap: 2,
+  },
+  linkTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  linkLine: {
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+  linkMissing: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.warning,
   },
 });

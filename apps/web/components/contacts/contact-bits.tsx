@@ -225,7 +225,7 @@ export function OfficeCard({ o, onFavorite }: { o: ContactOffice; onFavorite?: (
     o.mobile && { label: 'Mobile', phone: o.mobile, icon: Smartphone, mobile: true },
     o.pabx && { label: 'PABX', phone: o.pabx, icon: Phone, mobile: false },
   ].filter(Boolean) as Array<{ label: string; phone: ContactPhone; icon: typeof Phone; mobile: boolean }>;
-  const location = [o.thana_name, o.district_name].filter(Boolean).join(', ');
+  const location = [o.thana_name, o.district_name, o.division_name].filter(Boolean).join(', ');
 
   return (
     <article className={cn('flex flex-col rounded-2xl border bg-surface shadow-sm transition hover:shadow-md', o.is_my_office ? 'border-primary/50 ring-1 ring-primary/20' : 'border-border')}>

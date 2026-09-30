@@ -94,7 +94,6 @@ const MOBILE_MODULE_CODES = [
   'QUESTIONS',
   'EXAM',
   'PAPER',
-  'OCR',
   'PENSION',
   'QUESTION_EDIT',
   'QOTD',

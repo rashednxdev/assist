@@ -127,7 +127,7 @@ function About({ office, setView }: { office: ContactOfficeDetail; setView: (v: 
     office.pabx && { label: 'PABX', phone: office.pabx, mobile: false, icon: 'keypad-outline' as const },
     office.fax && { label: 'Fax', phone: office.fax, mobile: false, icon: 'print-outline' as const },
   ].filter(Boolean) as Array<{ label: string; phone: ContactPhone; mobile: boolean; icon: keyof typeof Ionicons.glyphMap }>;
-  const location = [office.address, office.thana_name, office.district_name].filter(Boolean).join(', ');
+  const location = [office.address, office.thana_name, office.district_name, office.division_name].filter(Boolean).join(', ');
   const subEmployees = office.employee_total - office.employee_count;
 
   return (

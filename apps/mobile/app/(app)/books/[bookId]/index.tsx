@@ -8,9 +8,8 @@ import {
   TextInput,
   Alert,
 } from 'react-native';
-import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
 import { BookBadge } from '@/components/books/BookBadge';
 import { BookContentsFull } from '@/components/books/BookContentsFull';
 import { BookRichText } from '@/components/books/BookRichText';

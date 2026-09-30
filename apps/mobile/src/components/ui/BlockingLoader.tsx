@@ -22,7 +22,7 @@ export function BlockingLoader({ label = 'Loading…' }: { label?: string }) {
 
 const styles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(244, 247, 251, 0.92)',
     alignItems: 'center',
     justifyContent: 'center',

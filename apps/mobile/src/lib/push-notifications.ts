@@ -1,29 +1,42 @@
 import { Platform } from 'react-native';
-import * as Notifications from 'expo-notifications';
-import Constants from 'expo-constants';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { getOrCreateDeviceId } from './device-id';
 import { registerDeviceToken, unregisterDeviceToken } from './notifications-api';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+type NotificationsModule = typeof import('expo-notifications');
+
+/** Expo Go (SDK 53+) throws as soon as expo-notifications is loaded on Android, so it must never be imported there. */
+const pushSupported = Platform.OS === 'android' && Constants.executionEnvironment !== ExecutionEnvironment.StoreClient;
+
+let notifications: Promise<NotificationsModule> | null = null;
+
+function loadNotifications(): Promise<NotificationsModule> {
+  notifications ??= import('expo-notifications').then((Notifications) => {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
+    return Notifications;
+  });
+  return notifications;
+}
 
 /**
  * Requests permission and registers this device's Expo push token with the API.
  * No-ops quietly (rather than throwing) whenever push isn't actually available —
- * no EAS project configured, permission denied, or running somewhere push tokens
+ * Expo Go, no EAS project configured, permission denied, or running somewhere push tokens
  * can't be issued (e.g. certain emulators) — none of those should block app usage.
  */
 export async function registerForPushNotifications(): Promise<void> {
-  if (Platform.OS !== 'android') return;
+  if (!pushSupported) return;
 
   try {
+    const Notifications = await loadNotifications();
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
     if (existingStatus !== 'granted') {

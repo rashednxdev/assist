@@ -14,6 +14,7 @@ export interface IOffice extends Document {
   pabx?: string;
   fax?: string;
   address?: string;
+  division_id: Types.ObjectId | null;
   district_id: Types.ObjectId | null;
   thana_id: Types.ObjectId | null;
   web_address?: string;
@@ -39,6 +40,7 @@ const schema = new Schema<IOffice>(
     pabx: { type: String, trim: true },
     fax: { type: String, trim: true },
     address: { type: String, trim: true },
+    division_id: { type: Schema.Types.ObjectId, ref: 'Division', default: null },
     district_id: { type: Schema.Types.ObjectId, ref: 'District', default: null },
     thana_id: { type: Schema.Types.ObjectId, ref: 'Thana', default: null },
     web_address: { type: String, trim: true },
@@ -52,6 +54,7 @@ const schema = new Schema<IOffice>(
 
 schema.index({ parent_id: 1, serial_no: 1, name: 1 });
 schema.index({ office_type_id: 1 });
+schema.index({ division_id: 1, district_id: 1, thana_id: 1 });
 schema.index({ office_code: 1 }, { unique: true, partialFilterExpression: { office_code: { $type: 'string', $gt: '' } } });
 
 export const Office = mongoose.model<IOffice>('Office', schema, 'offices');

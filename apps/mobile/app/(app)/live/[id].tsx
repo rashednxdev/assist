@@ -593,9 +593,9 @@ const styles = StyleSheet.create({
   reviewContent: { paddingBottom: spacing.xl, gap: spacing.md },
   recordedBlock: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
   liveRoot: { flex: 1, backgroundColor: '#020617' },
-  webviewFill: { ...StyleSheet.absoluteFillObject, backgroundColor: '#020617' },
+  webviewFill: { ...StyleSheet.absoluteFill, backgroundColor: '#020617' },
   connectingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: '#020617',
     alignItems: 'center',
     justifyContent: 'center',

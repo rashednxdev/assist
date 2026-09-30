@@ -7,14 +7,10 @@
     "icon": "./assets/icon.png",
     "scheme": "ibaslearn",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "updates": {
       "enabled": false,
       "checkAutomatically": "NEVER",
       "fallbackToCacheTimeout": 0
-    },
-    "splash": {
-      "backgroundColor": "#000000"
     },
     "ios": {
       "supportsTablet": true,
@@ -30,7 +26,7 @@
         "backgroundColor": "#0B2B52"
       },
       "package": "gov.bd.ibas.learn",
-      "usesCleartextTraffic": true,
+      "versionCode": 30,
       "permissions": [
         "CAMERA",
         "RECORD_AUDIO",
@@ -46,6 +42,27 @@
         "expo-screen-orientation",
         {
           "initialOrientation": "PORTRAIT_UP"
+        }
+      ],
+      "expo-asset",
+      "expo-font",
+      "expo-sharing",
+      "expo-sqlite",
+      "expo-status-bar",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/icon.png",
+          "imageWidth": 160,
+          "backgroundColor": "#000000"
         }
       ]
     ],

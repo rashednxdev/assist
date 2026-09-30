@@ -399,7 +399,7 @@ function ScheduleAdminInner() {
                       <p className={cn('mt-0.5 font-medium', ev.status === 'cancelled' && 'text-muted line-through')}>{ev.title}</p>
                       <p className="flex flex-wrap gap-3 text-xs text-muted">
                         <span className="inline-flex items-center gap-1">
-                          <Users className="h-3 w-3" /> {ev.target_type === 'all' ? 'All users' : `${ev.target_user_ids.length} users`}
+                          <Users className="h-3 w-3" /> {ev.target_label}
                         </span>
                         {ev.attachments.length > 0 && (
                           <span className="inline-flex items-center gap-1">

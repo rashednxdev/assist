@@ -71,7 +71,7 @@ function StageHeader({ result }: { result: Salary2026Result }) {
         {result.phase !== '2027-07-01' ? (
           <>
             <span className="text-white/50">|</span>
-            <span className="text-sm text-white/90">{result.rate_percent}% Step 6</span>
+            <span className="text-sm text-white/90">{result.rate_percent}% Step 5</span>
           </>
         ) : null}
       </div>
@@ -287,7 +287,7 @@ function PhaseResultCard({
 
         {result.increment_skipped && !result.fixed ? (
           <p className="text-xs text-amber-800">
-            Matched stage is the last stage on the 2026 scale — Step 5 = 0 (no next stage).
+            Matched stage is the last stage on the 2026 scale — Step 6 = 0 (no next stage).
           </p>
         ) : null}
       </CardContent>
@@ -594,12 +594,12 @@ export default function SalaryOn2026Page() {
         <Alert className="salary-print-rules border-emerald-200 bg-white text-emerald-950 shadow-sm">
           <ol className="list-decimal space-y-1.5 pl-4 text-sm leading-relaxed">
             <li>
-              <strong>Stage-1 (01-07-2026):</strong> Step 5 = next stage − Step 4; Step 6 = (Step 4 −
-              old pay) × <strong>40%</strong> (grades 1–9) / <strong>50%</strong> (grades 10–20);
-              Step 7 = old pay + Step 5 + Step 6.
+              <strong>Stage-1 (01-07-2026):</strong> Step 5 = (Step 4 − old pay) ×{' '}
+              <strong>40%</strong> (grades 1–9) / <strong>50%</strong> (grades 10–20); Step 6 = next
+              stage − Step 4; Step 7 = old pay + Step 5 + Step 6.
             </li>
             <li>
-              <strong>Stage-2 (01-01-2027):</strong> Same steps; Step 6 rate <strong>70%</strong>{' '}
+              <strong>Stage-2 (01-01-2027):</strong> Same steps; Step 5 rate <strong>70%</strong>{' '}
               (grades 1–9) / <strong>75%</strong> (grades 10–20).
             </li>
             <li>

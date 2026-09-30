@@ -1,7 +1,6 @@
 import { useCallback, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { BookBadge } from '@/components/books/BookBadge';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
 import { fetchExamTree } from '@/lib/exams-api';

@@ -79,7 +79,7 @@ export function AccessRequiredScreen({
           colors={[colors.premiumBg, '#0a2540', colors.primaryDark, '#123f5c']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
         />
         <View style={[styles.orb, styles.orbTop]} />
         <View style={[styles.orb, styles.orbBottom]} />

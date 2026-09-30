@@ -40,7 +40,6 @@ function buildClientResponseHeaders(upstream: Response): Headers {
     'content-disposition',
     'x-conversion-pages',
     'x-conversion-method',
-    'x-ocr-languages',
   ];
   for (const name of passthrough) {
     const value = upstream.headers.get(name);

@@ -20,6 +20,7 @@
     "migrate:live-stream-module": "tsx scripts/migrations/add-live-stream-module.ts",
     "migrate:salary-module": "tsx scripts/migrations/add-salary-module.ts",
     "migrate:status-changed-by": "tsx scripts/migrations/migrate-status-changed-by.ts",
+    "migrate:bd-geography": "tsx scripts/migrations/import-bd-geography.ts",
     "test:db": "tsx scripts/test-connection.ts"
   },
   "dependencies": {

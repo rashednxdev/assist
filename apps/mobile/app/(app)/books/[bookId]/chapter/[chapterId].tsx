@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useNavigation } from '@react-navigation/native';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { BookBadge } from '@/components/books/BookBadge';
 import { BookRichText } from '@/components/books/BookRichText';
 import {

@@ -17,6 +17,8 @@ import { Circular } from './models/Circular.model.js';
 import { ContentLink } from './models/ContentLink.model.js';
 import { ToolkitItem } from '../toolkit/models/ToolkitItem.model.js';
 import { SUMMARY_SELECT, toSummary as toToolkitSummary } from '../toolkit/toolkit.service.js';
+import { getTopicDetail } from '../books/books.service.js';
+import { canViewCircular, getCircular, getCircularAreas } from './circulars.service.js';
 import { containsRegex, snippet, stripHtml } from './text.js';
 import { assertAreaCodes, getAreaIndex, type AreaIndex } from './areas.service.js';
 
@@ -148,7 +150,7 @@ export async function resolveTopics(ids: ObjectId[]): Promise<Map<string, Resolv
   return out;
 }
 
-export async function getAreaDetail(code: string, checker: ModuleAccessChecker): Promise<IbasAreaDetail> {
+async function openArea(code: string, checker: ModuleAccessChecker) {
   const index = await getAreaIndex();
   const area = index.get(code);
   if (!area || (!area.is_active && !checker.isAdmin)) throw notFound('Unknown iBAS++ area');
@@ -162,6 +164,52 @@ export async function getAreaDetail(code: string, checker: ModuleAccessChecker):
           : 'You do not have access to this iBAS++ area. Ask an admin to grant access.',
     );
   }
+  return { index, area, access };
+}
+
+/** True when the item is linked to the area or referenced by one of the area's published toolkit items. */
+async function reachableFromArea(code: string, type: 'book_topic' | 'circular', id: ObjectId): Promise<boolean> {
+  const ref = { $elemMatch: { target_type: type, target_id: id } };
+  const [linked, kit] = await Promise.all([
+    ContentLink.exists({ source_type: 'ibas_area', source_id: code, target_type: type, target_id: id }),
+    ToolkitItem.exists({
+      areas: code,
+      is_active: true,
+      is_published: true,
+      $or: [{ refs: ref }, { 'items.refs': ref }, { 'sections.refs': ref }],
+    }),
+  ]);
+  return !!linked || !!kit;
+}
+
+/** Full rule text for area members, even without Books access. */
+export async function getAreaRule(code: string, topicId: string, checker: ModuleAccessChecker) {
+  await openArea(code, checker);
+  if (!mongoose.isValidObjectId(topicId)) throw notFound('Rule not found');
+  const oid = new mongoose.Types.ObjectId(topicId);
+  const resolved = (await resolveTopics([oid])).get(topicId);
+  if (!resolved || (!checker.isAdmin && !resolved.published)) throw notFound('Rule not found');
+  if (!checker.isAdmin && !(await reachableFromArea(code, 'book_topic', oid))) {
+    throw forbidden('This rule is not part of this iBAS++ area.');
+  }
+  return { ...(await getTopicDetail(topicId)), book_id: resolved.book_id, source: resolved.subtitle };
+}
+
+/** Circular detail for area members: filed under the area, linked to it, or referenced by its toolkit. */
+export async function getAreaCircular(code: string, circularId: string, checker: ModuleAccessChecker) {
+  const { index } = await openArea(code, checker);
+  if (!mongoose.isValidObjectId(circularId)) throw notFound('Circular not found');
+  const areas = await getCircularAreas(circularId, checker.isAdmin);
+  const allowed =
+    areas.includes(code) ||
+    canViewCircular(checker, index, areas) ||
+    (await reachableFromArea(code, 'circular', new mongoose.Types.ObjectId(circularId)));
+  if (!allowed) throw forbidden('This circular is not part of this iBAS++ area.');
+  return getCircular(circularId, checker.isAdmin);
+}
+
+export async function getAreaDetail(code: string, checker: ModuleAccessChecker): Promise<IbasAreaDetail> {
+  const { index, area, access } = await openArea(code, checker);
   const admin = checker.isAdmin;
 
   const [tasks, links, areaCirculars, collectionBooks, kits] = await Promise.all([

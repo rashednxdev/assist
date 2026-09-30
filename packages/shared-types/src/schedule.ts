@@ -162,6 +162,70 @@ export const scheduleRecurrenceSchema = z.object({
 });
 export type ScheduleRecurrence = z.infer<typeof scheduleRecurrenceSchema>;
 
+/**
+ * Who receives a universal schedule. Office-based audiences are resolved from each user's office;
+ * a location area matches offices in that division, district or upazila.
+ */
+export const SCHEDULE_TARGET_TYPES = ['all', 'office_type', 'office', 'office_tree', 'location', 'specific'] as const;
+export type ScheduleTargetType = (typeof SCHEDULE_TARGET_TYPES)[number];
+
+export const SCHEDULE_TARGET_LABELS: Record<ScheduleTargetType, string> = {
+  all: 'All users',
+  office_type: 'Office type',
+  office: 'Specific office',
+  office_tree: 'Office and its sub-offices',
+  location: 'Location area',
+  specific: 'Selected users',
+};
+
+const blankId = mongoId.optional().or(z.literal('').transform(() => undefined));
+
+export const scheduleTargetLocationSchema = z.object({
+  division_id: blankId,
+  district_id: blankId,
+  thana_id: blankId,
+});
+export type ScheduleTargetLocation = z.infer<typeof scheduleTargetLocationSchema>;
+
+export const scheduleAudienceSchema = z
+  .object({
+    target_type: z.enum(SCHEDULE_TARGET_TYPES).default('all'),
+    target_user_ids: z.array(mongoId).max(2000).default([]),
+    target_office_type_ids: z.array(mongoId).max(100).default([]),
+    target_office_ids: z.array(mongoId).max(200).default([]),
+    target_location: scheduleTargetLocationSchema.default({}),
+  })
+  .superRefine((d, ctx) => checkAudience(d, ctx));
+export type ScheduleAudienceInput = z.input<typeof scheduleAudienceSchema>;
+
+function checkAudience(
+  d: {
+    target_type: ScheduleTargetType;
+    target_user_ids: string[];
+    target_office_type_ids: string[];
+    target_office_ids: string[];
+    target_location: ScheduleTargetLocation;
+  },
+  ctx: z.RefinementCtx,
+) {
+  if (d.target_type === 'specific' && d.target_user_ids.length === 0) {
+    ctx.addIssue({ code: 'custom', path: ['target_user_ids'], message: 'Select at least one user' });
+  }
+  if (d.target_type === 'office_type' && d.target_office_type_ids.length === 0) {
+    ctx.addIssue({ code: 'custom', path: ['target_office_type_ids'], message: 'Select at least one office type' });
+  }
+  if ((d.target_type === 'office' || d.target_type === 'office_tree') && d.target_office_ids.length === 0) {
+    ctx.addIssue({ code: 'custom', path: ['target_office_ids'], message: 'Select at least one office' });
+  }
+  if (d.target_type === 'location') {
+    const l = d.target_location;
+    if (!l.division_id) ctx.addIssue({ code: 'custom', path: ['target_location', 'division_id'], message: 'Choose a division' });
+    if (l.thana_id && !l.district_id) {
+      ctx.addIssue({ code: 'custom', path: ['target_location', 'district_id'], message: 'Choose the district before the upazila' });
+    }
+  }
+}
+
 export const scheduleEventInputSchema = z
   .object({
     scope: z.enum(['universal', 'personal']).default('personal'),
@@ -177,8 +241,11 @@ export const scheduleEventInputSchema = z
     end_date: dateStr.optional().or(z.literal('')),
     recurrence: scheduleRecurrenceSchema.default({}),
     reminders: z.array(z.number().int().min(0).max(SCHEDULE_MAX_REMINDER_MINUTES)).max(6).default([1440]),
-    target_type: z.enum(['all', 'specific']).default('all'),
+    target_type: z.enum(SCHEDULE_TARGET_TYPES).default('all'),
     target_user_ids: z.array(mongoId).max(2000).default([]),
+    target_office_type_ids: z.array(mongoId).max(100).default([]),
+    target_office_ids: z.array(mongoId).max(200).default([]),
+    target_location: scheduleTargetLocationSchema.default({}),
     is_published: z.boolean().default(true),
     /** Universal only: related processes, checklists, templates and guides. */
     links: z
@@ -197,9 +264,7 @@ export const scheduleEventInputSchema = z
     if (d.recurrence.until && d.recurrence.until < d.date) {
       ctx.addIssue({ code: 'custom', path: ['recurrence', 'until'], message: 'Repeat-until is before the start date' });
     }
-    if (d.scope === 'universal' && d.target_type === 'specific' && d.target_user_ids.length === 0) {
-      ctx.addIssue({ code: 'custom', path: ['target_user_ids'], message: 'Select at least one user' });
-    }
+    if (d.scope === 'universal') checkAudience(d, ctx);
   });
 export type ScheduleEventInput = z.input<typeof scheduleEventInputSchema>;
 export type ScheduleEventParsed = z.infer<typeof scheduleEventInputSchema>;
@@ -208,6 +273,13 @@ export const scheduleFeedQuerySchema = z.object({
   from: dateStr,
   to: dateStr,
 });
+
+export interface ScheduleTargetOffice {
+  id: string;
+  name: string;
+  short_name?: string;
+  parent_path: string;
+}
 
 export interface ScheduleAttachment {
   id: string;
@@ -230,8 +302,14 @@ export interface ScheduleEventRecord {
   end_date?: string;
   recurrence: ScheduleRecurrence;
   reminders: number[];
-  target_type: 'all' | 'specific';
+  target_type: ScheduleTargetType;
+  /** Admin only; empty for other viewers. */
   target_user_ids: string[];
+  target_office_type_ids: string[];
+  target_offices: ScheduleTargetOffice[];
+  target_location: ScheduleTargetLocation;
+  /** e.g. "Office type: DAO, UAO" or "Area: Dhaka › Gazipur". */
+  target_label: string;
   attachments: ScheduleAttachment[];
   links: ScheduleLinkRecord[];
   is_published: boolean;

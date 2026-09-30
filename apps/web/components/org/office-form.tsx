@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Loader2, X } from 'lucide-react';
 import type { OfficeOption, OfficeRecord, OfficeTypeRecord } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
@@ -9,12 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert } from '@/components/ui/alert';
 import { OfficePicker } from '@/components/org/office-picker';
-
-interface GeoTree {
-  _id: string;
-  name_en: string;
-  districts: Array<{ _id: string; name_en: string; thanas: Array<{ _id: string; name_en: string }> }>;
-}
+import { LocationSelects, useGeoTree } from '@/components/org/location-selects';
 
 interface Form {
   name: string;
@@ -30,6 +25,7 @@ interface Form {
   fax: string;
   web_address: string;
   address: string;
+  division_id: string;
   district_id: string;
   thana_id: string;
   description: string;
@@ -84,24 +80,17 @@ export function OfficeForm({
     fax: office?.fax ?? '',
     web_address: office?.web_address ?? '',
     address: office?.address ?? '',
-    district_id: office?.district_id ?? initialParent?.district_id ?? '',
-    thana_id: office?.thana_id ?? '',
+    ...(office
+      ? { division_id: office.division_id ?? '', district_id: office.district_id ?? '', thana_id: office.thana_id ?? '' }
+      : { division_id: initialParent?.division_id ?? '', district_id: initialParent?.district_id ?? '', thana_id: '' }),
     description: office?.description ?? '',
     serial_no: office?.serial_no ?? 0,
     is_active: office?.is_active ?? true,
   });
-  const [geo, setGeo] = useState<GeoTree[]>([]);
+  const geo = useGeoTree();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    apiFetch<{ data: GeoTree[] }>('/setup/geography/tree')
-      .then((r) => setGeo(r.data))
-      .catch(() => setGeo([]));
-  }, []);
-
-  const districts = useMemo(() => geo.flatMap((d) => d.districts.map((x) => ({ ...x, division: d.name_en }))), [geo]);
-  const thanas = districts.find((d) => d._id === form.district_id)?.thanas ?? [];
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => ({ ...f, [k]: v }));
 
   async function save(e: React.FormEvent) {
@@ -114,7 +103,13 @@ export function OfficeForm({
     try {
       await apiFetch(office ? `/org/admin/offices/${office.id}` : '/org/admin/offices', {
         method: office ? 'PUT' : 'POST',
-        body: JSON.stringify({ ...rest, parent_id: p?.id ?? null, district_id: rest.district_id || null, thana_id: rest.thana_id || null }),
+        body: JSON.stringify({
+          ...rest,
+          parent_id: p?.id ?? null,
+          division_id: rest.division_id || null,
+          district_id: rest.district_id || null,
+          thana_id: rest.thana_id || null,
+        }),
       });
       onSaved();
     } catch (err) {
@@ -197,33 +192,14 @@ export function OfficeForm({
 
         <section className="space-y-3">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Location</h3>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="District" htmlFor="of-district">
-              <select
-                id="of-district"
-                className="ibas-select"
-                value={form.district_id}
-                onChange={(e) => setForm((f) => ({ ...f, district_id: e.target.value, thana_id: '' }))}
-              >
-                <option value="">Not set</option>
-                {districts.map((d) => (
-                  <option key={d._id} value={d._id}>
-                    {d.name_en} ({d.division})
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Upazila / Thana" htmlFor="of-thana">
-              <select id="of-thana" className="ibas-select" value={form.thana_id} onChange={(e) => set('thana_id', e.target.value)} disabled={!form.district_id}>
-                <option value="">Not set</option>
-                {thanas.map((t) => (
-                  <option key={t._id} value={t._id}>
-                    {t.name_en}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Address" htmlFor="of-address" className="sm:col-span-2">
+          <LocationSelects
+            geo={geo}
+            idPrefix="of"
+            value={{ division_id: form.division_id, district_id: form.district_id, thana_id: form.thana_id }}
+            onChange={(v) => setForm((f) => ({ ...f, ...v }))}
+          />
+          <div className="grid gap-3">
+            <Field label="Address" htmlFor="of-address">
               <textarea id="of-address" rows={2} className="ibas-textarea min-h-0" value={form.address} onChange={(e) => set('address', e.target.value)} placeholder="Building, road, area" />
             </Field>
           </div>

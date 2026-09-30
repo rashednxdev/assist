@@ -27,6 +27,9 @@ import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
 import { useAnswerHistory } from '@/hooks/useAnswerHistory';
 import { hasLearningModule, findModuleStop, isModuleEffectivelyStopped, isFreeLearningModule } from '@/lib/api';
 import { canManageUsers } from '@/lib/users-api';
+import { canReadAnyModule } from '@/lib/module-access';
+import { CIRCULAR_MODULE_CODES } from '@/lib/circulars-api';
+import { POLICY_MODULE_CODES } from '@/lib/policy-api';
 import {
   fetchProgressDashboard,
   type ProgressDashboardData,
@@ -198,6 +201,52 @@ const SERVICES: Array<{
     icon: 'water-outline',
     color: '#dc2626',
     href: '/(app)/blood-bank' as Href,
+  },
+];
+
+const OFFICE_TOOLS: Array<{
+  id: string;
+  title: string;
+  subtitle: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+  href: Href;
+  /** Shown only to users who can read one of these modules. */
+  codes?: string[];
+}> = [
+  {
+    id: 'schedule',
+    title: 'Schedule',
+    subtitle: 'Meetings, bill dates & R&R',
+    icon: 'calendar-outline',
+    color: '#4338ca',
+    href: '/(app)/schedule' as Href,
+  },
+  {
+    id: 'circulars',
+    title: 'Circular archive',
+    subtitle: 'Orders, SROs, gazettes & memos',
+    icon: 'archive-outline',
+    color: '#6d28d9',
+    href: '/(app)/circulars' as Href,
+    codes: CIRCULAR_MODULE_CODES,
+  },
+  {
+    id: 'policy',
+    title: 'Policy library',
+    subtitle: 'Acts, rules & circulars by subject',
+    icon: 'library-outline',
+    color: '#1e40af',
+    href: '/(app)/policy' as Href,
+    codes: POLICY_MODULE_CODES,
+  },
+  {
+    id: 'ibas',
+    title: 'iBAS++ Workspace',
+    subtitle: 'Procedures, rules & tools by area',
+    icon: 'briefcase-outline',
+    color: '#0369a1',
+    href: '/(app)/ibas' as Href,
   },
 ];
 
@@ -383,7 +432,7 @@ export default function HomeScreen() {
 
       <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
         <View style={styles.menuBackdrop}>
-          <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setMenuOpen(false)} />
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setMenuOpen(false)} />
           <SafeAreaView edges={['top']} style={styles.menuSafe} pointerEvents="box-none">
             <View style={styles.menuCard}>
               <Pressable
@@ -532,6 +581,21 @@ export default function HomeScreen() {
           ))}
         </View>
         <BloodHomeCard />
+
+        <Text style={styles.sectionTitle}>Office & policy</Text>
+        <View style={styles.grid}>
+          {OFFICE_TOOLS.filter((s) => !s.codes || canReadAnyModule(user, s.codes)).map((s) => (
+            <ModuleTile
+              key={s.id}
+              title={s.title}
+              subtitle={s.subtitle}
+              icon={s.icon}
+              color={s.color}
+              enabled
+              onPress={() => router.push(s.href)}
+            />
+          ))}
+        </View>
 
         <Text style={styles.sectionTitle}>Marathon Review</Text>
         <Pressable

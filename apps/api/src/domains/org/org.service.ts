@@ -13,6 +13,7 @@ import {
 } from '@ibas/shared-types';
 import { badRequest, notFound } from '../../shared/errors/AppError.js';
 import { User } from '../users/models/User.model.js';
+import { Division } from '../setup/models/Division.model.js';
 import { District } from '../setup/models/District.model.js';
 import { Thana } from '../setup/models/Thana.model.js';
 import { OfficeType, type IOfficeType } from './models/OfficeType.model.js';
@@ -53,6 +54,10 @@ export interface IndexedOffice {
   office_code?: string;
   parent_id: string | null;
   office_type_id: string;
+  /** Falls back to the district's division for offices saved before division was recorded. */
+  division_id: string | null;
+  district_id: string | null;
+  thana_id: string | null;
   is_active: boolean;
 }
 
@@ -63,9 +68,17 @@ function invalidateOffices(): void {
   indexCache = null;
 }
 
+async function districtDivisions(): Promise<Map<string, string>> {
+  const rows = await District.find({}).select('division_id').lean();
+  return new Map(rows.map((d) => [String(d._id), String(d.division_id)]));
+}
+
 export async function officeIndex(): Promise<Map<string, IndexedOffice>> {
   if (indexCache && Date.now() - indexCache.at < INDEX_TTL_MS) return indexCache.map;
-  const rows = await Office.find({}).select('name short_name office_code parent_id office_type_id is_active').lean();
+  const [rows, divisionOf] = await Promise.all([
+    Office.find({}).select('name short_name office_code parent_id office_type_id division_id district_id thana_id is_active').lean(),
+    districtDivisions(),
+  ]);
   const map = new Map<string, IndexedOffice>(
     rows.map((o) => [
       String(o._id),
@@ -76,6 +89,9 @@ export async function officeIndex(): Promise<Map<string, IndexedOffice>> {
         office_code: o.office_code || undefined,
         parent_id: o.parent_id ? String(o.parent_id) : null,
         office_type_id: String(o.office_type_id),
+        division_id: o.division_id ? String(o.division_id) : o.district_id ? (divisionOf.get(String(o.district_id)) ?? null) : null,
+        district_id: o.district_id ? String(o.district_id) : null,
+        thana_id: o.thana_id ? String(o.thana_id) : null,
         is_active: o.is_active,
       },
     ]),
@@ -239,17 +255,23 @@ async function toOfficeRecords(docs: IOffice[]): Promise<OfficeRecord[]> {
   const [map, types, districts, thanas, children, users] = await Promise.all([
     officeIndex(),
     OfficeType.find({ _id: { $in: typeIds } }).select('name short_name').lean(),
-    districtIds.length ? District.find({ _id: { $in: districtIds } }).select('name_en').lean() : [],
+    districtIds.length ? District.find({ _id: { $in: districtIds } }).select('name_en division_id').lean() : [],
     thanaIds.length ? Thana.find({ _id: { $in: thanaIds } }).select('name_en').lean() : [],
     countBy(Office as never, 'parent_id', { parent_id: { $in: ids } }),
     countBy(User as never, 'office_id', { office_id: { $in: ids } }),
   ]);
   const typeMap = new Map(types.map((t) => [String(t._id), t]));
-  const distMap = new Map(districts.map((d) => [String(d._id), d.name_en]));
+  const distMap = new Map(districts.map((d) => [String(d._id), d]));
   const thanaMap = new Map(thanas.map((t) => [String(t._id), t.name_en]));
+  const divisionIdOf = (d: IOffice): string | null =>
+    d.division_id ? String(d.division_id) : d.district_id ? String(distMap.get(String(d.district_id))?.division_id ?? '') || null : null;
+  const divisionIds = [...new Set(docs.map(divisionIdOf).filter(Boolean))] as string[];
+  const divisions = divisionIds.length ? await Division.find({ _id: { $in: divisionIds } }).select('name_en').lean() : [];
+  const divMap = new Map(divisions.map((d) => [String(d._id), d.name_en]));
   return docs.map((d) => {
     const t = typeMap.get(String(d.office_type_id));
     const parentId = d.parent_id ? String(d.parent_id) : null;
+    const divisionId = divisionIdOf(d);
     return {
       id: String(d._id),
       name: d.name,
@@ -265,9 +287,11 @@ async function toOfficeRecords(docs: IOffice[]): Promise<OfficeRecord[]> {
       pabx: d.pabx || undefined,
       fax: d.fax || undefined,
       address: d.address || undefined,
+      division_id: divisionId,
       district_id: d.district_id ? String(d.district_id) : null,
       thana_id: d.thana_id ? String(d.thana_id) : null,
-      district_name: d.district_id ? distMap.get(String(d.district_id)) : undefined,
+      division_name: divisionId ? divMap.get(divisionId) : undefined,
+      district_name: d.district_id ? distMap.get(String(d.district_id))?.name_en : undefined,
       thana_name: d.thana_id ? thanaMap.get(String(d.thana_id)) : undefined,
       web_address: d.web_address || undefined,
       description: d.description || undefined,
@@ -358,9 +382,15 @@ async function validateOfficeRefs(
     }
   }
   if (data.thana_id && !data.district_id) throw badRequest('Choose the district before the upazila/thana');
+  if (data.division_id) {
+    const v = await Division.findById(data.division_id).select('_id').lean();
+    if (!v) throw badRequest('Division not found');
+  }
   if (data.district_id) {
-    const d = await District.findById(data.district_id).select('_id').lean();
+    const d = await District.findById(data.district_id).select('division_id').lean();
     if (!d) throw badRequest('District not found');
+    if (data.division_id && String(d.division_id) !== data.division_id) throw badRequest('That district is not in the selected division');
+    data.division_id = String(d.division_id);
   }
   if (data.thana_id) {
     const t = await Thana.findById(data.thana_id).select('district_id').lean();
@@ -373,6 +403,7 @@ function officeFields(data: ReturnType<typeof officeInputSchema.parse>) {
     ...data,
     office_code: data.office_code || undefined,
     parent_id: data.parent_id ? new mongoose.Types.ObjectId(data.parent_id) : null,
+    division_id: data.division_id ? new mongoose.Types.ObjectId(data.division_id) : null,
     district_id: data.district_id ? new mongoose.Types.ObjectId(data.district_id) : null,
     thana_id: data.thana_id ? new mongoose.Types.ObjectId(data.thana_id) : null,
     office_type_id: new mongoose.Types.ObjectId(data.office_type_id),

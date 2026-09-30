@@ -31,6 +31,18 @@ import { ScheduleEvent, type IScheduleEvent } from './models/ScheduleEvent.model
 import { ScheduleProfile } from './models/ScheduleProfile.model.js';
 import { ScheduleSettings } from './models/ScheduleSettings.model.js';
 import { getTypeIndex, typeLabel } from './schedule-types.service.js';
+import {
+  audienceFields,
+  audienceInfo,
+  audienceUserIds,
+  previewAudience,
+  specOf,
+  validateAudience,
+  viewerConditions,
+  viewerMatches,
+  viewerOffice,
+  type AudienceInfo,
+} from './schedule-audience.service.js';
 import { deleteSchedulePdf, saveSchedulePdf, schedulePdfPath } from './schedule.storage.js';
 
 const MAX_FEED_DAYS = 400;
@@ -163,12 +175,14 @@ function canEdit(doc: IScheduleEvent, user: AuthUser): boolean {
   return doc.scope === 'personal' ? String(doc.owner_id) === user.id : isAdminUser(user);
 }
 
-function canView(doc: IScheduleEvent, user: AuthUser): boolean {
+async function canView(doc: IScheduleEvent, user: AuthUser): Promise<boolean> {
   if (!doc.is_active) return false;
   if (doc.scope === 'personal') return String(doc.owner_id) === user.id;
   if (isAdminUser(user)) return true;
   if (!doc.is_published) return false;
-  return doc.target_type === 'all' || doc.target_user_ids.some((id) => String(id) === user.id);
+  const spec = specOf(doc);
+  if (spec.target_type === 'all' || spec.target_type === 'specific') return viewerMatches(spec, user.id, null);
+  return viewerMatches(spec, user.id, await viewerOffice(user.id));
 }
 
 function recurrenceOf(doc: IScheduleEvent): ScheduleRecurrence {
@@ -182,7 +196,13 @@ function recurrenceOf(doc: IScheduleEvent): ScheduleRecurrence {
   };
 }
 
-export function toRecord(doc: IScheduleEvent, user: AuthUser, links: ScheduleLinkRecord[] = []): ScheduleEventRecord {
+export function toRecord(
+  doc: IScheduleEvent,
+  user: AuthUser,
+  links: ScheduleLinkRecord[] = [],
+  audience: AudienceInfo = { label: '', offices: [] },
+): ScheduleEventRecord {
+  const spec = specOf(doc);
   return {
     id: String(doc._id),
     scope: doc.scope,
@@ -197,8 +217,12 @@ export function toRecord(doc: IScheduleEvent, user: AuthUser, links: ScheduleLin
     end_date: doc.end_date || undefined,
     recurrence: recurrenceOf(doc),
     reminders: doc.reminders ?? [],
-    target_type: doc.target_type,
-    target_user_ids: doc.scope === 'universal' && isAdminUser(user) ? doc.target_user_ids.map(String) : [],
+    target_type: spec.target_type,
+    target_user_ids: doc.scope === 'universal' && isAdminUser(user) ? spec.target_user_ids : [],
+    target_office_type_ids: spec.target_office_type_ids,
+    target_offices: audience.offices,
+    target_location: spec.target_location,
+    target_label: doc.scope === 'universal' ? audience.label : '',
     attachments: (doc.attachments ?? []).map((a) => ({
       id: a.id,
       name: a.name,
@@ -234,17 +258,18 @@ export function toRecord(doc: IScheduleEvent, user: AuthUser, links: ScheduleLin
 }
 
 async function toRecordWithLinks(doc: IScheduleEvent, user: AuthUser): Promise<ScheduleEventRecord> {
-  const links = await resolveLinks([doc], isAdminUser(user));
-  return toRecord(doc, user, links.get(String(doc._id)));
+  const [links, audience] = await Promise.all([resolveLinks([doc], isAdminUser(user)), audienceInfo([doc])]);
+  const id = String(doc._id);
+  return toRecord(doc, user, links.get(id), audience.get(id));
 }
 
-function visibleFilter(user: AuthUser): FilterQuery<IScheduleEvent> {
+async function visibleFilter(user: AuthUser): Promise<FilterQuery<IScheduleEvent>> {
   const uid = new mongoose.Types.ObjectId(user.id);
   return {
     is_active: true,
     $or: [
       { scope: 'personal', owner_id: uid },
-      { scope: 'universal', is_published: true, $or: [{ target_type: 'all' }, { target_user_ids: uid }] },
+      { scope: 'universal', is_published: true, $or: viewerConditions(user.id, await viewerOffice(user.id)) },
     ],
   };
 }
@@ -335,8 +360,9 @@ export function occurrencesOf(doc: IScheduleEvent, from: string, to: string): Sc
 export async function getFeed(user: AuthUser, from: string, to: string): Promise<ScheduleOccurrence[]> {
   if (to < from) throw badRequest('"to" is before "from"');
   if (daysBetween(from, to) > MAX_FEED_DAYS) throw badRequest(`Range is limited to ${MAX_FEED_DAYS} days`);
+  const visible = await visibleFilter(user);
   const [docs, profile, settings] = await Promise.all([
-    ScheduleEvent.find({ $and: [visibleFilter(user), rangeFilter(addDays(from, -60), to)] }).limit(2000),
+    ScheduleEvent.find({ $and: [visible, rangeFilter(addDays(from, -60), to)] }).limit(2000),
     ScheduleProfile.findOne({ user_id: user.id }).lean(),
     getSettings(),
   ]);
@@ -380,7 +406,7 @@ async function loadEvent(id: string): Promise<IScheduleEvent> {
 
 export async function getEvent(id: string, user: AuthUser): Promise<ScheduleEventRecord> {
   const doc = await loadEvent(id);
-  if (!canView(doc, user)) throw notFound('Schedule not found');
+  if (!(await canView(doc, user))) throw notFound('Schedule not found');
   return toRecordWithLinks(doc, user);
 }
 
@@ -396,11 +422,10 @@ async function parseInput(body: unknown, user: AuthUser, currentKind?: string) {
   if (d.kind === 'rest_recreation') throw badRequest('Rest & recreation is calculated automatically from the R&R section');
   if (d.scope === 'personal' && !type.allow_personal) throw badRequest(`"${type.label}" can only be used for official schedules`);
 
-  const targetIds = d.scope === 'universal' && d.target_type === 'specific' ? [...new Set(d.target_user_ids)] : [];
-  if (targetIds.length) {
-    const found = await User.countDocuments({ _id: { $in: targetIds } });
-    if (found !== targetIds.length) throw badRequest('Some selected users were not found');
-  }
+  const audience =
+    d.scope === 'universal'
+      ? await validateAudience(d)
+      : { target_type: 'all' as const, target_user_ids: [], target_office_type_ids: [], target_office_ids: [], target_location: {} };
   const links = d.scope === 'universal' ? d.links.filter((l, i, arr) => arr.findIndex((x) => x.type === l.type && x.id === l.id) === i) : [];
   if (links.length) await assertLinks(links);
 
@@ -424,8 +449,7 @@ async function parseInput(body: unknown, user: AuthUser, currentKind?: string) {
         until: d.recurrence.freq === 'none' ? undefined : d.recurrence.until,
       },
       reminders: [...new Set(d.reminders)].sort((a, b) => b - a),
-      target_type: d.scope === 'universal' ? d.target_type : ('all' as const),
-      target_user_ids: targetIds,
+      ...audienceFields(audience),
       links: links.map((l) => ({ type: l.type, id: new mongoose.Types.ObjectId(l.id) })),
       is_published: d.scope === 'universal' ? d.is_published : true,
     },
@@ -652,9 +676,9 @@ export async function listUniversal(q = '', includePast = false, user?: AuthUser
     filter.$and = [{ $or: [{ title: rx }, { description: rx }, { location: rx }] }];
   }
   const docs = await ScheduleEvent.find(filter).sort({ date: 1, time: 1 }).limit(300);
-  if (!user) return docs.map((d) => ({ doc: d, links: [] as ScheduleLinkRecord[] }));
-  const links = await resolveLinks(docs, true);
-  return docs.map((d) => ({ doc: d, links: links.get(String(d._id)) ?? [] }));
+  if (!user) return docs.map((d) => ({ doc: d, links: [] as ScheduleLinkRecord[], audience: undefined }));
+  const [links, audience] = await Promise.all([resolveLinks(docs, true), audienceInfo(docs)]);
+  return docs.map((d) => ({ doc: d, links: links.get(String(d._id)) ?? [], audience: audience.get(String(d._id)) }));
 }
 
 /* ------------------------------ attachments ------------------------------ */
@@ -683,7 +707,7 @@ export async function removeAttachment(id: string, fileId: string, user: AuthUse
 
 export async function getAttachmentFile(id: string, fileId: string, user: AuthUser) {
   const doc = await loadEvent(id);
-  if (!canView(doc, user)) throw notFound('Schedule not found');
+  if (!(await canView(doc, user))) throw notFound('Schedule not found');
   const file = doc.attachments.find((a) => a.id === fileId);
   if (!file) throw notFound('File not found');
   return { path: schedulePdfPath(String(doc._id), file.stored_name), name: file.name };
@@ -693,10 +717,10 @@ export async function getAttachmentFile(id: string, fileId: string, user: AuthUs
 
 export async function resolveRecipients(doc: IScheduleEvent): Promise<string[]> {
   if (doc.scope === 'personal') return doc.owner_id ? [String(doc.owner_id)] : [];
-  if (doc.target_type === 'specific') return doc.target_user_ids.map(String);
-  const users = await User.find({ status: 'active' }).select('_id').lean();
-  return users.map((u) => String(u._id));
+  return audienceUserIds(specOf(doc));
 }
+
+export { previewAudience };
 
 export function formatWhen(date: string, time?: string): string {
   const [y, m, d] = date.split('-');

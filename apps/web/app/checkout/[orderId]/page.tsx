@@ -230,7 +230,7 @@ export default function CheckoutPage() {
       <div className="mx-auto max-w-md space-y-4 text-center">
         <Clock className="mx-auto h-12 w-12 text-muted" />
         <h1 className="text-xl font-bold">{order.status === 'expired' ? 'This checkout expired' : 'This checkout was cancelled'}</h1>
-        <p className="text-sm text-muted">No money was taken. Start again from Packages.</p>
+        <p className="text-sm text-muted">No money was taken. Start again from Pricing.</p>
         <Button asChild>
           <Link href={`/packages?tab=${order.kind}`}>Back to packages</Link>
         </Button>

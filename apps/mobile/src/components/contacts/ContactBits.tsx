@@ -152,7 +152,7 @@ export function OfficeCard({ o, onFavorite }: { o: ContactOffice; onFavorite?: (
     o.mobile && { label: 'Mobile', phone: o.mobile, mobile: true, icon: 'phone-portrait-outline' as const },
     o.pabx && { label: 'PABX', phone: o.pabx, mobile: false, icon: 'keypad-outline' as const },
   ].filter(Boolean) as Array<{ label: string; phone: ContactPhone; mobile: boolean; icon: keyof typeof Ionicons.glyphMap }>;
-  const location = [o.address, o.thana_name, o.district_name].filter(Boolean).join(', ');
+  const location = [o.address, o.thana_name, o.district_name, o.division_name].filter(Boolean).join(', ');
 
   return (
     <View style={[styles.card, o.is_my_office && styles.cardMine]}>

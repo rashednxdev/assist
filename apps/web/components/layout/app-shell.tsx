@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Menu, X, LogOut, Search } from 'lucide-react';
@@ -79,7 +78,6 @@ function SidebarContent({
   onLogout,
   logoutLabel,
   appName,
-  tagline,
 }: {
   pathname: string;
   visibleNav: ReturnType<typeof buildVisibleNav>;
@@ -87,7 +85,6 @@ function SidebarContent({
   onLogout: () => void;
   logoutLabel: string;
   appName: string;
-  tagline: string;
 }) {
   const activeHref =
     visibleNav
@@ -97,19 +94,8 @@ function SidebarContent({
 
   return (
     <>
-      <div className="flex items-center gap-3 border-b border-white/10 px-4 py-5">
-        <Image
-          src="/brand/proassist-logo.png"
-          alt="ProAssist"
-          width={40}
-          height={40}
-          className="h-10 w-10 shrink-0 rounded-xl"
-          priority
-        />
-        <div className="min-w-0">
-          <div className="truncate text-base font-bold text-sidebar-foreground">{appName}</div>
-          <div className="truncate text-xs text-sidebar-muted">{tagline}</div>
-        </div>
+      <div className="border-b border-white/10 px-4 py-5">
+        <div className="truncate text-base font-bold text-sidebar-foreground">{appName}</div>
       </div>
 
       <SidebarSearch onNavigate={onNavigate} />
@@ -189,7 +175,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     onLogout: handleLogout,
     logoutLabel: tAuth('logout'),
     appName: tApp('name'),
-    tagline: tApp('tagline'),
   };
 
   return (

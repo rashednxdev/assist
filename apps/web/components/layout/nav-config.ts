@@ -17,7 +17,6 @@ import {
   GraduationCap,
   FileText,
   Settings,
-  ScanText,
   Calculator,
   Bookmark,
   Database,
@@ -83,7 +82,7 @@ export const navGroups: NavGroup[] = [
       { href: '/contacts', label: 'Contacts', icon: BookUser },
       { href: '/progress', label: 'My progress', icon: BarChart3 },
       { href: '/search', label: 'Search', icon: Search },
-      { href: '/packages', label: 'Packages', icon: ShoppingBag },
+      { href: '/packages', label: 'Pricing', icon: ShoppingBag },
     ],
   },
   {
@@ -143,17 +142,6 @@ export const navGroups: NavGroup[] = [
         href: '/static-ref/jsi-2016-p',
         label: 'JSI 2016 P',
         icon: Bookmark,
-      },
-    ],
-  },
-  {
-    title: 'Tools',
-    items: [
-      {
-        href: '/tools/pdf-to-word',
-        label: 'PDF to Word',
-        icon: ScanText,
-        moduleCode: 'OCR',
       },
     ],
   },

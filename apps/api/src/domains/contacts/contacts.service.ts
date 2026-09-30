@@ -27,6 +27,7 @@ import type { AuthUser } from '../../middleware/auth.js';
 import { AppError, badRequest, notFound } from '../../shared/errors/AppError.js';
 import { User } from '../users/models/User.model.js';
 import { UserEntitlement } from '../billing/models/UserEntitlement.model.js';
+import { Division } from '../setup/models/Division.model.js';
 import { District } from '../setup/models/District.model.js';
 import { Thana } from '../setup/models/Thana.model.js';
 import { Office, type IOffice } from '../org/models/Office.model.js';
@@ -169,18 +170,22 @@ async function toContactOffices(docs: IOffice[], v: Viewer, stats: OfficeStats):
   const typeIds = [...new Set(docs.map((d) => String(d.office_type_id)))];
   const districtIds = [...new Set(docs.map((d) => d.district_id && String(d.district_id)).filter(Boolean))] as string[];
   const thanaIds = [...new Set(docs.map((d) => d.thana_id && String(d.thana_id)).filter(Boolean))] as string[];
-  const [types, districts, thanas] = await Promise.all([
+  const divisionIds = [...new Set(docs.map((d) => stats.map.get(String(d._id))?.division_id).filter(Boolean))] as string[];
+  const [types, divisions, districts, thanas] = await Promise.all([
     OfficeType.find({ _id: { $in: typeIds } }).select('name short_name').lean(),
+    divisionIds.length ? Division.find({ _id: { $in: divisionIds } }).select('name_en').lean() : [],
     districtIds.length ? District.find({ _id: { $in: districtIds } }).select('name_en').lean() : [],
     thanaIds.length ? Thana.find({ _id: { $in: thanaIds } }).select('name_en').lean() : [],
   ]);
   const typeMap = new Map(types.map((t) => [String(t._id), t]));
+  const divMap = new Map(divisions.map((d) => [String(d._id), d.name_en]));
   const distMap = new Map(districts.map((d) => [String(d._id), d.name_en]));
   const thanaMap = new Map(thanas.map((t) => [String(t._id), t.name_en]));
   return docs.map((d) => {
     const id = String(d._id);
     const t = typeMap.get(String(d.office_type_id));
     const parentId = d.parent_id ? String(d.parent_id) : null;
+    const divisionId = stats.map.get(id)?.division_id;
     return {
       id,
       name: d.name,
@@ -193,6 +198,7 @@ async function toContactOffices(docs: IOffice[], v: Viewer, stats: OfficeStats):
       email: d.email || undefined,
       web_address: d.web_address || undefined,
       address: d.address || undefined,
+      division_name: divisionId ? divMap.get(divisionId) : undefined,
       district_name: d.district_id ? distMap.get(String(d.district_id)) : undefined,
       thana_name: d.thana_id ? thanaMap.get(String(d.thana_id)) : undefined,
       telephone: phoneOut(d.telephone, v.paid),

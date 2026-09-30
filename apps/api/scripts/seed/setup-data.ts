@@ -16,7 +16,6 @@ const PLATFORM_MODULES = [
   { code: 'USER', name_en: 'User management', description_en: 'Create and manage system users', color: '#64748b', sort_order: 17 },
   { code: 'SETUP', name_en: 'System setup', description_en: 'Modules, geography, and configuration', color: '#64748b', sort_order: 18 },
   { code: 'AUDIT', name_en: 'Audit log', description_en: 'Platform audit trail', color: '#64748b', sort_order: 19 },
-  { code: 'OCR', name_en: 'PDF to Word (OCR)', description_en: 'Convert PDF scans to editable Word documents', color: '#7c3aed', sort_order: 20 },
   { code: 'PENSION', name_en: 'Pension calculator', description_en: 'Government pension leave account and lamp grant', color: '#0e7490', sort_order: 21 },
   { code: 'SALARY', name_en: 'Salary On 2026', description_en: 'National Pay Scale 2015 to 2026 basic pay conversion', color: '#047857', sort_order: 29 },
   { code: 'QUESTION_EDIT', name_en: 'Question update (mobile)', description_en: 'Update existing questions/answers and move them between draft, quality check, and published from the mobile app — cannot create new questions', color: '#B45309', sort_order: 22 },

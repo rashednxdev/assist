@@ -111,8 +111,8 @@ export async function deleteThana(id: string) {
 
 export async function getGeographyTree(): Promise<object[]> {
   const divisions = await Division.find({ is_active: true }).sort({ name_en: 1 }).lean();
-  const districts = await District.find({ is_active: true }).lean();
-  const thanas = await Thana.find({ is_active: true }).lean();
+  const districts = await District.find({ is_active: true }).sort({ name_en: 1 }).lean();
+  const thanas = await Thana.find({ is_active: true }).sort({ name_en: 1 }).lean();
 
   return divisions.map((d) => ({
     ...d,

@@ -72,6 +72,10 @@ export default function AppLayout() {
       <Stack.Screen name="live" />
       <Stack.Screen name="zoom" />
       <Stack.Screen name="users" />
+      <Stack.Screen name="schedule" />
+      <Stack.Screen name="circulars" />
+      <Stack.Screen name="policy" />
+      <Stack.Screen name="ibas" />
     </Stack>
   );
 }

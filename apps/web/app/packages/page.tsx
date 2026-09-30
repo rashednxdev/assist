@@ -264,7 +264,7 @@ function PackagesContent() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Packages"
+        title="Pricing"
         description="Choose a package and pay with bKash — access opens as soon as the payment succeeds."
         action={
           <Button asChild variant="outline">

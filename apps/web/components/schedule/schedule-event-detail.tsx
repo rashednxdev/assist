@@ -183,7 +183,7 @@ export function ScheduleEventDetail({
               {ev.scope === 'universal' && ev.can_edit && (
                 <p className="flex items-start gap-2">
                   <Users className="mt-0.5 h-4 w-4 shrink-0 text-muted" />
-                  {ev.target_type === 'all' ? 'All users' : `${ev.target_user_ids.length} selected user(s)`}
+                  {ev.target_label}
                 </p>
               )}
             </div>

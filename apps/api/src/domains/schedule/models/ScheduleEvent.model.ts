@@ -1,5 +1,5 @@
 import mongoose, { Schema, type Document, type Types } from 'mongoose';
-import type { ScheduleKind, ScheduleLinkType, ScheduleRecurrence } from '@ibas/shared-types';
+import { SCHEDULE_TARGET_TYPES, type ScheduleKind, type ScheduleLinkType, type ScheduleRecurrence, type ScheduleTargetType } from '@ibas/shared-types';
 
 export interface IScheduleOverride {
   date: string;
@@ -45,8 +45,13 @@ export interface IScheduleEvent extends Document {
   end_date?: string;
   recurrence: ScheduleRecurrence;
   reminders: number[];
-  target_type: 'all' | 'specific';
+  target_type: ScheduleTargetType;
   target_user_ids: Types.ObjectId[];
+  target_office_type_ids: Types.ObjectId[];
+  /** For 'office_tree' each office also covers every office below it. */
+  target_office_ids: Types.ObjectId[];
+  /** Blank lower levels cover the whole area above them. */
+  target_location?: { division_id?: Types.ObjectId | null; district_id?: Types.ObjectId | null; thana_id?: Types.ObjectId | null };
   attachments: IScheduleAttachment[];
   links: Array<{ type: ScheduleLinkType; id: Types.ObjectId }>;
   is_published: boolean;
@@ -103,8 +108,20 @@ const schema = new Schema<IScheduleEvent>(
     end_date: { type: String },
     recurrence: { type: recurrenceSchema, default: () => ({}) },
     reminders: { type: [Number], default: [] },
-    target_type: { type: String, enum: ['all', 'specific'], default: 'all' },
+    target_type: { type: String, enum: SCHEDULE_TARGET_TYPES, default: 'all' },
     target_user_ids: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+    target_office_type_ids: [{ type: Schema.Types.ObjectId, ref: 'OfficeType' }],
+    target_office_ids: [{ type: Schema.Types.ObjectId, ref: 'Office' }],
+    target_location: {
+      type: new Schema(
+        {
+          division_id: { type: Schema.Types.ObjectId, ref: 'Division', default: null },
+          district_id: { type: Schema.Types.ObjectId, ref: 'District', default: null },
+          thana_id: { type: Schema.Types.ObjectId, ref: 'Thana', default: null },
+        },
+        { _id: false },
+      ),
+    },
     attachments: { type: [attachmentSchema], default: [] },
     links: {
       type: [new Schema({ type: { type: String, enum: ['task', 'toolkit'] }, id: Schema.Types.ObjectId }, { _id: false })],
@@ -150,5 +167,8 @@ const schema = new Schema<IScheduleEvent>(
 schema.index({ scope: 1, is_active: 1, date: 1 });
 schema.index({ owner_id: 1, is_active: 1 });
 schema.index({ target_user_ids: 1 });
+schema.index({ target_office_ids: 1 });
+schema.index({ target_office_type_ids: 1 });
+schema.index({ 'target_location.division_id': 1 });
 
 export const ScheduleEvent = mongoose.model<IScheduleEvent>('ScheduleEvent', schema, 'schedule_events');

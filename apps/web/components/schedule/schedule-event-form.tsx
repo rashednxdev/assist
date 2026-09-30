@@ -13,6 +13,8 @@ import {
   type ScheduleKind,
   type ScheduleLinkRecord,
   type ScheduleRecurrence,
+  type ScheduleTargetType,
+  type OfficeOption,
 } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { getAccessToken } from '@/lib/auth';
@@ -26,7 +28,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert } from '@/components/ui/alert';
-import { UserPicker } from '@/components/users/user-picker';
+import { EMPTY_LOCATION, type LocationValue } from '@/components/org/location-selects';
+import { ScheduleAudienceField, audienceBody } from '@/components/schedule/schedule-audience-field';
 
 const selectClass = 'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm';
 const textareaClass = 'flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm';
@@ -45,8 +48,11 @@ export interface ScheduleFormState {
   end_date: string;
   recurrence: ScheduleRecurrence;
   reminders: number[];
-  target_type: 'all' | 'specific';
+  target_type: ScheduleTargetType;
   target_user_ids: string[];
+  target_office_type_ids: string[];
+  target_offices: OfficeOption[];
+  target_location: LocationValue;
   is_published: boolean;
   notify_now: boolean;
   links: ScheduleLinkRecord[];
@@ -70,6 +76,9 @@ export function emptyScheduleForm(scope: 'universal' | 'personal', patch: Partia
     reminders: [1440, 60],
     target_type: 'all',
     target_user_ids: [],
+    target_office_type_ids: [],
+    target_offices: [],
+    target_location: EMPTY_LOCATION,
     is_published: true,
     notify_now: false,
     links: [],
@@ -95,6 +104,13 @@ export function recordToScheduleForm(r: ScheduleEventRecord): ScheduleFormState 
     reminders: r.reminders,
     target_type: r.target_type,
     target_user_ids: r.target_user_ids,
+    target_office_type_ids: r.target_office_type_ids ?? [],
+    target_offices: (r.target_offices ?? []).map((o) => ({ id: o.id, name: o.name, short_name: o.short_name, parent_path: o.parent_path })),
+    target_location: {
+      division_id: r.target_location?.division_id ?? '',
+      district_id: r.target_location?.district_id ?? '',
+      thana_id: r.target_location?.thana_id ?? '',
+    },
     is_published: r.is_published,
     notify_now: r.scope === 'universal' && r.is_published,
     links: r.links ?? [],
@@ -190,8 +206,7 @@ export function ScheduleEventForm({
       end_date: f.multi_day ? f.end_date : '',
       recurrence: { ...f.recurrence, until: f.recurrence.until || undefined },
       reminders: f.reminders,
-      target_type: f.target_type,
-      target_user_ids: f.target_type === 'specific' ? f.target_user_ids : [],
+      ...audienceBody(f),
       is_published: f.is_published,
       notify_now: scope === 'universal' ? f.notify_now : undefined,
       links: scope === 'universal' ? f.links.map((l) => ({ type: l.type, id: l.id })) : [],
@@ -403,18 +418,7 @@ export function ScheduleEventForm({
 
         {scope === 'universal' && (
           <>
-            <div className="space-y-2 rounded-lg border border-border p-3">
-              <p className="text-sm font-medium">Who gets this schedule</p>
-              <div className="flex flex-wrap gap-4 text-sm">
-                <label className="flex items-center gap-2">
-                  <input type="radio" checked={f.target_type === 'all'} onChange={() => set('target_type', 'all')} /> All users
-                </label>
-                <label className="flex items-center gap-2">
-                  <input type="radio" checked={f.target_type === 'specific'} onChange={() => set('target_type', 'specific')} /> Selected users
-                </label>
-              </div>
-              {f.target_type === 'specific' && <UserPicker selectedIds={f.target_user_ids} onChange={(ids) => set('target_user_ids', ids)} />}
-            </div>
+            <ScheduleAudienceField value={f} onChange={(patch) => setF((p) => ({ ...p, ...patch }))} />
 
             <div className="space-y-2 rounded-lg border border-border p-3">
               <p className="flex items-center gap-2 text-sm font-medium">

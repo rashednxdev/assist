@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
-import { useNavigation } from '@react-navigation/native';
+import { useLocalSearchParams, useNavigation } from 'expo-router';
 import { BookBadge } from '@/components/books/BookBadge';
 import { HtmlContent } from '@/components/books/HtmlContent';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';

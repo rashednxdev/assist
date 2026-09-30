@@ -43,7 +43,7 @@ export const PACKAGE_TABS: Array<{ id: AccessPackageKind; label: string; blurb: 
   {
     id: 'basic',
     label: 'Basic Module',
-    blurb: 'Circulars & Policy library, iBAS++ workspace, Checklists & templates, Pension & Joining period and PDF to Word.',
+    blurb: 'Circulars & Policy library, iBAS++ workspace, Checklists & templates, and Pension & Joining period.',
   },
   {
     id: 'live',

@@ -2,9 +2,9 @@
  * Bangladesh National Pay Scale — 2015 → 2026 conversion (Salary On 2026).
  *
  * Phases:
- * - 01-07-2026: Step 5 = next stage − Step 4; Step 6 = (Step 4 − old pay) × 40%/50%;
+ * - 01-07-2026: Step 5 = (Step 4 − old pay) × 40%/50%; Step 6 = next stage − Step 4;
  *               Step 7 = old pay + Step 5 + Step 6
- * - 01-01-2027: same layout; Step 6 rate 70% (grades 1–9) / 75% (10–20)
+ * - 01-01-2027: same layout; Step 5 rate 70% (grades 1–9) / 75% (10–20)
  * - 01-07-2027: 01-07-2026 basic = next stage after matched Step 4;
  *               01-07-2027 basic = next stage after that amount
  */
@@ -174,7 +174,7 @@ export function isFixedPayGrade(grade: PayGrade): boolean {
   return NPS_2015[grade].length === 1 && NPS_2026[grade].length === 1;
 }
 
-/** Rates for percentage-based Step 6 (not used when 01-07-2027 takes next stage). */
+/** Rates for percentage-based Step 5 (not used when 01-07-2027 takes next stage). */
 export function salaryConversionRate(
   grade: PayGrade,
   phase: SalaryPhase = '2026-07-01',
@@ -295,10 +295,10 @@ function buildPercentageScaleResult(opts: {
   const ratePercent = Math.round(rate * 100);
   const isLast = matchedIndex >= newScale.length - 1;
   const nextStageAmount = isLast ? step4 : newScale[matchedIndex + 1]!;
-  /** Step 5 = next stage amount − Step 4 (fact increment; 0 if last stage). */
-  const step5 = nextStageAmount - step4;
-  /** Step 6 = (Step 4 − old pay) × rate. */
-  const step6 = (step4 - oldPay) * rate;
+  /** Step 5 = (Step 4 − old pay) × rate. */
+  const step5 = (step4 - oldPay) * rate;
+  /** Step 6 = next stage amount − Step 4 (fact increment; 0 if last stage). */
+  const step6 = nextStageAmount - step4;
   /** Step 7 = old pay + Step 5 + Step 6. */
   const step7 = oldPay + step5 + step6;
   const newPay = step7;
@@ -317,7 +317,7 @@ function buildPercentageScaleResult(opts: {
     new_minimum: newMinimum,
     new_pay: Math.round(newPay),
     matched_new_stage: step4,
-    increment: step5,
+    increment: step6,
     increment_skipped: isLast,
     used_next_stage_for_step5: !isLast,
     steps: [
@@ -347,26 +347,26 @@ function buildPercentageScaleResult(opts: {
       },
       {
         step: 5,
+        label: `(Step 4 − Old pay) × ${ratePercent}%`,
+        calculation: `(${formatTaka(step4)} − ${formatTaka(oldPay)}) × ${ratePercent}%`,
+        value: Math.round(step5),
+        note: salaryPhaseRateNote(grade, phase),
+      },
+      {
+        step: 6,
         label: `Next stage − Step 4 (Fact Increment ${effective})`,
         calculation: isLast
           ? `${formatTaka(step4)} − ${formatTaka(step4)}`
           : `${formatTaka(nextStageAmount)} − ${formatTaka(step4)}`,
-        value: step5,
+        value: step6,
         note: isLast
-          ? 'Last stage — no next stage (Step 5 = 0)'
+          ? 'Last stage — no next stage (Step 6 = 0)'
           : `Next stage ${formatTaka(nextStageAmount)} − Step 4`,
-      },
-      {
-        step: 6,
-        label: `(Step 4 − Old pay) × ${ratePercent}%`,
-        calculation: `(${formatTaka(step4)} − ${formatTaka(oldPay)}) × ${ratePercent}%`,
-        value: Math.round(step6),
-        note: salaryPhaseRateNote(grade, phase),
       },
       {
         step: 7,
         label: `Old pay + Step 5 + Step 6 (new basic) (${effective})`,
-        calculation: `${formatTaka(oldPay)} + ${formatTaka(step5)} + ${formatTaka(Math.round(step6))}`,
+        calculation: `${formatTaka(oldPay)} + ${formatTaka(Math.round(step5))} + ${formatTaka(step6)}`,
         value: Math.round(step7),
       },
     ],

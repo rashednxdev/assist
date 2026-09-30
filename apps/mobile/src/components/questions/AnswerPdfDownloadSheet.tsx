@@ -51,7 +51,7 @@ export function AnswerPdfDownloadSheet({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.backdrop}>
-        <Pressable style={StyleSheet.absoluteFillObject} onPress={busy ? undefined : onClose} />
+        <Pressable style={StyleSheet.absoluteFill} onPress={busy ? undefined : onClose} />
         <SafeAreaView edges={['bottom']} style={styles.sheetSafe}>
           <View style={styles.sheet}>
             <View style={styles.handle} />

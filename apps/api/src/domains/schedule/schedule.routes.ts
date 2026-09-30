@@ -88,7 +88,15 @@ scheduleRouter.get(
   requireAdmin,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const rows = await schedule.listUniversal(String(req.query.q ?? ''), req.query.include_past === 'true', req.user!);
-    res.json({ data: rows.map((r) => schedule.toRecord(r.doc, req.user!, r.links)) });
+    res.json({ data: rows.map((r) => schedule.toRecord(r.doc, req.user!, r.links, r.audience)) });
+  }),
+);
+
+scheduleRouter.post(
+  '/admin/audience-preview',
+  requireAdmin,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    res.json({ data: await schedule.previewAudience(req.body) });
   }),
 );
 

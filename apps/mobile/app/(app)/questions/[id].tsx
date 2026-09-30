@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { ScrollView, View, Text, StyleSheet, Pressable, useWindowDimensions } from 'react-native';
-import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
-import { useNavigation } from '@react-navigation/native';
+import { useLocalSearchParams, useNavigation, useRouter, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SELF_RATING_PROGRESS } from '@ibas/shared-constants';
 import {

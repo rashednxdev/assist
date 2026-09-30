@@ -90,6 +90,7 @@ export const officeInputSchema = z.object({
   pabx: phone('PABX'),
   fax: phone('Fax'),
   address: optionalText(500),
+  division_id: optionalId,
   district_id: optionalId,
   thana_id: optionalId,
   web_address: z
@@ -122,8 +123,10 @@ export interface OfficeRecord {
   pabx?: string;
   fax?: string;
   address?: string;
+  division_id: string | null;
   district_id: string | null;
   thana_id: string | null;
+  division_name?: string;
   district_name?: string;
   thana_name?: string;
   web_address?: string;

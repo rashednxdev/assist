@@ -65,7 +65,7 @@ export function OfficeDetail({ id }: { id: string }) {
     office.pabx && { label: 'PABX', phone: office.pabx, icon: Phone, mobile: false },
     office.fax && { label: 'Fax', phone: office.fax, icon: Printer, mobile: false },
   ].filter(Boolean) as Array<{ label: string; phone: ContactPhone; icon: typeof Phone; mobile: boolean }>;
-  const location = [office.address, office.thana_name, office.district_name].filter(Boolean).join(', ');
+  const location = [office.address, office.thana_name, office.district_name, office.division_name].filter(Boolean).join(', ');
   const selfEmployees = office.employee_count;
   const subEmployees = office.employee_total - office.employee_count;
 

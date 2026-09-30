@@ -264,7 +264,7 @@ export async function subjectOptions(): Promise<Array<{ id: string; name: string
 
 function opensFor(kind: AccessPackageKind): string[] {
   if (kind === 'exam_prep') return ['Books & Tools', 'Question Bank', 'Exam Programs', 'Exam Papers', 'Exams of the Week', 'User Questions', 'Answer PDFs'];
-  if (kind === 'basic') return ['Circulars & Policy library', 'iBAS++ workspace', 'Toolkit', 'Pension & Joining period', 'PDF to Word (OCR)'];
+  if (kind === 'basic') return ['Circulars & Policy library', 'iBAS++ workspace', 'Toolkit', 'Pension & Joining period'];
   return ['All classes in this package'];
 }
 
@@ -618,7 +618,7 @@ export async function demoPay(id: string, body: unknown, user: AuthUser): Promis
   const o = await loadOrder(id, user);
   if (String(o.user_id) !== user.id) throw forbidden('Only the buyer can pay for this order');
   if (o.status === 'paid') return toOrderRecord(o);
-  if (o.status !== 'pending') throw badRequest(o.status === 'expired' ? 'This checkout expired. Start again from Packages.' : `This order is ${o.status}.`);
+  if (o.status !== 'pending') throw badRequest(o.status === 'expired' ? 'This checkout expired. Start again from Pricing.' : `This order is ${o.status}.`);
   const parsed = demoPaySchema.safeParse(body);
   if (!parsed.success) throw badRequest(zodMessage(parsed.error));
   const p = parsed.data;

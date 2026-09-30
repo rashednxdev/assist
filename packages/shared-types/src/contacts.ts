@@ -42,6 +42,7 @@ export interface ContactOffice {
   email?: string;
   web_address?: string;
   address?: string;
+  division_name?: string;
   district_name?: string;
   thana_name?: string;
   telephone?: ContactPhone;

@@ -18,7 +18,6 @@ import { examsRouter } from './domains/exams/exams.routes.js';
 import { syllabusRouter } from './domains/syllabus/syllabus.routes.js';
 import { papersRouter } from './domains/papers/papers.routes.js';
 import { accountRouter } from './domains/account/account.routes.js';
-import { ocrRouter } from './domains/ocr/ocr.routes.js';
 import { evaluationRouter } from './domains/evaluation/evaluation.routes.js';
 import { pensionRouter } from './domains/pension/pension.routes.js';
 import { joiningPeriodRouter } from './domains/joining-period/joining-period.routes.js';
@@ -95,7 +94,6 @@ export function createApp(): Application {
   app.use('/api/v1/syllabus', syllabusRouter);
   app.use('/api/v1/papers', papersRouter);
   app.use('/api/v1/account', accountRouter);
-  app.use('/api/v1/ocr', ocrRouter);
   app.use('/api/v1/evaluation', evaluationRouter);
   app.use('/api/v1/pension', pensionRouter);
   app.use('/api/v1/joining-period', joiningPeriodRouter);

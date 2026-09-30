@@ -59,6 +59,22 @@ ibasRouter.get(
 );
 
 ibasRouter.get(
+  '/areas/:code/rules/:topicId',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const checker = await loadModuleAccessChecker(req.user!);
+    res.json({ data: await ibas.getAreaRule(String(req.params.code), String(req.params.topicId), checker) });
+  }),
+);
+
+ibasRouter.get(
+  '/areas/:code/circulars/:id',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const checker = await loadModuleAccessChecker(req.user!);
+    res.json({ data: await ibas.getAreaCircular(String(req.params.code), String(req.params.id), checker) });
+  }),
+);
+
+ibasRouter.get(
   '/admin/links',
   requireAdmin,
   asyncHandler(async (req: AuthRequest, res: Response) => {

@@ -22,7 +22,6 @@ export const MODULE_CODES = [
   'PAPER',
   'CANDIDATE',
   'AUDIT',
-  'OCR',
   'PENSION',
   'NOTICE',
   'QOTD',
@@ -71,7 +70,6 @@ export const EXAM_PREP_MODULE_CODES = [
 export const BASIC_MODULE_CODES = [
   'CIRCULARS',
   'PENSION',
-  'OCR',
   'BUDGET_PREP',
   'BUDGET_EXEC',
   'ACCOUNTING',
@@ -714,14 +712,6 @@ export const SMART_TOOLS = [
     href: '/joining-period',
     module_code: 'PENSION',
     areas: ['IBAS_PERSONAL'],
-  },
-  {
-    key: 'pdf-to-word',
-    title: 'PDF to Word',
-    description: 'Convert scanned circulars and orders to editable text',
-    href: '/tools/pdf-to-word',
-    module_code: 'OCR',
-    areas: ['IBAS_ACCOUNTS', 'IBAS_AUDIT'],
   },
 ] as const satisfies ReadonlyArray<{
   key: string;

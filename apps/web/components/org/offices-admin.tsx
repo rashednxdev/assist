@@ -40,7 +40,10 @@ function OfficeRow({
     o.email && { icon: Mail, text: o.email },
     (o.telephone || o.mobile) && { icon: Phone, text: [o.telephone, o.mobile].filter(Boolean).join(' · ') + (o.pabx ? ` · PABX ${o.pabx}` : '') },
     o.web_address && { icon: Globe, text: o.web_address.replace(/^https?:\/\//, '') },
-    (o.thana_name || o.district_name) && { icon: MapPin, text: [o.thana_name, o.district_name].filter(Boolean).join(', ') },
+    (o.thana_name || o.district_name || o.division_name) && {
+      icon: MapPin,
+      text: [o.thana_name, o.district_name, o.division_name].filter(Boolean).join(', '),
+    },
   ].filter(Boolean) as Array<{ icon: typeof Mail; text: string }>;
 
   return (

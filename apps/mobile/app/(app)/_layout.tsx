@@ -79,6 +79,8 @@ export default function AppLayout() {
       <Stack.Screen name="toolkit" />
       <Stack.Screen name="salary" />
       <Stack.Screen name="pricing" />
+      <Stack.Screen name="exam-prep" />
+      <Stack.Screen name="calculations" />
     </Stack>
   );
 }

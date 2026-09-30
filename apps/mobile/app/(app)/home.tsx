@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -14,18 +14,17 @@ import { useFocusEffect, useRouter, type Href } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { PerformanceCard } from '@/components/home/PerformanceCard';
 import { ModuleTile } from '@/components/home/ModuleTile';
-import { ExamCountdownCard } from '@/components/home/ExamCountdownCard';
+import { ExamHomeCard } from '@/components/home/ExamHomeCard';
+import { HomeSummaryCard } from '@/components/home/HomeSummaryCard';
 import { BloodHomeCard } from '@/components/blood/BloodHomeCard';
-import { AccessRequiredScreen, type AccessRequiredVariant } from '@/components/home/AccessRequiredScreen';
+import { AccessRequiredScreen } from '@/components/home/AccessRequiredScreen';
 import { ModuleWelcomeTips } from '@/components/home/ModuleWelcomeTips';
 import { APP_UPDATE_URL, APP_VERSION_LABEL } from '@/lib/app-version';
 import { isModuleWelcomeTipsPending } from '@/lib/module-welcome-tips';
 import { useAuth } from '@/lib/auth-context';
 import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
-import { useAnswerHistory } from '@/hooks/useAnswerHistory';
-import { hasLearningModule, findModuleStop, isModuleEffectivelyStopped, isFreeLearningModule } from '@/lib/api';
+import { useModuleOpener } from '@/hooks/useModuleOpener';
 import { canManageUsers } from '@/lib/users-api';
 import { canReadAnyModule } from '@/lib/module-access';
 import { CIRCULAR_MODULE_CODES } from '@/lib/circulars-api';
@@ -35,146 +34,17 @@ import {
   type ProgressDashboardData,
 } from '@/lib/evaluation-api';
 import { fetchMyNotifications } from '@/lib/notifications-api';
-import { qotdColors } from '@/lib/qotd-theme';
-import { examWeekColors } from '@/lib/exam-week-theme';
-import { getInspirationMessage } from '@/lib/inspiration-message';
+import { EXAM_MODULES } from '@/lib/home-modules';
 import { colors, spacing } from '@/theme';
 
-const MODULES: Array<{
-  id: string;
-  code:
-    | 'BOOKS'
-    | 'QUESTIONS'
-    | 'EXAM'
-    | 'PAPER'
-    | 'PENSION'
-    | 'QUESTION_EDIT'
-    | 'QOTD'
-    | 'EXAM_ROUTINE'
-    | 'EXAM_WEEK'
-    | 'LIVE_STREAM';
-  title: string;
-  subtitle: string;
-  icon:
-    | 'library-outline'
-    | 'list-outline'
-    | 'school-outline'
-    | 'document-text-outline'
-    | 'calculator-outline'
-    | 'create-outline'
-    | 'calendar-outline'
-    | 'time-outline'
-    | 'trophy-outline'
-    | 'videocam-outline';
-  color: string;
-  href: Href;
-}> = [
-  {
-    id: 'books',
-    code: 'BOOKS' as const,
-    title: 'Books & Tools',
-    subtitle: 'Books & regulatory tools',
-    icon: 'library-outline' as const,
-    color: '#0f5c8c',
-    href: '/(app)/books',
-  },
-  {
-    id: 'paper',
-    code: 'PAPER' as const,
-    title: 'Exam Papers',
-    subtitle: 'Session-wise model papers',
-    icon: 'document-text-outline' as const,
-    color: '#d97706',
-    href: '/(app)/papers',
-  },
-  {
-    id: 'live',
-    code: 'LIVE_STREAM' as const,
-    title: 'Live class',
-    subtitle: 'Upcoming, live & previous',
-    icon: 'videocam-outline' as const,
-    color: '#0369a1',
-    href: '/(app)/live' as Href,
-  },
-  {
-    id: 'questions',
-    code: 'QUESTIONS' as const,
-    title: 'Question Bank',
-    subtitle: 'Browse & practice questions',
-    icon: 'list-outline' as const,
-    color: '#7c3aed',
-    href: '/(app)/questions',
-  },
-  {
-    id: 'exam',
-    code: 'EXAM' as const,
-    title: 'Exam Programs',
-    subtitle: 'SAS, SRAS & exam structure',
-    icon: 'school-outline' as const,
-    color: '#059669',
-    href: '/(app)/exams',
-  },
-  {
-    id: 'qotd',
-    code: 'QOTD' as const,
-    title: 'Questions of the Day',
-    subtitle: 'Daily subject-wise questions',
-    icon: 'calendar-outline' as const,
-    color: qotdColors.accent,
-    href: '/(app)/qotd' as Href,
-  },
-  {
-    id: 'exam-week',
-    code: 'EXAM_WEEK' as const,
-    title: 'Exams of the Week',
-    subtitle: 'Featured exam papers, by week',
-    icon: 'trophy-outline' as const,
-    color: examWeekColors.accent,
-    href: '/(app)/exam-week' as Href,
-  },
-  {
-    id: 'pension',
-    code: 'PENSION' as const,
-    title: 'Pension Calculator',
-    subtitle: 'Leave math & lamp grant',
-    icon: 'calculator-outline' as const,
-    color: '#0e7490',
-    href: '/(app)/pension' as Href,
-  },
-  {
-    id: 'joining-period',
-    code: 'PENSION' as const,
-    title: 'Joining Period',
-    subtitle: 'Prep + travel math',
-    icon: 'calculator-outline' as const,
-    color: '#0369a1',
-    href: '/(app)/joining-period' as Href,
-  },
-  {
-    id: 'exam-routine',
-    code: 'EXAM_ROUTINE' as const,
-    title: 'Exam Routine',
-    subtitle: 'Schedules, countdown & instructions',
-    icon: 'time-outline' as const,
-    color: '#7c2d12',
-    href: '/(app)/exam-routine' as Href,
-  },
-  {
-    id: 'question-update',
-    code: 'QUESTION_EDIT' as const,
-    title: 'Question Update',
-    subtitle: 'Review & edit questions and answers',
-    icon: 'create-outline' as const,
-    color: '#B45309',
-    href: '/(app)/question-update' as Href,
-  },
-];
+const QOTD_MODULE = EXAM_MODULES.find((m) => m.code === 'QOTD')!;
 
 const SERVICES: Array<{
   id: string;
   title: string;
   subtitle: string;
   icon: keyof typeof Ionicons.glyphMap;
+  badgeIcon?: keyof typeof Ionicons.glyphMap;
   color: string;
   href: Href;
 }> = [
@@ -190,7 +60,8 @@ const SERVICES: Array<{
     id: 'contacts',
     title: 'Contacts',
     subtitle: 'Offices, colleagues & batchmates',
-    icon: 'book-outline',
+    icon: 'business-outline',
+    badgeIcon: 'call',
     color: '#0d9488',
     href: '/(app)/contacts' as Href,
   },
@@ -257,112 +128,26 @@ const OFFICE_TOOLS: Array<{
     href: '/(app)/toolkit' as Href,
   },
   {
-    id: 'salary',
-    title: 'Salary On 2026',
-    subtitle: 'Basic on proposed pay scale 2026',
-    icon: 'cash-outline',
+    id: 'calculations',
+    title: 'Salary On 2026 & Calculations',
+    subtitle: 'Salary 2026, pension & joining period',
+    icon: 'calculator-outline',
     color: '#047857',
-    href: '/(app)/salary' as Href,
+    href: '/(app)/calculations' as Href,
   },
 ];
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { user, signOut, canAccess, refreshUser } = useAuth();
+  const { user, signOut, refreshUser } = useAuth();
   const { items: savedItems } = useSavedShortcuts();
-  const { items: historyItems } = useAnswerHistory();
+  const { openModule, checkingModuleId, accessScreen, closeAccessScreen } = useModuleOpener();
   const [progress, setProgress] = useState<ProgressDashboardData | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [checkingModuleId, setCheckingModuleId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [welcomeTipsOpen, setWelcomeTipsOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [accessScreen, setAccessScreen] = useState<{
-    variant: AccessRequiredVariant;
-    moduleTitle?: string;
-    stoppedReason?: string;
-  } | null>(null);
-
-  const homeModules = useMemo(() => {
-    const grants = user?.module_access ?? [];
-    const stops = user?.module_stops ?? [];
-    const hasPaidModule = MODULES.some((m) => {
-      if (isFreeLearningModule(m.code) || m.code === 'QUESTION_EDIT') return false;
-      return (
-        hasLearningModule(grants, m.code) &&
-        !isModuleEffectivelyStopped(stops, grants, m.code) &&
-        user?.has_paid !== false
-      );
-    });
-    if (hasPaidModule) return MODULES;
-    // Until paid: pin free promo modules at the top — QOTD, then Live class.
-    const qotd = MODULES.find((m) => m.code === 'QOTD');
-    const live = MODULES.find((m) => m.id === 'live');
-    const pinned = [qotd, live].filter(Boolean) as typeof MODULES;
-    const pinnedIds = new Set(pinned.map((m) => m.id));
-    return [...pinned, ...MODULES.filter((m) => !pinnedIds.has(m.id))];
-  }, [user?.module_access, user?.module_stops, user?.has_paid]);
-
-  const openModule = useCallback(
-    async (module: (typeof MODULES)[number]) => {
-      if (isModuleEffectivelyStopped(user?.module_stops ?? [], user?.module_access ?? [], module.code)) {
-        const stop = findModuleStop(user?.module_stops ?? [], module.code);
-        setAccessScreen({
-          variant: 'stopped',
-          moduleTitle: module.title,
-          stoppedReason: stop?.stopped_reason,
-        });
-        return;
-      }
-
-      if (isFreeLearningModule(module.code)) {
-        router.push(module.href);
-        return;
-      }
-
-      if (user && user.has_paid === false) {
-        setAccessScreen({ variant: 'unpaid', moduleTitle: module.title });
-        return;
-      }
-
-      if (hasLearningModule(user?.module_access ?? [], module.code)) {
-        router.push(module.href);
-        return;
-      }
-
-      setCheckingModuleId(module.id);
-      try {
-        const me = await refreshUser();
-        if (isModuleEffectivelyStopped(me.module_stops ?? [], me.module_access ?? [], module.code)) {
-          const freshStop = findModuleStop(me.module_stops ?? [], module.code);
-          setAccessScreen({
-            variant: 'stopped',
-            moduleTitle: module.title,
-            stoppedReason: freshStop?.stopped_reason,
-          });
-          return;
-        }
-        if (isFreeLearningModule(module.code)) {
-          router.push(module.href);
-          return;
-        }
-        if (me.has_paid === false) {
-          setAccessScreen({ variant: 'unpaid', moduleTitle: module.title });
-          return;
-        }
-        if (hasLearningModule(me.module_access ?? [], module.code)) {
-          router.push(module.href);
-          return;
-        }
-        setAccessScreen({ variant: 'denied', moduleTitle: module.title });
-      } catch {
-        setAccessScreen({ variant: 'network-error' });
-      } finally {
-        setCheckingModuleId(null);
-      }
-    },
-    [refreshUser, router, user],
-  );
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const loadData = useCallback(async () => {
     const dash = await fetchProgressDashboard().catch(() => null);
@@ -376,12 +161,13 @@ export default function HomeScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    setRefreshKey((k) => k + 1);
     try {
-      await Promise.all([loadData(), refreshUser().catch(() => null)]);
+      await Promise.all([loadData(), loadUnreadCount(), refreshUser().catch(() => null)]);
     } finally {
       setRefreshing(false);
     }
-  }, [loadData, refreshUser]);
+  }, [loadData, loadUnreadCount, refreshUser]);
 
   useEffect(() => {
     void loadData();
@@ -535,68 +321,7 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scroll}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        <PerformanceCard
-          progress={progress}
-          savedCount={savedItems.length}
-          onSavedPress={() => router.push('/(app)/saved' as Href)}
-          onProgressPress={() => router.push('/(app)/progress' as Href)}
-        />
-
-        <ExamCountdownCard />
-
-        <Text style={styles.sectionTitle}>Learning modules</Text>
-        <View style={styles.grid}>
-          {homeModules.map((m) => {
-            const enabled =
-              canAccess(m.code) &&
-              !isModuleEffectivelyStopped(user?.module_stops ?? [], user?.module_access ?? [], m.code);
-            // Question Update is an admin-approved facility, not a default learning module —
-            // stay hidden entirely (not just disabled) until access is actually granted.
-            if (m.code === 'QUESTION_EDIT' && !enabled) return null;
-            const showInspiration = m.code === 'QOTD' || m.code === 'EXAM_WEEK';
-            return (
-              <ModuleTile
-                key={m.id}
-                title={m.title}
-                subtitle={m.subtitle}
-                icon={m.icon}
-                color={m.color}
-                enabled={enabled}
-                checking={checkingModuleId === m.id}
-                badgeText={showInspiration ? getInspirationMessage(m.id) : undefined}
-                onPress={() => void openModule(m)}
-              />
-            );
-          })}
-          <ModuleTile
-            title="Answer Reading History"
-            subtitle={
-              historyItems.length > 0
-                ? `${historyItems.length} recently viewed`
-                : 'Recently viewed answers'
-            }
-            icon="time-outline"
-            color="#4338ca"
-            enabled
-            onPress={() => router.push('/(app)/history' as Href)}
-          />
-        </View>
-
-        <Text style={styles.sectionTitle}>Community & services</Text>
-        <View style={styles.grid}>
-          {SERVICES.map((s) => (
-            <ModuleTile
-              key={s.id}
-              title={s.title}
-              subtitle={s.subtitle}
-              icon={s.icon}
-              color={s.color}
-              enabled
-              onPress={() => router.push(s.href)}
-            />
-          ))}
-        </View>
-        <BloodHomeCard />
+        <HomeSummaryCard unreadCount={unreadCount} refreshKey={refreshKey} />
 
         <Text style={styles.sectionTitle}>Office & policy</Text>
         <View style={styles.grid}>
@@ -613,44 +338,31 @@ export default function HomeScreen() {
           ))}
         </View>
 
-        <Text style={styles.sectionTitle}>Marathon Review</Text>
-        <Pressable
-          style={({ pressed }) => [styles.marathonCard, pressed && styles.marathonCardPressed]}
-          onPress={() => router.push('/(app)/marathon' as Href)}
-        >
-          <View style={styles.marathonIcon}>
-            <Text style={styles.marathonIconText}>MR</Text>
-          </View>
-          <View style={styles.marathonText}>
-            <Text style={styles.marathonTitle}>Marathon Review</Text>
-            <Text style={styles.marathonSub}>
-              Short Questions & Answer on Books & Tools- toggle or hold to reveal answer
-            </Text>
-          </View>
-          <Text style={styles.marathonChevron}>›</Text>
-        </Pressable>
+        <Text style={styles.sectionTitle}>Community & services</Text>
+        <View style={styles.grid}>
+          {SERVICES.map((s) => (
+            <ModuleTile
+              key={s.id}
+              title={s.title}
+              subtitle={s.subtitle}
+              icon={s.icon}
+              badgeIcon={s.badgeIcon}
+              color={s.color}
+              enabled
+              onPress={() => router.push(s.href)}
+            />
+          ))}
+        </View>
+        <BloodHomeCard />
 
-        {canAccess('USER_QUESTIONS') && (
-          <>
-            <Text style={styles.sectionTitle}>Submit a Question</Text>
-            <Pressable
-              style={({ pressed }) => [styles.submitQCard, pressed && styles.marathonCardPressed]}
-              onPress={() => router.push('/(app)/user-questions' as Href)}
-            >
-              <View style={styles.submitQIcon}>
-                <Ionicons name="add-circle-outline" size={22} color={colors.white} />
-              </View>
-              <View style={styles.marathonText}>
-                <Text style={styles.marathonTitle}>Can&apos;t find a question?</Text>
-                <Text style={styles.marathonSub}>
-                  Submit it for a subject — an admin will review and answer it
-                </Text>
-              </View>
-              <Text style={styles.marathonChevron}>›</Text>
-            </Pressable>
-          </>
-        )}
-
+        <Text style={styles.sectionTitle}>Exam preparation</Text>
+        <ExamHomeCard
+          progress={progress}
+          savedCount={savedItems.length}
+          qotdChecking={checkingModuleId === QOTD_MODULE.id}
+          onOpen={() => router.push('/(app)/exam-prep' as Href)}
+          onQotd={() => void openModule(QOTD_MODULE)}
+        />
       </ScrollView>
 
       <AccessRequiredScreen
@@ -659,7 +371,7 @@ export default function HomeScreen() {
         moduleTitle={accessScreen?.moduleTitle}
         stoppedReason={accessScreen?.stoppedReason}
         unpaidMessage={user?.unpaid_message}
-        onClose={() => setAccessScreen(null)}
+        onClose={closeAccessScreen}
       />
       <ModuleWelcomeTips visible={welcomeTipsOpen} onDone={() => setWelcomeTipsOpen(false)} />
     </View>
@@ -818,71 +530,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: colors.text,
-  },
-  marathonCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-  },
-  marathonCardPressed: {
-    opacity: 0.92,
-  },
-  submitQCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-  },
-  submitQIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: '#4d7c0f',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  marathonIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: '#0f5c8c',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  marathonIconText: {
-    color: colors.white,
-    fontWeight: '800',
-    fontSize: 13,
-    letterSpacing: 0.5,
-  },
-  marathonText: {
-    flex: 1,
-    gap: 2,
-  },
-  marathonTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: colors.text,
-  },
-  marathonSub: {
-    fontSize: 12,
-    lineHeight: 17,
-    color: colors.textMuted,
-  },
-  marathonChevron: {
-    fontSize: 28,
-    color: colors.textMuted,
-    fontWeight: '300',
-    marginTop: -2,
   },
   grid: {
     flexDirection: 'row',

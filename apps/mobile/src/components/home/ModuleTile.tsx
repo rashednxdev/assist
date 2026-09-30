@@ -6,6 +6,8 @@ interface ModuleTileProps {
   title: string;
   subtitle: string;
   icon: keyof typeof Ionicons.glyphMap;
+  /** Small secondary glyph pinned to the icon's corner, for tiles that combine two ideas. */
+  badgeIcon?: keyof typeof Ionicons.glyphMap;
   color: string;
   enabled: boolean;
   checking?: boolean;
@@ -18,6 +20,7 @@ export function ModuleTile({
   title,
   subtitle,
   icon,
+  badgeIcon,
   color,
   enabled,
   checking = false,
@@ -37,6 +40,11 @@ export function ModuleTile({
           ) : (
             <Ionicons name={icon} size={26} color={color} />
           )}
+          {badgeIcon && !checking ? (
+            <View style={[styles.iconBadge, { backgroundColor: color }]}>
+              <Ionicons name={badgeIcon} size={11} color={colors.white} />
+            </View>
+          ) : null}
         </View>
         {badgeText ? (
           <View style={styles.speechBubble}>
@@ -80,6 +88,18 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconBadge: {
+    position: 'absolute',
+    right: -4,
+    bottom: -4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },

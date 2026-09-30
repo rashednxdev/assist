@@ -18,6 +18,7 @@ import { ModuleTile } from '@/components/home/ModuleTile';
 import { ExamHomeCard } from '@/components/home/ExamHomeCard';
 import { HomeSummaryCard } from '@/components/home/HomeSummaryCard';
 import { BloodHomeCard } from '@/components/blood/BloodHomeCard';
+import { RED } from '@/components/blood/BloodBits';
 import { AccessRequiredScreen } from '@/components/home/AccessRequiredScreen';
 import { ModuleWelcomeTips } from '@/components/home/ModuleWelcomeTips';
 import { APP_UPDATE_URL, APP_VERSION_LABEL } from '@/lib/app-version';
@@ -353,7 +354,21 @@ export default function HomeScreen() {
             />
           ))}
         </View>
-        <BloodHomeCard />
+
+        <Text style={styles.sectionTitle}>Blood bank</Text>
+        <View>
+          <View style={styles.grid}>
+            <ModuleTile
+              title="Blood Bank"
+              subtitle="Blood group, donors, requests & donation history"
+              icon="water-outline"
+              color={RED}
+              enabled
+              onPress={() => router.push('/(app)/blood-bank' as Href)}
+            />
+          </View>
+          <BloodHomeCard />
+        </View>
 
         <Text style={styles.sectionTitle}>Exam preparation</Text>
         <ExamHomeCard

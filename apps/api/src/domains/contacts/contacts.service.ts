@@ -4,8 +4,11 @@ import {
   contactFavoriteSchema,
   contactOfficeQuerySchema,
   contactPrivacySchema,
+  CONTACT_VERIFICATION_REQUIRED,
+  CONTACT_VERIFIER_GRADE_MAX,
   PROFILE_WORK_IDENTITY_REQUIRED,
   type ContactAccess,
+  type ContactVerificationInfo,
   type ContactDesignationCount,
   type ContactEmployee,
   type ContactFavorites,
@@ -37,6 +40,8 @@ import { ancestorChain, officeIndex, parentPath, subtreeIds, workSnapshot, type 
 import { isAdminUser } from '../community/community.service.js';
 import { getServiceInfo } from '../org/service-info.service.js';
 import { ContactFavorite } from './models/ContactFavorite.model.js';
+import { canVerify, ensureVerification, isVerified, verificationInfo } from './verification.service.js';
+import { activeChargesAt, activeChargesOf, pendingHandoverCount, type ChargeRow } from './charges.service.js';
 
 const PLACEHOLDER_EMAIL_DOMAIN = '@phone.proassist.app';
 const OVERVIEW_PER_TYPE = 6;
@@ -61,6 +66,11 @@ interface Viewer {
   admin: boolean;
   paid: boolean;
   ready: boolean;
+  work: boolean;
+  verified: boolean;
+  verification: ContactVerificationInfo | null;
+  canVerify: boolean;
+  pendingHandovers: number;
   myOfficeId: string | null;
   privacy: ContactPrivacy;
   favorites: { office: Set<string>; user: Set<string> };
@@ -68,18 +78,27 @@ interface Viewer {
 
 async function loadViewer(user: AuthUser): Promise<Viewer> {
   const admin = isAdminUser(user);
-  const [doc, work, entitled, favs] = await Promise.all([
+  const [doc, work, entitled, favs, pendingHandovers] = await Promise.all([
     User.findById(user.id).select('amount_received office_id directory_hide_phone directory_hide_email').lean(),
     workSnapshot(user.id),
     admin ? Promise.resolve(null) : UserEntitlement.exists({ user_id: user.id, is_revoked: false, starts_at: { $lte: new Date() }, ends_at: { $gt: new Date() } }),
     ContactFavorite.find({ user_id: user.id }).select('target_type target_id').lean(),
+    pendingHandoverCount(user.id),
   ]);
+  const own = await ensureVerification(user.id, !!work);
+  const verified = isVerified(own);
+  const [verification, verifier] = await Promise.all([verificationInfo(own), canVerify(user, own)]);
   const paid = admin || Number(doc?.amount_received ?? 0) > 0 || !!entitled;
   return {
     id: user.id,
     admin,
     paid,
-    ready: admin || !!work,
+    ready: admin || (!!work && verified),
+    work: !!work,
+    verified,
+    verification: work ? verification : null,
+    canVerify: verifier,
+    pendingHandovers,
     myOfficeId: doc?.office_id ? String(doc.office_id) : null,
     privacy: { hide_phone: !!doc?.directory_hide_phone, hide_email: !!doc?.directory_hide_email },
     favorites: {
@@ -90,13 +109,29 @@ async function loadViewer(user: AuthUser): Promise<Viewer> {
 }
 
 function toAccess(v: Viewer): ContactAccess {
-  return { ready: v.ready, can_dial: v.paid, is_admin: v.admin, my_office_id: v.myOfficeId, privacy: v.privacy };
+  return {
+    ready: v.ready,
+    work: v.work,
+    verified: v.verified,
+    verification: v.verification,
+    can_verify: v.canVerify,
+    pending_handovers: v.pendingHandovers,
+    can_dial: v.paid,
+    is_admin: v.admin,
+    my_office_id: v.myOfficeId,
+    privacy: v.privacy,
+  };
 }
 
 async function readyViewer(user: AuthUser): Promise<Viewer> {
   const v = await loadViewer(user);
   if (!v.ready) {
-    throw new AppError(403, PROFILE_WORK_IDENTITY_REQUIRED, 'Add your office and designation to open the contact directory.');
+    if (!v.work) throw new AppError(403, PROFILE_WORK_IDENTITY_REQUIRED, 'Add your office and designation to open the contact directory.');
+    throw new AppError(
+      403,
+      CONTACT_VERIFICATION_REQUIRED,
+      `Share your 8-digit code with a verified colleague of grade 1–${CONTACT_VERIFIER_GRADE_MAX} to open the contact directory.`,
+    );
   }
   return v;
 }
@@ -286,7 +321,23 @@ interface EmployeeRow {
   designation_id?: Types.ObjectId | null;
   directory_hide_phone?: boolean;
   directory_hide_email?: boolean;
+  work_section?: string;
+  work_telephone?: string;
+  work_pabx?: string;
   d?: { _id: Types.ObjectId; name: string; short_name: string; grade?: number | null } | null;
+}
+
+/** The office scope being browsed, so additional-charge holders can be labelled as such. */
+interface ListScope {
+  officeIds: Set<string>;
+  designationId?: string;
+  charges: ChargeRow[];
+}
+
+interface EmployeeExtras {
+  charges: Map<string, ContactEmployee['additional_charges']>;
+  designations: Map<string, { id: string; name: string; short_name: string }>;
+  scope?: ListScope;
 }
 
 function initialsOf(name: string): string {
@@ -300,7 +351,12 @@ function initialsOf(name: string): string {
   );
 }
 
-function toEmployee(r: EmployeeRow, v: Viewer, map: Map<string, IndexedOffice>): ContactEmployee {
+function inScope(r: EmployeeRow, scope: ListScope): boolean {
+  if (!r.office_id || !scope.officeIds.has(String(r.office_id))) return false;
+  return !scope.designationId || String(r.designation_id) === scope.designationId;
+}
+
+function toEmployee(r: EmployeeRow, v: Viewer, map: Map<string, IndexedOffice>, extras: EmployeeExtras): ContactEmployee {
   const id = String(r._id);
   const me = id === v.id;
   const name = r.full_name_en?.trim() || r.full_name_bn?.trim() || 'Member';
@@ -308,6 +364,9 @@ function toEmployee(r: EmployeeRow, v: Viewer, map: Map<string, IndexedOffice>):
   const hidePhone = !!r.directory_hide_phone && !me && !v.admin;
   const hideEmail = !!r.directory_hide_email && !me && !v.admin;
   const email = r.email && !r.email.endsWith(PLACEHOLDER_EMAIL_DOMAIN) ? r.email : undefined;
+  const scope = extras.scope;
+  const listedCharge = scope && !inScope(r, scope) ? scope.charges.find((c) => String(c.user_id) === id) : undefined;
+  const listedDesignation = listedCharge ? extras.designations.get(String(listedCharge.designation_id)) : undefined;
   return {
     id,
     name,
@@ -315,12 +374,33 @@ function toEmployee(r: EmployeeRow, v: Viewer, map: Map<string, IndexedOffice>):
     initials: initialsOf(name),
     designation: r.d ? { id: String(r.d._id), name: r.d.name, short_name: r.d.short_name, grade: r.d.grade ?? null } : null,
     office: office ? { id: office.id, name: office.name, short_name: office.short_name, parent_path: parentPath(map, office.parent_id) } : null,
+    section: r.work_section?.trim() || undefined,
     mobile: hidePhone ? undefined : phoneOut(r.phone, v.paid || me),
+    telephone: phoneOut(r.work_telephone, v.paid || me),
+    pabx: phoneOut(r.work_pabx, v.paid || me),
     email: hideEmail ? undefined : email,
     phone_hidden: hidePhone,
+    additional_charges: extras.charges.get(id) ?? [],
+    listed_as_additional: listedDesignation ? { designation: listedDesignation } : undefined,
     is_favorite: v.favorites.user.has(id),
     is_me: me,
   };
+}
+
+async function toEmployees(rows: EmployeeRow[], v: Viewer, map: Map<string, IndexedOffice>, scope?: ListScope): Promise<ContactEmployee[]> {
+  const charges = await activeChargesOf(rows.map((r) => r._id));
+  const designationIds = [...new Set([...charges, ...(scope?.charges ?? [])].map((c) => String(c.designation_id)))];
+  const designations = designationIds.length ? await Designation.find({ _id: { $in: designationIds } }).select('name short_name').lean() : [];
+  const dm = new Map(designations.map((d) => [String(d._id), { id: String(d._id), name: d.name, short_name: d.short_name }]));
+  const byUser = new Map<string, ContactEmployee['additional_charges']>();
+  for (const c of charges) {
+    const o = map.get(String(c.office_id));
+    const d = dm.get(String(c.designation_id));
+    if (!o || !d) continue;
+    const key = String(c.user_id);
+    byUser.set(key, [...(byUser.get(key) ?? []), { designation: d, office: { id: o.id, name: o.name, short_name: o.short_name } }]);
+  }
+  return rows.map((r) => toEmployee(r, v, map, { charges: byUser, designations: dm, scope }));
 }
 
 const EMPLOYEE_FIELDS = {
@@ -332,27 +412,56 @@ const EMPLOYEE_FIELDS = {
   designation_id: 1,
   directory_hide_phone: 1,
   directory_hide_email: 1,
+  work_section: 1,
+  work_telephone: 1,
+  work_pabx: 1,
 } as const;
 
-function designationLookup(): PipelineStage[] {
-  return [
+/** Sorts by grade; people listed for an additional charge sort by that post's grade. */
+function designationLookup(scope?: ListScope): PipelineStage[] {
+  const chargeFor = (scope?.charges ?? []).map((c) => ({ u: c.user_id, d: c.designation_id }));
+  const stages: PipelineStage[] = [
     { $lookup: { from: 'designations', localField: 'designation_id', foreignField: '_id', as: 'd' } },
     { $set: { d: { $arrayElemAt: ['$d', 0] } } },
-    {
-      $set: {
-        _g: { $ifNull: ['$d.grade', 99] },
-        _s: { $ifNull: ['$d.serial_no', 99_999] },
-        _n: { $toLower: { $ifNull: ['$full_name_en', ''] } },
-      },
-    },
   ];
+  if (chargeFor.length && scope) {
+    const officeOids = [...scope.officeIds].map((id) => new mongoose.Types.ObjectId(id));
+    const primaryInScope: Record<string, unknown>[] = [{ $in: ['$office_id', officeOids] }];
+    if (scope.designationId) primaryInScope.push({ $eq: ['$designation_id', new mongoose.Types.ObjectId(scope.designationId)] });
+    stages.push(
+      {
+        $set: {
+          _cd: {
+            $cond: [
+              { $and: primaryInScope },
+              null,
+              { $let: { vars: { m: { $arrayElemAt: [{ $filter: { input: chargeFor, cond: { $eq: ['$$this.u', '$_id'] } } }, 0] } }, in: '$$m.d' } },
+            ],
+          },
+        },
+      },
+      { $lookup: { from: 'designations', localField: '_cd', foreignField: '_id', as: 'cd' } },
+      { $set: { cd: { $arrayElemAt: ['$cd', 0] } } },
+    );
+  }
+  stages.push({
+    $set: {
+      _g: { $ifNull: ['$cd.grade', { $ifNull: ['$d.grade', 99] }] },
+      _s: { $ifNull: ['$cd.serial_no', { $ifNull: ['$d.serial_no', 99_999] }] },
+      _n: { $toLower: { $ifNull: ['$full_name_en', ''] } },
+    },
+  });
+  return stages;
 }
 
-/** Match stage for active people in the chosen office scope (or every active office). */
+/**
+ * Match stage for active people in the chosen office scope (or every active office). When a specific
+ * office is browsed, people holding an additional charge there are included too.
+ */
 async function employeeMatch(
   map: Map<string, IndexedOffice>,
   opts: { office_id?: string; include_sub?: boolean; designation_id?: string; q?: string; viewerPaid: boolean },
-): Promise<Record<string, unknown>> {
+): Promise<{ match: Record<string, unknown>; scope?: ListScope }> {
   let officeIds: string[];
   if (opts.office_id) {
     const o = map.get(opts.office_id);
@@ -361,24 +470,33 @@ async function employeeMatch(
   } else {
     officeIds = [...map.values()].filter((o) => o.is_active).map((o) => o.id);
   }
-  const match: Record<string, unknown> = {
-    status: 'active',
-    office_id: { $in: officeIds.map((id) => new mongoose.Types.ObjectId(id)) },
-  };
-  if (opts.designation_id) match.designation_id = new mongoose.Types.ObjectId(opts.designation_id);
+  const officeOids = officeIds.map((id) => new mongoose.Types.ObjectId(id));
+  const designationOid = opts.designation_id ? new mongoose.Types.ObjectId(opts.designation_id) : undefined;
+  const primary: Record<string, unknown> = { office_id: { $in: officeOids } };
+  if (designationOid) primary.designation_id = designationOid;
+
+  const and: Record<string, unknown>[] = [];
+  let scope: ListScope | undefined;
+  const charges = opts.office_id ? await activeChargesAt(officeOids, designationOid) : [];
+  if (charges.length) {
+    scope = { officeIds: new Set(officeIds), designationId: opts.designation_id, charges };
+    and.push({ $or: [primary, { _id: { $in: [...new Set(charges.map((c) => String(c.user_id)))].map((id) => new mongoose.Types.ObjectId(id)) } }] });
+  } else {
+    and.push(primary);
+  }
   if (opts.q) {
     const rx = new RegExp(escapeRx(opts.q), 'i');
     const [desig, offices] = await Promise.all([
       Designation.find({ $or: [{ name: rx }, { short_name: rx }, { name_bn: rx }] }).select('_id').lean(),
       Promise.resolve([...map.values()].filter((o) => rx.test(o.name) || (o.short_name && rx.test(o.short_name))).map((o) => o.id)),
     ]);
-    const or: Record<string, unknown>[] = [{ full_name_en: rx }, { full_name_bn: rx }, { email: rx }];
+    const or: Record<string, unknown>[] = [{ full_name_en: rx }, { full_name_bn: rx }, { email: rx }, { work_section: rx }];
     if (opts.viewerPaid && /\d{3,}/.test(opts.q)) or.push({ phone: new RegExp(escapeRx(opts.q.replace(/\D/g, ''))) });
     if (desig.length) or.push({ designation_id: { $in: desig.map((d) => d._id) } });
     if (offices.length) or.push({ office_id: { $in: offices.map((id) => new mongoose.Types.ObjectId(id)) } });
-    match.$or = or;
+    and.push({ $or: or });
   }
-  return match;
+  return { match: { status: 'active', $and: and }, scope };
 }
 
 export async function listEmployees(user: AuthUser, query: unknown) {
@@ -387,7 +505,7 @@ export async function listEmployees(user: AuthUser, query: unknown) {
   if (!parsed.success) throw badRequest(zodMessage(parsed.error));
   const q = parsed.data;
   const map = await officeIndex();
-  const match = await employeeMatch(map, {
+  const { match, scope } = await employeeMatch(map, {
     office_id: q.office_id || undefined,
     include_sub: q.include_sub,
     designation_id: q.designation_id || undefined,
@@ -397,12 +515,12 @@ export async function listEmployees(user: AuthUser, query: unknown) {
   const [res] = await User.aggregate<{ items: EmployeeRow[]; total: Array<{ n: number }> }>([
     { $match: match },
     { $project: EMPLOYEE_FIELDS },
-    ...designationLookup(),
+    ...designationLookup(scope),
     { $sort: { _g: 1, _s: 1, _n: 1, _id: 1 } },
     { $facet: { items: [{ $skip: (q.page - 1) * q.limit }, { $limit: q.limit }], total: [{ $count: 'n' }] } },
   ]);
   return {
-    items: (res?.items ?? []).map((r) => toEmployee(r, v, map)),
+    items: await toEmployees(res?.items ?? [], v, map, scope),
     total: res?.total[0]?.n ?? 0,
     page: q.page,
     limit: q.limit,
@@ -415,15 +533,21 @@ export async function designationCounts(user: AuthUser, query: unknown): Promise
   if (!parsed.success) throw badRequest(zodMessage(parsed.error));
   const q = parsed.data;
   const map = await officeIndex();
-  const match = await employeeMatch(map, { office_id: q.office_id || undefined, include_sub: q.include_sub, q: q.q, viewerPaid: v.paid });
-  const rows = await User.aggregate<{ _id: Types.ObjectId | null; n: number }>([
-    { $match: { ...match, designation_id: { $ne: null } } },
-    { $group: { _id: '$designation_id', n: { $sum: 1 } } },
-  ]);
-  const designations = await Designation.find({ _id: { $in: rows.map((r) => r._id).filter(Boolean) } })
+  const { match, scope } = await employeeMatch(map, { office_id: q.office_id || undefined, include_sub: q.include_sub, q: q.q, viewerPaid: v.paid });
+  const rows = await User.find(match).select('office_id designation_id').lean();
+  const counts = new Map<string, number>();
+  const bump = (id: unknown) => id && counts.set(String(id), (counts.get(String(id)) ?? 0) + 1);
+  for (const r of rows) {
+    if (!scope || (r.office_id && scope.officeIds.has(String(r.office_id)))) {
+      bump(r.designation_id);
+      continue;
+    }
+    const posts = new Set(scope.charges.filter((c) => String(c.user_id) === String(r._id)).map((c) => String(c.designation_id)));
+    posts.forEach(bump);
+  }
+  const designations = await Designation.find({ _id: { $in: [...counts.keys()] } })
     .select('name short_name grade serial_no')
     .lean();
-  const counts = new Map(rows.map((r) => [String(r._id), r.n]));
   return designations
     .sort((a, b) => (a.grade ?? 99) - (b.grade ?? 99) || (a.serial_no ?? 0) - (b.serial_no ?? 0) || a.name.localeCompare(b.name))
     .map((d) => ({ id: String(d._id), name: d.name, short_name: d.short_name, grade: d.grade ?? null, count: counts.get(String(d._id)) ?? 0 }));
@@ -461,7 +585,7 @@ export async function listFavorites(user: AuthUser): Promise<ContactFavorites> {
         { $sort: { _g: 1, _s: 1, _n: 1 } },
       ])
     : [];
-  return { offices: await toContactOffices(officeDocs, v, stats), employees: rows.map((r) => toEmployee(r, v, map)) };
+  return { offices: await toContactOffices(officeDocs, v, stats), employees: await toEmployees(rows, v, map) };
 }
 
 /* ---------------------------------- privacy --------------------------------- */
@@ -573,7 +697,7 @@ async function batchMembers(match: Record<string, unknown>, v: Viewer): Promise<
     { $sort: { _g: 1, _s: 1, _n: 1, _id: 1 } },
     { $limit: MAX_BATCH_MEMBERS },
   ]);
-  return rows.map((r) => toEmployee(r, v, map));
+  return toEmployees(rows, v, map);
 }
 
 export async function getMyBatch(user: AuthUser): Promise<MyBatch> {

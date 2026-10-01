@@ -32,6 +32,7 @@ import {
   RefreshCw,
   ScrollText,
   Search,
+  ShieldCheck,
   Trash2,
   TrendingUp,
   UserPlus,
@@ -106,6 +107,7 @@ const QUICK_GROUPS: Array<{ title: string; links: QuickLink[] }> = [
       { href: '/notifications/admin', label: 'Send notification', desc: 'Broadcast to all or selected users', icon: Bell },
       { href: '/admin/schedule', label: 'Official schedule', desc: 'Meetings, bill dates, R&R rules, PDFs', icon: CalendarClock },
       { href: '/admin/unpaid-message', label: 'Unpaid message', desc: 'Text shown on locked modules', icon: MessageCircle },
+      { href: '/admin/contact-verifications', label: 'Contact verifications', desc: 'Who verified whom for Contacts', icon: ShieldCheck },
     ],
   },
   {

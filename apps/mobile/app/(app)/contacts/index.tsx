@@ -29,7 +29,7 @@ type Tab = 'offices' | 'people' | 'batchmates' | 'favorites';
 
 const TABS: Array<{ id: Tab; label: string; icon: keyof typeof Ionicons.glyphMap; activeIcon: keyof typeof Ionicons.glyphMap }> = [
   { id: 'offices', label: 'Offices', icon: 'business-outline', activeIcon: 'business' },
-  { id: 'people', label: 'People', icon: 'people-outline', activeIcon: 'people' },
+  { id: 'people', label: 'Employees', icon: 'people-outline', activeIcon: 'people' },
   { id: 'batchmates', label: 'Batchmates', icon: 'school-outline', activeIcon: 'school' },
   { id: 'favorites', label: 'Favourites', icon: 'star-outline', activeIcon: 'star' },
 ];
@@ -113,7 +113,7 @@ function PrivacySheet({ visible, onClose }: { visible: boolean; onClose: () => v
               router.push('/(app)/account/work' as Href);
             }}
           >
-            Change office or designation
+            Change office or designation on your new posting or promotion
           </Text>
         </Text>
       </SafeAreaView>
@@ -311,7 +311,7 @@ function FavoritesTab() {
           ) : null}
           {data.employees.length > 0 ? (
             <View style={styles.group}>
-              <Text style={styles.sectionLabel}>PEOPLE ({data.employees.length})</Text>
+              <Text style={styles.sectionLabel}>EMPLOYEES ({data.employees.length})</Text>
               {data.employees.map((e) => (
                 <EmployeeCard key={e.id} e={e} onFavorite={drop('employees', e.id)} />
               ))}

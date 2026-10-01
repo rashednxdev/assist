@@ -1,3 +1,4 @@
+import type { UserContactVerification } from '@ibas/shared-types';
 import { apiFetch } from './api';
 
 export interface AdminUserRow {
@@ -188,6 +189,16 @@ export async function upsertUserModuleAccess(
 
 export async function revokeUserModuleAccess(userId: string, moduleId: string) {
   return apiFetch(`/users/${userId}/module-access/${moduleId}`, { method: 'DELETE' });
+}
+
+export async function fetchUserContactVerification(userId: string): Promise<UserContactVerification> {
+  const r = await apiFetch<{ data: UserContactVerification }>(`/users/${userId}/contact-verification`);
+  return r.data;
+}
+
+export async function revokeUserContactVerification(userId: string): Promise<UserContactVerification> {
+  const r = await apiFetch<{ data: UserContactVerification }>(`/users/${userId}/contact-verification/revoke`, { method: 'POST' });
+  return r.data;
 }
 
 export async function sendNotificationToUser(userId: string, title: string, message: string) {

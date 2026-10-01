@@ -18,7 +18,6 @@ import { ModuleTile } from '@/components/home/ModuleTile';
 import { ExamHomeCard } from '@/components/home/ExamHomeCard';
 import { HomeSummaryCard } from '@/components/home/HomeSummaryCard';
 import { BloodHomeCard } from '@/components/blood/BloodHomeCard';
-import { RED } from '@/components/blood/BloodBits';
 import { AccessRequiredScreen } from '@/components/home/AccessRequiredScreen';
 import { ModuleWelcomeTips } from '@/components/home/ModuleWelcomeTips';
 import { APP_UPDATE_URL, APP_VERSION_LABEL } from '@/lib/app-version';
@@ -35,6 +34,8 @@ import {
   type ProgressDashboardData,
 } from '@/lib/evaluation-api';
 import { fetchMyNotifications } from '@/lib/notifications-api';
+import { fetchContactAccess } from '@/lib/contacts-api';
+import type { ContactAccess } from '@ibas/shared-types';
 import { EXAM_MODULES } from '@/lib/home-modules';
 import { colors, spacing } from '@/theme';
 
@@ -56,15 +57,6 @@ const SERVICES: Array<{
     icon: 'chatbubbles-outline',
     color: '#0f766e',
     href: '/(app)/community' as Href,
-  },
-  {
-    id: 'contacts',
-    title: 'Contacts',
-    subtitle: 'Offices, colleagues & batchmates',
-    icon: 'business-outline',
-    badgeIcon: 'call',
-    color: '#0d9488',
-    href: '/(app)/contacts' as Href,
   },
   {
     id: 'pricing',
@@ -138,6 +130,11 @@ const OFFICE_TOOLS: Array<{
   },
 ];
 
+function weekText(n: number): string {
+  if (n === 0) return 'Nothing this week';
+  return `This week: ${n} ${n === 1 ? 'event' : 'events'}`;
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const { user, signOut, refreshUser } = useAuth();
@@ -148,6 +145,8 @@ export default function HomeScreen() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [welcomeTipsOpen, setWelcomeTipsOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [contactAccess, setContactAccess] = useState<ContactAccess | null>(null);
+  const [weekCount, setWeekCount] = useState<number | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const loadData = useCallback(async () => {
@@ -160,15 +159,20 @@ export default function HomeScreen() {
     setUnreadCount(res?.meta.unread_count ?? 0);
   }, []);
 
+  const loadContactAccess = useCallback(async () => {
+    const res = await fetchContactAccess().catch(() => null);
+    setContactAccess(res);
+  }, []);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     setRefreshKey((k) => k + 1);
     try {
-      await Promise.all([loadData(), loadUnreadCount(), refreshUser().catch(() => null)]);
+      await Promise.all([loadData(), loadUnreadCount(), loadContactAccess(), refreshUser().catch(() => null)]);
     } finally {
       setRefreshing(false);
     }
-  }, [loadData, loadUnreadCount, refreshUser]);
+  }, [loadData, loadUnreadCount, loadContactAccess, refreshUser]);
 
   useEffect(() => {
     void loadData();
@@ -186,7 +190,8 @@ export default function HomeScreen() {
     useCallback(() => {
       void refreshUser().catch(() => {});
       void loadUnreadCount();
-    }, [refreshUser, loadUnreadCount]),
+      void loadContactAccess();
+    }, [refreshUser, loadUnreadCount, loadContactAccess]),
   );
 
   function confirmSignOut() {
@@ -267,6 +272,25 @@ export default function HomeScreen() {
                 </View>
                 <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
               </Pressable>
+              {contactAccess?.can_verify ? (
+                <>
+                  <View style={styles.menuDivider} />
+                  <Pressable
+                    style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
+                    onPress={() => {
+                      setMenuOpen(false);
+                      router.push('/(app)/verify-colleague' as Href);
+                    }}
+                  >
+                    <Ionicons name="shield-checkmark-outline" size={20} color={colors.primary} />
+                    <View style={styles.menuItemText}>
+                      <Text style={styles.menuItemTitle}>Verify a colleague</Text>
+                      <Text style={styles.menuItemSub}>Open contacts with their 8-digit code</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+                  </Pressable>
+                </>
+              ) : null}
               {canManageUsers(user) ? (
                 <>
                   <View style={styles.menuDivider} />
@@ -322,7 +346,24 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scroll}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        <HomeSummaryCard unreadCount={unreadCount} refreshKey={refreshKey} />
+        <HomeSummaryCard unreadCount={unreadCount} refreshKey={refreshKey} contactAccess={contactAccess} onWeekCount={setWeekCount} />
+
+        {contactAccess && contactAccess.pending_handovers > 0 ? (
+          <Pressable
+            style={({ pressed }) => [styles.prompt, pressed && styles.updateBtnPressed]}
+            onPress={() => router.push('/(app)/account/work' as Href)}
+          >
+            <Ionicons name="swap-horizontal" size={22} color="#b45309" />
+            <View style={styles.menuItemText}>
+              <Text style={styles.promptTitle}>Additional charge: did you hand over?</Text>
+              <Text style={styles.promptText}>
+                Someone joined {contactAccess.pending_handovers === 1 ? 'a post' : `${contactAccess.pending_handovers} posts`} you hold as
+                additional charge. Tap to confirm.
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#b45309" />
+          </Pressable>
+        ) : null}
 
         <Text style={styles.sectionTitle}>Office & policy</Text>
         <View style={styles.grid}>
@@ -333,6 +374,7 @@ export default function HomeScreen() {
               subtitle={s.subtitle}
               icon={s.icon}
               color={s.color}
+              badgeText={s.id === 'schedule' && weekCount !== null ? weekText(weekCount) : undefined}
               enabled
               onPress={() => router.push(s.href)}
             />
@@ -356,19 +398,7 @@ export default function HomeScreen() {
         </View>
 
         <Text style={styles.sectionTitle}>Blood bank</Text>
-        <View>
-          <View style={styles.grid}>
-            <ModuleTile
-              title="Blood Bank"
-              subtitle="Blood group, donors, requests & donation history"
-              icon="water-outline"
-              color={RED}
-              enabled
-              onPress={() => router.push('/(app)/blood-bank' as Href)}
-            />
-          </View>
-          <BloodHomeCard />
-        </View>
+        <BloodHomeCard />
 
         <Text style={styles.sectionTitle}>Exam preparation</Text>
         <ExamHomeCard
@@ -550,5 +580,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.md,
+  },
+  prompt: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: spacing.md,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    backgroundColor: '#fffbeb',
+  },
+  promptTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#92400e',
+  },
+  promptText: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#92400e',
   },
 });

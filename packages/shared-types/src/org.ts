@@ -166,11 +166,25 @@ export interface WorkIdentity {
   designation_id: string | null;
   office?: OfficeOption | null;
   designation?: { id: string; name: string; short_name: string; grade: number | null } | null;
+  /** Posting details: section / branch, desk telephone and PABX. */
+  section?: string;
+  telephone?: string;
+  pabx?: string;
 }
 
+const postingPhone = z
+  .string()
+  .trim()
+  .max(40)
+  .regex(/^[\d\s+\-(),./extEXT]*$/, 'Use digits, spaces, + - ( ) , . / or "ext"');
+
+/** Omitted posting fields stay as they are; an empty string clears one. */
 export const updateWorkIdentitySchema = z.object({
   office_id: mongoId,
   designation_id: mongoId,
+  section: z.string().trim().max(120).optional(),
+  telephone: postingPhone.optional(),
+  pabx: postingPhone.optional(),
 });
 export type UpdateWorkIdentityInput = z.infer<typeof updateWorkIdentitySchema>;
 

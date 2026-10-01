@@ -5,6 +5,8 @@ import { asyncHandler } from '../../shared/asyncHandler.js';
 import { isAdminUser } from '../community/community.service.js';
 import * as org from './org.service.js';
 import { getServiceInfo, setServiceInfo } from './service-info.service.js';
+import { onSubstantivePosting } from '../contacts/charges.service.js';
+import { logger } from '../../shared/logger.js';
 
 /** Offices, office types and designations. Reads for every signed-in user; writes for admins. */
 export const orgRouter = Router();
@@ -42,7 +44,15 @@ orgRouter.get(
 orgRouter.put(
   '/me',
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    res.json({ data: await org.setWorkIdentity(req.user!.id, req.body) });
+    const userId = req.user!.id;
+    const before = await org.getWorkIdentity(userId);
+    const after = await org.setWorkIdentity(userId, req.body);
+    if (after.office_id && after.designation_id && (after.office_id !== before.office_id || after.designation_id !== before.designation_id)) {
+      await onSubstantivePosting(userId, after.office_id, after.designation_id).catch((err) =>
+        logger.warn({ err }, 'Additional charge handover check failed'),
+      );
+    }
+    res.json({ data: after });
   }),
 );
 

@@ -9,6 +9,7 @@ import { ensureDefaultAreas } from './domains/policy/areas.service.js';
 import { startScheduleRunner } from './domains/schedule/schedule.runner.js';
 import { ensureDefaultScheduleTypes } from './domains/schedule/schedule-types.service.js';
 import { ensureDefaultCommunityCategories } from './domains/community/community.service.js';
+import { seedLegacyContactVerifications } from './domains/contacts/verification.service.js';
 
 async function main() {
   await connectDb();
@@ -17,6 +18,7 @@ async function main() {
   await ensureDefaultAreas().catch((err) => logger.warn(err, 'Could not ensure iBAS++ areas'));
   await ensureDefaultScheduleTypes().catch((err) => logger.warn(err, 'Could not ensure schedule types'));
   await ensureDefaultCommunityCategories().catch((err) => logger.warn(err, 'Could not ensure community categories'));
+  await seedLegacyContactVerifications().catch((err) => logger.warn(err, 'Could not seed contact verifications'));
   const app = createApp();
   app.listen(env.PORT, '0.0.0.0', () => {
     logger.info(`API listening on port ${env.PORT}`);

@@ -19,6 +19,7 @@ import {
   listActivityHandler,
   listExamSubjectOptionsHandler,
 } from './users.controller.js';
+import * as verification from '../contacts/verification.service.js';
 
 export const usersRouter = Router();
 
@@ -45,6 +46,14 @@ const userWrite = requireModulePermission([
 usersRouter.use(authenticate, rejectApplicants);
 
 usersRouter.get('/exam-subject-options', userRead, asyncHandler(listExamSubjectOptionsHandler));
+usersRouter.get(
+  '/contact-verifications',
+  userRead,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { items, ...meta } = await verification.adminListVerifications(req.query);
+    res.json({ data: items, meta });
+  }),
+);
 usersRouter.get('/', userRead, asyncHandler(listUsersHandler));
 usersRouter.post('/', userWrite, asyncHandler(createUserHandler));
 usersRouter.get('/:id', userRead, asyncHandler(getUserHandler));
@@ -58,6 +67,21 @@ usersRouter.delete('/:id/module-access/:moduleId', userWrite, asyncHandler(revok
 usersRouter.get('/:id/addresses', userRead, asyncHandler(listAddressesHandler));
 usersRouter.post('/:id/addresses', userWrite, asyncHandler(createAddressHandler));
 usersRouter.get('/:id/activity', userRead, asyncHandler(listActivityHandler));
+
+usersRouter.get(
+  '/:id/contact-verification',
+  userRead,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    res.json({ data: await verification.adminUserVerification(String(req.params.id)) });
+  }),
+);
+usersRouter.post(
+  '/:id/contact-verification/revoke',
+  userWrite,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    res.json({ data: await verification.adminRevokeVerification(String(req.params.id)) });
+  }),
+);
 
 usersRouter.post('/:id/workflow-roles', userWrite, asyncHandler(assignWorkflowRoleHandler));
 usersRouter.delete('/:id/workflow-roles/:roleCode', userWrite, asyncHandler(removeWorkflowRoleHandler));

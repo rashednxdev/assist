@@ -2,7 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRouter, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { scheduleKindColor, scheduleKindLabel, type CircularRecord, type MyAccessSummary, type ScheduleOccurrence } from '@ibas/shared-types';
+import {
+  scheduleKindColor,
+  scheduleKindLabel,
+  type CircularRecord,
+  type ContactAccess,
+  type MyAccessSummary,
+  type ScheduleOccurrence,
+} from '@ibas/shared-types';
 import { useAuth } from '@/lib/auth-context';
 import { canReadAnyModule } from '@/lib/module-access';
 import { fetchScheduleFeed, formatDayShort, occurrenceTimeText } from '@/lib/schedule-api';
@@ -40,10 +47,13 @@ interface HomeSummaryCardProps {
   unreadCount: number;
   /** Bump to reload, e.g. on pull-to-refresh. */
   refreshKey: number;
+  contactAccess: ContactAccess | null;
+  /** Events in the next 7 days, for the Schedule tile. */
+  onWeekCount?: (n: number) => void;
 }
 
-/** Home "At a glance" card: next office events, latest circular, alerts and paid access. */
-export function HomeSummaryCard({ unreadCount, refreshKey }: HomeSummaryCardProps) {
+/** Home summary card: next office events, contacts shortcut, latest circular, alerts and paid access. */
+export function HomeSummaryCard({ unreadCount, refreshKey, contactAccess, onWeekCount }: HomeSummaryCardProps) {
   const router = useRouter();
   const { user } = useAuth();
   const canCirculars = canReadAnyModule(user, CIRCULAR_MODULE_CODES);
@@ -65,13 +75,15 @@ export function HomeSummaryCard({ unreadCount, refreshKey }: HomeSummaryCardProp
     const upcoming = feed
       .filter((o) => o.status !== 'cancelled' && o.date >= from)
       .sort((a, b) => (a.date + (a.time ?? '')).localeCompare(b.date + (b.time ?? '')));
+    const weekCount = upcoming.filter((o) => o.date <= weekEnd).length;
     setData({
       upcoming,
-      weekCount: upcoming.filter((o) => o.date <= weekEnd).length,
+      weekCount,
       circular: circ ? { latest: circ.items[0] ?? null, total: circ.total } : null,
       access,
     });
-  }, [canCirculars]);
+    onWeekCount?.(weekCount);
+  }, [canCirculars, onWeekCount]);
 
   useFocusEffect(
     useCallback(() => {
@@ -87,25 +99,16 @@ export function HomeSummaryCard({ unreadCount, refreshKey }: HomeSummaryCardProp
   const todayCount = data?.upcoming.filter((o) => o.date === today).length ?? 0;
   const basicDays = data?.access?.basic_until ? daysLeft(data.access.basic_until) : null;
   const examDays = data?.access?.exam_prep_until ? daysLeft(data.access.exam_prep_until) : null;
-  const dateLabel = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+  const contactMetric = !contactAccess
+    ? { value: 'Open', meta: 'Offices & colleagues' }
+    : contactAccess.ready
+      ? { value: 'Open', meta: 'Offices & colleagues' }
+      : contactAccess.work
+        ? { value: 'Verify', meta: 'Share your 8-digit code' }
+        : { value: 'Set up', meta: 'Add your posting' };
 
   return (
     <View style={styles.card}>
-      <View style={styles.head}>
-        <View style={styles.headIcon}>
-          <Ionicons name="today-outline" size={18} color={colors.primary} />
-        </View>
-        <View style={styles.flex}>
-          <Text style={styles.heading}>At a glance</Text>
-          <Text style={styles.sub}>{dateLabel}</Text>
-        </View>
-        {todayCount > 0 ? (
-          <View style={styles.todayPill}>
-            <Text style={styles.todayPillText}>{todayCount} today</Text>
-          </View>
-        ) : null}
-      </View>
-
       <Pressable
         style={({ pressed }) => [styles.upcoming, pressed && styles.pressed]}
         onPress={() => router.push('/(app)/schedule' as Href)}
@@ -113,7 +116,12 @@ export function HomeSummaryCard({ unreadCount, refreshKey }: HomeSummaryCardProp
         accessibilityLabel="Open schedule"
       >
         <View style={styles.upcomingHead}>
-          <Text style={styles.blockTitle}>Coming up</Text>
+          <Text style={[styles.blockTitle, styles.flex]}>Coming up</Text>
+          {todayCount > 0 ? (
+            <View style={styles.todayPill}>
+              <Text style={styles.todayPillText}>{todayCount} today</Text>
+            </View>
+          ) : null}
           <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
         </View>
         {!data ? (
@@ -148,12 +156,12 @@ export function HomeSummaryCard({ unreadCount, refreshKey }: HomeSummaryCardProp
 
       <View style={styles.metrics}>
         <Metric
-          icon="calendar-outline"
-          color="#4338ca"
-          label="This week"
-          value={data ? String(data.weekCount) : '–'}
-          meta={data?.weekCount === 1 ? 'event in 7 days' : 'events in 7 days'}
-          onPress={() => router.push('/(app)/schedule' as Href)}
+          icon="call-outline"
+          color="#0d9488"
+          label="Contacts"
+          value={contactMetric.value}
+          meta={contactMetric.meta}
+          onPress={() => router.push('/(app)/contacts' as Href)}
         />
         {canCirculars ? (
           <Metric
@@ -250,36 +258,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  head: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  headIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: '#eff6ff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   flex: {
     flex: 1,
-  },
-  heading: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: colors.text,
-  },
-  sub: {
-    fontSize: 12,
-    color: colors.textMuted,
   },
   todayPill: {
     backgroundColor: '#fef3c7',
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
   },
   todayPillText: {
     fontSize: 11,
@@ -295,7 +281,7 @@ const styles = StyleSheet.create({
   upcomingHead: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: spacing.sm,
   },
   blockTitle: {
     fontSize: 11,

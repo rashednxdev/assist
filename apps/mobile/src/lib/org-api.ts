@@ -30,10 +30,14 @@ export async function searchOffices(q: string): Promise<OfficeOption[]> {
   return r.data;
 }
 
-export async function saveWorkIdentity(officeId: string, designationId: string): Promise<WorkIdentity> {
+export async function saveWorkIdentity(
+  officeId: string,
+  designationId: string,
+  posting?: { section: string; telephone: string; pabx: string },
+): Promise<WorkIdentity> {
   const r = await apiFetch<{ data: WorkIdentity }>('/org/me', {
     method: 'PUT',
-    body: JSON.stringify({ office_id: officeId, designation_id: designationId }),
+    body: JSON.stringify({ office_id: officeId, designation_id: designationId, ...posting }),
   });
   publishWorkIdentity(r.data);
   return r.data;

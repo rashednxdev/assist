@@ -45,6 +45,7 @@ export function mobileHref(href: string): Href | null {
     '/community': '/(app)/community',
     '/community/blood-bank': '/(app)/blood-bank',
     '/contacts': '/(app)/contacts',
+    '/settings/profile': '/(app)/account/work',
     '/books': '/(app)/books',
     '/static-ref/jsi-2016-p': '/(app)/static-ref',
     '/pension': '/(app)/pension',

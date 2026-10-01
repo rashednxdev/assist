@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import type { DesignationRecord, OfficeOption, WorkIdentity } from '@ibas/shared-types';
 import { Button } from '@/components/ui/Button';
+import { TextField } from '@/components/ui/TextField';
 import { PickerSheet, SelectField } from '@/components/ui/PickerSheet';
 import { OfficePickerField } from '@/components/org/OfficePickerField';
 import { designationLabel, fetchDesignations, saveWorkIdentity, useWorkIdentity } from '@/lib/org-api';
@@ -20,6 +21,9 @@ export function WorkIdentityForm({
   const [designations, setDesignations] = useState<DesignationRecord[]>([]);
   const [office, setOffice] = useState<OfficeOption | null>(identity?.office ?? null);
   const [designationId, setDesignationId] = useState(identity?.designation?.id ?? '');
+  const [section, setSection] = useState(identity?.section ?? '');
+  const [telephone, setTelephone] = useState(identity?.telephone ?? '');
+  const [pabx, setPabx] = useState(identity?.pabx ?? '');
   const [pickDesignation, setPickDesignation] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -34,6 +38,9 @@ export function WorkIdentityForm({
     if (!identity) return;
     setOffice((cur) => cur ?? identity.office ?? null);
     setDesignationId((cur) => cur || identity.designation?.id || '');
+    setSection((cur) => cur || identity.section || '');
+    setTelephone((cur) => cur || identity.telephone || '');
+    setPabx((cur) => cur || identity.pabx || '');
   }, [identity]);
 
   const current = designations.find((d) => d.id === designationId) ?? (identity?.designation?.id === designationId ? identity.designation : null);
@@ -44,8 +51,8 @@ export function WorkIdentityForm({
     if (!office) return setError('Choose your office.');
     setBusy(true);
     try {
-      const w = await saveWorkIdentity(office.id, designationId);
-      showToast('Office and designation saved');
+      const w = await saveWorkIdentity(office.id, designationId, { section: section.trim(), telephone: telephone.trim(), pabx: pabx.trim() });
+      showToast('Posting saved');
       onSaved?.(w);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save');
@@ -64,6 +71,16 @@ export function WorkIdentityForm({
         onPress={() => setPickDesignation(true)}
       />
       <OfficePickerField value={office} onChange={setOffice} required />
+      <TextField label="Section / branch" value={section} onChangeText={setSection} placeholder="e.g. Budget Section" maxLength={120} />
+      <View style={styles.row}>
+        <View style={styles.flex}>
+          <TextField label="Telephone" value={telephone} onChangeText={setTelephone} placeholder="02-9512345" keyboardType="phone-pad" maxLength={40} />
+        </View>
+        <View style={styles.flex}>
+          <TextField label="PABX" value={pabx} onChangeText={setPabx} placeholder="Ext. 210" keyboardType="phone-pad" maxLength={40} />
+        </View>
+      </View>
+      <Text style={styles.hint}>Section, telephone and PABX belong to this posting — update them when you are transferred or promoted.</Text>
       {designations.length === 0 ? (
         <Text style={styles.hint}>No designations have been added yet. Please ask an administrator.</Text>
       ) : null}
@@ -90,6 +107,13 @@ export function WorkIdentityForm({
 const styles = StyleSheet.create({
   wrap: {
     gap: spacing.md,
+  },
+  row: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  flex: {
+    flex: 1,
   },
   hint: {
     fontSize: 12,

@@ -110,7 +110,6 @@ export function BloodHomeCard() {
 
 const styles = StyleSheet.create({
   card: {
-    marginTop: spacing.md,
     gap: spacing.md,
     padding: spacing.md,
     borderRadius: 18,

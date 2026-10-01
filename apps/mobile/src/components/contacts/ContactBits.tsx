@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import type { ContactEmployee, ContactOffice, ContactPhone } from '@ibas/shared-types';
@@ -64,20 +65,23 @@ export function PhoneLine({
   phone,
   mobile,
   icon = 'call-outline',
+  hideLabel,
 }: {
   label: string;
   phone: ContactPhone;
   mobile?: boolean;
   icon?: keyof typeof Ionicons.glyphMap;
+  /** List rows: the icon alone tells telephone from mobile. */
+  hideLabel?: boolean;
 }) {
   const { access, requestUpgrade } = useContactAccess();
   const canDial = !!access?.can_dial && !!phone.dial;
   const wa = mobile && canDial && phone.dial ? whatsappUrl(phone.dial) : null;
   return (
-    <View style={styles.phoneRow}>
+    <View style={styles.phoneRow} accessibilityLabel={hideLabel ? `${label} ${phone.display}` : undefined}>
       <Ionicons name={icon} size={16} color={colors.textMuted} />
       <View style={styles.phoneText}>
-        <Text style={styles.phoneLabel}>{label}</Text>
+        {hideLabel ? null : <Text style={styles.phoneLabel}>{label}</Text>}
         <Text style={[styles.phoneValue, !canDial && styles.muted]} numberOfLines={1}>
           {phone.display}
         </Text>
@@ -147,11 +151,6 @@ function Tag({ text, tone = 'muted' }: { text: string; tone?: 'muted' | 'primary
 
 export function OfficeCard({ o, onFavorite }: { o: ContactOffice; onFavorite?: (v: boolean) => void }) {
   const router = useRouter();
-  const phones = [
-    o.telephone && { label: 'Telephone', phone: o.telephone, mobile: false, icon: 'call-outline' as const },
-    o.mobile && { label: 'Mobile', phone: o.mobile, mobile: true, icon: 'phone-portrait-outline' as const },
-    o.pabx && { label: 'PABX', phone: o.pabx, mobile: false, icon: 'keypad-outline' as const },
-  ].filter(Boolean) as Array<{ label: string; phone: ContactPhone; mobile: boolean; icon: keyof typeof Ionicons.glyphMap }>;
   const location = [o.address, o.thana_name, o.district_name, o.division_name].filter(Boolean).join(', ');
 
   return (
@@ -177,11 +176,10 @@ export function OfficeCard({ o, onFavorite }: { o: ContactOffice; onFavorite?: (
         <FavoriteStar type="office" id={o.id} value={o.is_favorite} onChange={onFavorite} />
       </Pressable>
 
-      {phones.length > 0 || o.email || location ? (
+      {o.telephone || o.mobile || o.email || location ? (
         <View style={styles.officeBody}>
-          {phones.slice(0, 2).map((p) => (
-            <PhoneLine key={p.label} label={p.label} phone={p.phone} mobile={p.mobile} icon={p.icon} />
-          ))}
+          {o.telephone ? <PhoneLine label="Telephone" phone={o.telephone} icon="call-outline" hideLabel /> : null}
+          {o.mobile ? <PhoneLine label="Mobile" phone={o.mobile} mobile icon="phone-portrait-outline" hideLabel /> : null}
           {o.email ? (
             <Pressable style={styles.linkRow} onPress={() => void Linking.openURL(`mailto:${o.email}`)}>
               <Ionicons name="mail-outline" size={16} color={colors.textMuted} />
@@ -232,52 +230,160 @@ export function EmployeeCard({
   onFavorite?: (v: boolean) => void;
 }) {
   const router = useRouter();
+  const [open, setOpen] = useState(false);
   return (
-    <View style={[styles.card, styles.person, e.is_me && styles.cardMine]}>
-      <Avatar id={e.id} initials={e.initials} />
-      <View style={styles.personBody}>
-        <View style={styles.personHead}>
-          <View style={styles.flex}>
-            <Text style={styles.personName}>
-              {e.name}
-              {e.is_me ? <Text style={styles.you}>  You</Text> : null}
-            </Text>
-            {e.name_bn && e.name_bn !== e.name ? <Text style={styles.sub}>{e.name_bn}</Text> : null}
-            {e.designation ? (
-              <Text style={styles.designation}>
-                {e.designation.name}
-                {e.designation.grade ? <Text style={styles.grade}>{`  Grade ${e.designation.grade}`}</Text> : null}
+    <>
+      <Pressable
+        onPress={() => setOpen(true)}
+        style={({ pressed }) => [styles.card, styles.person, e.is_me && styles.cardMine, pressed && styles.pressed]}
+      >
+        <Avatar id={e.id} initials={e.initials} />
+        <View style={styles.personBody}>
+          <View style={styles.personHead}>
+            <View style={styles.flex}>
+              <Text style={styles.personName}>
+                {e.name}
+                {e.is_me ? <Text style={styles.you}>  You</Text> : null}
               </Text>
+              {e.name_bn && e.name_bn !== e.name ? <Text style={styles.sub}>{e.name_bn}</Text> : null}
+              {e.listed_as_additional ? (
+                <View style={styles.chargeTag}>
+                  <Text style={styles.chargeTagText}>Additional charge · {e.listed_as_additional.designation.name}</Text>
+                </View>
+              ) : null}
+              {e.designation ? <Text style={styles.designation}>{e.designation.name}</Text> : null}
+              {e.section ? <Text style={styles.sub}>{e.section}</Text> : null}
+              {showOffice && e.office ? (
+                <Pressable onPress={() => router.push(officeHref(e.office!.id))} hitSlop={4}>
+                  <Text style={styles.officeLink} numberOfLines={1}>
+                    {e.office.short_name || e.office.name}
+                    {e.office.parent_path ? ` · ${e.office.parent_path}` : ''}
+                  </Text>
+                </Pressable>
+              ) : null}
+              {e.additional_charges.length > 0 && !e.listed_as_additional ? (
+                <Text style={styles.chargeLine} numberOfLines={1}>
+                  Also: {e.additional_charges.map((c) => `${c.designation.short_name || c.designation.name}, ${c.office.short_name || c.office.name}`).join(' · ')}
+                </Text>
+              ) : null}
+            </View>
+            <FavoriteStar type="user" id={e.id} value={e.is_favorite} onChange={onFavorite} />
+          </View>
+          {e.telephone ? <PhoneLine label="Telephone" phone={e.telephone} icon="call-outline" hideLabel /> : null}
+          {e.mobile ? (
+            <PhoneLine label="Mobile" phone={e.mobile} mobile icon="phone-portrait-outline" hideLabel />
+          ) : e.phone_hidden ? (
+            <View style={styles.linkRow}>
+              <Ionicons name="lock-closed-outline" size={14} color={colors.textMuted} />
+              <Text style={[styles.small, styles.muted]}>Mobile number kept private</Text>
+            </View>
+          ) : null}
+          {e.email ? (
+            <Pressable style={styles.linkRow} onPress={() => void Linking.openURL(`mailto:${e.email}`)}>
+              <Ionicons name="mail-outline" size={16} color={colors.textMuted} />
+              <Text style={styles.linkText} numberOfLines={1}>
+                {e.email}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+      </Pressable>
+      <EmployeeSheet e={e} visible={open} onClose={() => setOpen(false)} />
+    </>
+  );
+}
+
+/** Full contact details for one employee: posting, numbers and additional charges. */
+export function EmployeeSheet({ e, visible, onClose }: { e: ContactEmployee; visible: boolean; onClose: () => void }) {
+  const router = useRouter();
+  const noNumbers = !e.mobile && !e.telephone && !e.pabx;
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.backdrop} onPress={onClose} />
+      <SafeAreaView edges={['bottom']} style={styles.sheet}>
+        <ScrollView contentContainerStyle={styles.sheetBody}>
+          <View style={styles.sheetHead}>
+            <Avatar id={e.id} initials={e.initials} size={52} />
+            <View style={styles.flex}>
+              <Text style={styles.sheetName}>{e.name}</Text>
+              {e.name_bn && e.name_bn !== e.name ? <Text style={styles.sub}>{e.name_bn}</Text> : null}
+              {e.designation ? <Text style={styles.designation}>{e.designation.name}</Text> : null}
+            </View>
+            <Pressable onPress={onClose} hitSlop={10} accessibilityLabel="Close">
+              <Ionicons name="close" size={22} color={colors.textMuted} />
+            </Pressable>
+          </View>
+
+          <View style={styles.detailBox}>
+            {e.office ? (
+              <Pressable
+                style={styles.linkRow}
+                onPress={() => {
+                  onClose();
+                  router.push(officeHref(e.office!.id));
+                }}
+              >
+                <Ionicons name="business-outline" size={16} color={colors.textMuted} />
+                <View style={styles.flex}>
+                  <Text style={styles.officeLink}>{e.office.short_name ? `${e.office.name} (${e.office.short_name})` : e.office.name}</Text>
+                  {e.office.parent_path ? <Text style={styles.sub}>Under {e.office.parent_path}</Text> : null}
+                </View>
+              </Pressable>
             ) : null}
-            {showOffice && e.office ? (
-              <Pressable onPress={() => router.push(officeHref(e.office!.id))} hitSlop={4}>
-                <Text style={styles.officeLink} numberOfLines={1}>
-                  {e.office.short_name || e.office.name}
-                  {e.office.parent_path ? ` · ${e.office.parent_path}` : ''}
+            {e.section ? (
+              <View style={styles.linkRow}>
+                <Ionicons name="grid-outline" size={16} color={colors.textMuted} />
+                <Text style={styles.linkText}>{e.section}</Text>
+              </View>
+            ) : null}
+          </View>
+
+          <View style={styles.detailBox}>
+            {e.mobile ? <PhoneLine label="Mobile" phone={e.mobile} mobile icon="phone-portrait-outline" /> : null}
+            {e.telephone ? <PhoneLine label="Telephone" phone={e.telephone} icon="call-outline" /> : null}
+            {e.pabx ? <PhoneLine label="PABX" phone={e.pabx} icon="keypad-outline" /> : null}
+            {e.phone_hidden ? (
+              <View style={styles.linkRow}>
+                <Ionicons name="lock-closed-outline" size={14} color={colors.textMuted} />
+                <Text style={[styles.small, styles.muted]}>Mobile number kept private</Text>
+              </View>
+            ) : noNumbers ? (
+              <Text style={[styles.small, styles.muted]}>No numbers added yet.</Text>
+            ) : null}
+            {e.email ? (
+              <Pressable style={styles.linkRow} onPress={() => void Linking.openURL(`mailto:${e.email}`)}>
+                <Ionicons name="mail-outline" size={16} color={colors.textMuted} />
+                <Text style={styles.linkText} numberOfLines={1}>
+                  {e.email}
                 </Text>
               </Pressable>
             ) : null}
           </View>
-          <FavoriteStar type="user" id={e.id} value={e.is_favorite} onChange={onFavorite} />
-        </View>
-        {e.mobile ? (
-          <PhoneLine label="Mobile" phone={e.mobile} mobile icon="phone-portrait-outline" />
-        ) : e.phone_hidden ? (
-          <View style={styles.linkRow}>
-            <Ionicons name="lock-closed-outline" size={14} color={colors.textMuted} />
-            <Text style={[styles.small, styles.muted]}>Mobile number kept private</Text>
-          </View>
-        ) : null}
-        {e.email ? (
-          <Pressable style={styles.linkRow} onPress={() => void Linking.openURL(`mailto:${e.email}`)}>
-            <Ionicons name="mail-outline" size={16} color={colors.textMuted} />
-            <Text style={styles.linkText} numberOfLines={1}>
-              {e.email}
-            </Text>
-          </Pressable>
-        ) : null}
-      </View>
-    </View>
+
+          {e.additional_charges.length > 0 ? (
+            <View style={styles.detailBox}>
+              <Text style={styles.boxLabel}>ADDITIONAL CHARGE</Text>
+              {e.additional_charges.map((c) => (
+                <Pressable
+                  key={`${c.office.id}:${c.designation.id}`}
+                  style={styles.linkRow}
+                  onPress={() => {
+                    onClose();
+                    router.push(officeHref(c.office.id));
+                  }}
+                >
+                  <Ionicons name="briefcase-outline" size={16} color={colors.textMuted} />
+                  <View style={styles.flex}>
+                    <Text style={styles.linkText}>{c.designation.name}</Text>
+                    <Text style={styles.officeLink}>{c.office.short_name ? `${c.office.name} (${c.office.short_name})` : c.office.name}</Text>
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
   );
 }
 
@@ -510,9 +616,59 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginTop: 2,
   },
-  grade: {
+  chargeTag: {
+    alignSelf: 'flex-start',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginTop: 4,
+    backgroundColor: '#fef3c7',
+  },
+  chargeTagText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#92400e',
+  },
+  chargeLine: {
     fontSize: 11,
-    fontWeight: '700',
+    color: '#92400e',
+    marginTop: 2,
+  },
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+  },
+  sheet: {
+    maxHeight: '85%',
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  sheetBody: {
+    padding: spacing.md,
+    gap: spacing.md,
+  },
+  sheetHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm + 4,
+  },
+  sheetName: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  detailBox: {
+    gap: spacing.sm + 2,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    padding: spacing.sm + 4,
+  },
+  boxLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.6,
     color: colors.textMuted,
   },
   officeLink: {

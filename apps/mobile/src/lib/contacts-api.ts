@@ -9,6 +9,10 @@ import type {
   ContactOfficeDetail,
   ContactOverview,
   ContactPrivacy,
+  ContactVerificationCandidate,
+  ContactVerificationInfo,
+  ContactVerifiedRecord,
+  MyAdditionalCharges,
   MyBatch,
 } from '@ibas/shared-types';
 import { apiFetch } from './api';
@@ -96,6 +100,52 @@ export async function fetchBatches(): Promise<BatchDirectory> {
 
 export async function fetchBatchMembers(key: string): Promise<BatchMembers> {
   const r = await apiFetch<{ data: BatchMembers }>(`/contacts/batches/${encodeURIComponent(key)}/members`);
+  return r.data;
+}
+
+export async function newVerificationCode(): Promise<ContactVerificationInfo> {
+  const r = await apiFetch<{ data: ContactVerificationInfo }>('/contacts/verification/code', { method: 'POST' });
+  return r.data;
+}
+
+export async function lookupVerificationCode(code: string): Promise<ContactVerificationCandidate> {
+  const r = await apiFetch<{ data: ContactVerificationCandidate }>(`/contacts/verify/${encodeURIComponent(code)}`);
+  return r.data;
+}
+
+export async function verifyColleague(code: string): Promise<ContactVerifiedRecord> {
+  const r = await apiFetch<{ data: ContactVerifiedRecord }>('/contacts/verify', { method: 'POST', body: JSON.stringify({ code }) });
+  return r.data;
+}
+
+export async function fetchVerifiedByMe(): Promise<ContactVerifiedRecord[]> {
+  const r = await apiFetch<{ data: ContactVerifiedRecord[] }>('/contacts/verify/given');
+  return r.data;
+}
+
+export async function fetchMyCharges(): Promise<MyAdditionalCharges> {
+  const r = await apiFetch<{ data: MyAdditionalCharges }>('/contacts/me/charges');
+  return r.data;
+}
+
+export async function addMyCharge(office_id: string, designation_id: string): Promise<MyAdditionalCharges> {
+  const r = await apiFetch<{ data: MyAdditionalCharges }>('/contacts/me/charges', {
+    method: 'POST',
+    body: JSON.stringify({ office_id, designation_id }),
+  });
+  return r.data;
+}
+
+export async function removeMyCharge(id: string): Promise<MyAdditionalCharges> {
+  const r = await apiFetch<{ data: MyAdditionalCharges }>(`/contacts/me/charges/${id}`, { method: 'DELETE' });
+  return r.data;
+}
+
+export async function answerChargeHandover(id: string, handed_over: boolean): Promise<MyAdditionalCharges> {
+  const r = await apiFetch<{ data: MyAdditionalCharges }>(`/contacts/me/charges/${id}/handover`, {
+    method: 'POST',
+    body: JSON.stringify({ handed_over }),
+  });
   return r.data;
 }
 

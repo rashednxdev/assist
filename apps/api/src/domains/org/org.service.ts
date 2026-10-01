@@ -456,7 +456,7 @@ export async function deleteOffice(id: string): Promise<void> {
 /* ------------------------------- work identity ------------------------------ */
 
 export async function getWorkIdentity(userId: string): Promise<WorkIdentity> {
-  const user = await User.findById(userId).select('office_id designation_id').lean();
+  const user = await User.findById(userId).select('office_id designation_id work_section work_telephone work_pabx').lean();
   if (!user) throw notFound('User not found');
   const [map, types, designation] = await Promise.all([
     user.office_id ? officeIndex() : Promise.resolve(null),
@@ -481,6 +481,9 @@ export async function getWorkIdentity(userId: string): Promise<WorkIdentity> {
     designation: designation
       ? { id: String(designation._id), name: designation.name, short_name: designation.short_name, grade: designation.grade ?? null }
       : null,
+    section: user.work_section || undefined,
+    telephone: user.work_telephone || undefined,
+    pabx: user.work_pabx || undefined,
   };
 }
 
@@ -493,10 +496,15 @@ export async function setWorkIdentity(userId: string, body: unknown): Promise<Wo
   ]);
   if (!office) throw badRequest('Choose a valid office');
   if (!designation) throw badRequest('Choose a valid designation');
-  await User.updateOne(
-    { _id: userId },
-    { $set: { office_id: office._id, designation_id: designation._id } },
-  );
+  const set: Record<string, unknown> = { office_id: office._id, designation_id: designation._id };
+  const unset: Record<string, 1> = {};
+  const posting = { work_section: parsed.data.section, work_telephone: parsed.data.telephone, work_pabx: parsed.data.pabx };
+  for (const [key, value] of Object.entries(posting)) {
+    if (value === undefined) continue;
+    if (value) set[key] = value;
+    else unset[key] = 1;
+  }
+  await User.updateOne({ _id: userId }, { $set: set, ...(Object.keys(unset).length ? { $unset: unset } : {}) });
   return getWorkIdentity(userId);
 }
 

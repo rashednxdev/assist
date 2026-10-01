@@ -81,6 +81,7 @@ export default function AppLayout() {
       <Stack.Screen name="pricing" />
       <Stack.Screen name="exam-prep" />
       <Stack.Screen name="calculations" />
+      <Stack.Screen name="verify-colleague" />
     </Stack>
   );
 }

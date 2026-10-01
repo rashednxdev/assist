@@ -2,6 +2,8 @@ import { Router, type Response } from 'express';
 import { authenticate, type AuthRequest } from '../../middleware/auth.js';
 import { asyncHandler } from '../../shared/asyncHandler.js';
 import * as contacts from './contacts.service.js';
+import * as verification from './verification.service.js';
+import * as charges from './charges.service.js';
 
 /** Contact directory: free for signed-in users who set their office and designation; numbers need a package. */
 export const contactsRouter = Router();
@@ -91,5 +93,61 @@ contactsRouter.put(
   '/me/privacy',
   asyncHandler(async (req: AuthRequest, res: Response) => {
     res.json({ data: await contacts.setPrivacy(req.user!, req.body) });
+  }),
+);
+
+contactsRouter.post(
+  '/verification/code',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    res.json({ data: await verification.regenerateCode(req.user!) });
+  }),
+);
+
+contactsRouter.get(
+  '/verify/given',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    res.json({ data: await verification.listGiven(req.user!) });
+  }),
+);
+
+contactsRouter.get(
+  '/verify/:code',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    res.json({ data: await verification.lookupCode(req.user!, String(req.params.code)) });
+  }),
+);
+
+contactsRouter.post(
+  '/verify',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    res.json({ data: await verification.verifyCode(req.user!, req.body) });
+  }),
+);
+
+contactsRouter.get(
+  '/me/charges',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    res.json({ data: await charges.myCharges(req.user!) });
+  }),
+);
+
+contactsRouter.post(
+  '/me/charges',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    res.json({ data: await charges.addCharge(req.user!, req.body) });
+  }),
+);
+
+contactsRouter.delete(
+  '/me/charges/:id',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    res.json({ data: await charges.removeCharge(req.user!, String(req.params.id)) });
+  }),
+);
+
+contactsRouter.post(
+  '/me/charges/:id/handover',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    res.json({ data: await charges.answerHandover(req.user!, String(req.params.id), req.body) });
   }),
 );

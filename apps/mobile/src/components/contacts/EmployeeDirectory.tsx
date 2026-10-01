@@ -12,7 +12,7 @@ import { colors, spacing } from '@/theme';
 
 const PAGE = 40;
 type Mode = 'all' | 'designation';
-type Row = { kind: 'head'; key: string; title: string; grade: number | null; count: number } | { kind: 'person'; key: string; e: ContactEmployee };
+type Row = { kind: 'head'; key: string; title: string; count: number } | { kind: 'person'; key: string; e: ContactEmployee };
 
 /**
  * Employee list with designation filter and grouping.
@@ -92,16 +92,17 @@ export function EmployeeDirectory({ officeId, header }: { officeId?: string; hea
 
   const rows = useMemo<Row[]>(() => {
     if (mode === 'all') return items.map((e) => ({ kind: 'person', key: e.id, e }));
-    const groups = new Map<string, { title: string; grade: number | null; people: ContactEmployee[] }>();
+    const groups = new Map<string, { title: string; people: ContactEmployee[] }>();
     for (const e of items) {
-      const key = e.designation?.id ?? 'none';
-      const g = groups.get(key) ?? { title: e.designation?.name ?? 'No designation', grade: e.designation?.grade ?? null, people: [] };
+      const post = e.listed_as_additional?.designation ?? e.designation;
+      const key = post?.id ?? 'none';
+      const g = groups.get(key) ?? { title: post?.name ?? 'No designation', people: [] };
       g.people.push(e);
       groups.set(key, g);
     }
     const out: Row[] = [];
     for (const [key, g] of groups) {
-      out.push({ kind: 'head', key: `h:${key}`, title: g.title, grade: g.grade, count: g.people.length });
+      out.push({ kind: 'head', key: `h:${key}`, title: g.title, count: g.people.length });
       for (const e of g.people) out.push({ kind: 'person', key: e.id, e });
     }
     return out;
@@ -145,7 +146,7 @@ export function EmployeeDirectory({ officeId, header }: { officeId?: string; hea
       ) : null}
       {!loading && items.length > 0 ? (
         <Text style={styles.count}>
-          Showing {items.length} of {total} {total === 1 ? 'person' : 'people'}
+          Showing {items.length} of {total} {total === 1 ? 'employee' : 'employees'}
         </Text>
       ) : null}
     </View>
@@ -159,7 +160,6 @@ export function EmployeeDirectory({ officeId, header }: { officeId?: string; hea
         item.kind === 'head' ? (
           <View style={styles.groupHead}>
             <Text style={styles.groupTitle}>{item.title}</Text>
-            {item.grade ? <Text style={styles.groupGrade}>Grade {item.grade}</Text> : null}
             <View style={styles.groupCount}>
               <Text style={styles.groupCountText}>{item.count}</Text>
             </View>
@@ -260,11 +260,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     color: colors.text,
-  },
-  groupGrade: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.textMuted,
   },
   groupCount: {
     marginLeft: 'auto',

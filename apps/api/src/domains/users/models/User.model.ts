@@ -42,6 +42,10 @@ export interface IUser extends Document {
   /** Current posting — required before posting in the community. */
   office_id?: Types.ObjectId | null;
   designation_id?: Types.ObjectId | null;
+  /** Posting details shown in the contact directory. */
+  work_section?: string;
+  work_telephone?: string;
+  work_pabx?: string;
   /** Contact directory privacy: keep mobile / email out of the directory. */
   directory_hide_phone?: boolean;
   directory_hide_email?: boolean;
@@ -141,6 +145,9 @@ const userSchema = new Schema<IUser>(
     client_app_version_at: { type: Date },
     office_id: { type: Schema.Types.ObjectId, ref: 'Office', default: null },
     designation_id: { type: Schema.Types.ObjectId, ref: 'Designation', default: null },
+    work_section: { type: String, trim: true },
+    work_telephone: { type: String, trim: true },
+    work_pabx: { type: String, trim: true },
     directory_hide_phone: { type: Boolean, default: false },
     directory_hide_email: { type: Boolean, default: false },
     blood_group: { type: String, enum: [...BLOOD_GROUPS, null], default: null },

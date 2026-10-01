@@ -2,8 +2,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { BookUser, Lock, PhoneCall, X } from 'lucide-react';
-import type { ContactAccess } from '@ibas/shared-types';
+import { BookUser, Check, Copy, Lock, PhoneCall, RefreshCw, X } from 'lucide-react';
+import { CONTACT_VERIFIER_GRADE_MAX, type ContactAccess, type ContactVerificationInfo } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
@@ -55,7 +55,73 @@ function UpgradeDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** Loads directory access; asks for office + designation first, then provides access to children. */
+function VerificationStep({
+  access,
+  onChange,
+  onRefresh,
+}: {
+  access: ContactAccess;
+  onChange: (a: ContactAccess) => void;
+  onRefresh: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
+  const code = access.verification?.code;
+
+  async function regenerate() {
+    setBusy(true);
+    setError('');
+    try {
+      const r = await apiFetch<{ data: ContactVerificationInfo }>('/contacts/verification/code', { method: 'POST' });
+      onChange({ ...access, verification: r.data });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not get a new code');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copy() {
+    if (!code) return;
+    await navigator.clipboard.writeText(code).catch(() => undefined);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
+  return (
+    <div className="space-y-4 rounded-2xl border border-border bg-surface p-5 text-center shadow-sm">
+      <p className="text-sm text-muted">
+        Share this code with a verified colleague of grade 1–{CONTACT_VERIFIER_GRADE_MAX}. They enter it under <strong>Verify a colleague</strong> in the
+        app&apos;s home menu. The directory opens as soon as they confirm.
+      </p>
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted">Your verification code</p>
+        <p className="mt-1 font-mono text-4xl font-bold tracking-[0.3em] text-primary">{code ? `${code.slice(0, 4)} ${code.slice(4)}` : '—'}</p>
+      </div>
+      {error && <Alert variant="error">{error}</Alert>}
+      <div className="flex flex-wrap justify-center gap-2">
+        <Button onClick={() => void copy()} disabled={!code}>
+          <Copy className="h-4 w-4" /> {copied ? 'Copied' : 'Copy code'}
+        </Button>
+        <Button variant="outline" onClick={onRefresh}>
+          <RefreshCw className="h-4 w-4" /> I&apos;ve been verified
+        </Button>
+        <Button variant="ghost" onClick={() => void regenerate()} disabled={busy}>
+          {busy ? 'Getting a new code…' : 'Get a new code'}
+        </Button>
+      </div>
+      <p className="text-xs text-muted">
+        Wrong office or designation?{' '}
+        <Link href="/settings/profile" className="font-medium text-primary hover:underline">
+          Change it
+        </Link>
+      </p>
+    </div>
+  );
+}
+
+/** Loads directory access; asks for office + designation, then a colleague's verification, before showing children. */
 export function ContactsGate({ children }: { children: React.ReactNode }) {
   const [access, setAccess] = useState<ContactAccess | null>(null);
   const [error, setError] = useState('');
@@ -87,13 +153,33 @@ export function ContactsGate({ children }: { children: React.ReactNode }) {
             <BookUser className="h-7 w-7" />
           </span>
           <h1 className="text-2xl font-bold tracking-tight">Contacts directory</h1>
-          <p className="text-muted">
-            Add your <strong>designation</strong> and <strong>office</strong> to open the directory. Colleagues will find you under your office, and you can browse every office, sub-office and employee.
-          </p>
+          <ol className="flex justify-center gap-6 text-xs">
+            {['Office & designation', 'Colleague verification'].map((label, i) => {
+              const step = access.work ? 2 : 1;
+              const on = i + 1 <= step;
+              return (
+                <li key={label} className={`flex items-center gap-2 ${i + 1 === step ? 'font-semibold text-foreground' : 'text-muted'}`}>
+                  <span className={`flex h-6 w-6 items-center justify-center rounded-full border ${on ? 'border-primary bg-primary text-white' : 'border-border'}`}>
+                    {i + 1 < step ? <Check className="h-3.5 w-3.5" /> : i + 1}
+                  </span>
+                  {label}
+                </li>
+              );
+            })}
+          </ol>
+          {access.work ? null : (
+            <p className="text-muted">
+              Add your <strong>designation</strong> and <strong>office</strong>. Colleagues will find you under your office, and you can browse every office, sub-office and employee.
+            </p>
+          )}
         </div>
-        <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
-          <WorkIdentityForm submitLabel="Save and open contacts" onSaved={load} />
-        </div>
+        {access.work ? (
+          <VerificationStep access={access} onChange={setAccess} onRefresh={load} />
+        ) : (
+          <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
+            <WorkIdentityForm submitLabel="Save and continue" onSaved={load} />
+          </div>
+        )}
         <p className="flex items-center justify-center gap-1.5 text-xs text-muted">
           <Lock className="h-3.5 w-3.5" /> You can hide your mobile number or email from the directory at any time.
         </p>

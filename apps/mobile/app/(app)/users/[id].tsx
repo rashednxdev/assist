@@ -12,6 +12,7 @@ import { useLocalSearchParams, Stack } from 'expo-router';
 import { TextField } from '@/components/ui/TextField';
 import { Button } from '@/components/ui/Button';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
+import { ContactVerificationSection } from '@/components/users/ContactVerificationSection';
 import { useAuth } from '@/lib/auth-context';
 import {
   canManageUsers,
@@ -467,6 +468,7 @@ export default function UserDetailScreen() {
               onPress={() => void forceLogout()}
               disabled={saving}
             />
+            {id ? <ContactVerificationSection userId={id} /> : null}
           </View>
         ) : null}
 

@@ -43,6 +43,7 @@ import {
   Receipt,
   Settings2,
   Tags,
+  UserCog,
 } from 'lucide-react';
 import type { MeUser } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
@@ -158,6 +159,7 @@ const QUICK_GROUPS: Array<{ title: string; links: QuickLink[] }> = [
     title: 'Workflow',
     links: [
       { href: '/workflow/admin', label: 'Workflow builder', desc: 'Tasks & step definitions', icon: Workflow },
+      { href: '/workflow/admin/roles', label: 'Workflow roles', desc: 'Add & edit process roles', icon: UserCog },
       { href: '/workflow/inbox', label: 'Workflow inbox', desc: 'Pending approvals', icon: Inbox },
       { href: '/workflow/tasks', label: 'Tasks', desc: 'Published processes', icon: ListTodo },
       { href: '/workflow/notifications', label: 'Workflow notifications', desc: 'Step alerts', icon: Bell },

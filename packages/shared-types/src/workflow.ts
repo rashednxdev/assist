@@ -101,3 +101,44 @@ export type RespondStepDto = z.infer<typeof respondStepSchema>;
 export type CancelRunDto = z.infer<typeof cancelRunSchema>;
 
 export const taskRunStatusSchema = z.enum(TASK_RUN_STATUSES);
+
+export const workflowRoleInputSchema = z.object({
+  code: z
+    .string()
+    .trim()
+    .min(2)
+    .max(30)
+    .regex(/^[A-Z][A-Z0-9_]*$/, 'Code may use capital letters, digits and underscores (start with a letter)'),
+  name_en: z.string().trim().min(1, 'Name is required').max(120),
+  name_bn: z
+    .string()
+    .trim()
+    .max(120)
+    .optional()
+    .transform((v) => v || undefined),
+  description_en: z.string().trim().max(500).default(''),
+  color: z.string().trim().regex(/^#[0-9a-fA-F]{6}$/, 'Colour must look like #1d4ed8'),
+  level: z.coerce.number().int().min(1).max(99),
+  can_submit: z.boolean().default(false),
+  can_forward: z.boolean().default(false),
+  can_approve: z.boolean().default(false),
+  is_active: z.boolean().default(true),
+});
+export type WorkflowRoleInput = z.infer<typeof workflowRoleInputSchema>;
+
+export interface WorkflowRoleAdminItem {
+  id: string;
+  code: string;
+  name_en: string;
+  name_bn?: string;
+  description_en: string;
+  color: string;
+  level: number;
+  can_submit: boolean;
+  can_forward: boolean;
+  can_approve: boolean;
+  is_system: boolean;
+  is_active: boolean;
+  step_count: number;
+  user_count: number;
+}

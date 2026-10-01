@@ -8,11 +8,13 @@ import {
   startRunSchema,
   cancelRunSchema,
   respondStepSchema,
+  workflowRoleInputSchema,
 } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
 import * as tasksService from './tasks.service.js';
 import * as stepsService from './steps.service.js';
 import * as workflowService from './workflow.service.js';
+import * as rolesService from './roles.service.js';
 import * as notificationsService from './notifications.service.js';
 import * as auditService from './audit.service.js';
 import { parsePagination } from '../../shared/pagination.js';
@@ -145,6 +147,24 @@ export async function removeMyRoleHandler(req: AuthRequest, res: Response): Prom
 export async function listRolesHandler(_req: AuthRequest, res: Response): Promise<void> {
   const data = await workflowService.listRoles();
   res.json({ data });
+}
+
+export async function listAllRolesHandler(_req: AuthRequest, res: Response): Promise<void> {
+  res.json({ data: await rolesService.listAllRoles() });
+}
+
+export async function createRoleHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = workflowRoleInputSchema.parse(req.body);
+  res.status(201).json({ data: await rolesService.createRole(dto) });
+}
+
+export async function updateRoleHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = workflowRoleInputSchema.parse(req.body);
+  res.json({ data: await rolesService.updateRole(String(req.params.id), dto) });
+}
+
+export async function deactivateRoleHandler(req: AuthRequest, res: Response): Promise<void> {
+  res.json({ data: await rolesService.deactivateRole(String(req.params.id)) });
 }
 
 export async function listNotificationsHandler(req: AuthRequest, res: Response): Promise<void> {

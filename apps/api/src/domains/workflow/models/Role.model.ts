@@ -24,7 +24,7 @@ const schema = new Schema<IRole>(
     name_en: { type: String, required: true },
     name_bn: { type: String },
     code: { type: String, required: true, unique: true },
-    description_en: { type: String, required: true },
+    description_en: { type: String, default: '' },
     description_bn: { type: String },
     color: { type: String, required: true },
     level: { type: Number, required: true },

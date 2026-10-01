@@ -46,6 +46,7 @@ import {
   Droplet,
   Receipt,
   Tags,
+  UserCog,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -166,6 +167,7 @@ export const navGroups: NavGroup[] = [
       { href: '/workflow/tasks', label: 'Tasks', icon: ListTodo, moduleCode: 'WORKFLOW', requireCreate: true },
       { href: '/workflow/guide', label: 'Run guide', icon: PlayCircle, moduleCode: 'WORKFLOW', requireCreate: true },
       { href: '/workflow/admin', label: 'Workflow admin', icon: Workflow, moduleCode: 'WORKFLOW', requireCreate: true },
+      { href: '/workflow/admin/roles', label: 'Workflow roles', icon: UserCog, requirePlatformAdmin: true },
     ],
   },
   {

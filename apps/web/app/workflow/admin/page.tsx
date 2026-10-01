@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { ChevronDown, ChevronUp, Plus } from 'lucide-react';
+import Link from 'next/link';
+import { ChevronDown, ChevronUp, Plus, UserCog } from 'lucide-react';
 import { useIbasAreas } from '@/lib/use-ibas-areas';
 import { AreaCheckboxes } from '@/components/ibas/area-checkboxes';
 import type { WorkflowField } from '@ibas/shared-types';
@@ -332,7 +333,17 @@ export default function WorkflowAdminPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Workflow admin" description="Create tasks, build steps, preview flow, and publish." />
+      <PageHeader
+        title="Workflow admin"
+        description="Create tasks, build steps, preview flow, and publish."
+        action={
+          <Button asChild variant="outline">
+            <Link href="/workflow/admin/roles">
+              <UserCog className="h-4 w-4" /> Roles
+            </Link>
+          </Button>
+        }
+      />
 
       {message && <Alert variant="success">{message}</Alert>}
       {error && <Alert variant="error">{error}</Alert>}

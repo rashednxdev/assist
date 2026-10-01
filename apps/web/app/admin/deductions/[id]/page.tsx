@@ -224,7 +224,7 @@ export default function DeductionEntryEditorPage() {
     set('highlights', [...state.highlights, t]);
     setNewHighlight('');
   };
-  const label = (s: DeductionSetupItem) => `${s.code ? `${s.code} · ` : ''}${s.name_en}${s.is_active ? '' : ' (inactive)'}`;
+  const label = (s: DeductionSetupItem) => `${[s.code, s.name_en].filter(Boolean).join(' · ')}${s.is_active ? '' : ' (inactive)'}`;
 
   async function save(publish?: boolean) {
     if (!state) return;

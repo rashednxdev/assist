@@ -6,7 +6,7 @@ import { Badge, FileLinks, IbasCard, IbasErrorScreen, IbasLoading, ibasStyles, R
 import { ChecklistRunner } from '@/components/ibas/ChecklistRunner';
 import { TemplateFiller } from '@/components/ibas/TemplateFiller';
 import { GuideReader } from '@/components/ibas/GuideReader';
-import { fetchToolkitItem, toolkitCategoryLabel } from '@/lib/ibas-api';
+import { fetchToolkitItem } from '@/lib/ibas-api';
 import { useIbasAreas } from '@/lib/ibas-areas';
 import { colors } from '@/theme';
 
@@ -57,7 +57,7 @@ export default function AreaKitScreen() {
           <IbasCard accent={accent}>
             <View style={ibasStyles.row}>
               <Badge label={KIND_LABEL[item.kind]} color={accent} filled />
-              <Badge label={toolkitCategoryLabel(item.category)} color={accent} />
+              <Badge label={item.category_label} color={accent} />
               {!item.is_published ? <Badge label="Draft" color={colors.warning} /> : null}
             </View>
             <Text style={ibasStyles.title} selectable>

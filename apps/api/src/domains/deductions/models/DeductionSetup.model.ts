@@ -17,7 +17,7 @@ const schema = new Schema<IDeductionSetup>(
   {
     kind: { type: String, enum: DEDUCTION_SETUP_KINDS, required: true },
     code: { type: String, trim: true },
-    name_en: { type: String, required: true, trim: true },
+    name_en: { type: String, default: '', trim: true },
     name_bn: { type: String, trim: true },
     description: String,
     sort_order: { type: Number, default: 0 },

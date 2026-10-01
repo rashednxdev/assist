@@ -6,7 +6,7 @@ import type { IbasAreaDetail } from '@ibas/shared-types';
 import { SearchBar } from '@/components/ui/SearchBar';
 import { IbasError, IbasErrorScreen, IbasLoading, ItemRow } from '@/components/ibas/IbasBits';
 import { issuerLabel } from '@/lib/circulars-api';
-import { areaHref, fetchIbasArea, toolkitCategoryLabel } from '@/lib/ibas-api';
+import { areaHref, fetchIbasArea } from '@/lib/ibas-api';
 import { formatDdMmYyyy } from '@/lib/date-format';
 import { canReadAnyModule } from '@/lib/module-access';
 import { useAuth } from '@/lib/auth-context';
@@ -178,7 +178,7 @@ export default function IbasAreaScreen() {
                       icon={KIT_ICON[tab]}
                       title={k.title}
                       subtitle={k.summary || k.title_bn}
-                      meta={[toolkitCategoryLabel(k.category), k.size ? `${k.size} ${tab === 'checklists' ? 'items' : tab === 'templates' ? 'fields' : 'sections'}` : '']}
+                      meta={[k.category_label, k.size ? `${k.size} ${tab === 'checklists' ? 'items' : tab === 'templates' ? 'fields' : 'sections'}` : '']}
                       onPress={() => router.push(areaHref(detail.code, 'kit', k.id))}
                     />
                   ))

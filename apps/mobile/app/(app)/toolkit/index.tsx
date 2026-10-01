@@ -3,15 +3,15 @@ import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, Sty
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { TOOLKIT_KINDS, toolkitCategoriesFor, type ToolkitKind } from '@ibas/shared-constants';
-import type { ToolkitItemSummary } from '@ibas/shared-types';
+import { TOOLKIT_KINDS, type ToolkitKind } from '@ibas/shared-constants';
+import type { ToolkitCategory, ToolkitItemSummary } from '@ibas/shared-types';
 import { SearchBar } from '@/components/ui/SearchBar';
 import { PickerSheet } from '@/components/ui/PickerSheet';
 import { EmptyState } from '@/components/contacts/ContactBits';
 import { AccessRequiredScreen, type AccessRequiredVariant } from '@/components/home/AccessRequiredScreen';
 import { IbasError } from '@/components/ibas/IbasBits';
 import { useAuth } from '@/lib/auth-context';
-import { fetchToolkit, toolkitCategoryLabel, toolkitSizeLabel } from '@/lib/ibas-api';
+import { fetchToolkit, fetchToolkitCategories, toolkitSizeLabel } from '@/lib/ibas-api';
 import { useIbasAreas } from '@/lib/ibas-areas';
 import { colors, spacing } from '@/theme';
 
@@ -52,7 +52,7 @@ function ItemCard({ item, areaName, onPress }: { item: ToolkitItemSummary; areaN
         <View style={styles.metaRow}>
           <Text style={[styles.kindLabel, { color: meta.color }]}>{meta.label}</Text>
           <Text style={styles.metaText} numberOfLines={1}>
-            · {toolkitCategoryLabel(item.category)} · {toolkitSizeLabel(item)}
+            · {item.category_label} · {toolkitSizeLabel(item)}
           </Text>
         </View>
         <Text style={styles.cardTitle}>{item.title}</Text>
@@ -97,6 +97,11 @@ export default function ToolkitScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [picker, setPicker] = useState<'area' | 'category' | null>(null);
   const [dialog, setDialog] = useState<{ variant: AccessRequiredVariant; title: string; reason?: string } | null>(null);
+  const [allCategories, setAllCategories] = useState<ToolkitCategory[]>([]);
+
+  useEffect(() => {
+    void fetchToolkitCategories().then(setAllCategories);
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -126,7 +131,7 @@ export default function ToolkitScreen() {
     );
   }, [items, category, q]);
 
-  const categories = kind ? toolkitCategoriesFor(kind) : [];
+  const categories = kind ? allCategories.filter((c) => c.kinds.includes(kind)) : [];
 
   function pickKind(k: ToolkitKind | '') {
     setKind(k);
@@ -168,7 +173,7 @@ export default function ToolkitScreen() {
         <FilterButton label="All areas" value={area ? areaName(area) : ''} onPress={() => setPicker('area')} />
         <FilterButton
           label={kind ? 'All categories' : 'Pick a type for categories'}
-          value={category ? toolkitCategoryLabel(category) : ''}
+          value={category ? (allCategories.find((c) => c.code === category)?.label ?? category) : ''}
           onPress={() => setPicker('category')}
           disabled={!kind}
         />

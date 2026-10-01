@@ -1,4 +1,5 @@
-import { CIRCULAR_ISSUERS, SMART_TOOLS, TOOLKIT_CATEGORIES, TOOLKIT_KINDS } from '@ibas/shared-constants';
+import { CIRCULAR_ISSUERS, SMART_TOOLS, TOOLKIT_KINDS } from '@ibas/shared-constants';
+import { categoryLabels } from '../toolkit/categories.service.js';
 import { getAreaIndex } from './areas.service.js';
 import { CIRCULAR_MODULE_CODES } from './circulars.service.js';
 import { ToolkitItem } from '../toolkit/models/ToolkitItem.model.js';
@@ -165,7 +166,7 @@ export async function unifiedSearch(rawQ: string, checker: ModuleAccessChecker):
 
   const issuerLabel = new Map<string, string>(CIRCULAR_ISSUERS.map((i) => [i.code, i.label]));
   const kindLabel = new Map<string, string>(TOOLKIT_KINDS.map((k) => [k.code, k.label]));
-  const categoryLabel = new Map<string, string>(TOOLKIT_CATEGORIES.map((c) => [c.code, c.label]));
+  const categoryLabel = kits?.length ? await categoryLabels() : new Map<string, string>();
   const push = (group: SearchGroup, hits: SearchHit[] | null) => {
     if (hits === null) response.locked.push(group);
     else if (hits.length > 0) response.groups.push({ group, label: GROUP_LABEL[group], hits });

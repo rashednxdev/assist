@@ -16,6 +16,7 @@ import { resolveTopics } from '../policy/ibas.service.js';
 import { containsRegex } from '../policy/text.js';
 import { assertAreaCodes, getAreaIndex, type AreaIndex } from '../policy/areas.service.js';
 import { ToolkitItem, type IToolkitItem, type IToolkitRef } from './models/ToolkitItem.model.js';
+import { assertCategory, categoryLabels } from './categories.service.js';
 
 type Lean = Omit<IToolkitItem, keyof mongoose.Document> & { _id: mongoose.Types.ObjectId };
 
@@ -41,14 +42,15 @@ function sizeOf(doc: Pick<Lean, 'kind' | 'items' | 'fields' | 'row_fields' | 'se
   return (doc.fields?.length ?? 0) + (doc.row_fields?.length ?? 0);
 }
 
-export function toSummary(doc: Lean, checker: ModuleAccessChecker, index: AreaIndex): ToolkitItemSummary {
+export function toSummary(doc: Lean, checker: ModuleAccessChecker, index: AreaIndex, labels: Map<string, string>): ToolkitItemSummary {
   return {
     id: String(doc._id),
     kind: doc.kind,
     title: doc.title,
     title_bn: doc.title_bn || undefined,
     summary: doc.summary || undefined,
-    category: doc.category as ToolkitItemSummary['category'],
+    category: doc.category,
+    category_label: labels.get(doc.category) ?? doc.category,
     areas: doc.areas as ToolkitItemSummary['areas'],
     tags: doc.tags ?? [],
     is_published: doc.is_published,
@@ -72,11 +74,12 @@ export async function listToolkit(query: ToolkitListQuery, checker: ModuleAccess
     const rx = containsRegex(query.q);
     filter.$or = [{ title: rx }, { title_bn: rx }, { summary: rx }, { tags: rx }, { 'items.text': rx }, { 'sections.heading': rx }];
   }
-  const [docs, index] = await Promise.all([
+  const [docs, index, labels] = await Promise.all([
     ToolkitItem.find(filter).select(SUMMARY_SELECT).sort({ kind: 1, title: 1 }).limit(300).lean<Lean[]>(),
     getAreaIndex(),
+    categoryLabels(),
   ]);
-  return docs.map((d) => toSummary(d, checker, index));
+  return docs.map((d) => toSummary(d, checker, index, labels));
 }
 
 async function resolveRefs(refs: IToolkitRef[], admin: boolean): Promise<Map<string, ToolkitResolvedRef>> {
@@ -123,7 +126,8 @@ async function loadItem(id: string, admin: boolean): Promise<Lean> {
 
 export async function getToolkitItem(id: string, checker: ModuleAccessChecker): Promise<ToolkitItemDetail> {
   const doc = await loadItem(id, checker.isAdmin);
-  const summary = toSummary(doc, checker, await getAreaIndex());
+  const [index, labels] = await Promise.all([getAreaIndex(), categoryLabels()]);
+  const summary = toSummary(doc, checker, index, labels);
   if (summary.access !== 'open') {
     throw forbidden(
       summary.access === 'stopped'
@@ -209,6 +213,7 @@ function toDocFields(input: ToolkitItemInput) {
 export async function createToolkitItem(body: unknown, userId: string, checker: ModuleAccessChecker) {
   const input = parseInput(body);
   await assertAreaCodes(input.areas);
+  await assertCategory(input.category, input.kind);
   const doc = await ToolkitItem.create({ ...toDocFields(input), created_by: userId });
   return getToolkitItem(String(doc._id), checker);
 }
@@ -219,6 +224,7 @@ export async function updateToolkitItem(id: string, body: unknown, userId: strin
   if (!doc) throw notFound('Item not found');
   const input = parseInput(body);
   await assertAreaCodes(input.areas);
+  await assertCategory(input.category, input.kind, doc.category);
   doc.set({ ...toDocFields(input), updated_by: userId });
   await doc.save();
   return getToolkitItem(id, checker);

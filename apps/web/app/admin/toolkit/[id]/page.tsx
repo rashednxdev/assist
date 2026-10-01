@@ -4,12 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { ExternalLink, Save } from 'lucide-react';
-import {
-  TOOLKIT_KINDS,
-  toolkitCategoriesFor,
-  type ToolkitCategoryCode,
-  type ToolkitKind,
-} from '@ibas/shared-constants';
+import { TOOLKIT_KINDS, type ToolkitKind } from '@ibas/shared-constants';
 import type { ToolkitAttachment, ToolkitItemDetail, ToolkitResolvedRef } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { PageHeader } from '@/components/shared/page-header';
@@ -22,6 +17,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { RefPicker, type EditorRef } from '@/components/toolkit/ref-picker';
 import { AttachmentsEditor, cleanAttachments } from '@/components/toolkit/attachments-editor';
 import { AreaCheckboxes } from '@/components/ibas/area-checkboxes';
+import { useToolkitCategories } from '@/lib/use-toolkit-categories';
 import {
   ChecklistEditor,
   GuideEditor,
@@ -40,7 +36,7 @@ interface EditorState {
   title_bn: string;
   summary: string;
   areas: string[];
-  category: ToolkitCategoryCode;
+  category: string;
   tags: string;
   refs: EditorRef[];
   attachments: ToolkitAttachment[];
@@ -57,7 +53,7 @@ function blankState(kind: ToolkitKind): EditorState {
     title_bn: '',
     summary: '',
     areas: [],
-    category: toolkitCategoriesFor(kind)[0]!.code,
+    category: '',
     tags: '',
     refs: [],
     attachments: [],
@@ -172,6 +168,12 @@ function Editor() {
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'));
   }, [id, isNew]);
 
+  const { forKind } = useToolkitCategories();
+  const firstCategory = state ? forKind(state.kind)[0]?.code : undefined;
+  useEffect(() => {
+    if (firstCategory) setState((s) => (s && !s.category ? { ...s, category: firstCategory } : s));
+  }, [firstCategory]);
+
   if (!state) {
     return error ? <Alert variant="error">{error}</Alert> : <Skeleton className="h-64 w-full" />;
   }
@@ -237,15 +239,21 @@ function Editor() {
               <Input id="tk-title-bn" value={state.title_bn} onChange={(e) => set('title_bn', e.target.value)} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="tk-cat">Category *</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="tk-cat">Category *</Label>
+                <Link href="/admin/toolkit/categories" className="text-xs font-medium text-primary hover:underline">
+                  Manage categories
+                </Link>
+              </div>
               <select
                 id="tk-cat"
                 className={selectClass}
                 value={state.category}
-                onChange={(e) => set('category', e.target.value as ToolkitCategoryCode)}
+                onChange={(e) => set('category', e.target.value)}
               >
-                {toolkitCategoriesFor(state.kind).map((c) => (
-                  <option key={c.code} value={c.code}>{c.label}</option>
+                {!state.category && <option value="">Select category</option>}
+                {forKind(state.kind, state.category).map((c) => (
+                  <option key={c.code} value={c.code}>{c.label}{c.is_active ? '' : ' (inactive)'}</option>
                 ))}
               </select>
             </div>

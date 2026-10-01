@@ -1,8 +1,15 @@
 import { Linking } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import type { Href } from 'expo-router';
-import { TOOLKIT_CATEGORIES } from '@ibas/shared-constants';
-import type { CircularRecord, IbasAreaDetail, IbasAreaSummary, ToolkitItemDetail, ToolkitItemSummary, ToolkitResolvedRef } from '@ibas/shared-types';
+import type {
+  CircularRecord,
+  IbasAreaDetail,
+  IbasAreaSummary,
+  ToolkitCategory,
+  ToolkitItemDetail,
+  ToolkitItemSummary,
+  ToolkitResolvedRef,
+} from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api';
 import { webUrl } from '@/lib/web-href';
 import type { TopicDetail } from '@/types/books';
@@ -251,8 +258,17 @@ export function fetchRoleColors(): Promise<Record<string, string>> {
   return roleColors;
 }
 
-const categoryLabels = new Map<string, string>(TOOLKIT_CATEGORIES.map((c) => [c.code, c.label]));
-export const toolkitCategoryLabel = (code: string) => categoryLabels.get(code) ?? code;
+let toolkitCategories: Promise<ToolkitCategory[]> | null = null;
+
+export function fetchToolkitCategories(): Promise<ToolkitCategory[]> {
+  toolkitCategories ??= apiFetch<{ data: ToolkitCategory[] }>('/toolkit/categories')
+    .then((r) => r.data)
+    .catch(() => {
+      toolkitCategories = null;
+      return [];
+    });
+  return toolkitCategories;
+}
 
 type AreaScreen = 'process' | 'run' | 'kit' | 'rule' | 'book' | 'circular';
 

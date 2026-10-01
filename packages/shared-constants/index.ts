@@ -747,6 +747,7 @@ export const TOOLKIT_KINDS = [
 export type ToolkitKind = (typeof TOOLKIT_KINDS)[number]['code'];
 export const TOOLKIT_KIND_CODES = TOOLKIT_KINDS.map((k) => k.code) as ToolkitKind[];
 
+/** Starting categories; admins manage the live list (seeded from this when the collection is empty). */
 export const TOOLKIT_CATEGORIES = [
   { code: 'pre_audit', label: 'Pre-audit', kinds: ['checklist'] },
   { code: 'bill_scrutiny', label: 'Bill scrutiny', kinds: ['checklist'] },
@@ -761,9 +762,3 @@ export const TOOLKIT_CATEGORIES = [
   { code: 'ibas_howto', label: 'iBAS++ how-to', kinds: ['guide'] },
   { code: 'general', label: 'General', kinds: ['checklist', 'template', 'guide'] },
 ] as const satisfies ReadonlyArray<{ code: string; label: string; kinds: readonly ToolkitKind[] }>;
-export type ToolkitCategoryCode = (typeof TOOLKIT_CATEGORIES)[number]['code'];
-export const TOOLKIT_CATEGORY_CODES = TOOLKIT_CATEGORIES.map((c) => c.code) as ToolkitCategoryCode[];
-
-export function toolkitCategoriesFor(kind: ToolkitKind) {
-  return TOOLKIT_CATEGORIES.filter((c) => (c.kinds as readonly string[]).includes(kind));
-}

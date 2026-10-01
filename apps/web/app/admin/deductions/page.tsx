@@ -112,7 +112,7 @@ export default function DeductionEntriesAdminPage() {
               <option value="">All economic codes</option>
               {ecoCodes.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.code} · {s.name_en}
+                  {[s.code, s.name_en].filter(Boolean).join(' · ')}
                 </option>
               ))}
             </select>
@@ -144,7 +144,7 @@ export default function DeductionEntriesAdminPage() {
                   <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex flex-wrap items-center gap-2 text-xs">
                       <Badge variant="outline">{i.economic_code.code ?? '—'}</Badge>
-                      <span className="text-muted">{i.economic_code.name_en}</span>
+                      {i.economic_code.name_en ? <span className="text-muted">{i.economic_code.name_en}</span> : null}
                       <span className="font-medium text-foreground">· {i.bill_type.name_en}</span>
                       {i.is_published ? <Badge variant="success">Published</Badge> : <Badge variant="warning">Draft</Badge>}
                     </div>

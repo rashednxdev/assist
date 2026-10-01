@@ -4,11 +4,12 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Lock, PauseCircle, Search } from 'lucide-react';
-import { TOOLKIT_KINDS, toolkitCategoriesFor, type ToolkitKind } from '@ibas/shared-constants';
+import { TOOLKIT_KINDS, type ToolkitKind } from '@ibas/shared-constants';
 import type { ToolkitItemSummary } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { fetchMe } from '@/lib/auth';
-import { toolkitCategoryLabel, toolkitKindLabel } from '@/lib/policy-labels';
+import { toolkitKindLabel } from '@/lib/policy-labels';
+import { useToolkitCategories } from '@/lib/use-toolkit-categories';
 import { useIbasAreas } from '@/lib/use-ibas-areas';
 import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/shared/page-header';
@@ -41,6 +42,7 @@ function ToolkitHub() {
   const [unpaidMessage, setUnpaidMessage] = useState<string | undefined>();
   const [dialog, setDialog] = useState<{ variant: AccessRequiredVariant; title: string; reason?: string } | null>(null);
   const { activeAreas, areaName } = useIbasAreas();
+  const { forKind } = useToolkitCategories();
 
   useEffect(() => {
     fetchMe()
@@ -76,7 +78,7 @@ function ToolkitHub() {
     );
   }, [items, category, q]);
 
-  const categories = kind ? toolkitCategoriesFor(kind) : [];
+  const categories = kind ? forKind(kind) : [];
 
   return (
     <div className="space-y-6">
@@ -145,7 +147,7 @@ function ToolkitHub() {
                     <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
                       <span className="font-medium text-foreground">{toolkitKindLabel(item.kind)}</span>
                       <span>·</span>
-                      <span>{toolkitCategoryLabel(item.category)}</span>
+                      <span>{item.category_label}</span>
                       <span>·</span>
                       <span>{sizeLabel(item)}</span>
                       {item.access === 'stopped' ? (

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ListChecks, Pencil, RotateCcw, Trash2 } from 'lucide-react';
-import { DEDUCTION_SETUP_KINDS, DEDUCTION_SETUP_LABELS, type DeductionSetupItem, type DeductionSetupKind } from '@ibas/shared-types';
+import { DEDUCTION_SETUP_KINDS, DEDUCTION_SETUP_LABELS, deductionSetupName, type DeductionSetupItem, type DeductionSetupKind } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/shared/page-header';
@@ -99,7 +99,7 @@ export default function DeductionSetupPage() {
           body: JSON.stringify({ code: row.code, name_en: row.name_en, name_bn: row.name_bn, description: row.description, sort_order: row.sort_order, is_active: true }),
         });
       } else {
-        if (!confirm(`Deactivate "${row.name_en}"? Existing entries keep showing it, but it can no longer be chosen.`)) return;
+        if (!confirm(`Deactivate "${deductionSetupName(row)}"? Existing entries keep showing it, but it can no longer be chosen.`)) return;
         await apiFetch(`/deductions/setup/${row.id}`, { method: 'DELETE' });
       }
       await load();
@@ -114,7 +114,7 @@ export default function DeductionSetupPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  const canSave = !!form.name_en.trim() && (kind !== 'economic_code' || !!form.code.trim());
+  const canSave = kind === 'economic_code' ? !!form.code.trim() : !!form.name_en.trim();
 
   return (
     <div className="space-y-6">
@@ -165,7 +165,7 @@ export default function DeductionSetupPage() {
             <Input id="ds-sort" type="number" min={0} value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: Number(e.target.value) })} />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="ds-name">Name (English) *</Label>
+            <Label htmlFor="ds-name">{kind === 'economic_code' ? 'Name (English)' : 'Name (English) *'}</Label>
             <Input id="ds-name" value={form.name_en} placeholder={HINTS[kind].name} onChange={(e) => setForm({ ...form, name_en: e.target.value })} />
           </div>
           <div className="space-y-1.5">
@@ -210,7 +210,7 @@ export default function DeductionSetupPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     {row.code ? <Badge variant="outline">{row.code}</Badge> : null}
-                    <span className="font-medium">{row.name_en}</span>
+                    {row.name_en ? <span className="font-medium">{row.name_en}</span> : null}
                     {!row.is_active ? <Badge variant="warning">Inactive</Badge> : null}
                   </div>
                   {row.name_bn ? <p className="text-sm text-muted">{row.name_bn}</p> : null}

@@ -11,6 +11,7 @@ import { FormField } from '@/components/shared/form-field';
 import { Alert } from '@/components/ui/alert';
 import { AuthBrandPanel } from '@/components/auth/auth-brand-panel';
 import { clearAccessToken, loginRequest, setAccessToken } from '@/lib/auth';
+import { WEB_REGISTRATION_OPEN } from '@/lib/registration';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -87,12 +88,14 @@ export default function LoginPage() {
               <Button type="submit" className="h-11 w-full text-base" disabled={loading}>
                 {loading ? 'Signing in…' : 'Sign in'}
               </Button>
-              <p className="text-center text-sm text-muted">
-                New user?{' '}
-                <Link href="/register" className="font-medium text-primary hover:underline">
-                  Create free account
-                </Link>
-              </p>
+              {WEB_REGISTRATION_OPEN ? (
+                <p className="text-center text-sm text-muted">
+                  New user?{' '}
+                  <Link href="/register" className="font-medium text-primary hover:underline">
+                    Create free account
+                  </Link>
+                </p>
+              ) : null}
             </form>
           </CardContent>
         </Card>

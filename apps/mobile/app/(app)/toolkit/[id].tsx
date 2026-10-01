@@ -7,7 +7,7 @@ import { Badge, FileLinks, IbasCard, IbasErrorScreen, IbasLoading, ibasStyles, R
 import { ChecklistRunner } from '@/components/ibas/ChecklistRunner';
 import { TemplateFiller } from '@/components/ibas/TemplateFiller';
 import { GuideReader } from '@/components/ibas/GuideReader';
-import { fetchIbasAreas, fetchToolkitItem, toolkitCategoryLabel } from '@/lib/ibas-api';
+import { fetchIbasAreas, fetchToolkitItem } from '@/lib/ibas-api';
 import { useIbasAreas } from '@/lib/ibas-areas';
 import { colors } from '@/theme';
 
@@ -63,7 +63,7 @@ export default function ToolkitItemScreen() {
           <IbasCard accent={TK}>
             <View style={ibasStyles.row}>
               <Badge label={KIND_LABEL[item.kind]} color={TK} filled />
-              <Badge label={toolkitCategoryLabel(item.category)} color={TK} />
+              <Badge label={item.category_label} color={TK} />
               {!item.is_published ? <Badge label="Draft — only admins can see this" color={colors.warning} /> : null}
             </View>
             <Text style={ibasStyles.title} selectable>

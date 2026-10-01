@@ -8,7 +8,7 @@ import type { ToolkitItemDetail } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { fetchMe } from '@/lib/auth';
 import { isPlatformAdmin } from '@/lib/capabilities';
-import { toolkitCategoryLabel, toolkitKindLabel } from '@/lib/policy-labels';
+import { toolkitKindLabel } from '@/lib/policy-labels';
 import { useIbasAreas } from '@/lib/use-ibas-areas';
 import { PageHeader } from '@/components/shared/page-header';
 import { Badge } from '@/components/ui/badge';
@@ -80,7 +80,7 @@ export default function ToolkitItemPage() {
 
       <div className="flex flex-wrap items-center gap-2 print:hidden">
         <Badge>{toolkitKindLabel(item.kind)}</Badge>
-        <Badge variant="secondary">{toolkitCategoryLabel(item.category)}</Badge>
+        <Badge variant="secondary">{item.category_label}</Badge>
         {item.areas.map((a) => (
           <Link key={a} href={`/ibas?area=${a}`}>
             <Badge variant="outline">{areaName(a)}</Badge>

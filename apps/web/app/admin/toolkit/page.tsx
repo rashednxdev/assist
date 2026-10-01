@@ -3,12 +3,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Copy, ExternalLink, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Copy, ExternalLink, Pencil, Plus, Tags, Trash2 } from 'lucide-react';
 import { TOOLKIT_KINDS, type ToolkitKind } from '@ibas/shared-constants';
 import type { ToolkitItemDetail, ToolkitItemSummary } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { confirmDelete } from '@/lib/confirm-action';
-import { toolkitCategoryLabel, toolkitKindLabel } from '@/lib/policy-labels';
+import { toolkitKindLabel } from '@/lib/policy-labels';
 import { useIbasAreas } from '@/lib/use-ibas-areas';
 import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/shared/page-header';
@@ -75,6 +75,11 @@ export default function ToolkitAdminPage() {
         description="Create checklists, fill-in templates and guides. Each item is filed under one or more iBAS++ areas — users with access to any of those areas can open it, and it appears in that area's drawer."
         action={
           <>
+            <Button asChild variant="outline">
+              <Link href="/admin/toolkit/categories">
+                <Tags className="h-4 w-4" /> Categories
+              </Link>
+            </Button>
             {TOOLKIT_KINDS.map((k) => (
               <Button key={k.code} asChild variant={k.code === 'checklist' ? 'default' : 'outline'}>
                 <Link href={`/admin/toolkit/new?kind=${k.code}`}>
@@ -121,7 +126,7 @@ export default function ToolkitAdminPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
                       <span className="font-medium text-foreground">{toolkitKindLabel(i.kind)}</span>
-                      <span>{toolkitCategoryLabel(i.category)}</span>
+                      <span>{i.category_label}</span>
                       <span>· {i.size} {i.kind === 'checklist' ? 'items' : i.kind === 'template' ? 'fields' : 'sections'}</span>
                       {i.is_published ? <Badge variant="success">Published</Badge> : <Badge variant="warning">Draft</Badge>}
                     </div>

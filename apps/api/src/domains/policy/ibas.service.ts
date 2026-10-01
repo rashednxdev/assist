@@ -17,6 +17,7 @@ import { Circular } from './models/Circular.model.js';
 import { ContentLink } from './models/ContentLink.model.js';
 import { ToolkitItem } from '../toolkit/models/ToolkitItem.model.js';
 import { SUMMARY_SELECT, toSummary as toToolkitSummary } from '../toolkit/toolkit.service.js';
+import { categoryLabels } from '../toolkit/categories.service.js';
 import { getTopicDetail } from '../books/books.service.js';
 import { canViewCircular, getCircular, getCircularAreas } from './circulars.service.js';
 import { containsRegex, snippet, stripHtml } from './text.js';
@@ -237,7 +238,8 @@ export async function getAreaDetail(code: string, checker: ModuleAccessChecker):
       .sort({ kind: 1, title: 1 })
       .lean<Parameters<typeof toToolkitSummary>[0][]>(),
   ]);
-  const toolkit = kits.map((k) => toToolkitSummary(k, checker, index));
+  const labels = await categoryLabels();
+  const toolkit = kits.map((k) => toToolkitSummary(k, checker, index, labels));
   const kitCount = (kind: string) => toolkit.filter((k) => k.kind === kind).length;
 
   const topicIds = links.filter((l) => l.target_type === 'book_topic').map((l) => l.target_id);

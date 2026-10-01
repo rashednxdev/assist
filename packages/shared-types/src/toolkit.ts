@@ -1,11 +1,5 @@
 import { z } from 'zod';
-import {
-  TOOLKIT_CATEGORIES,
-  TOOLKIT_CATEGORY_CODES,
-  type IbasAreaCode,
-  type ToolkitCategoryCode,
-  type ToolkitKind,
-} from '@ibas/shared-constants';
+import { TOOLKIT_KIND_CODES, type IbasAreaCode, type ToolkitKind } from '@ibas/shared-constants';
 import {
   CONTENT_LINK_TARGET_TYPES,
   ibasAreaCodeSchema,
@@ -57,7 +51,7 @@ const baseFields = {
   title_bn: z.string().trim().max(300).optional(),
   summary: z.string().max(2000).optional(),
   areas: z.array(ibasAreaCodeSchema).min(1, 'Choose at least one iBAS++ area'),
-  category: z.enum(TOOLKIT_CATEGORY_CODES as [ToolkitCategoryCode, ...ToolkitCategoryCode[]]),
+  category: z.string().trim().min(1, 'Choose a category').max(60),
   tags: z.array(z.string().trim().min(1).max(60)).max(30).default([]),
   refs: z.array(toolkitRefSchema).max(20).default([]),
   attachments: z.array(toolkitAttachmentSchema).max(20).default([]),
@@ -112,10 +106,6 @@ const guideSchema = z.object({
 export const toolkitItemSchema = z
   .discriminatedUnion('kind', [checklistSchema, templateSchema, guideSchema])
   .superRefine((val, ctx) => {
-    const cat = TOOLKIT_CATEGORIES.find((c) => c.code === val.category);
-    if (cat && !(cat.kinds as readonly string[]).includes(val.kind)) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['category'], message: `“${cat.label}” is not a ${val.kind} category` });
-    }
     const unique = (list: Array<{ id?: string; key?: string }>, prop: 'id' | 'key', path: string) => {
       const seen = new Set<string>();
       for (const x of list) {
@@ -135,6 +125,30 @@ export const toolkitItemSchema = z
     }
   });
 export type ToolkitItemInput = z.infer<typeof toolkitItemSchema>;
+
+export const toolkitCategoryInputSchema = z.object({
+  code: z
+    .string()
+    .trim()
+    .min(2)
+    .max(60)
+    .regex(/^[a-z0-9_]+$/, 'Code may use lowercase letters, digits and underscores'),
+  label: z.string().trim().min(1, 'Label is required').max(80),
+  kinds: z.array(z.enum(TOOLKIT_KIND_CODES as [ToolkitKind, ...ToolkitKind[]])).min(1, 'Choose at least one type'),
+  sort_order: z.coerce.number().int().min(0).max(9999).default(0),
+  is_active: z.boolean().default(true),
+});
+export type ToolkitCategoryInput = z.infer<typeof toolkitCategoryInputSchema>;
+
+export interface ToolkitCategory {
+  id: string;
+  code: string;
+  label: string;
+  kinds: ToolkitKind[];
+  sort_order: number;
+  is_active: boolean;
+  item_count?: number;
+}
 
 export const toolkitListQuerySchema = z.object({
   kind: z.string().optional(),
@@ -164,7 +178,8 @@ export interface ToolkitItemSummary {
   title: string;
   title_bn?: string;
   summary?: string;
-  category: ToolkitCategoryCode;
+  category: string;
+  category_label: string;
   areas: IbasAreaCode[];
   tags: string[];
   is_published: boolean;

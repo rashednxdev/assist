@@ -5,10 +5,45 @@ import { requireAdmin } from '../../middleware/requireAdmin.js';
 import { loadModuleAccessChecker } from '../../middleware/moduleAccessChecker.js';
 import { asyncHandler } from '../../shared/asyncHandler.js';
 import * as toolkit from './toolkit.service.js';
+import * as categories from './categories.service.js';
 
 export const toolkitRouter = Router();
 
 toolkitRouter.use(authenticate);
+
+toolkitRouter.get(
+  '/categories',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const checker = await loadModuleAccessChecker(req.user!);
+    const all = checker.isAdmin && req.query.all === 'true';
+    res.json({ data: await categories.listCategories(all, all) });
+  }),
+);
+
+toolkitRouter.post(
+  '/categories',
+  requireAdmin,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    res.status(201).json({ data: await categories.createCategory(req.body) });
+  }),
+);
+
+toolkitRouter.patch(
+  '/categories/:id',
+  requireAdmin,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    res.json({ data: await categories.updateCategory(String(req.params.id), req.body) });
+  }),
+);
+
+toolkitRouter.delete(
+  '/categories/:id',
+  requireAdmin,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    await categories.deactivateCategory(String(req.params.id));
+    res.json({ data: { ok: true } });
+  }),
+);
 
 toolkitRouter.get(
   '/',

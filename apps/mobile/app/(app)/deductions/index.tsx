@@ -37,9 +37,11 @@ function EntryCard({ item, onPress }: { item: DeductionEntrySummary; onPress: ()
       <View style={styles.cardHead}>
         <Text style={styles.code}>{item.economic_code.code ?? '—'}</Text>
         <View style={styles.flex}>
-          <Text style={styles.ecoName} numberOfLines={2}>
-            {item.economic_code.name_en}
-          </Text>
+          {item.economic_code.name_en ? (
+            <Text style={styles.ecoName} numberOfLines={2}>
+              {item.economic_code.name_en}
+            </Text>
+          ) : null}
           <Text style={styles.bill} numberOfLines={1}>
             {item.bill_type.name_en}
           </Text>
@@ -109,7 +111,7 @@ export default function DeductionsScreen() {
   }, [items, q]);
 
   const optionsFor = (kind: DeductionSetupKind) =>
-    setup.filter((s) => s.kind === kind).map((s) => ({ value: s.id, label: s.code && kind !== 'bill_type' ? `${s.code} · ${s.name_en}` : s.name_en, hint: s.name_bn }));
+    setup.filter((s) => s.kind === kind).map((s) => ({ value: s.id, label: kind !== 'bill_type' ? [s.code, s.name_en].filter(Boolean).join(' · ') : s.name_en, hint: s.name_bn }));
   const nameOf = (kind: DeductionSetupKind) => {
     const s = setup.find((x) => x.id === filters[kind]);
     return s ? (kind === 'economic_code' ? s.code ?? s.name_en : s.name_en) : '';

@@ -22,14 +22,18 @@ export const deductionSetupInputSchema = z
   .object({
     kind: z.enum(DEDUCTION_SETUP_KINDS),
     code: optText(40),
-    name_en: z.string().trim().min(1, 'Name is required').max(200),
+    name_en: z.string().trim().max(200).default(''),
     name_bn: optText(200),
     description: optText(500),
     sort_order: z.coerce.number().int().min(0).max(9999).default(0),
     is_active: z.boolean().default(true),
   })
   .superRefine((v, ctx) => {
-    if (v.kind === 'economic_code' && !v.code) ctx.addIssue({ code: 'custom', path: ['code'], message: 'Economic code is required' });
+    if (v.kind === 'economic_code') {
+      if (!v.code) ctx.addIssue({ code: 'custom', path: ['code'], message: 'Economic code is required' });
+    } else if (!v.name_en) {
+      ctx.addIssue({ code: 'custom', path: ['name_en'], message: 'Name is required' });
+    }
   });
 export type DeductionSetupInput = z.infer<typeof deductionSetupInputSchema>;
 
@@ -141,6 +145,11 @@ export interface DeductionEntryDetail extends DeductionEntrySummary {
   source?: string;
   processes: DeductionLinkedProcess[];
   circulars: DeductionLinkedCircular[];
+}
+
+/** Economic codes may have no name; fall back to the code. */
+export function deductionSetupName(item: { code?: string; name_en: string }): string {
+  return item.name_en || item.code || '—';
 }
 
 /** "7.5%", "Tk 1,000" or the admin's slab text. */

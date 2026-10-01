@@ -47,9 +47,11 @@ export default function DeductionDetailScreen() {
             {d.economic_code.code ?? '—'}
           </Text>
           <View style={styles.flex}>
-            <Text style={styles.ecoName} selectable>
-              {d.economic_code.name_en}
-            </Text>
+            {d.economic_code.name_en ? (
+              <Text style={styles.ecoName} selectable>
+                {d.economic_code.name_en}
+              </Text>
+            ) : null}
             {d.economic_code.name_bn ? <Text style={ibasStyles.small}>{d.economic_code.name_bn}</Text> : null}
           </View>
         </View>

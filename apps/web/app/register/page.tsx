@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -12,8 +12,19 @@ import { Alert } from '@/components/ui/alert';
 import { AuthBrandPanel } from '@/components/auth/auth-brand-panel';
 import { TermsViewerModal } from '@/components/auth/terms-viewer-modal';
 import { registerRequest, setAccessToken } from '@/lib/auth';
+import { WEB_REGISTRATION_OPEN } from '@/lib/registration';
 
 export default function RegisterPage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!WEB_REGISTRATION_OPEN) router.replace('/login');
+  }, [router]);
+
+  return WEB_REGISTRATION_OPEN ? <RegisterForm /> : null;
+}
+
+function RegisterForm() {
   const router = useRouter();
   const [form, setForm] = useState({
     full_name_en: '',

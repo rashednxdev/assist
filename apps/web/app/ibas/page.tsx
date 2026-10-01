@@ -24,7 +24,7 @@ import type { IbasAreaDetail, IbasAreaSummary } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { fetchMe } from '@/lib/auth';
 import { formatDdMmYyyy } from '@/lib/date-display';
-import { issuerLabel, toolkitCategoryLabel } from '@/lib/policy-labels';
+import { issuerLabel } from '@/lib/policy-labels';
 import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent } from '@/components/ui/card';
@@ -190,7 +190,7 @@ function AreaDrawer({ code, onClose }: { code: string; onClose: () => void }) {
                       href={`/toolkit/${k.id}`}
                       title={k.title}
                       subtitle={k.summary || k.title_bn}
-                      meta={<span>{toolkitCategoryLabel(k.category)}</span>}
+                      meta={<span>{k.category_label}</span>}
                     />
                   ))
                 )}

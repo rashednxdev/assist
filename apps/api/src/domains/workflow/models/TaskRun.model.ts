@@ -21,6 +21,8 @@ export interface ITaskRun extends Document {
   month?: string;
   reference_no?: string;
   metadata?: Record<string, unknown>;
+  /** Started without an admin-assigned role for step 1: the initiator does every step and no one is notified. */
+  personal?: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -51,6 +53,7 @@ const schema = new Schema<ITaskRun>(
     month: { type: String },
     reference_no: { type: String },
     metadata: { type: Schema.Types.Mixed },
+    personal: { type: Boolean, default: false },
   },
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } },
 );

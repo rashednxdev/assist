@@ -33,12 +33,23 @@ function serializeRun(run: InstanceType<typeof TaskRun>) {
     month: run.month,
     reference_no: run.reference_no,
     metadata: run.metadata,
+    personal: !!run.personal,
   };
 }
 
+/** Admin-assigned roles only; self-added roles never act on other people's runs. */
 function userHasRole(user: AuthUser, roleCode: string): boolean {
   if (user.is_super_admin) return true;
-  return user.workflow_roles.some((r) => r.role_code === roleCode && r.is_active);
+  return user.workflow_roles.some((r) => r.role_code === roleCode && r.is_active && !r.self_assigned);
+}
+
+function isAdminActor(user: AuthUser): boolean {
+  return user.is_super_admin || user.user_type === 'system_admin' || user.user_type === 'admin';
+}
+
+function canActOnRun(run: InstanceType<typeof TaskRun>, roleCode: string, actor: AuthUser): boolean {
+  if (run.personal) return String(run.initiated_by) === actor.id || actor.is_super_admin;
+  return userHasRole(actor, roleCode);
 }
 
 function validateFieldResponses(fields: StepField[], responses: Record<string, unknown> = {}) {
@@ -112,9 +123,7 @@ export async function startRun(
   const firstStep = await TaskStep.findOne({ task_id: taskId, step_number: 1 });
   if (!firstStep) throw badRequest('Task has no steps');
 
-  if (!userHasRole(actor, firstStep.role_code) && !actor.is_super_admin) {
-    throw forbidden('You do not have the role required to start this task');
-  }
+  const personal = !userHasRole(actor, firstStep.role_code);
 
   const run = await withTransaction(async (session) => {
     const [created] = await TaskRun.create(
@@ -135,6 +144,7 @@ export async function startRun(
           month: dto.month,
           reference_no: dto.reference_no,
           metadata: dto.metadata,
+          personal,
         },
       ],
       { session },
@@ -166,6 +176,7 @@ export async function startRun(
 export async function getRunDetail(runId: string, actor: AuthUser) {
   const run = await TaskRun.findById(runId);
   if (!run) throw notFound('Run not found');
+  if (run.personal && String(run.initiated_by) !== actor.id && !isAdminActor(actor)) throw notFound('Run not found');
 
   const steps = await TaskStep.find({ task_id: run.task_id }).sort({ step_number: 1 });
   const responses = await StepResponse.find({ run_id: runId }).sort({ step_number: 1 });
@@ -210,18 +221,13 @@ export async function getRunDetail(runId: string, actor: AuthUser) {
       run.status === 'in_progress' &&
       currentStepDef &&
       !currentStepDef.is_auto &&
-      userHasRole(actor, run.current_role),
+      canActOnRun(run, run.current_role, actor),
     can_reject:
       run.status === 'in_progress' &&
       currentStepDef &&
       !currentStepDef.is_auto &&
-      userHasRole(actor, run.current_role),
-    can_cancel:
-      run.status === 'in_progress' &&
-      (String(run.initiated_by) === actor.id ||
-        actor.is_super_admin ||
-        actor.user_type === 'system_admin' ||
-        actor.user_type === 'admin'),
+      canActOnRun(run, run.current_role, actor),
+    can_cancel: run.status === 'in_progress' && (String(run.initiated_by) === actor.id || isAdminActor(actor)),
   };
 }
 
@@ -241,7 +247,7 @@ export async function respondToStep(
   if (!step) throw notFound('Step not found');
   if (step.is_auto) throw badRequest('This step is auto-processed');
 
-  if (!userHasRole(actor, step.role_code)) {
+  if (!canActOnRun(run, step.role_code, actor)) {
     throw forbidden(`Role ${step.role_code} required for this step`);
   }
 
@@ -309,15 +315,17 @@ export async function respondToStep(
     run.last_activity_at = new Date();
     await run.save();
 
-    const notifyRole = step.handoff_role ?? nextStep.role_code;
-    const message = step.handoff_msg ?? `Task "${run.task_name_en}" is ready for ${notifyRole}`;
-    await createHandoffNotifications({
-      runId,
-      stepId: String(nextStep._id),
-      roleCode: notifyRole,
-      title: `Handoff: ${run.task_name_en}`,
-      message,
-    });
+    if (!run.personal) {
+      const notifyRole = step.handoff_role ?? nextStep.role_code;
+      const message = step.handoff_msg ?? `Task "${run.task_name_en}" is ready for ${notifyRole}`;
+      await createHandoffNotifications({
+        runId,
+        stepId: String(nextStep._id),
+        roleCode: notifyRole,
+        title: `Handoff: ${run.task_name_en}`,
+        message,
+      });
+    }
   } else {
     run.status = 'completed';
     run.completed_at = new Date();
@@ -354,8 +362,7 @@ export async function cancelRun(
   if (run.status !== 'in_progress') throw badRequest('Run is not in progress');
 
   const isInitiator = String(run.initiated_by) === actor.id;
-  const isAdmin = actor.is_super_admin || actor.user_type === 'system_admin' || actor.user_type === 'admin';
-  if (!isInitiator && !isAdmin) throw forbidden('Only the initiator or an admin can cancel this run');
+  if (!isInitiator && !isAdminActor(actor)) throw forbidden('Only the initiator or an admin can cancel this run');
 
   run.status = 'cancelled';
   run.cancelled_by = new mongoose.Types.ObjectId(actor.id);
@@ -380,10 +387,10 @@ export async function cancelRun(
 }
 
 export async function getInbox(actor: AuthUser) {
-  const roles = actor.workflow_roles.filter((r) => r.is_active).map((r) => r.role_code);
+  const roles = actor.workflow_roles.filter((r) => r.is_active && !r.self_assigned).map((r) => r.role_code);
   if (roles.length === 0 && !actor.is_super_admin) return [];
 
-  const filter: Record<string, unknown> = { status: 'in_progress' };
+  const filter: Record<string, unknown> = { status: 'in_progress', personal: { $ne: true } };
   if (!actor.is_super_admin) {
     filter.current_role = { $in: roles };
   }
@@ -393,6 +400,65 @@ export async function getInbox(actor: AuthUser) {
     ...serializeRun(run),
     task_name: run.task_name_en,
   }));
+}
+
+/** Every active role with whether the user holds it, and whether an admin or the user added it. */
+export async function listMyRoles(userId: string) {
+  const { Role } = await import('./models/Role.model.js');
+  const [roles, user] = await Promise.all([Role.find({ is_active: true }).sort({ level: 1 }), User.findById(userId).select('workflow_roles')]);
+  if (!user) throw notFound('User not found');
+  return roles.map((r) => {
+    const tag = user.workflow_roles.find((t) => t.role_code === r.code && t.is_active);
+    return {
+      code: r.code,
+      name_en: r.name_en,
+      name_bn: r.name_bn,
+      color: r.color,
+      level: r.level,
+      held: !!tag,
+      self_assigned: tag ? !!tag.self_assigned : false,
+    };
+  });
+}
+
+/** Users add a role to themselves; no one is notified and it never receives handoffs. */
+export async function addMyRole(userId: string, roleCode: unknown) {
+  if (typeof roleCode !== 'string' || !roleCode.trim()) throw badRequest('Choose a role');
+  const { Role } = await import('./models/Role.model.js');
+  const [role, user] = await Promise.all([Role.findOne({ code: roleCode.trim(), is_active: true }), User.findById(userId)]);
+  if (!role) throw notFound('Role not found');
+  if (!user) throw notFound('User not found');
+  const existing = user.workflow_roles.find((t) => t.role_code === role.code);
+  if (existing?.is_active) return listMyRoles(userId);
+  if (existing) {
+    existing.is_active = true;
+    existing.self_assigned = true;
+    existing.assigned_at = new Date();
+    existing.assigned_by = user._id as mongoose.Types.ObjectId;
+  } else {
+    user.workflow_roles.push({
+      role_id: role._id as mongoose.Types.ObjectId,
+      role_code: role.code,
+      is_active: true,
+      assigned_at: new Date(),
+      assigned_by: user._id as mongoose.Types.ObjectId,
+      self_assigned: true,
+    });
+  }
+  await user.save();
+  return listMyRoles(userId);
+}
+
+/** Only self-added roles can be removed here; admin-assigned ones stay. */
+export async function removeMyRole(userId: string, roleCode: string) {
+  const user = await User.findById(userId);
+  if (!user) throw notFound('User not found');
+  const tag = user.workflow_roles.find((t) => t.role_code === roleCode && t.is_active);
+  if (!tag) throw notFound('You do not hold this role');
+  if (!tag.self_assigned) throw forbidden('This role was assigned by an administrator');
+  tag.is_active = false;
+  await user.save();
+  return listMyRoles(userId);
 }
 
 export async function listRoles() {
@@ -418,6 +484,7 @@ function toAuthUser(user: InstanceType<typeof User>): AuthUser {
     workflow_roles: user.workflow_roles.map((r) => ({
       role_code: r.role_code,
       is_active: r.is_active,
+      self_assigned: !!r.self_assigned,
     })),
   };
 }
@@ -442,13 +509,7 @@ export async function getMemberWorkflowSummary(userId: string) {
 
   const activeRoles = actor.workflow_roles.filter((r) => r.is_active).map((r) => r.role_code);
 
-  let canStartCount = 0;
-  for (const task of publishedTasks) {
-    const firstStep = await TaskStep.findOne({ task_id: task._id, step_number: 1 }).select('role_code');
-    if (firstStep && (userHasRole(actor, firstStep.role_code) || actor.is_super_admin)) {
-      canStartCount += 1;
-    }
-  }
+  const canStartCount = (await TaskStep.distinct('task_id', { task_id: { $in: publishedTasks.map((t) => t._id) }, step_number: 1 })).length;
 
   return {
     inbox_count: inboxItems.length,

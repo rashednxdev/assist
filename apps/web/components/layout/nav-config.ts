@@ -44,6 +44,7 @@ import {
   Building2,
   BookUser,
   Droplet,
+  Receipt,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -185,6 +186,7 @@ export const navGroups: NavGroup[] = [
       { href: '/admin/ibas-areas', label: 'iBAS++ areas', icon: Layers, requirePlatformAdmin: true },
       { href: '/admin/ibas-links', label: 'iBAS++ area links', icon: Link2, requirePlatformAdmin: true },
       { href: '/admin/toolkit', label: 'Toolkit (checklists, templates)', icon: ClipboardCheck, requirePlatformAdmin: true },
+      { href: '/admin/deductions', label: 'VAT, IT, Tax & Deductions', icon: Receipt, requirePlatformAdmin: true },
     ],
   },
   {

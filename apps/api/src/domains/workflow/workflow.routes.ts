@@ -22,6 +22,9 @@ import {
   memberSummaryHandler,
   inboxHandler,
   listRolesHandler,
+  myRolesHandler,
+  addMyRoleHandler,
+  removeMyRoleHandler,
   listNotificationsHandler,
   markNotificationReadHandler,
   listAuditLogsHandler,
@@ -35,6 +38,9 @@ export const auditRouter = Router();
 workflowRouter.use(authenticate);
 
 workflowRouter.get('/roles', asyncHandler(listRolesHandler));
+workflowRouter.get('/my-roles', asyncHandler(myRolesHandler));
+workflowRouter.post('/my-roles', asyncHandler(addMyRoleHandler));
+workflowRouter.delete('/my-roles/:code', asyncHandler(removeMyRoleHandler));
 workflowRouter.get('/summary', asyncHandler(memberSummaryHandler));
 workflowRouter.get('/inbox', asyncHandler(inboxHandler));
 workflowRouter.get('/runs/mine', asyncHandler(myRunsHandler));

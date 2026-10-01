@@ -10,6 +10,7 @@ import {
 import { useFocusEffect, useRouter, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { bcsBatchLabel, type ServiceInfo } from '@ibas/shared-types';
+import { MyWorkflowRoles } from '@/components/ibas/MyWorkflowRoles';
 import { useAuth } from '@/lib/auth-context';
 import { fetchAccountSummary, type AccountSummary } from '@/lib/auth-api';
 import { fetchServiceInfo, officeLabel, useWorkIdentity } from '@/lib/org-api';
@@ -193,6 +194,8 @@ export default function ProfileScreen() {
           missing={personal?.blood_group ? undefined : 'Add your blood group to find donors and request blood'}
           onPress={() => router.push('/(app)/blood-bank/settings' as Href)}
         />
+
+        <MyWorkflowRoles />
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Account</Text>

@@ -113,6 +113,8 @@ export interface RunSummary {
   fiscal_year?: string;
   month?: string;
   reference_no?: string;
+  /** Started without the office role: the initiator does every step and no one is notified. */
+  personal?: boolean;
 }
 
 export interface RunDetail {
@@ -153,12 +155,43 @@ export interface RunDetail {
   can_cancel?: boolean;
 }
 
-/** Same rule as the server: the first step's office role (or super admin) starts a run. */
-export function canStartProcess(user: { is_super_admin?: boolean; workflow_roles?: Array<{ role_code: string; is_active: boolean }> } | null, steps: ProcessStep[]): boolean {
+type RoleHolder = { is_super_admin?: boolean; workflow_roles?: Array<{ role_code: string; is_active: boolean; self_assigned?: boolean }> } | null;
+
+export function canStartProcess(user: RoleHolder, steps: ProcessStep[]): boolean {
+  return !!user && steps.length > 0;
+}
+
+/** Same rule as the server: only an admin-assigned first-step role (or super admin) starts an official run. */
+export function startsOfficialRun(user: RoleHolder, steps: ProcessStep[]): boolean {
   if (!user || steps.length === 0) return false;
   if (user.is_super_admin) return true;
   const first = steps[0]!.role_code;
-  return (user.workflow_roles ?? []).some((r) => r.is_active && r.role_code === first);
+  return (user.workflow_roles ?? []).some((r) => r.is_active && !r.self_assigned && r.role_code === first);
+}
+
+export interface MyWorkflowRole {
+  code: string;
+  name_en: string;
+  name_bn?: string;
+  color: string;
+  level?: number;
+  held: boolean;
+  self_assigned: boolean;
+}
+
+export async function fetchMyRoles(): Promise<MyWorkflowRole[]> {
+  const r = await apiFetch<{ data: MyWorkflowRole[] }>('/workflow/my-roles');
+  return r.data;
+}
+
+export async function addMyRole(code: string): Promise<MyWorkflowRole[]> {
+  const r = await apiFetch<{ data: MyWorkflowRole[] }>('/workflow/my-roles', { method: 'POST', body: JSON.stringify({ role_code: code }) });
+  return r.data;
+}
+
+export async function removeMyRole(code: string): Promise<MyWorkflowRole[]> {
+  const r = await apiFetch<{ data: MyWorkflowRole[] }>(`/workflow/my-roles/${encodeURIComponent(code)}`, { method: 'DELETE' });
+  return r.data;
 }
 
 export async function startProcessRun(taskId: string, body: { fiscal_year: string; month?: string; reference_no?: string }): Promise<RunDetail> {

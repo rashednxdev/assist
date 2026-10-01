@@ -47,7 +47,7 @@ export function authorize(action: AuthorizeAction, context: AuthorizeContext = {
 
 export function hasWorkflowRole(user: AuthRequest['user'], roleCode: string): boolean {
   if (!user) return false;
-  return user.workflow_roles.some((r) => r.is_active && r.role_code === roleCode);
+  return user.workflow_roles.some((r) => r.is_active && !r.self_assigned && r.role_code === roleCode);
 }
 
 export function isAdminUser(userType: UserType): boolean {

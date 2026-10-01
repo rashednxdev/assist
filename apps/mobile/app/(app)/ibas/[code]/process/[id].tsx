@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { PickerSheet, SelectField } from '@/components/ui/PickerSheet';
 import { TextField } from '@/components/ui/TextField';
 import { Badge, IbasCard, IbasError, IbasErrorScreen, IbasLoading, ibasStyles, SectionHead } from '@/components/ibas/IbasBits';
+import { MyWorkflowRoles } from '@/components/ibas/MyWorkflowRoles';
 import {
   areaHref,
   canStartProcess,
@@ -16,6 +17,7 @@ import {
   MONTHS,
   RUN_STATUS,
   startProcessRun,
+  startsOfficialRun,
   type ProcessDetail,
   type ProcessStep,
   type RunSummary,
@@ -100,7 +102,7 @@ function StepCard({ step, last, color, roleColor }: { step: ProcessStep; last: b
   );
 }
 
-function StartRunCard({ taskId, color, onStarted }: { taskId: string; color: string; onStarted: (runId: string) => void }) {
+function StartRunCard({ taskId, color, official, firstRole, onStarted }: { taskId: string; color: string; official: boolean; firstRole?: string; onStarted: (runId: string) => void }) {
   const [fiscalYear, setFiscalYear] = useState(currentFiscalYear);
   const [month, setMonth] = useState(() => MONTHS[new Date().getMonth()]!);
   const [reference, setReference] = useState('');
@@ -128,7 +130,17 @@ function StartRunCard({ taskId, color, onStarted }: { taskId: string; color: str
   return (
     <IbasCard accent={color}>
       <SectionHead icon="play-circle-outline" title="Start interactive run" color={color} />
-      <Text style={ibasStyles.small}>Work through this process step by step. Each step is recorded, and the next office role is notified when you hand over.</Text>
+      {official ? (
+        <Text style={ibasStyles.small}>Work through this process step by step. Each step is recorded, and the next office role is notified when you hand over.</Text>
+      ) : (
+        <View style={styles.info}>
+          <Ionicons name="person-circle-outline" size={18} color="#0369a1" />
+          <Text style={styles.infoText}>
+            Personal run — you complete every step yourself and no one is notified.
+            {firstRole ? ` An administrator-assigned ${firstRole} role is needed for an official run with handoffs.` : ''}
+          </Text>
+        </View>
+      )}
       <TextField label="Fiscal year" value={fiscalYear} onChangeText={setFiscalYear} placeholder="2025-26" />
       <SelectField label="Month" display={month} onPress={() => setPicking(true)} />
       <TextField label="Reference no. (optional)" value={reference} onChangeText={setReference} placeholder="Bill / file / memo no." autoCapitalize="characters" />
@@ -200,6 +212,7 @@ export default function AreaProcessScreen() {
   const { task, steps } = detail;
   const roleColor = (c: string) => roles[c] || '#475569';
   const startable = canStartProcess(user, steps);
+  const official = startsOfficialRun(user, steps);
   const firstRole = steps[0]?.role_code;
 
   return (
@@ -223,22 +236,21 @@ export default function AreaProcessScreen() {
               {task.module_name_en ? <Badge label={task.module_name_en} color={accent} /> : null}
               <Badge label={`${steps.length} step${steps.length === 1 ? '' : 's'}`} />
               {task.estimated_time ? <Badge label={`~${task.estimated_time} min`} /> : null}
-              <Badge label={startable ? 'You can start this run' : 'Read-only guide'} color={startable ? '#059669' : colors.warning} />
+              {startable ? <Badge label={official ? 'Official run' : 'Personal run'} color={official ? '#059669' : '#0369a1'} /> : null}
             </View>
           </IbasCard>
 
           {startable ? (
-            <StartRunCard taskId={task.id} color={accent} onStarted={(runId) => router.push(areaHref(code, 'run', runId))} />
-          ) : steps.length > 0 ? (
-            <View style={styles.info}>
-              <Ionicons name="information-circle" size={18} color="#0369a1" />
-              <Text style={styles.infoText}>
-                {user?.user_type === 'officer'
-                  ? `Starting an interactive run needs the ${firstRole} office role. You can still follow the step-by-step guide below.`
-                  : 'Interactive runs need an office workflow role. Follow the step-by-step guide below to learn the process.'}
-              </Text>
-            </View>
+            <StartRunCard
+              taskId={task.id}
+              color={accent}
+              official={official}
+              firstRole={firstRole}
+              onStarted={(runId) => router.push(areaHref(code, 'run', runId))}
+            />
           ) : null}
+
+          {steps.length > 0 ? <MyWorkflowRoles highlight={firstRole} /> : null}
 
           {runs.length > 0 ? (
             <IbasCard>

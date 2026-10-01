@@ -23,6 +23,8 @@ export const authUserSchema = z.object({
     z.object({
       role_code: z.string(),
       is_active: z.boolean(),
+      /** Added by the user; never receives handoffs or acts on others' runs. */
+      self_assigned: z.boolean().optional(),
     }),
   ),
 });

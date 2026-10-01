@@ -41,14 +41,16 @@ export function RefPicker({
   onChange,
   max,
   compact = false,
+  types = ['book_topic', 'book', 'circular'],
 }: {
   value: EditorRef[];
   onChange: (refs: EditorRef[]) => void;
   max: number;
   compact?: boolean;
+  types?: ContentLinkTargetType[];
 }) {
   const [open, setOpen] = useState(!compact);
-  const [type, setType] = useState<ContentLinkTargetType>('book_topic');
+  const [type, setType] = useState<ContentLinkTargetType>(types[0] ?? 'book_topic');
   const [q, setQ] = useState('');
   const [hits, setHits] = useState<Hit[]>([]);
   const [busy, setBusy] = useState(false);
@@ -113,20 +115,22 @@ export function RefPicker({
       )}
       {compact && !open ? (
         <button type="button" onClick={() => setOpen(true)} disabled={full} className="inline-flex items-center gap-1 text-xs font-medium text-primary disabled:text-muted">
-          <Link2 className="h-3 w-3" /> {full ? `Max ${max} links` : 'Link a rule / circular'}
+          <Link2 className="h-3 w-3" /> {full ? `Max ${max} links` : types.length === 1 ? `Link a ${TYPE_LABEL[types[0]!].toLowerCase()}` : 'Link a rule / circular'}
         </button>
       ) : (
         <div className="space-y-1.5 rounded-md border border-dashed border-border p-2">
           <div className="flex gap-2">
-            <select
-              value={type}
-              onChange={(e) => setType(e.target.value as ContentLinkTargetType)}
-              className="h-8 rounded-md border border-input bg-background px-2 text-xs"
-            >
-              <option value="book_topic">Rule</option>
-              <option value="book">Book</option>
-              <option value="circular">Circular</option>
-            </select>
+            {types.length > 1 && (
+              <select
+                value={type}
+                onChange={(e) => setType(e.target.value as ContentLinkTargetType)}
+                className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+              >
+                {types.map((t) => (
+                  <option key={t} value={t}>{TYPE_LABEL[t]}</option>
+                ))}
+              </select>
+            )}
             <div className="relative flex-1">
               <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
               <Input

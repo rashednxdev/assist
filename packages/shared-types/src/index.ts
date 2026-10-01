@@ -88,3 +88,4 @@ export * from './org.js';
 export * from './contacts.js';
 export * from './blood-bank.js';
 export * from './service-info.js';
+export * from './deductions.js';

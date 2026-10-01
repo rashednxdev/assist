@@ -12,7 +12,7 @@ export interface AuthUser {
   user_type: string;
   status: string;
   is_super_admin: boolean;
-  workflow_roles: Array<{ role_code: string; is_active: boolean }>;
+  workflow_roles: Array<{ role_code: string; is_active: boolean; self_assigned?: boolean }>;
 }
 
 export interface AuthRequest extends Request {
@@ -63,6 +63,7 @@ export const authenticate: RequestHandler = async (
       workflow_roles: user.workflow_roles.map((r) => ({
         role_code: r.role_code,
         is_active: r.is_active,
+        self_assigned: !!r.self_assigned,
       })),
     };
 

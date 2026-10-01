@@ -130,6 +130,18 @@ export async function inboxHandler(req: AuthRequest, res: Response): Promise<voi
   res.json({ data });
 }
 
+export async function myRolesHandler(req: AuthRequest, res: Response): Promise<void> {
+  res.json({ data: await workflowService.listMyRoles(req.user!.id) });
+}
+
+export async function addMyRoleHandler(req: AuthRequest, res: Response): Promise<void> {
+  res.json({ data: await workflowService.addMyRole(req.user!.id, req.body?.role_code) });
+}
+
+export async function removeMyRoleHandler(req: AuthRequest, res: Response): Promise<void> {
+  res.json({ data: await workflowService.removeMyRole(req.user!.id, String(req.params.code)) });
+}
+
 export async function listRolesHandler(_req: AuthRequest, res: Response): Promise<void> {
   const data = await workflowService.listRoles();
   res.json({ data });

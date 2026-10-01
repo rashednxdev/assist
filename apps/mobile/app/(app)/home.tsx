@@ -59,6 +59,14 @@ const SERVICES: Array<{
     href: '/(app)/community' as Href,
   },
   {
+    id: 'deductions',
+    title: 'VAT, IT, Tax & Deductions',
+    subtitle: 'By economic code & bill',
+    icon: 'receipt-outline',
+    color: '#b45309',
+    href: '/(app)/deductions' as Href,
+  },
+  {
     id: 'pricing',
     title: 'Pricing',
     subtitle: 'Packages, payments & access',

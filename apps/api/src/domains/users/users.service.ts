@@ -226,6 +226,7 @@ export async function assignWorkflowRole(userId: string, roleCode: string, assig
   const existing = user.workflow_roles.find((r) => r.role_code === roleCode);
   if (existing) {
     existing.is_active = true;
+    existing.self_assigned = false;
     existing.assigned_at = new Date();
     existing.assigned_by = new mongoose.Types.ObjectId(assignedBy);
   } else {

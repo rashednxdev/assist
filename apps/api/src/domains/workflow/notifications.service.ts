@@ -11,7 +11,7 @@ export async function createHandoffNotifications(params: {
 }) {
   const recipients = await User.find({
     status: 'active',
-    workflow_roles: { $elemMatch: { role_code: params.roleCode, is_active: true } },
+    workflow_roles: { $elemMatch: { role_code: params.roleCode, is_active: true, self_assigned: { $ne: true } } },
   });
 
   if (recipients.length === 0) return [];

@@ -42,6 +42,7 @@ import { communityRouter } from './domains/community/community.routes.js';
 import { orgRouter } from './domains/org/org.routes.js';
 import { contactsRouter } from './domains/contacts/contacts.routes.js';
 import { bloodBankRouter } from './domains/blood-bank/blood-bank.routes.js';
+import { deductionsRouter } from './domains/deductions/deductions.routes.js';
 
 export function createApp(): Application {
   const app = express();
@@ -118,6 +119,7 @@ export function createApp(): Application {
   app.use('/api/v1/org', orgRouter);
   app.use('/api/v1/contacts', contactsRouter);
   app.use('/api/v1/blood-bank', bloodBankRouter);
+  app.use('/api/v1/deductions', deductionsRouter);
 
   app.use(errorHandler);
   return app;

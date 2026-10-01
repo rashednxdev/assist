@@ -85,6 +85,7 @@ function serializeUser(user: InstanceType<typeof User>) {
     workflow_roles: user.workflow_roles.map((r) => ({
       role_code: r.role_code,
       is_active: r.is_active,
+      self_assigned: !!r.self_assigned,
     })),
   };
 }

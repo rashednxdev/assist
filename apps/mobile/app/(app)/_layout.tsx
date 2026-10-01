@@ -54,6 +54,7 @@ export default function AppLayout() {
       <Stack.Screen name="account" />
       <Stack.Screen name="contacts" />
       <Stack.Screen name="blood-bank" />
+      <Stack.Screen name="deductions" />
       <Stack.Screen name="community" />
       <Stack.Screen name="saved" />
       <Stack.Screen name="history" />

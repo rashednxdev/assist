@@ -52,6 +52,7 @@ export async function loginHandler(req: AuthRequest, res: Response): Promise<voi
         workflow_roles: user.workflow_roles.map((r) => ({
           role_code: r.role_code,
           is_active: r.is_active,
+          self_assigned: !!r.self_assigned,
         })),
       },
     },
@@ -143,6 +144,7 @@ export async function meHandler(req: AuthRequest, res: Response): Promise<void> 
       workflow_roles: user.workflow_roles.map((r) => ({
         role_code: r.role_code,
         is_active: r.is_active,
+        self_assigned: !!r.self_assigned,
       })),
       module_access,
       module_stops,

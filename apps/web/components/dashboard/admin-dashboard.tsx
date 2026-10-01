@@ -40,6 +40,8 @@ import {
   Video,
   Wallet,
   Workflow,
+  Receipt,
+  Settings2,
 } from 'lucide-react';
 import type { MeUser } from '@/lib/auth';
 import { apiFetch } from '@/lib/api-client';
@@ -133,6 +135,8 @@ const QUICK_GROUPS: Array<{ title: string; links: QuickLink[] }> = [
       { href: '/admin/ibas-areas', label: 'iBAS++ areas', desc: 'Add or edit workspace areas', icon: Layers },
       { href: '/admin/ibas-links', label: 'iBAS++ area links', desc: 'Rules & circulars per area drawer', icon: Link2 },
       { href: '/admin/toolkit', label: 'Toolkit', desc: 'Checklists, templates & guides', icon: ClipboardCheck },
+      { href: '/admin/deductions', label: 'VAT, IT, Tax & Deductions', desc: 'Deductions by economic code & bill', icon: Receipt },
+      { href: '/admin/deductions/setup', label: 'Deductions setup', desc: 'Economic codes, bill & deduction types', icon: Settings2 },
       { href: '/ibas', label: 'iBAS++ Workspace', desc: 'Preview what users see', icon: Briefcase },
     ],
   },

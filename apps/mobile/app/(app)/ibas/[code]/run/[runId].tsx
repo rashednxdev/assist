@@ -109,7 +109,11 @@ export default function AreaRunScreen() {
     const last = step.step_number >= steps.length;
     Alert.alert(
       `Submit step ${step.step_number}?`,
-      last ? 'This is the last step — the process will be marked completed.' : 'The office role for the next step will be notified to continue.',
+      last
+        ? 'This is the last step — the process will be marked completed.'
+        : run.personal
+          ? 'Personal run — the next step stays with you. No one is notified.'
+          : 'The office role for the next step will be notified to continue.',
       [
         { text: 'Not yet', style: 'cancel' },
         { text: 'Submit', onPress: () => void doSubmit() },
@@ -164,6 +168,7 @@ export default function AreaRunScreen() {
               {run.fiscal_year ? <Badge label={`FY ${run.fiscal_year}`} /> : null}
               {run.month ? <Badge label={run.month} /> : null}
               {run.reference_no ? <Badge label={`Ref ${run.reference_no}`} /> : null}
+              {run.personal ? <Badge label="Personal run" color="#0369a1" /> : null}
             </View>
             <View style={styles.progressHead}>
               <Text style={ibasStyles.small}>{run.status === 'completed' ? `All ${steps.length} steps done` : `Step ${run.current_step} of ${steps.length}`}</Text>
@@ -240,9 +245,13 @@ export default function AreaRunScreen() {
               ) : (
                 <View style={styles.waiting}>
                   <Ionicons name="hourglass-outline" size={16} color={colors.textMuted} />
-                  <Text style={styles.waitingText}>
-                    Waiting for role <Text style={styles.bold}>{run.current_role}</Text> to act. Pull down to refresh.
-                  </Text>
+                  {run.personal ? (
+                    <Text style={styles.waitingText}>This personal run is completed only by the person who started it.</Text>
+                  ) : (
+                    <Text style={styles.waitingText}>
+                      Waiting for role <Text style={styles.bold}>{run.current_role}</Text> to act. Pull down to refresh.
+                    </Text>
+                  )}
                 </View>
               )}
             </IbasCard>

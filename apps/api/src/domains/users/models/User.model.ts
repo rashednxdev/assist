@@ -8,6 +8,8 @@ export interface WorkflowRoleTag {
   is_active: boolean;
   assigned_at: Date;
   assigned_by: Types.ObjectId;
+  /** Added by the user themselves: usable in their own runs, never gets handoff notifications or inbox items. */
+  self_assigned?: boolean;
 }
 
 export interface IUser extends Document {
@@ -107,6 +109,7 @@ const workflowRoleTagSchema = new Schema<WorkflowRoleTag>(
     is_active: { type: Boolean, default: true },
     assigned_at: { type: Date, required: true },
     assigned_by: { type: Schema.Types.ObjectId, required: true },
+    self_assigned: { type: Boolean, default: false },
   },
   { _id: false },
 );

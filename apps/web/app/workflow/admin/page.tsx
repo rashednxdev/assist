@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { ChevronDown, ChevronUp, Plus, UserCog } from 'lucide-react';
+import { ChevronDown, ChevronUp, Pencil, Plus, UserCog } from 'lucide-react';
 import { useIbasAreas } from '@/lib/use-ibas-areas';
 import { AreaCheckboxes } from '@/components/ibas/area-checkboxes';
 import type { WorkflowField } from '@ibas/shared-types';
@@ -32,13 +32,35 @@ interface StepItem {
   id: string;
   step_number: number;
   title_en: string;
+  title_bn?: string;
   description_en: string;
+  description_bn?: string;
   role_code: string;
   fields: WorkflowField[];
   condition_text?: string;
   handoff_msg?: string;
   handoff_role?: string;
   is_auto?: boolean;
+  is_optional?: boolean;
+  nav_menu_path?: string;
+}
+
+/** Everything about a step except its id and position. */
+function stepContent(s: StepItem) {
+  return {
+    title_en: s.title_en,
+    title_bn: s.title_bn ?? '',
+    description_en: s.description_en,
+    description_bn: s.description_bn ?? '',
+    role_code: s.role_code,
+    fields: s.fields,
+    condition_text: s.condition_text ?? '',
+    handoff_msg: s.handoff_msg ?? '',
+    handoff_role: s.handoff_role ?? '',
+    is_auto: !!s.is_auto,
+    is_optional: !!s.is_optional,
+    nav_menu_path: s.nav_menu_path ?? '',
+  };
 }
 
 interface RoleItem {
@@ -91,6 +113,8 @@ export default function WorkflowAdminPage() {
 
   const [taskForm, setTaskForm] = useState(emptyTaskForm);
   const [stepForm, setStepForm] = useState(emptyStepForm);
+  const [editingStepId, setEditingStepId] = useState<string | null>(null);
+  const stepFormRef = useRef<HTMLDivElement>(null);
   const { areas: ibasAreas } = useIbasAreas();
 
   const loadTasks = useCallback(() => {
@@ -120,6 +144,7 @@ export default function WorkflowAdminPage() {
 
   async function selectTask(id: string) {
     clearFeedback();
+    if (id !== selectedId) cancelStepEdit();
     setIsCreateMode(false);
     setSelectedId(id);
     setBusy(true);
@@ -151,6 +176,7 @@ export default function WorkflowAdminPage() {
     setSelectedId(null);
     setIsCreateMode(true);
     setSteps([]);
+    cancelStepEdit();
     const areaModule = presetArea ? modules.find((m) => m.code === presetArea) : undefined;
     const defaultModule = areaModule ?? modules[0];
     setTaskForm({
@@ -291,9 +317,59 @@ export default function WorkflowAdminPage() {
     }
   }
 
+  function cancelStepEdit() {
+    setEditingStepId(null);
+    setStepForm(emptyStepForm());
+  }
+
+  function beginStepEdit(s: StepItem) {
+    clearFeedback();
+    setEditingStepId(s.id);
+    setStepForm({
+      title_en: s.title_en,
+      description_en: s.description_en,
+      role_code: s.role_code,
+      condition_text: s.condition_text ?? '',
+      handoff_msg: s.handoff_msg ?? '',
+      handoff_role: s.handoff_role ?? '',
+      is_auto: !!s.is_auto,
+      fields: s.fields,
+    });
+    stepFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  async function saveStepEdit() {
+    if (!selectedId || !editingStepId || !stepForm.title_en.trim()) return;
+    clearFeedback();
+    setBusy(true);
+    try {
+      await apiFetch(`/workflow/tasks/${selectedId}/steps/${editingStepId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          title_en: stepForm.title_en.trim(),
+          description_en: stepForm.description_en.trim() || stepForm.title_en.trim(),
+          role_code: stepForm.role_code,
+          fields: stepForm.fields,
+          condition_text: stepForm.condition_text.trim(),
+          handoff_msg: stepForm.handoff_msg.trim(),
+          is_auto: stepForm.is_auto,
+        }),
+      });
+      cancelStepEdit();
+      await selectTask(selectedId);
+      setMessage('Step updated');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update step');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function deleteStep(stepId: string) {
     if (!selectedId) return;
+    if (!confirm('Remove this step? Later steps move up by one.')) return;
     clearFeedback();
+    if (editingStepId === stepId) cancelStepEdit();
     setBusy(true);
     try {
       await apiFetch(`/workflow/tasks/${selectedId}/steps/${stepId}`, { method: 'DELETE' });
@@ -306,22 +382,31 @@ export default function WorkflowAdminPage() {
     }
   }
 
+  /** Swaps the two steps' contents in place; the reorder endpoint trips the unique (task, step number) index. */
   async function moveStep(index: number, direction: -1 | 1) {
     if (!selectedId) return;
     const target = index + direction;
-    if (target < 0 || target >= steps.length) return;
+    const a = steps[index];
+    const b = steps[target];
+    if (!a || !b) return;
     clearFeedback();
-    const reordered = [...steps];
-    [reordered[index], reordered[target]] = [reordered[target]!, reordered[index]!];
+    cancelStepEdit();
     setBusy(true);
+    const patch = (id: string, s: StepItem) =>
+      apiFetch(`/workflow/tasks/${selectedId}/steps/${id}`, { method: 'PATCH', body: JSON.stringify(stepContent(s)) });
     try {
-      await apiFetch(`/workflow/tasks/${selectedId}/steps/reorder`, {
-        method: 'PATCH',
-        body: JSON.stringify({ step_ids: reordered.map((s) => s.id) }),
-      });
+      await patch(a.id, b);
+      try {
+        await patch(b.id, a);
+      } catch (err) {
+        await patch(a.id, a).catch(() => undefined);
+        throw err;
+      }
       await selectTask(selectedId);
+      setMessage(`Step moved ${direction < 0 ? 'up' : 'down'}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reorder steps');
+      await selectTask(selectedId).catch(() => undefined);
+      setError(err instanceof Error ? err.message : 'Failed to move step');
     } finally {
       setBusy(false);
     }
@@ -542,7 +627,12 @@ export default function WorkflowAdminPage() {
                       ) : (
                         <div className="space-y-3">
                           {steps.map((s, i) => (
-                            <div key={s.id} className="rounded-xl border border-border bg-slate-50/80 p-3">
+                            <div
+                              key={s.id}
+                              className={`rounded-xl border p-3 ${
+                                editingStepId === s.id ? 'border-primary bg-primary-muted' : 'border-border bg-slate-50/80'
+                              }`}
+                            >
                               <div className="mb-1 flex flex-wrap items-center gap-2">
                                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">
                                   {s.step_number}
@@ -555,6 +645,8 @@ export default function WorkflowAdminPage() {
                                     variant="ghost"
                                     className="h-7 w-7 p-0"
                                     disabled={busy || i === 0}
+                                    title="Move up"
+                                    aria-label="Move up"
                                     onClick={() => moveStep(i, -1)}
                                   >
                                     <ChevronUp className="h-4 w-4" />
@@ -564,9 +656,21 @@ export default function WorkflowAdminPage() {
                                     variant="ghost"
                                     className="h-7 w-7 p-0"
                                     disabled={busy || i === steps.length - 1}
+                                    title="Move down"
+                                    aria-label="Move down"
                                     onClick={() => moveStep(i, 1)}
                                   >
                                     <ChevronDown className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7"
+                                    disabled={busy}
+                                    onClick={() => beginStepEdit(s)}
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                    Edit
                                   </Button>
                                   <Button
                                     size="sm"
@@ -595,8 +699,17 @@ export default function WorkflowAdminPage() {
                       )}
                     </div>
 
-                    <div className="rounded-xl border border-dashed border-border p-4">
-                      <div className="mb-3 text-sm font-semibold">Add step</div>
+                    <div
+                      ref={stepFormRef}
+                      className={`scroll-mt-4 rounded-xl border p-4 ${
+                        editingStepId ? 'border-primary' : 'border-dashed border-border'
+                      }`}
+                    >
+                      <div className="mb-3 text-sm font-semibold">
+                        {editingStepId
+                          ? `Edit step ${steps.find((s) => s.id === editingStepId)?.step_number ?? ''}`
+                          : 'Add step'}
+                      </div>
                       <div className="grid gap-3 sm:grid-cols-2">
                         <div className="space-y-1">
                           <Label>Role</Label>
@@ -673,14 +786,20 @@ export default function WorkflowAdminPage() {
                         />
                         Auto-processed step (no user input)
                       </label>
-                      <Button
-                        className="mt-4"
-                        size="sm"
-                        disabled={busy || !stepForm.title_en.trim()}
-                        onClick={addStep}
-                      >
-                        Add step
-                      </Button>
+                      <div className="mt-4 flex gap-2">
+                        <Button
+                          size="sm"
+                          disabled={busy || !stepForm.title_en.trim()}
+                          onClick={editingStepId ? saveStepEdit : addStep}
+                        >
+                          {editingStepId ? 'Save step' : 'Add step'}
+                        </Button>
+                        {editingStepId && (
+                          <Button size="sm" variant="ghost" disabled={busy} onClick={cancelStepEdit}>
+                            Cancel
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </>
                 )}

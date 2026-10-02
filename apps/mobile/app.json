@@ -2,7 +2,7 @@
   "expo": {
     "name": "ProAssist",
     "slug": "ibas-learn",
-    "version": "1.0.2.5",
+    "version": "1.0.2.6",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "scheme": "ibaslearn",
@@ -26,7 +26,7 @@
         "backgroundColor": "#0B2B52"
       },
       "package": "gov.bd.ibas.learn",
-      "versionCode": 35,
+      "versionCode": 36,
       "permissions": [
         "CAMERA",
         "RECORD_AUDIO",

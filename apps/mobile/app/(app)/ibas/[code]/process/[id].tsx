@@ -102,7 +102,21 @@ function StepCard({ step, last, color, roleColor }: { step: ProcessStep; last: b
   );
 }
 
-function StartRunCard({ taskId, color, official, firstRole, onStarted }: { taskId: string; color: string; official: boolean; firstRole?: string; onStarted: (runId: string) => void }) {
+function StartRunCard({
+  taskId,
+  color,
+  official,
+  firstRole,
+  onStarted,
+  onCancel,
+}: {
+  taskId: string;
+  color: string;
+  official: boolean;
+  firstRole?: string;
+  onStarted: (runId: string) => void;
+  onCancel: () => void;
+}) {
   const [fiscalYear, setFiscalYear] = useState(currentFiscalYear);
   const [month, setMonth] = useState(() => MONTHS[new Date().getMonth()]!);
   const [reference, setReference] = useState('');
@@ -146,6 +160,7 @@ function StartRunCard({ taskId, color, official, firstRole, onStarted }: { taskI
       <TextField label="Reference no. (optional)" value={reference} onChangeText={setReference} placeholder="Bill / file / memo no." autoCapitalize="characters" />
       {error ? <IbasError message={error} /> : null}
       <Button title="Start run" onPress={() => void start()} loading={busy} disabled={busy} />
+      <Button title="Cancel" variant="ghost" onPress={onCancel} disabled={busy} />
       <PickerSheet
         visible={picking}
         title="Month"
@@ -168,6 +183,7 @@ export default function AreaProcessScreen() {
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [showStart, setShowStart] = useState(false);
 
   const loadRuns = useCallback(async () => {
     if (!id) return;
@@ -240,14 +256,53 @@ export default function AreaProcessScreen() {
             </View>
           </IbasCard>
 
+          {task.roles_involved.length > 0 ? (
+            <IbasCard>
+              <SectionHead icon="people-outline" title="Who is involved" color={accent} />
+              <View style={ibasStyles.row}>
+                {task.roles_involved.map((r) => (
+                  <Badge key={r} label={r} color={roleColor(r)} filled />
+                ))}
+              </View>
+            </IbasCard>
+          ) : null}
+
+          <IbasCard>
+            <SectionHead icon="git-branch-outline" title="Steps" color={accent} />
+            {steps.length === 0 ? (
+              <Text style={ibasStyles.small}>No steps have been added to this process yet.</Text>
+            ) : (
+              <View>
+                {steps.map((s, i) => (
+                  <StepCard key={s.id ?? s.step_number} step={s} last={i === steps.length - 1} color={accent} roleColor={roleColor} />
+                ))}
+              </View>
+            )}
+          </IbasCard>
+
           {startable ? (
-            <StartRunCard
-              taskId={task.id}
-              color={accent}
-              official={official}
-              firstRole={firstRole}
-              onStarted={(runId) => router.push(areaHref(code, 'run', runId))}
-            />
+            showStart ? (
+              <StartRunCard
+                taskId={task.id}
+                color={accent}
+                official={official}
+                firstRole={firstRole}
+                onStarted={(runId) => {
+                  setShowStart(false);
+                  router.push(areaHref(code, 'run', runId));
+                }}
+                onCancel={() => setShowStart(false)}
+              />
+            ) : (
+              <Pressable
+                onPress={() => setShowStart(true)}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.startBtn, { backgroundColor: accent }, pressed && styles.pressed]}
+              >
+                <Ionicons name="play-circle-outline" size={20} color={colors.white} />
+                <Text style={styles.startBtnText}>Start interactive run</Text>
+              </Pressable>
+            )
           ) : null}
 
           {steps.length > 0 ? <MyWorkflowRoles highlight={firstRole} /> : null}
@@ -275,30 +330,6 @@ export default function AreaProcessScreen() {
             </IbasCard>
           ) : null}
 
-          {task.roles_involved.length > 0 ? (
-            <IbasCard>
-              <SectionHead icon="people-outline" title="Who is involved" color={accent} />
-              <View style={ibasStyles.row}>
-                {task.roles_involved.map((r) => (
-                  <Badge key={r} label={r} color={roleColor(r)} filled />
-                ))}
-              </View>
-            </IbasCard>
-          ) : null}
-
-          <IbasCard>
-            <SectionHead icon="git-branch-outline" title="Steps" color={accent} />
-            {steps.length === 0 ? (
-              <Text style={ibasStyles.small}>No steps have been added to this process yet.</Text>
-            ) : (
-              <View>
-                {steps.map((s, i) => (
-                  <StepCard key={s.id ?? s.step_number} step={s} last={i === steps.length - 1} color={accent} roleColor={roleColor} />
-                ))}
-              </View>
-            )}
-          </IbasCard>
-
           <Text style={ibasStyles.disclaimer}>Always verify against the latest official rules and circulars before acting on this guide.</Text>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -312,6 +343,20 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.8,
+  },
+  startBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    minHeight: 50,
+    borderRadius: 12,
+    paddingHorizontal: spacing.md,
+  },
+  startBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.white,
   },
   info: {
     flexDirection: 'row',

@@ -14,6 +14,7 @@ export default function ContactsLayout() {
         }}
       >
         <Stack.Screen name="index" options={{ title: 'Contacts', headerBackTitle: 'Home' }} />
+        <Stack.Screen name="departments" options={{ title: 'Departments' }} />
         <Stack.Screen name="office/[id]" options={{ title: 'Office' }} />
       </Stack>
     </ContactAccessProvider>

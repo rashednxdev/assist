@@ -122,6 +122,11 @@ export function ancestorChain(map: Map<string, IndexedOffice>, id: string | null
   return chain;
 }
 
+/** The top-level office above `id` (or `id` itself when it is top-level). */
+export function departmentOf(map: Map<string, IndexedOffice>, id: string | null): IndexedOffice | null {
+  return ancestorChain(map, id)[0] ?? null;
+}
+
 /** `id` plus every office below it. */
 export function subtreeIds(map: Map<string, IndexedOffice>, id: string, activeOnly = true): string[] {
   const kids = new Map<string, string[]>();
@@ -323,14 +328,17 @@ export async function listOfficesAdmin(query: unknown): Promise<OfficeRecord[]> 
 export async function officeOptions(query: unknown): Promise<OfficeOption[]> {
   const parsed = officeQuerySchema.safeParse(query);
   if (!parsed.success) throw badRequest(zodMessage(parsed.error));
-  const { q, limit, office_type_id } = parsed.data;
+  const { q, limit, office_type_id, department_id, top_level } = parsed.data;
   const [map, types] = await Promise.all([officeIndex(), OfficeType.find({}).select('short_name').lean()]);
   const typeShort = new Map(types.map((t) => [String(t._id), t.short_name]));
   const terms = (q ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+  const inDepartment = department_id ? new Set(subtreeIds(map, department_id)) : null;
   const out: Array<OfficeOption & { score: number }> = [];
   for (const o of map.values()) {
     if (!o.is_active) continue;
     if (office_type_id && o.office_type_id !== office_type_id) continue;
+    if (top_level && o.parent_id) continue;
+    if (inDepartment && !inDepartment.has(o.id)) continue;
     const path = parentPath(map, o.parent_id);
     const own = `${o.name} ${o.short_name ?? ''} ${o.office_code ?? ''}`.toLowerCase();
     const hay = `${own} ${path.toLowerCase()}`;
@@ -464,20 +472,21 @@ export async function getWorkIdentity(userId: string): Promise<WorkIdentity> {
     user.designation_id ? Designation.findById(user.designation_id).select('name short_name grade').lean() : Promise.resolve(null),
   ]);
   const o = user.office_id && map ? map.get(String(user.office_id)) : undefined;
+  const dept = o && map ? departmentOf(map, o.id) : null;
   const typeShort = new Map(types.map((t) => [String(t._id), t.short_name]));
+  const option = (n: IndexedOffice): OfficeOption => ({
+    id: n.id,
+    name: n.name,
+    short_name: n.short_name,
+    office_code: n.office_code,
+    type_short: typeShort.get(n.office_type_id),
+    parent_path: parentPath(map!, n.parent_id),
+  });
   return {
     office_id: user.office_id ? String(user.office_id) : null,
     designation_id: user.designation_id ? String(user.designation_id) : null,
-    office: o
-      ? {
-          id: o.id,
-          name: o.name,
-          short_name: o.short_name,
-          office_code: o.office_code,
-          type_short: typeShort.get(o.office_type_id),
-          parent_path: parentPath(map!, o.parent_id),
-        }
-      : null,
+    office: o ? option(o) : null,
+    department: dept ? option(dept) : null,
     designation: designation
       ? { id: String(designation._id), name: designation.name, short_name: designation.short_name, grade: designation.grade ?? null }
       : null,

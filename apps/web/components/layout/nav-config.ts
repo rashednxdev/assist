@@ -186,6 +186,7 @@ export const navGroups: NavGroup[] = [
       { href: '/admin/setup/pension-leaves', label: 'Pension leave types', icon: Calculator, moduleCode: 'SETUP', requireCreate: true },
       { href: '/admin/circulars', label: 'Circular archive', icon: Archive, requirePlatformAdmin: true },
       { href: '/admin/policy-library', label: 'Policy collections', icon: Landmark, requirePlatformAdmin: true },
+      { href: '/admin/archive-know', label: 'Know, Because you asked', icon: HelpCircle, requirePlatformAdmin: true },
       { href: '/admin/ibas-areas', label: 'iBAS++ areas', icon: Layers, requirePlatformAdmin: true },
       { href: '/admin/ibas-links', label: 'iBAS++ area links', icon: Link2, requirePlatformAdmin: true },
       { href: '/admin/toolkit', label: 'Toolkit (checklists, templates)', icon: ClipboardCheck, requirePlatformAdmin: true },

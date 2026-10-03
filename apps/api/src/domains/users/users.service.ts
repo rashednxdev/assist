@@ -42,6 +42,8 @@ async function serializeUser(user: InstanceType<typeof User>) {
     exam_subject_ids: subjectAccess.exam_subject_ids,
     exam_subjects: subjectAccess.exam_subjects,
     workflow_roles: user.workflow_roles,
+    contact_honorable: !!user.contact_honorable,
+    directory_consent_at: user.directory_consent_at ?? null,
     allow_multi_device: Boolean(credentials?.allow_multi_device),
     bound_device_id: credentials?.bound_device_id ?? null,
     bound_device_at: credentials?.bound_device_at ?? null,
@@ -169,6 +171,7 @@ export async function updateUser(id: string, dto: UpdateUserDto) {
   if (dto.is_verified !== undefined) user.is_verified = dto.is_verified;
   if (dto.is_super_admin !== undefined) user.is_super_admin = dto.is_super_admin;
   if (dto.amount_received !== undefined) user.amount_received = dto.amount_received;
+  if (dto.contact_honorable !== undefined) user.contact_honorable = dto.contact_honorable;
 
   if (dto.all_exam_subjects !== undefined || dto.exam_subject_ids !== undefined) {
     const nextAll =

@@ -33,6 +33,8 @@ interface UserDetail {
   exam_subject_ids?: string[];
   exam_subjects?: Array<{ id: string; name: string; name_bn?: string }>;
   workflow_roles: Array<{ role_code: string; is_active: boolean; role_id: string }>;
+  contact_honorable?: boolean;
+  directory_consent_at?: string | null;
 }
 
 interface ExamSubjectOption {
@@ -191,6 +193,7 @@ export default function EditUserPage() {
           is_super_admin: user.is_super_admin,
           allow_multi_device: user.allow_multi_device ?? false,
           amount_received: Number(user.amount_received ?? 0),
+          contact_honorable: !!user.contact_honorable,
           all_exam_subjects: user.all_exam_subjects !== false,
           exam_subject_ids:
             user.all_exam_subjects === false ? (user.exam_subject_ids ?? []) : [],
@@ -512,6 +515,27 @@ export default function EditUserPage() {
                 />
                 Super admin
               </label>
+              <div className="space-y-2 rounded-lg border border-border p-4">
+                <p className="text-sm font-medium">Contacts directory</p>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={!!user.contact_honorable}
+                    onChange={(e) => setUser({ ...user, contact_honorable: e.target.checked })}
+                  />
+                  Honorable user
+                </label>
+                <p className="text-xs text-muted">
+                  Opens Contacts without consent, office/designation or colleague verification, across every department and
+                  with full numbers. Adding their own details stays optional.
+                </p>
+                <p className="text-xs text-muted">
+                  Sharing consent:{' '}
+                  {user.directory_consent_at
+                    ? `given on ${new Date(user.directory_consent_at).toLocaleDateString('en-GB')} (listed in the directory)`
+                    : 'not given (not listed in the directory)'}
+                </p>
+              </div>
               <div className="space-y-3 rounded-lg border border-border p-4">
                 <p className="text-sm font-medium">Device access</p>
                 <p className="text-xs text-muted">

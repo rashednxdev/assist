@@ -5,7 +5,7 @@ import * as contacts from './contacts.service.js';
 import * as verification from './verification.service.js';
 import * as charges from './charges.service.js';
 
-/** Contact directory: free for signed-in users who set their office and designation; numbers need a package. */
+/** Contact directory: free for signed-in users who consent, set their posting and get verified; numbers need a package. */
 export const contactsRouter = Router();
 
 contactsRouter.use(authenticate);
@@ -20,7 +20,21 @@ contactsRouter.get(
 contactsRouter.get(
   '/overview',
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    res.json({ data: await contacts.getOverview(req.user!) });
+    res.json({ data: await contacts.getOverview(req.user!, req.query) });
+  }),
+);
+
+contactsRouter.get(
+  '/departments',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    res.json({ data: await contacts.listDepartments(req.user!) });
+  }),
+);
+
+contactsRouter.put(
+  '/me/consent',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    res.json({ data: await contacts.setConsent(req.user!, req.body) });
   }),
 );
 

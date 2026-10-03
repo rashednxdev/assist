@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Archive, BookOpen, Briefcase, ChevronRight, Landmark } from 'lucide-react';
+import { Archive, BookOpen, Briefcase, ChevronRight, Landmark, Library } from 'lucide-react';
 import type { PolicyCollectionSummary } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { PageHeader } from '@/components/shared/page-header';
@@ -52,6 +52,20 @@ export default function PolicyLibraryPage() {
               <div className="min-w-0 flex-1">
                 <p className="font-semibold text-foreground">iBAS++ Workspace</p>
                 <p className="text-sm text-muted">Procedures, rules, circulars and tools for each iBAS++ area in one place.</p>
+              </div>
+              <ChevronRight className="h-5 w-5 text-muted" />
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/policy/archive">
+          <Card className="h-full transition-shadow hover:shadow-md">
+            <CardContent className="flex items-center gap-4 pt-6">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
+                <Library className="h-6 w-6" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-foreground">Books &amp; Policy Archive</p>
+                <p className="text-sm text-muted">Read archived books, download them as PDF, and browse “Know, Because you asked any more”.</p>
               </div>
               <ChevronRight className="h-5 w-5 text-muted" />
             </CardContent>

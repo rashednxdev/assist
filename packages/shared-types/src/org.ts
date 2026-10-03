@@ -151,6 +151,13 @@ export const officeQuerySchema = z.object({
   q: z.string().trim().max(100).optional(),
   office_type_id: mongoId.optional().or(z.literal('')),
   parent_id: z.string().optional(),
+  /** Only this department: the top-level office and everything under it. */
+  department_id: mongoId.optional().or(z.literal('')),
+  /** Only top-level offices (departments). */
+  top_level: z
+    .enum(['true', 'false'])
+    .transform((v) => v === 'true')
+    .optional(),
   include_inactive: z
     .enum(['true', 'false'])
     .transform((v) => v === 'true')
@@ -165,6 +172,8 @@ export interface WorkIdentity {
   office_id: string | null;
   designation_id: string | null;
   office?: OfficeOption | null;
+  /** Top-level office the posting falls under (the office itself when it is top-level). */
+  department?: OfficeOption | null;
   designation?: { id: string; name: string; short_name: string; grade: number | null } | null;
   /** Posting details: section / branch, desk telephone and PABX. */
   section?: string;

@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Plus, BookOpen, FileText, Layers, Send, Upload } from 'lucide-react';
+import { Archive, Plus, BookOpen, FileText, Layers, Send, Upload } from 'lucide-react';
 import { RowActions } from '@/components/shared/row-actions';
 import { CircularUploadPanel } from '@/components/circulars/circular-upload-panel';
 import { confirmDelete } from '@/lib/confirm-action';
@@ -34,6 +34,7 @@ interface BookItem {
   short_name: string;
   book_type_name?: string;
   is_published: boolean;
+  archive_book?: boolean;
 }
 
 function slugShortName(name: string) {
@@ -100,6 +101,7 @@ export default function BooksAdminPage() {
     language: 'both' as (typeof BOOK_LANGUAGES)[number],
     is_part: false,
     tags: '',
+    archive_book: false,
   });
 
   const loadTypes = useCallback(() => {
@@ -245,6 +247,23 @@ export default function BooksAdminPage() {
     }
   }
 
+  async function toggleArchive(b: BookItem) {
+    setPublishBusyId(b.id);
+    setError('');
+    try {
+      await apiFetch(`/policy/archive/books/${b.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ archive: !b.archive_book }),
+      });
+      setMessage(b.archive_book ? 'Removed from Books & Policy Archive' : 'Added to Books & Policy Archive');
+      await loadBooks();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update the archive');
+    } finally {
+      setPublishBusyId(null);
+    }
+  }
+
   async function createBook(e: React.FormEvent) {
     e.preventDefault();
     setError('');
@@ -285,6 +304,12 @@ export default function BooksAdminPage() {
           tags: tags.length > 0 ? tags : undefined,
         }),
       });
+      if (form.archive_book) {
+        await apiFetch(`/policy/archive/books/${res.data.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ archive: true }),
+        });
+      }
       setMessage('Book created — add chapters and rules in the book editor');
       await loadBooks();
       setForm((f) => ({
@@ -628,6 +653,16 @@ export default function BooksAdminPage() {
                 Book has major parts (volumes)
               </label>
 
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  disabled={busy}
+                  checked={form.archive_book}
+                  onChange={(e) => setForm({ ...form, archive_book: e.target.checked })}
+                />
+                Show in Policy Library → Books &amp; Policy Archive (content and PDF only, no questions)
+              </label>
+
               <Button type="submit" disabled={busy || types.length === 0}>
                 Create book
               </Button>
@@ -657,6 +692,7 @@ export default function BooksAdminPage() {
                         <Badge variant={b.is_published ? 'success' : 'outline'}>
                           {b.is_published ? 'Published' : 'Draft'}
                         </Badge>
+                        {b.archive_book && <Badge variant="secondary">Archive</Badge>}
                       </div>
                     </div>
                   </Link>
@@ -671,6 +707,17 @@ export default function BooksAdminPage() {
                     >
                       {b.is_published ? <Send className="h-3.5 w-3.5" /> : <Upload className="h-3.5 w-3.5" />}
                       {b.is_published ? 'Unpublish' : 'Publish'}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={b.archive_book ? 'default' : 'outline'}
+                      className="h-8 px-2"
+                      title={b.archive_book ? 'Remove from Books & Policy Archive' : 'Add to Books & Policy Archive'}
+                      disabled={publishBusyId === b.id || busy}
+                      onClick={() => void toggleArchive(b)}
+                    >
+                      <Archive className="h-3.5 w-3.5" />
                     </Button>
                     <RowActions onDelete={() => removeBook(b)} busy={busy} />
                   </div>

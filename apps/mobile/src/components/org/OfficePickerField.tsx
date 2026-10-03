@@ -12,6 +12,10 @@ export function OfficePickerField({
   required,
   placeholder = 'Search your office',
   clearLabel,
+  departmentId,
+  topLevel,
+  disabled,
+  title = 'Choose office',
 }: {
   label?: string;
   value: OfficeOption | null;
@@ -21,18 +25,27 @@ export function OfficePickerField({
   placeholder?: string;
   /** Offer a first row that clears the choice. */
   clearLabel?: string;
+  /** Only offices in this department (the top-level office and everything under it). */
+  departmentId?: string;
+  /** Only top-level offices (departments). */
+  topLevel?: boolean;
+  disabled?: boolean;
+  title?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [options, setOptions] = useState<OfficeOption[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const search = useCallback((q: string) => {
-    setLoading(true);
-    searchOffices(q)
-      .then(setOptions)
-      .catch(() => setOptions([]))
-      .finally(() => setLoading(false));
-  }, []);
+  const search = useCallback(
+    (q: string) => {
+      setLoading(true);
+      searchOffices(q, { departmentId, topLevel })
+        .then(setOptions)
+        .catch(() => setOptions([]))
+        .finally(() => setLoading(false));
+    },
+    [departmentId, topLevel],
+  );
 
   return (
     <>
@@ -44,11 +57,11 @@ export function OfficePickerField({
         hint={value?.parent_path || undefined}
         error={error}
         icon="business-outline"
-        onPress={() => setOpen(true)}
+        onPress={() => !disabled && setOpen(true)}
       />
       <PickerSheet
         visible={open}
-        title="Choose office"
+        title={title}
         value={value?.id}
         options={options.map((o) => ({
           value: o.id,

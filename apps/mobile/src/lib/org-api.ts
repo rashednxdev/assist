@@ -25,8 +25,9 @@ export async function fetchDesignations(): Promise<DesignationRecord[]> {
   return r.data;
 }
 
-export async function searchOffices(q: string): Promise<OfficeOption[]> {
-  const r = await apiFetch<{ data: OfficeOption[] }>(`/org/offices/options?limit=40&q=${encodeURIComponent(q)}`);
+export async function searchOffices(q: string, scope?: { departmentId?: string; topLevel?: boolean }): Promise<OfficeOption[]> {
+  const extra = `${scope?.departmentId ? `&department_id=${scope.departmentId}` : ''}${scope?.topLevel ? '&top_level=true' : ''}`;
+  const r = await apiFetch<{ data: OfficeOption[] }>(`/org/offices/options?limit=40&q=${encodeURIComponent(q)}${extra}`);
   return r.data;
 }
 

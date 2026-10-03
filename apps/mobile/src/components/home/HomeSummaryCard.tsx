@@ -103,7 +103,9 @@ export function HomeSummaryCard({ unreadCount, refreshKey, contactAccess, onWeek
     ? { value: 'Open', meta: 'Offices & colleagues' }
     : contactAccess.ready
       ? { value: 'Open', meta: 'Offices & colleagues' }
-      : contactAccess.work
+      : !contactAccess.consented
+        ? { value: 'Agree', meta: 'Share your contact details' }
+        : contactAccess.work
         ? { value: 'Verify', meta: 'Share your 8-digit code' }
         : { value: 'Set up', meta: 'Add your posting' };
 

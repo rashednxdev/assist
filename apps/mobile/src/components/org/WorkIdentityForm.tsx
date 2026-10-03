@@ -9,7 +9,7 @@ import { designationLabel, fetchDesignations, saveWorkIdentity, useWorkIdentity 
 import { showToast } from '@/lib/toast';
 import { colors, spacing } from '@/theme';
 
-/** Pick office + designation and save them to the signed-in user's profile. */
+/** Pick department, office and designation and save them to the signed-in user's profile. */
 export function WorkIdentityForm({
   submitLabel = 'Save office & designation',
   onSaved,
@@ -19,6 +19,7 @@ export function WorkIdentityForm({
 }) {
   const { identity } = useWorkIdentity();
   const [designations, setDesignations] = useState<DesignationRecord[]>([]);
+  const [department, setDepartment] = useState<OfficeOption | null>(identity?.department ?? null);
   const [office, setOffice] = useState<OfficeOption | null>(identity?.office ?? null);
   const [designationId, setDesignationId] = useState(identity?.designation?.id ?? '');
   const [section, setSection] = useState(identity?.section ?? '');
@@ -36,6 +37,7 @@ export function WorkIdentityForm({
 
   useEffect(() => {
     if (!identity) return;
+    setDepartment((cur) => cur ?? identity.department ?? null);
     setOffice((cur) => cur ?? identity.office ?? null);
     setDesignationId((cur) => cur || identity.designation?.id || '');
     setSection((cur) => cur || identity.section || '');
@@ -45,9 +47,15 @@ export function WorkIdentityForm({
 
   const current = designations.find((d) => d.id === designationId) ?? (identity?.designation?.id === designationId ? identity.designation : null);
 
+  function chooseDepartment(d: OfficeOption | null) {
+    setDepartment(d);
+    if (d?.id !== department?.id) setOffice(d);
+  }
+
   async function save() {
     setError('');
     if (!designationId) return setError('Choose your designation.');
+    if (!department) return setError('Choose your department.');
     if (!office) return setError('Choose your office.');
     setBusy(true);
     try {
@@ -70,7 +78,24 @@ export function WorkIdentityForm({
         placeholder="Select designation"
         onPress={() => setPickDesignation(true)}
       />
-      <OfficePickerField value={office} onChange={setOffice} required />
+      <OfficePickerField
+        label="Department"
+        title="Choose department"
+        value={department}
+        onChange={chooseDepartment}
+        topLevel
+        required
+        placeholder="Choose your department"
+      />
+      <OfficePickerField
+        value={office}
+        onChange={setOffice}
+        departmentId={department?.id}
+        disabled={!department}
+        required
+        placeholder={department ? 'Search offices in this department' : 'Choose the department first'}
+      />
+      <Text style={styles.hint}>A department is a top-level office. Keep the department itself as your office if you work at its head office.</Text>
       <TextField label="Section / branch" value={section} onChangeText={setSection} placeholder="e.g. Budget Section" maxLength={120} />
       <View style={styles.row}>
         <View style={styles.flex}>

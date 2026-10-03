@@ -15,7 +15,7 @@ export function designationLabel(d: { name: string; short_name?: string; grade: 
   return bits.length ? `${d.name} (${bits.join(', ')})` : d.name;
 }
 
-/** Pick office + designation and save them to the signed-in user's profile. */
+/** Pick department, office and designation and save them to the signed-in user's profile. */
 export function WorkIdentityForm({
   submitLabel = 'Save',
   onSaved,
@@ -27,6 +27,7 @@ export function WorkIdentityForm({
 }) {
   const { identity } = useWorkIdentity();
   const [designations, setDesignations] = useState<DesignationRecord[]>([]);
+  const [department, setDepartment] = useState<OfficeOption | null>(identity?.department ?? null);
   const [office, setOffice] = useState<OfficeOption | null>(identity?.office ?? null);
   const [designationId, setDesignationId] = useState(identity?.designation?.id ?? '');
   const [busy, setBusy] = useState(false);
@@ -41,13 +42,20 @@ export function WorkIdentityForm({
 
   useEffect(() => {
     if (!identity) return;
+    setDepartment((cur) => cur ?? identity.department ?? null);
     setOffice((cur) => cur ?? identity.office ?? null);
     setDesignationId((cur) => cur || identity.designation?.id || '');
   }, [identity]);
 
+  function chooseDepartment(d: OfficeOption | null) {
+    setDepartment(d);
+    if (d?.id !== department?.id) setOffice(d);
+  }
+
   async function save() {
     setError('');
     setSaved(false);
+    if (!department) return setError('Choose your department.');
     if (!office) return setError('Choose your office.');
     if (!designationId) return setError('Choose your designation.');
     setBusy(true);
@@ -70,6 +78,21 @@ export function WorkIdentityForm({
     <div className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
+          <Label htmlFor="work-department">Department</Label>
+          <OfficePicker id="work-department" value={department} onChange={chooseDepartment} topLevel placeholder="Choose your department…" />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="work-office">Office</Label>
+          <OfficePicker
+            id="work-office"
+            value={office}
+            onChange={setOffice}
+            departmentId={department?.id}
+            disabled={!department}
+            placeholder={department ? 'Search offices in this department…' : 'Choose the department first'}
+          />
+        </div>
+        <div className="space-y-1.5">
           <Label htmlFor="work-designation">Designation</Label>
           <select id="work-designation" className="ibas-select" value={designationId} onChange={(e) => setDesignationId(e.target.value)}>
             <option value="">Select designation</option>
@@ -80,11 +103,10 @@ export function WorkIdentityForm({
             ))}
           </select>
         </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="work-office">Office</Label>
-          <OfficePicker id="work-office" value={office} onChange={setOffice} />
-        </div>
       </div>
+      <p className="text-xs text-muted">
+        A department is a top-level office. Pick the department itself if you work at its head office.
+      </p>
       {designations.length === 0 && (
         <p className="text-xs text-muted">No designations have been added yet. Please ask an administrator.</p>
       )}

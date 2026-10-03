@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { ArrowRight, BookUser, Building2, Crown, EyeOff, GraduationCap, Home, Layers, Search, Star, Users, X } from 'lucide-react';
+import { ArrowRight, BookUser, Building2, Crown, EyeOff, GraduationCap, Home, Layers, Network, Search, Star, Users, X } from 'lucide-react';
 import type { ContactFavorites, ContactOverview } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
@@ -11,7 +11,8 @@ import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/empty-state';
-import { useContactAccess } from '@/components/contacts/contact-access';
+import { saveContactConsent, useContactAccess } from '@/components/contacts/contact-access';
+import { Button } from '@/components/ui/button';
 import { EmployeeCard, OfficeCard } from '@/components/contacts/contact-bits';
 import { OfficeList } from '@/components/contacts/office-list';
 import { Chip, EmployeeDirectory } from '@/components/contacts/employee-directory';
@@ -56,6 +57,50 @@ function UnpaidBanner() {
   );
 }
 
+function SharingSection() {
+  const { access, setAccess } = useContactAccess();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function change(accept: boolean) {
+    if (!accept && !confirm('Stop sharing your details? You will be removed from the directory and need to agree again to use Contacts.')) return;
+    setBusy(true);
+    setError('');
+    try {
+      setAccess(await saveContactConsent(accept));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-5 space-y-2 border-t border-border pt-4">
+      <p className="text-sm font-semibold">Sharing my details</p>
+      {access.consented ? (
+        <>
+          <p className="text-xs text-muted">
+            You are listed in the directory
+            {access.consented_at ? ` (agreed on ${new Date(access.consented_at).toLocaleDateString('en-GB')})` : ''}.
+          </p>
+          <button type="button" disabled={busy} onClick={() => void change(false)} className="text-sm font-medium text-destructive hover:underline disabled:opacity-50">
+            Stop sharing my details
+          </button>
+        </>
+      ) : (
+        <>
+          <p className="text-xs text-muted">You are not listed in the directory. Adding your details is optional.</p>
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => void change(true)}>
+            Share my details with Contacts users
+          </Button>
+        </>
+      )}
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
+  );
+}
+
 function PrivacyDialog({ onClose }: { onClose: () => void }) {
   const { access, setAccess } = useContactAccess();
   return (
@@ -67,12 +112,13 @@ function PrivacyDialog({ onClose }: { onClose: () => void }) {
         </button>
         <DirectoryPrivacy initial={access.privacy} onChange={(privacy) => setAccess({ ...access, privacy })} />
         <p className="mt-4 text-xs text-muted">
-          Your name, designation and office are always listed so colleagues can find you. Change them in{' '}
+          While you share your details, your name, designation and office are listed so colleagues can find you. Change them in{' '}
           <Link href="/settings/profile" className="font-medium text-primary hover:underline">
             profile settings
           </Link>
           .
         </p>
+        <SharingSection />
       </div>
     </div>
   );
@@ -229,10 +275,19 @@ export function ContactsBrowser() {
             <p className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold">
               <BookUser className="h-3.5 w-3.5" /> Contacts directory
             </p>
-            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Find any office or colleague</h1>
-            <p className="max-w-xl text-sm text-white/85">Browse offices by type, open sub-offices and staff lists, and reach people by designation.</p>
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+              {overview?.department ? overview.department.name : 'Find any office or colleague'}
+            </h1>
+            <p className="max-w-xl text-sm text-white/85">
+              {overview?.department
+                ? 'Offices and employees of your department. Open another department to see theirs.'
+                : 'Every department: browse offices by type, open sub-offices and staff lists, and reach people by designation.'}
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Link href="/contacts/departments" className="inline-flex items-center gap-2 rounded-xl bg-white/15 px-4 py-2 text-sm font-semibold text-white hover:bg-white/25">
+              <Network className="h-4 w-4" /> Other departments
+            </Link>
             {access.my_office_id && (
               <Link href={`/contacts/office/${access.my_office_id}`} className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-teal-800 shadow-sm hover:bg-teal-50">
                 <Home className="h-4 w-4" /> My office

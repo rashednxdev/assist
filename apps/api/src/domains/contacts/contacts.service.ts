@@ -1,13 +1,18 @@
 import mongoose, { type PipelineStage, type Types } from 'mongoose';
 import {
+  contactConsentSchema,
   contactEmployeeQuerySchema,
   contactFavoriteSchema,
   contactOfficeQuerySchema,
+  contactOverviewQuerySchema,
   contactPrivacySchema,
+  CONTACT_CONSENT_REQUIRED,
   CONTACT_VERIFICATION_REQUIRED,
   CONTACT_VERIFIER_GRADE_MAX,
   PROFILE_WORK_IDENTITY_REQUIRED,
   type ContactAccess,
+  type ContactDepartment,
+  type ContactDepartmentRef,
   type ContactVerificationInfo,
   type ContactDesignationCount,
   type ContactEmployee,
@@ -36,7 +41,7 @@ import { Thana } from '../setup/models/Thana.model.js';
 import { Office, type IOffice } from '../org/models/Office.model.js';
 import { OfficeType } from '../org/models/OfficeType.model.js';
 import { Designation } from '../org/models/Designation.model.js';
-import { ancestorChain, officeIndex, parentPath, subtreeIds, workSnapshot, type IndexedOffice } from '../org/org.service.js';
+import { ancestorChain, departmentOf, officeIndex, parentPath, subtreeIds, workSnapshot, type IndexedOffice } from '../org/org.service.js';
 import { isAdminUser } from '../community/community.service.js';
 import { getServiceInfo } from '../org/service-info.service.js';
 import { ContactFavorite } from './models/ContactFavorite.model.js';
@@ -45,6 +50,8 @@ import { activeChargesAt, activeChargesOf, pendingHandoverCount, type ChargeRow 
 
 const PLACEHOLDER_EMAIL_DOMAIN = '@phone.proassist.app';
 const OVERVIEW_PER_TYPE = 6;
+/** Only people who agreed to share their details appear in the directory. */
+const LISTED = { status: 'active', directory_consent_at: { $ne: null } } as const;
 
 function zodMessage(err: { issues: Array<{ path: PropertyKey[]; message: string }> }): string {
   return err.issues.map((i) => (i.path.length ? `${i.path.join('.')}: ${i.message}` : i.message)).join('; ');
@@ -64,42 +71,51 @@ function oid(id: string, what: string): Types.ObjectId {
 interface Viewer {
   id: string;
   admin: boolean;
+  honorable: boolean;
   paid: boolean;
   ready: boolean;
+  consentedAt: Date | null;
   work: boolean;
   verified: boolean;
   verification: ContactVerificationInfo | null;
   canVerify: boolean;
   pendingHandovers: number;
   myOfficeId: string | null;
+  myDepartment: IndexedOffice | null;
   privacy: ContactPrivacy;
   favorites: { office: Set<string>; user: Set<string> };
 }
 
 async function loadViewer(user: AuthUser): Promise<Viewer> {
   const admin = isAdminUser(user);
-  const [doc, work, entitled, favs, pendingHandovers] = await Promise.all([
-    User.findById(user.id).select('amount_received office_id directory_hide_phone directory_hide_email').lean(),
+  const [doc, work, entitled, favs, pendingHandovers, map] = await Promise.all([
+    User.findById(user.id).select('amount_received office_id directory_hide_phone directory_hide_email directory_consent_at contact_honorable').lean(),
     workSnapshot(user.id),
     admin ? Promise.resolve(null) : UserEntitlement.exists({ user_id: user.id, is_revoked: false, starts_at: { $lte: new Date() }, ends_at: { $gt: new Date() } }),
     ContactFavorite.find({ user_id: user.id }).select('target_type target_id').lean(),
     pendingHandoverCount(user.id),
+    officeIndex(),
   ]);
   const own = await ensureVerification(user.id, !!work);
   const verified = isVerified(own);
   const [verification, verifier] = await Promise.all([verificationInfo(own), canVerify(user, own)]);
-  const paid = admin || Number(doc?.amount_received ?? 0) > 0 || !!entitled;
+  const honorable = !!doc?.contact_honorable;
+  const consentedAt = doc?.directory_consent_at ?? null;
+  const paid = admin || honorable || Number(doc?.amount_received ?? 0) > 0 || !!entitled;
   return {
     id: user.id,
     admin,
+    honorable,
     paid,
-    ready: admin || (!!work && verified),
+    ready: admin || honorable || (!!consentedAt && !!work && verified),
+    consentedAt,
     work: !!work,
     verified,
     verification: work ? verification : null,
     canVerify: verifier,
     pendingHandovers,
     myOfficeId: doc?.office_id ? String(doc.office_id) : null,
+    myDepartment: work ? departmentOf(map, String(work.office_id)) : null,
     privacy: { hide_phone: !!doc?.directory_hide_phone, hide_email: !!doc?.directory_hide_email },
     favorites: {
       office: new Set(favs.filter((f) => f.target_type === 'office').map((f) => String(f.target_id))),
@@ -108,9 +124,17 @@ async function loadViewer(user: AuthUser): Promise<Viewer> {
   };
 }
 
+function departmentRef(d: IndexedOffice | null): ContactDepartmentRef | null {
+  return d ? { id: d.id, name: d.name, short_name: d.short_name } : null;
+}
+
 function toAccess(v: Viewer): ContactAccess {
   return {
     ready: v.ready,
+    consented: !!v.consentedAt,
+    consented_at: v.consentedAt ? v.consentedAt.toISOString() : undefined,
+    honorable: v.honorable,
+    my_department: departmentRef(v.myDepartment),
     work: v.work,
     verified: v.verified,
     verification: v.verification,
@@ -126,6 +150,9 @@ function toAccess(v: Viewer): ContactAccess {
 async function readyViewer(user: AuthUser): Promise<Viewer> {
   const v = await loadViewer(user);
   if (!v.ready) {
+    if (!v.consentedAt) {
+      throw new AppError(403, CONTACT_CONSENT_REQUIRED, 'Agree to share your details with directory users to open the contact directory.');
+    }
     if (!v.work) throw new AppError(403, PROFILE_WORK_IDENTITY_REQUIRED, 'Add your office and designation to open the contact directory.');
     throw new AppError(
       403,
@@ -138,6 +165,29 @@ async function readyViewer(user: AuthUser): Promise<Viewer> {
 
 export async function getAccess(user: AuthUser): Promise<ContactAccess> {
   return toAccess(await loadViewer(user));
+}
+
+/** Accepting keeps the first consent date; withdrawing takes the user out of the directory. */
+export async function setConsent(user: AuthUser, body: unknown): Promise<ContactAccess> {
+  const parsed = contactConsentSchema.safeParse(body);
+  if (!parsed.success) throw badRequest(zodMessage(parsed.error));
+  if (parsed.data.accept) {
+    await User.updateOne({ _id: user.id, directory_consent_at: null }, { $set: { directory_consent_at: new Date() } });
+  } else {
+    await User.updateOne({ _id: user.id }, { $set: { directory_consent_at: null } });
+  }
+  return getAccess(user);
+}
+
+/** A requested department, else the viewer's own; admins and honorable users default to every department. */
+function scopeDepartment(v: Viewer, map: Map<string, IndexedOffice>, requested?: string): IndexedOffice | null {
+  if (requested) {
+    const d = map.get(requested);
+    if (!d || !d.is_active || d.parent_id) throw notFound('Department not found');
+    return d;
+  }
+  if (v.admin || v.honorable) return null;
+  return v.myDepartment;
 }
 
 /* ---------------------------------- phones --------------------------------- */
@@ -175,7 +225,7 @@ async function officeStats(): Promise<OfficeStats> {
   const map = await officeIndex();
   const activeIds = [...map.values()].filter((o) => o.is_active).map((o) => new mongoose.Types.ObjectId(o.id));
   const rows = await User.aggregate<{ _id: Types.ObjectId; n: number }>([
-    { $match: { status: 'active', office_id: { $in: activeIds } } },
+    { $match: { ...LISTED, office_id: { $in: activeIds } } },
     { $group: { _id: '$office_id', n: { $sum: 1 } } },
   ]);
   const direct = new Map(rows.map((r) => [String(r._id), r.n]));
@@ -249,18 +299,27 @@ async function toContactOffices(docs: IOffice[], v: Viewer, stats: OfficeStats):
   });
 }
 
-export async function getOverview(user: AuthUser): Promise<ContactOverview> {
+const toOids = (ids: Iterable<string>) => [...ids].map((id) => new mongoose.Types.ObjectId(id));
+
+export async function getOverview(user: AuthUser, query: unknown = {}): Promise<ContactOverview> {
   const v = await readyViewer(user);
+  const parsed = contactOverviewQuerySchema.safeParse(query);
+  if (!parsed.success) throw badRequest(zodMessage(parsed.error));
   const [stats, types] = await Promise.all([officeStats(), OfficeType.find({ is_active: true }).sort({ serial_no: 1, name: 1 }).lean()]);
-  const active = [...stats.map.values()].filter((o) => o.is_active);
+  const dept = scopeDepartment(v, stats.map, parsed.data.department_id || undefined);
+  const inScope = dept ? new Set(subtreeIds(stats.map, dept.id)) : null;
+  const active = [...stats.map.values()].filter((o) => o.is_active && (!inScope || inScope.has(o.id)));
   const byType = new Map<string, number>();
   for (const o of active) byType.set(o.office_type_id, (byType.get(o.office_type_id) ?? 0) + 1);
+  const scopeFilter = inScope ? { _id: { $in: toOids(inScope) } } : {};
 
   const groups = await Promise.all(
     types
       .filter((t) => (byType.get(String(t._id)) ?? 0) > 0)
       .map(async (t) => {
-        const docs = await Office.find({ is_active: true, office_type_id: t._id }).sort({ serial_no: 1, name: 1 }).limit(OVERVIEW_PER_TYPE);
+        const docs = await Office.find({ is_active: true, office_type_id: t._id, ...scopeFilter })
+          .sort({ serial_no: 1, name: 1 })
+          .limit(OVERVIEW_PER_TYPE);
         return {
           type: { id: String(t._id), name: t.name, short_name: t.short_name },
           office_count: byType.get(String(t._id)) ?? 0,
@@ -268,8 +327,23 @@ export async function getOverview(user: AuthUser): Promise<ContactOverview> {
         };
       }),
   );
-  const employees = [...stats.direct.values()].reduce((a, b) => a + b, 0);
-  return { access: toAccess(v), totals: { offices: active.length, employees, office_types: groups.length }, groups };
+  const employees = active.reduce((sum, o) => sum + (stats.direct.get(o.id) ?? 0), 0);
+  return {
+    access: toAccess(v),
+    department: departmentRef(dept),
+    totals: { offices: active.length, employees, office_types: groups.length },
+    groups,
+  };
+}
+
+/** Top-level offices with their whole-department counts; the viewer's own comes first. */
+export async function listDepartments(user: AuthUser): Promise<ContactDepartment[]> {
+  const v = await readyViewer(user);
+  const [stats, docs] = await Promise.all([officeStats(), Office.find({ is_active: true, parent_id: null }).sort({ serial_no: 1, name: 1 })]);
+  const cards = await toContactOffices(docs, v, stats);
+  return cards
+    .map((c) => ({ ...c, office_count: subtreeIds(stats.map, c.id).length, is_my_department: v.myDepartment?.id === c.id }))
+    .sort((a, b) => Number(b.is_my_department) - Number(a.is_my_department));
 }
 
 export async function listOffices(user: AuthUser, query: unknown) {
@@ -277,15 +351,20 @@ export async function listOffices(user: AuthUser, query: unknown) {
   const parsed = contactOfficeQuerySchema.safeParse(query);
   if (!parsed.success) throw badRequest(zodMessage(parsed.error));
   const q = parsed.data;
+  const stats = await officeStats();
   const filter: Record<string, unknown> = { is_active: true };
   if (q.type_id) filter.office_type_id = new mongoose.Types.ObjectId(q.type_id);
-  if (q.parent_id) filter.parent_id = new mongoose.Types.ObjectId(q.parent_id);
+  if (q.parent_id) {
+    filter.parent_id = new mongoose.Types.ObjectId(q.parent_id);
+  } else {
+    const dept = scopeDepartment(v, stats.map, q.department_id || undefined);
+    if (dept) filter._id = { $in: toOids(subtreeIds(stats.map, dept.id)) };
+  }
   if (q.q) {
     const rx = new RegExp(escapeRx(q.q), 'i');
     filter.$or = [{ name: rx }, { name_bn: rx }, { short_name: rx }, { office_code: rx }, { email: rx }, { address: rx }];
   }
-  const [stats, total, docs] = await Promise.all([
-    officeStats(),
+  const [total, docs] = await Promise.all([
     Office.countDocuments(filter),
     Office.find(filter)
       .sort({ serial_no: 1, name: 1 })
@@ -460,13 +539,15 @@ function designationLookup(scope?: ListScope): PipelineStage[] {
  */
 async function employeeMatch(
   map: Map<string, IndexedOffice>,
-  opts: { office_id?: string; include_sub?: boolean; designation_id?: string; q?: string; viewerPaid: boolean },
+  opts: { office_id?: string; include_sub?: boolean; department_id?: string; designation_id?: string; q?: string; viewerPaid: boolean },
 ): Promise<{ match: Record<string, unknown>; scope?: ListScope }> {
   let officeIds: string[];
   if (opts.office_id) {
     const o = map.get(opts.office_id);
     if (!o || !o.is_active) throw notFound('Office not found');
     officeIds = opts.include_sub ? subtreeIds(map, opts.office_id) : [opts.office_id];
+  } else if (opts.department_id) {
+    officeIds = subtreeIds(map, opts.department_id);
   } else {
     officeIds = [...map.values()].filter((o) => o.is_active).map((o) => o.id);
   }
@@ -496,7 +577,13 @@ async function employeeMatch(
     if (offices.length) or.push({ office_id: { $in: offices.map((id) => new mongoose.Types.ObjectId(id)) } });
     and.push({ $or: or });
   }
-  return { match: { status: 'active', $and: and }, scope };
+  return { match: { ...LISTED, $and: and }, scope };
+}
+
+/** Department to list people from when no office is chosen. */
+function employeeDepartment(v: Viewer, map: Map<string, IndexedOffice>, q: { office_id?: string; department_id?: string }): string | undefined {
+  if (q.office_id) return undefined;
+  return scopeDepartment(v, map, q.department_id || undefined)?.id;
 }
 
 export async function listEmployees(user: AuthUser, query: unknown) {
@@ -508,6 +595,7 @@ export async function listEmployees(user: AuthUser, query: unknown) {
   const { match, scope } = await employeeMatch(map, {
     office_id: q.office_id || undefined,
     include_sub: q.include_sub,
+    department_id: employeeDepartment(v, map, q),
     designation_id: q.designation_id || undefined,
     q: q.q,
     viewerPaid: v.paid,
@@ -533,7 +621,13 @@ export async function designationCounts(user: AuthUser, query: unknown): Promise
   if (!parsed.success) throw badRequest(zodMessage(parsed.error));
   const q = parsed.data;
   const map = await officeIndex();
-  const { match, scope } = await employeeMatch(map, { office_id: q.office_id || undefined, include_sub: q.include_sub, q: q.q, viewerPaid: v.paid });
+  const { match, scope } = await employeeMatch(map, {
+    office_id: q.office_id || undefined,
+    include_sub: q.include_sub,
+    department_id: employeeDepartment(v, map, q),
+    q: q.q,
+    viewerPaid: v.paid,
+  });
   const rows = await User.find(match).select('office_id designation_id').lean();
   const counts = new Map<string, number>();
   const bump = (id: unknown) => id && counts.set(String(id), (counts.get(String(id)) ?? 0) + 1);
@@ -560,7 +654,7 @@ export async function toggleFavorite(user: AuthUser, body: unknown): Promise<{ f
   const parsed = contactFavoriteSchema.safeParse(body);
   if (!parsed.success) throw badRequest(zodMessage(parsed.error));
   const { target_type, target_id } = parsed.data;
-  const exists = target_type === 'office' ? await Office.exists({ _id: target_id, is_active: true }) : await User.exists({ _id: target_id, status: 'active' });
+  const exists = target_type === 'office' ? await Office.exists({ _id: target_id, is_active: true }) : await User.exists({ _id: target_id, ...LISTED });
   if (!exists) throw notFound(target_type === 'office' ? 'Office not found' : 'Person not found');
   const removed = await ContactFavorite.findOneAndDelete({ user_id: user.id, target_type, target_id });
   if (removed) return { favorite: false };
@@ -579,7 +673,7 @@ export async function listFavorites(user: AuthUser): Promise<ContactFavorites> {
   ]);
   const rows = userIds.length
     ? await User.aggregate<EmployeeRow>([
-        { $match: { _id: { $in: userIds }, status: 'active' } },
+        { $match: { _id: { $in: userIds }, ...LISTED } },
         { $project: EMPLOYEE_FIELDS },
         ...designationLookup(),
         { $sort: { _g: 1, _s: 1, _n: 1 } },
@@ -619,7 +713,7 @@ const cohortKey = (c: Cohort) => `post:${c.designationId}:${ymd(c.start)}`;
 async function listedMatch(): Promise<Record<string, unknown>> {
   const map = await officeIndex();
   const activeIds = [...map.values()].filter((o) => o.is_active).map((o) => new mongoose.Types.ObjectId(o.id));
-  return { status: 'active', office_id: { $in: activeIds } };
+  return { ...LISTED, office_id: { $in: activeIds } };
 }
 
 /**
@@ -713,7 +807,7 @@ export async function getMyBatch(user: AuthUser): Promise<MyBatch> {
   const mine = cohorts.find((c) => c.userIds.some((id) => String(id) === user.id));
   if (!mine) return { info, group: null, members: [] };
   const dm = await designationInfo([mine.designationId]);
-  return { info, group: cohortGroup(mine, dm, user.id), members: await batchMembers({ _id: { $in: mine.userIds }, status: 'active' }, v) };
+  return { info, group: cohortGroup(mine, dm, user.id), members: await batchMembers({ _id: { $in: mine.userIds }, ...LISTED }, v) };
 }
 
 export async function listBatches(user: AuthUser): Promise<BatchDirectory> {
@@ -743,5 +837,5 @@ export async function getBatchMembers(user: AuthUser, key: string): Promise<Batc
   const c = cohorts.find((x) => ymd(x.start) === post[2]);
   if (!c) throw notFound('This batch has changed — open it again from the list');
   const dm = await designationInfo([c.designationId]);
-  return { group: cohortGroup(c, dm, user.id), members: await batchMembers({ _id: { $in: c.userIds }, status: 'active' }, v) };
+  return { group: cohortGroup(c, dm, user.id), members: await batchMembers({ _id: { $in: c.userIds }, ...LISTED }, v) };
 }

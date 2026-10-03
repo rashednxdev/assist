@@ -51,6 +51,7 @@ import { ExamSubject } from '../exams/models/ExamSubject.model.js';
 import { ExamPart } from '../exams/models/ExamPart.model.js';
 import { ExamName } from '../exams/models/ExamName.model.js';
 import { User } from '../users/models/User.model.js';
+import { Circular } from '../policy/models/Circular.model.js';
 import { notFound, badRequest, forbidden } from '../../shared/errors/AppError.js';
 import {
   escapeRegex,
@@ -686,7 +687,30 @@ async function loadQuestionDetail(questionId: string) {
     note: detail?.note,
     reference_regulation_id: idStr(detail?.reference_regulation_id),
     used_in_papers,
+    circulars: await loadTaggedCirculars(question.circular_ids ?? []),
   };
+}
+
+async function validCircularIds(ids: string[] | undefined): Promise<mongoose.Types.ObjectId[]> {
+  const unique = [...new Set(ids ?? [])];
+  if (unique.length === 0) return [];
+  const found = await Circular.find({ _id: { $in: unique }, is_active: true }).select('_id').lean();
+  const ok = new Set(found.map((c) => String(c._id)));
+  return unique.filter((id) => ok.has(id)).map((id) => new mongoose.Types.ObjectId(id));
+}
+
+async function loadTaggedCirculars(ids: mongoose.Types.ObjectId[]) {
+  if (ids.length === 0) return [];
+  const rows = await Circular.find({ _id: { $in: ids }, is_active: true })
+    .select('circular_no title issue_date is_published')
+    .lean();
+  const byId = new Map(rows.map((c) => [String(c._id), c]));
+  return ids.flatMap((id) => {
+    const c = byId.get(String(id));
+    return c
+      ? [{ id: String(c._id), circular_no: c.circular_no, title: c.title, issue_date: c.issue_date, is_published: c.is_published }]
+      : [];
+  });
 }
 
 async function saveAnswerDetail(questionId: mongoose.Types.ObjectId, input: AnswerDetailInput) {
@@ -1718,6 +1742,7 @@ export async function createQuestion(dto: CreateQuestionDto, createdBy: string) 
     created_by: new mongoose.Types.ObjectId(createdBy),
     status_changed_by: new mongoose.Types.ObjectId(createdBy),
     mother_question_id: motherId,
+    circular_ids: await validCircularIds(dto.circular_ids),
   });
 
   const links = linksFromDto(dto) ?? [];
@@ -2159,6 +2184,7 @@ export async function updateQuestion(id: string, dto: UpdateQuestionDto) {
   if (dto.time_seconds !== undefined) question.time_seconds = dto.time_seconds;
   if (dto.language !== undefined) question.language = dto.language;
   if (dto.is_active !== undefined) question.is_active = dto.is_active;
+  if (dto.circular_ids !== undefined) question.circular_ids = await validCircularIds(dto.circular_ids);
   const links = linksFromDto(dto);
   if (links !== undefined && links.length > 0) {
     await saveBookLinks(question._id, links, question);

@@ -19,6 +19,8 @@ export function OfficePicker({
   allowClear,
   id,
   disabled,
+  departmentId,
+  topLevel,
 }: {
   value: OfficeOption | null;
   onChange: (o: OfficeOption | null) => void;
@@ -28,6 +30,10 @@ export function OfficePicker({
   allowClear?: boolean;
   id?: string;
   disabled?: boolean;
+  /** Only offices in this department (the top-level office and everything under it). */
+  departmentId?: string;
+  /** Only top-level offices (departments). */
+  topLevel?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -42,7 +48,8 @@ export function OfficePicker({
     let alive = true;
     setLoading(true);
     const t = setTimeout(() => {
-      apiFetch<{ data: OfficeOption[] }>(`/org/offices/options?limit=40&q=${encodeURIComponent(q)}`)
+      const scope = `${departmentId ? `&department_id=${departmentId}` : ''}${topLevel ? '&top_level=true' : ''}`;
+      apiFetch<{ data: OfficeOption[] }>(`/org/offices/options?limit=40&q=${encodeURIComponent(q)}${scope}`)
         .then((r) => {
           if (!alive) return;
           setOptions(r.data.filter((o) => o.id !== excludeId));
@@ -55,7 +62,7 @@ export function OfficePicker({
       alive = false;
       clearTimeout(t);
     };
-  }, [q, open, excludeId]);
+  }, [q, open, excludeId, departmentId, topLevel]);
 
   useEffect(() => {
     if (!open) return;

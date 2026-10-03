@@ -10,6 +10,7 @@ import {
   type PolicyCollectionCode,
 } from '@ibas/shared-constants';
 import type { ToolkitItemSummary } from './toolkit.js';
+import type { ExplanationSection } from './explanation.js';
 
 const mongoId = z.string().regex(/^[a-f\d]{24}$/i);
 
@@ -173,6 +174,83 @@ export interface PolicyCollectionSummary {
   books: PolicyBookItem[];
   circular_count: number;
 }
+
+export const setArchiveBookSchema = z.object({ archive: z.boolean() });
+
+export interface ArchiveBookItem {
+  id: string;
+  name: string;
+  name_bn: string;
+  short_name?: string;
+  edition?: string;
+  book_type_name?: string;
+  is_published: boolean;
+  chapter_count: number;
+}
+
+export interface KnowAreaSummary {
+  code: IbasAreaCode;
+  name_en: string;
+  name_bn: string;
+  color: string;
+  question_count: number;
+}
+
+export interface ArchiveOverview {
+  books: ArchiveBookItem[];
+  areas: KnowAreaSummary[];
+}
+
+export interface KnowCircularRef {
+  id: string;
+  circular_no: string;
+  title: string;
+  title_bn?: string;
+  issue_date: string;
+  doc_type: CircularDocType;
+}
+
+/** A short question under an area in "Know, Because you asked any more". */
+export interface KnowQuestionItem {
+  link_id: string;
+  id: string;
+  number: number;
+  body_en: string;
+  body_bn?: string;
+  book_id?: string;
+  book_name?: string;
+  chapter_id?: string;
+  chapter_label?: string;
+  is_published: boolean;
+  explanation_sections: ExplanationSection[];
+  circulars: KnowCircularRef[];
+}
+
+export const knowQuestionsQuerySchema = z.object({ area: ibasAreaCodeSchema });
+
+export const knowCandidatesQuerySchema = z.object({
+  area: ibasAreaCodeSchema,
+  book_id: mongoId.optional(),
+  chapter_id: mongoId.optional(),
+  q: z.string().trim().max(200).optional(),
+  limit: z.coerce.number().int().min(1).max(300).default(150),
+});
+
+export interface KnowCandidate {
+  id: string;
+  body_en: string;
+  body_bn?: string;
+  book_name?: string;
+  chapter_label?: string;
+  circular_count: number;
+  added: boolean;
+}
+
+export const addKnowQuestionsSchema = z.object({
+  area_code: ibasAreaCodeSchema,
+  question_ids: z.array(mongoId).min(1, 'Pick at least one question').max(300),
+});
+export type AddKnowQuestionsDto = z.infer<typeof addKnowQuestionsSchema>;
 
 export const CONTENT_LINK_TARGET_TYPES = ['book', 'book_topic', 'circular'] as const;
 export type ContentLinkTargetType = (typeof CONTENT_LINK_TARGET_TYPES)[number];

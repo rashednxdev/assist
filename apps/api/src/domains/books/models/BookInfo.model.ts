@@ -21,6 +21,8 @@ export interface IBookInfo extends Document {
   tags: string[];
   /** Policy Library shelves (POLICY_COLLECTIONS codes) this book appears on. */
   policy_collections: string[];
+  /** Listed in the Policy Library's Books & Policy Archive (content and PDF only). */
+  archive_book: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -45,6 +47,7 @@ const schema = new Schema<IBookInfo>(
     is_published: { type: Boolean, default: false },
     tags: { type: [String], default: [] },
     policy_collections: { type: [String], default: [] },
+    archive_book: { type: Boolean, default: false },
   },
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } },
 );

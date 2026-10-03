@@ -2,6 +2,7 @@ import type {
   BatchDirectory,
   BatchMembers,
   ContactAccess,
+  ContactDepartment,
   ContactDesignationCount,
   ContactEmployee,
   ContactFavorites,
@@ -41,8 +42,18 @@ export async function saveContactPrivacy(p: ContactPrivacy): Promise<ContactPriv
   return r.data;
 }
 
+export async function saveContactConsent(accept: boolean): Promise<ContactAccess> {
+  const r = await apiFetch<{ data: ContactAccess }>('/contacts/me/consent', { method: 'PUT', body: JSON.stringify({ accept }) });
+  return r.data;
+}
+
 export async function fetchContactOverview(): Promise<ContactOverview> {
   const r = await apiFetch<{ data: ContactOverview }>('/contacts/overview');
+  return r.data;
+}
+
+export async function fetchDepartments(): Promise<ContactDepartment[]> {
+  const r = await apiFetch<{ data: ContactDepartment[] }>('/contacts/departments');
   return r.data;
 }
 

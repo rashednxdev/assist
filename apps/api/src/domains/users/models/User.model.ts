@@ -51,6 +51,10 @@ export interface IUser extends Document {
   /** Contact directory privacy: keep mobile / email out of the directory. */
   directory_hide_phone?: boolean;
   directory_hide_email?: boolean;
+  /** When the user agreed to share their details in the contact directory; only these users are listed. */
+  directory_consent_at?: Date | null;
+  /** Admin-granted honorable user: directory access without consent, posting or verification. */
+  contact_honorable?: boolean;
   blood_group?: BloodGroup | null;
   father_name?: string;
   mother_name?: string;
@@ -153,6 +157,8 @@ const userSchema = new Schema<IUser>(
     work_pabx: { type: String, trim: true },
     directory_hide_phone: { type: Boolean, default: false },
     directory_hide_email: { type: Boolean, default: false },
+    directory_consent_at: { type: Date, default: null },
+    contact_honorable: { type: Boolean, default: false },
     blood_group: { type: String, enum: [...BLOOD_GROUPS, null], default: null },
     father_name: { type: String, trim: true },
     mother_name: { type: String, trim: true },

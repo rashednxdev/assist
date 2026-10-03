@@ -1,12 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Alert, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { CONTACT_VERIFIER_GRADE_MAX, type ContactAccess } from '@ibas/shared-types';
 import { AccessRequiredScreen } from '@/components/home/AccessRequiredScreen';
 import { WorkIdentityForm } from '@/components/org/WorkIdentityForm';
 import { Button } from '@/components/ui/Button';
-import { fetchContactAccess, newVerificationCode } from '@/lib/contacts-api';
+import { fetchContactAccess, newVerificationCode, saveContactConsent } from '@/lib/contacts-api';
 import { showToast } from '@/lib/toast';
 import { colors, spacing } from '@/theme';
 
@@ -86,24 +86,27 @@ export function ContactsGate({ children }: { children: ReactNode }) {
     );
   }
   if (!access.ready) {
+    const step = !access.consented ? 1 : !access.work ? 2 : 3;
     return (
       <ScrollView contentContainerStyle={styles.gate} keyboardShouldPersistTaps="handled">
         <View style={styles.gateIcon}>
           <Ionicons name="book-outline" size={30} color={colors.primary} />
         </View>
         <Text style={styles.gateTitle}>Contacts directory</Text>
-        <Steps step={access.work ? 2 : 1} />
-        {access.work ? (
-          <VerificationStep access={access} />
-        ) : (
+        <Steps step={step} />
+        {step === 1 ? (
+          <ConsentStep />
+        ) : step === 2 ? (
           <>
             <Text style={styles.gateText}>
-              Add your designation and office. Colleagues will find you under your office, and you can browse every office, sub-office and employee.
+              Add your department, office and designation. Colleagues will find you under your office, and you can browse the offices and employees of your department — and other departments too.
             </Text>
             <View style={styles.gateCard}>
               <WorkIdentityForm submitLabel="Save and continue" onSaved={reload} />
             </View>
           </>
+        ) : (
+          <VerificationStep access={access} />
         )}
         <View style={styles.gateNote}>
           <Ionicons name="lock-closed-outline" size={14} color={colors.textMuted} />
@@ -115,8 +118,58 @@ export function ContactsGate({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-function Steps({ step }: { step: 1 | 2 }) {
-  const items = ['Office & designation', 'Colleague verification'];
+const SHARED_DETAILS = [
+  'Your name',
+  'Department, office, section and designation',
+  'Mobile, desk telephone and PABX',
+  'Email address',
+  'Additional charges you hold',
+];
+
+function ConsentStep() {
+  const { setAccess } = useContactAccess();
+  const [agree, setAgree] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function accept() {
+    setBusy(true);
+    try {
+      setAccess(await saveContactConsent(true));
+    } catch (e) {
+      Alert.alert('Could not save', e instanceof Error ? e.message : 'Try again');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <Text style={styles.gateText}>Contacts is a shared directory. To use it, you agree that other Contacts users can see these details about you:</Text>
+      <View style={[styles.gateCard, styles.consentCard]}>
+        {SHARED_DETAILS.map((d) => (
+          <View key={d} style={styles.consentRow}>
+            <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
+            <Text style={styles.consentText}>{d}</Text>
+          </View>
+        ))}
+        <Text style={styles.consentNote}>You can hide your mobile number or email at any time, and stop sharing from Privacy — you then leave the directory.</Text>
+        <Pressable
+          onPress={() => setAgree(!agree)}
+          style={styles.agreeRow}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: agree }}
+        >
+          <Ionicons name={agree ? 'checkbox' : 'square-outline'} size={22} color={agree ? colors.primary : colors.textMuted} />
+          <Text style={styles.agreeText}>I agree to share my details with Contacts users</Text>
+        </Pressable>
+        <Button title="Agree and continue" onPress={() => void accept()} loading={busy} disabled={!agree || busy} />
+      </View>
+    </>
+  );
+}
+
+function Steps({ step }: { step: 1 | 2 | 3 }) {
+  const items = ['Consent to share', 'Office & designation', 'Colleague verification'];
   return (
     <View style={styles.steps}>
       {items.map((label, i) => {
@@ -315,5 +368,36 @@ const styles = StyleSheet.create({
   },
   codeActions: {
     gap: spacing.sm,
+  },
+  consentCard: {
+    gap: spacing.sm + 2,
+  },
+  consentRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  consentText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.text,
+  },
+  consentNote: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: colors.textMuted,
+  },
+  agreeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: 4,
+  },
+  agreeText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
   },
 });

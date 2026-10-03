@@ -29,6 +29,7 @@ export interface QuestionDetailForForm {
   explanation_sections?: ExplanationSection[];
   note?: string;
   book_links?: QuestionBookLinkForm[];
+  circulars?: Array<{ id: string; circular_no: string; title: string }>;
   options: {
     option_key: string;
     option_text_en: string;
@@ -72,5 +73,6 @@ export function questionDetailToForm(q: QuestionDetailForForm): QuestionFormValu
       ...link,
       book_id: link.book_id || '',
     })),
+    circulars: (q.circulars ?? []).map((c) => ({ id: c.id, circular_no: c.circular_no, title: c.title })),
   };
 }

@@ -14,6 +14,9 @@ export default function PolicyLayout() {
       }}
     >
       <Stack.Screen name="index" options={{ title: 'Policy library', headerBackTitle: 'Home' }} />
+      <Stack.Screen name="archive/index" options={{ title: 'Books & Policy Archive' }} />
+      <Stack.Screen name="archive/know" options={{ title: 'Know, Because you asked' }} />
+      <Stack.Screen name="archive/book/[id]" options={{ title: 'Archive book' }} />
     </Stack>
   );
 }

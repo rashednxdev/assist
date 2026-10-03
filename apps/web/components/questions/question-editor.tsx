@@ -14,6 +14,7 @@ import {
 import { ExplanationSectionsEditor } from '@/components/questions/explanation-sections-editor';
 import { ModelAnswerLinkPanel } from '@/components/questions/model-answer-link';
 import { MotherQuestionSearch } from '@/components/questions/mother-question-search';
+import { CircularPicker, type CircularTag } from '@/components/circulars/circular-picker';
 import {
   MarkupInstructionsButton,
   MarkupInstructionsModal,
@@ -62,6 +63,7 @@ export interface QuestionFormValues {
   /** Pending mother-question pick, before the question exists yet (new-question flow only). */
   mother_question_id?: string;
   mother_question_label?: string;
+  circulars: CircularTag[];
 }
 
 export type { QuestionBookLinkForm };
@@ -94,6 +96,7 @@ export const emptyQuestionForm: QuestionFormValues = {
   book_links: [],
   mother_question_id: undefined,
   mother_question_label: undefined,
+  circulars: [],
 };
 
 /** Clear question fields for another entry while keeping the selected type. */
@@ -524,6 +527,20 @@ export function QuestionEditor({
         </Card>
       )}
 
+      {isMcq && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Tagged circulars (optional)</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-xs text-muted">
+              Users see these circulars with the answer when they open this question in the Books &amp; Policy Archive.
+            </p>
+            <CircularPicker value={value.circulars} onChange={(circulars) => patch({ circulars })} disabled={busy} />
+          </CardContent>
+        </Card>
+      )}
+
       {isTextAnswer && (
         <Card>
           <CardHeader>
@@ -665,6 +682,7 @@ export function questionFormToPayload(
       }));
     payload.correct_option_key = form.correct_option_key;
     payload.explanation_sections = form.explanation_sections;
+    payload.circular_ids = form.circulars.map((c) => c.id);
   } else if (!form.has_options) {
     // Descriptive, DIFFERENCES, short note, etc. — one general model-answer format.
     payload.model_answer_sections = form.model_answer_sections;

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Modal,
   Pressable,
@@ -13,7 +14,7 @@ import {
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import type { ContactFavorites, ContactOverview } from '@ibas/shared-types';
+import type { ContactAccess, ContactFavorites, ContactOverview } from '@ibas/shared-types';
 import { ContactsGate, useContactAccess } from '@/components/contacts/ContactAccess';
 import { Chip, EmployeeCard, EmptyState, OfficeCard, officeHref } from '@/components/contacts/ContactBits';
 import { OfficeList } from '@/components/contacts/OfficeList';
@@ -22,7 +23,8 @@ import { Batchmates } from '@/components/contacts/Batchmates';
 import { DirectoryPrivacy } from '@/components/contacts/DirectoryPrivacy';
 import { SearchBar } from '@/components/ui/SearchBar';
 import { useDebounced } from '@/hooks/useDebounced';
-import { fetchContactOverview, fetchFavorites } from '@/lib/contacts-api';
+import { fetchContactOverview, fetchFavorites, saveContactConsent } from '@/lib/contacts-api';
+import { showToast } from '@/lib/toast';
 import { colors, spacing } from '@/theme';
 
 type Tab = 'offices' | 'people' | 'batchmates' | 'favorites';
@@ -104,8 +106,9 @@ function PrivacySheet({ visible, onClose }: { visible: boolean; onClose: () => v
           </Pressable>
         </View>
         {access ? <DirectoryPrivacy initial={access.privacy} onChange={(privacy) => setAccess({ ...access, privacy })} /> : null}
+        {access ? <SharingSection access={access} onChange={setAccess} onLeave={onClose} /> : null}
         <Text style={styles.sheetNote}>
-          Your name, designation and office are always listed so colleagues can find you.{' '}
+          While you share your details, your name, designation and office are listed so colleagues can find you.{' '}
           <Text
             style={styles.sheetLink}
             onPress={() => {
@@ -118,6 +121,54 @@ function PrivacySheet({ visible, onClose }: { visible: boolean; onClose: () => v
         </Text>
       </SafeAreaView>
     </Modal>
+  );
+}
+
+function SharingSection({ access, onChange, onLeave }: { access: ContactAccess; onChange: (a: ContactAccess) => void; onLeave: () => void }) {
+  const [busy, setBusy] = useState(false);
+
+  async function change(accept: boolean) {
+    setBusy(true);
+    try {
+      const next = await saveContactConsent(accept);
+      if (!next.ready) onLeave();
+      onChange(next);
+      showToast(accept ? 'You are now listed in the directory' : 'You have left the directory');
+    } catch (e) {
+      Alert.alert('Could not save', e instanceof Error ? e.message : 'Try again');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <View style={styles.sharing}>
+      <Text style={styles.sharingTitle}>Sharing my details</Text>
+      {access.consented ? (
+        <>
+          <Text style={styles.sheetNote}>You are listed in the directory.</Text>
+          <Pressable
+            disabled={busy}
+            hitSlop={6}
+            onPress={() =>
+              Alert.alert('Stop sharing your details?', 'You will be removed from the directory and need to agree again to use Contacts.', [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Stop sharing', style: 'destructive', onPress: () => void change(false) },
+              ])
+            }
+          >
+            <Text style={styles.stopSharing}>Stop sharing my details</Text>
+          </Pressable>
+        </>
+      ) : (
+        <>
+          <Text style={styles.sheetNote}>You are not listed in the directory. Adding your details is optional.</Text>
+          <Pressable disabled={busy} hitSlop={6} onPress={() => void change(true)}>
+            <Text style={styles.sheetLink}>Share my details with Contacts users</Text>
+          </Pressable>
+        </>
+      )}
+    </View>
   );
 }
 
@@ -155,13 +206,29 @@ function OfficesTab() {
           <Stat icon="layers" label="Types" value={overview.totals.office_types} />
         </View>
       ) : null}
-      {access?.my_office_id ? (
-        <Pressable style={styles.myOffice} onPress={() => router.push(officeHref(access.my_office_id!))}>
-          <Ionicons name="home" size={16} color={colors.primary} />
-          <Text style={styles.myOfficeText}>My office</Text>
+      <View style={styles.deptCard}>
+        <Ionicons name="git-network" size={20} color={colors.primary} />
+        <View style={styles.flex}>
+          <Text style={styles.deptKicker}>{overview?.department ? 'YOUR DEPARTMENT' : 'SHOWING'}</Text>
+          <Text style={styles.deptName} numberOfLines={2}>
+            {overview?.department ? overview.department.name : 'All departments'}
+          </Text>
+        </View>
+      </View>
+      <View style={styles.quickRow}>
+        {access?.my_office_id ? (
+          <Pressable style={[styles.myOffice, styles.flex]} onPress={() => router.push(officeHref(access.my_office_id!))}>
+            <Ionicons name="home" size={16} color={colors.primary} />
+            <Text style={styles.myOfficeText}>My office</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.primary} />
+          </Pressable>
+        ) : null}
+        <Pressable style={[styles.myOffice, styles.flex]} onPress={() => router.push('/(app)/contacts/departments' as Href)}>
+          <Ionicons name="business-outline" size={16} color={colors.primary} />
+          <Text style={styles.myOfficeText}>Other departments</Text>
           <Ionicons name="chevron-forward" size={16} color={colors.primary} />
         </Pressable>
-      ) : null}
+      </View>
       <SearchBar value={query} onChangeText={setQuery} placeholder="Office name, short name, code, email or address" />
       {overview && overview.groups.length > 0 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips} keyboardShouldPersistTaps="handled">
@@ -424,6 +491,32 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.textMuted,
   },
+  deptCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm + 2,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+  },
+  deptKicker: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    color: colors.textMuted,
+  },
+  deptName: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  quickRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
   myOffice: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -516,5 +609,21 @@ const styles = StyleSheet.create({
   sheetLink: {
     color: colors.primary,
     fontWeight: '700',
+  },
+  sharing: {
+    gap: 6,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: spacing.sm + 4,
+  },
+  sharingTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  stopSharing: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.error,
   },
 });

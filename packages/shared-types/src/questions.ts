@@ -54,6 +54,8 @@ const questionFieldsSchema = z.object({
   book_links: z.array(questionBookLinkInputSchema).optional(),
   /** Create this question as a prototype sharing its model answer from an existing "mother" question. */
   mother_question_id: mongoId.optional(),
+  /** Circulars tagged to an MCQ, shown with its answer in the Books & Policy Archive. */
+  circular_ids: z.array(mongoId).max(20).optional(),
 });
 
 function validateBookLink(

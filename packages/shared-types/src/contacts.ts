@@ -4,6 +4,8 @@ const mongoId = z.string().regex(/^[a-f\d]{24}$/i, 'Invalid id');
 
 /** Thrown (403) when office + designation are set but a colleague hasn't verified the user yet. */
 export const CONTACT_VERIFICATION_REQUIRED = 'CONTACT_VERIFICATION_REQUIRED';
+/** Thrown (403) until the user agrees to share their details with other directory users. */
+export const CONTACT_CONSENT_REQUIRED = 'CONTACT_CONSENT_REQUIRED';
 /** Verified users whose designation grade is 1..this may verify colleagues. */
 export const CONTACT_VERIFIER_GRADE_MAX = 11;
 export const CONTACT_CODE_LENGTH = 8;
@@ -27,10 +29,24 @@ export interface ContactVerificationInfo {
   verified_by?: ContactPersonRef | null;
 }
 
+/** A top-level office; it and every office below it form one department. */
+export interface ContactDepartmentRef {
+  id: string;
+  name: string;
+  short_name?: string;
+}
+
 /** What the viewer may do in the contact directory. */
 export interface ContactAccess {
-  /** Office + designation set and verified by a colleague (or admin) — the directory is open. */
+  /** Consent given, office + designation set and verified (or admin / honorable user) — the directory is open. */
   ready: boolean;
+  /** Agreed to share their name, office, designation and contact details with directory users. */
+  consented: boolean;
+  consented_at?: string;
+  /** Admin-granted: opens the directory without consent, posting or verification, with full numbers. */
+  honorable: boolean;
+  /** Department of the viewer's office; lists default to it. */
+  my_department: ContactDepartmentRef | null;
   /** Office + designation are set (step 1 done). */
   work: boolean;
   /** A colleague verified the user (or they were grandfathered in). */
@@ -142,6 +158,10 @@ export const contactPrivacySchema = z.object({
   hide_email: z.boolean(),
 });
 
+export const contactConsentSchema = z.object({
+  accept: z.boolean(),
+});
+
 export interface ContactPhone {
   /** Full number for paid viewers, partly hidden (e.g. 017•••••45) otherwise. */
   display: string;
@@ -217,9 +237,21 @@ export interface ContactTypeGroup {
 
 export interface ContactOverview {
   access: ContactAccess;
+  /** Department the overview is limited to; null when it covers every department. */
+  department: ContactDepartmentRef | null;
   totals: { offices: number; employees: number; office_types: number };
   groups: ContactTypeGroup[];
 }
+
+export interface ContactDepartment extends ContactOffice {
+  /** The department office plus every office below it. */
+  office_count: number;
+  is_my_department: boolean;
+}
+
+export const contactOverviewQuerySchema = z.object({
+  department_id: mongoId.optional().or(z.literal('')),
+});
 
 export interface ContactDesignationCount {
   id: string;
@@ -234,6 +266,8 @@ export const contactOfficeQuerySchema = z.object({
   type_id: mongoId.optional().or(z.literal('')),
   /** Direct sub-offices of this office. */
   parent_id: mongoId.optional().or(z.literal('')),
+  /** Without parent_id: limit to this department (defaults to the viewer's own). */
+  department_id: mongoId.optional().or(z.literal('')),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(30),
 });
@@ -247,6 +281,8 @@ export const contactEmployeeQuerySchema = z.object({
     .transform((v) => v === 'true')
     .optional(),
   designation_id: mongoId.optional().or(z.literal('')),
+  /** Without office_id: limit to this department (defaults to the viewer's own). */
+  department_id: mongoId.optional().or(z.literal('')),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });

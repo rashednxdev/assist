@@ -78,6 +78,7 @@ function serializeBook(doc: InstanceType<typeof BookInfo>, typeName?: string) {
     is_active: doc.is_active,
     is_superseded: doc.is_superseded,
     is_published: doc.is_published,
+    archive_book: doc.archive_book ?? false,
     tags: doc.tags,
     created_at: doc.created_at,
     updated_at: doc.updated_at,

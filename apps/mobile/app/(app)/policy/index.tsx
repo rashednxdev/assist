@@ -141,6 +141,14 @@ export default function PolicyLibraryScreen() {
         text="Procedures, rules, circulars and tools for each iBAS++ area in one place."
         onPress={() => router.push('/(app)/ibas' as Href)}
       />
+      <Shortcut
+        icon="library"
+        tint="#047857"
+        bg="#ecfdf5"
+        title="Books & Policy Archive"
+        text="Read archived books, download them as PDF, and browse “Know, Because you asked any more”."
+        onPress={() => router.push('/(app)/policy/archive' as Href)}
+      />
 
       {error ? (
         <View style={styles.errorBox}>

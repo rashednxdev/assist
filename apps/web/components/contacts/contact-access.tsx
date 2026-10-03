@@ -121,7 +121,65 @@ function VerificationStep({
   );
 }
 
-/** Loads directory access; asks for office + designation, then a colleague's verification, before showing children. */
+const SHARED_DETAILS = [
+  'Your name and photo initials',
+  'Department, office, section and designation',
+  'Mobile, desk telephone and PABX',
+  'Email address',
+  'Additional charges you hold',
+];
+
+/** Agree (or stop agreeing) to be listed; the same call opens or closes the directory for regular users. */
+export async function saveContactConsent(accept: boolean): Promise<ContactAccess> {
+  const r = await apiFetch<{ data: ContactAccess }>('/contacts/me/consent', { method: 'PUT', body: JSON.stringify({ accept }) });
+  return r.data;
+}
+
+function ConsentStep({ onChange }: { onChange: (a: ContactAccess) => void }) {
+  const [agree, setAgree] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function accept() {
+    setBusy(true);
+    setError('');
+    try {
+      onChange(await saveContactConsent(true));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save your consent');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4 rounded-2xl border border-border bg-surface p-5 shadow-sm">
+      <p className="text-sm text-muted">
+        Contacts is a shared directory. To use it, you agree that other Contacts users can see these details about you:
+      </p>
+      <ul className="space-y-1.5 text-sm">
+        {SHARED_DETAILS.map((d) => (
+          <li key={d} className="flex items-start gap-2">
+            <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" /> {d}
+          </li>
+        ))}
+      </ul>
+      <p className="text-xs text-muted">
+        You can hide your mobile number or email at any time, and you can stop sharing from Privacy — you then leave the directory.
+      </p>
+      <label className="flex items-start gap-2 text-sm font-medium">
+        <input type="checkbox" className="mt-0.5" checked={agree} onChange={(e) => setAgree(e.target.checked)} />I agree to share my details with
+        Contacts users
+      </label>
+      {error && <Alert variant="error">{error}</Alert>}
+      <Button onClick={() => void accept()} disabled={!agree || busy}>
+        {busy ? 'Saving…' : 'Agree and continue'}
+      </Button>
+    </div>
+  );
+}
+
+/** Loads directory access; asks for consent, office + designation, then a colleague's verification, before showing children. */
 export function ContactsGate({ children }: { children: React.ReactNode }) {
   const [access, setAccess] = useState<ContactAccess | null>(null);
   const [error, setError] = useState('');
@@ -146,6 +204,7 @@ export function ContactsGate({ children }: { children: React.ReactNode }) {
   }
 
   if (!access.ready) {
+    const step = !access.consented ? 1 : !access.work ? 2 : 3;
     return (
       <div className="mx-auto max-w-2xl space-y-5 pt-4">
         <div className="space-y-3 text-center">
@@ -153,9 +212,8 @@ export function ContactsGate({ children }: { children: React.ReactNode }) {
             <BookUser className="h-7 w-7" />
           </span>
           <h1 className="text-2xl font-bold tracking-tight">Contacts directory</h1>
-          <ol className="flex justify-center gap-6 text-xs">
-            {['Office & designation', 'Colleague verification'].map((label, i) => {
-              const step = access.work ? 2 : 1;
+          <ol className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-xs">
+            {['Consent to share', 'Office & designation', 'Colleague verification'].map((label, i) => {
               const on = i + 1 <= step;
               return (
                 <li key={label} className={`flex items-center gap-2 ${i + 1 === step ? 'font-semibold text-foreground' : 'text-muted'}`}>
@@ -167,18 +225,21 @@ export function ContactsGate({ children }: { children: React.ReactNode }) {
               );
             })}
           </ol>
-          {access.work ? null : (
+          {step === 2 && (
             <p className="text-muted">
-              Add your <strong>designation</strong> and <strong>office</strong>. Colleagues will find you under your office, and you can browse every office, sub-office and employee.
+              Add your <strong>department</strong>, <strong>office</strong> and <strong>designation</strong>. Colleagues will find you under your office,
+              and you can browse your department&apos;s offices and employees — and other departments too.
             </p>
           )}
         </div>
-        {access.work ? (
-          <VerificationStep access={access} onChange={setAccess} onRefresh={load} />
-        ) : (
+        {step === 1 ? (
+          <ConsentStep onChange={setAccess} />
+        ) : step === 2 ? (
           <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
             <WorkIdentityForm submitLabel="Save and continue" onSaved={load} />
           </div>
+        ) : (
+          <VerificationStep access={access} onChange={setAccess} onRefresh={load} />
         )}
         <p className="flex items-center justify-center gap-1.5 text-xs text-muted">
           <Lock className="h-3.5 w-3.5" /> You can hide your mobile number or email from the directory at any time.

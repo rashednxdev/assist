@@ -36,6 +36,8 @@ export const updateUserSchema = createUserSchema
     amount_received: z.number().min(0).optional(),
     all_exam_subjects: z.boolean().optional(),
     exam_subject_ids: z.array(z.string().min(1)).optional(),
+    /** Honorable user: opens the contact directory without consent, posting or verification. */
+    contact_honorable: z.boolean().optional(),
   });
 
 export type UpdateUserDto = z.infer<typeof updateUserSchema>;

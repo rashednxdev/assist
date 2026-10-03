@@ -32,6 +32,7 @@ export interface IQuestion extends Document {
    * prototype (no multi-hop chains — a mother can't also be a prototype of something else).
    */
   mother_question_id?: Types.ObjectId;
+  circular_ids: Types.ObjectId[];
   created_at: Date;
   updated_at: Date;
 }
@@ -58,6 +59,7 @@ const schema = new Schema<IQuestion>(
     reviewed_by: { type: Schema.Types.ObjectId, ref: 'User' },
     status_changed_by: { type: Schema.Types.ObjectId, ref: 'User' },
     mother_question_id: { type: Schema.Types.ObjectId, ref: 'Question' },
+    circular_ids: { type: [Schema.Types.ObjectId], default: [], ref: 'Circular' },
   },
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } },
 );

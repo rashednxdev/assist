@@ -17,6 +17,7 @@ import {
   DEMO_BKASH_OTP,
   PAYMENT_METHOD_LABELS,
   formatBdt,
+  type CartRecord,
   type PaymentOrderRecord,
 } from '@ibas/shared-types';
 import { useAuth } from '@/lib/auth-context';
@@ -25,10 +26,14 @@ import {
   OPEN_AFTER_PURCHASE,
   accessDate,
   accessDateTime,
+  cancelCart,
   cancelOrder,
+  createCart,
   createOrder,
   durationLabel,
+  fetchCart,
   fetchOrder,
+  payCart,
   payOrder,
 } from '@/lib/billing-api';
 import { colors, spacing } from '@/theme';
@@ -51,6 +56,7 @@ function Receipt({ order }: { order: PaymentOrderRecord }) {
     <View style={styles.receipt}>
       <Row label="Package" value={order.package_name} />
       <Row label="Type" value={ACCESS_PACKAGE_KIND_LABELS[order.kind]} />
+      {order.exam_part_name ? <Row label="Part" value={order.exam_part_name} /> : null}
       {order.exam_subject_name ? <Row label="Subject" value={order.exam_subject_name} /> : null}
       <Row label="Price" value={formatBdt(order.price)} />
       <Row label={order.charge_label} value={formatBdt(order.charge)} />
@@ -62,6 +68,44 @@ function Receipt({ order }: { order: PaymentOrderRecord }) {
       {order.paid_at ? <Row label="Paid at" value={accessDateTime(order.paid_at)} /> : null}
       <Row label="Access" value={`${accessDate(order.access_starts_at)} → ${accessDate(order.access_ends_at)}`} />
     </View>
+  );
+}
+
+function CartItems({ cart, showAccess }: { cart: CartRecord; showAccess?: boolean }) {
+  return (
+    <View style={styles.receipt}>
+      {cart.orders.map((o) => (
+        <View key={o.id} style={styles.row}>
+          <View style={styles.flex}>
+            <Text style={styles.itemName}>{o.package_name}</Text>
+            <Text style={styles.small}>
+              {[o.exam_part_name, o.exam_subject_name, durationLabel(o.duration_days)]
+                .filter((s) => s && s !== o.package_name)
+                .join(' · ')}
+              {showAccess ? `\n${accessDate(o.access_starts_at)} → ${accessDate(o.access_ends_at)}` : ''}
+            </Text>
+          </View>
+          <Text style={styles.itemPrice}>{formatBdt(o.price)}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function CartReceipt({ cart }: { cart: CartRecord }) {
+  return (
+    <>
+      <CartItems cart={cart} showAccess />
+      <View style={styles.receipt}>
+        <Row label="Price" value={formatBdt(cart.price)} />
+        <Row label={cart.charge_label} value={formatBdt(cart.charge)} />
+        <Row label="Total paid" value={formatBdt(cart.total)} />
+        <Row label="Method" value={PAYMENT_METHOD_LABELS[cart.method]} />
+        {cart.payer_account ? <Row label="bKash account" value={cart.payer_account} /> : null}
+        {cart.trx_id ? <Row label="Transaction ID" value={cart.trx_id} mono /> : null}
+        {cart.paid_at ? <Row label="Paid at" value={accessDateTime(cart.paid_at)} /> : null}
+      </View>
+    </>
   );
 }
 
@@ -93,6 +137,7 @@ export default function CheckoutScreen() {
   const { refreshUser } = useAuth();
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const [order, setOrder] = useState<PaymentOrderRecord | null>(null);
+  const [cart, setCart] = useState<CartRecord | null>(null);
   const [loadError, setLoadError] = useState('');
   const [step, setStep] = useState<Step>('number');
   const [msisdn, setMsisdn] = useState('');
@@ -106,7 +151,15 @@ export default function CheckoutScreen() {
 
   const load = useCallback(async (id: string) => {
     try {
-      setOrder(await fetchOrder(id));
+      const o = await fetchOrder(id);
+      if (o.cart_id) {
+        const c = await fetchCart(o.cart_id);
+        setCart(c);
+        setOrder(c.orders.find((x) => x.id === o.id) ?? o);
+      } else {
+        setCart(null);
+        setOrder(o);
+      }
       setLoadError('');
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : 'Order not found');
@@ -147,7 +200,14 @@ export default function CheckoutScreen() {
     if (!order) return;
     setBusy(true);
     try {
-      setOrder(await payOrder(order.id, { msisdn, otp, pin, simulate_failure: simulateFailure || undefined }));
+      const body = { msisdn, otp, pin, simulate_failure: simulateFailure || undefined };
+      if (cart) {
+        const c = await payCart(cart.cart_id, body);
+        setCart(c);
+        setOrder(c.orders.find((x) => x.id === order.id) ?? c.orders[0]!);
+      } else {
+        setOrder(await payOrder(order.id, body));
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Payment failed');
     } finally {
@@ -159,7 +219,7 @@ export default function CheckoutScreen() {
     if (!order) return backToPricing();
     if (order.status === 'pending') {
       setBusy(true);
-      await cancelOrder(order.id).catch(() => undefined);
+      await (cart ? cancelCart(cart.cart_id) : cancelOrder(order.id)).catch(() => undefined);
       setBusy(false);
     }
     backToPricing(order.kind);
@@ -169,7 +229,14 @@ export default function CheckoutScreen() {
     if (!order) return;
     setBusy(true);
     try {
-      const fresh = await createOrder(order.package_id);
+      let fresh: PaymentOrderRecord;
+      if (cart) {
+        const c = await createCart(cart.orders.map((o) => o.package_id));
+        setCart(c);
+        fresh = c.orders[0]!;
+      } else {
+        fresh = await createOrder(order.package_id);
+      }
       setStep('number');
       setOtp('');
       setPin('');
@@ -205,15 +272,20 @@ export default function CheckoutScreen() {
   if (order.status === 'paid') {
     const open = OPEN_AFTER_PURCHASE[order.kind];
     const later = new Date(order.access_starts_at).getTime() > Date.now() + 60_000;
+    const multi = !!cart && cart.orders.length > 1;
     return (
       <ScrollView style={styles.root} contentContainerStyle={styles.content}>
         <StatusHero
           icon="checkmark-circle"
           color={colors.success}
-          title={order.total > 0 ? 'Payment successful' : 'Package added'}
-          text={`Your access is active${later ? ` from ${accessDate(order.access_starts_at)}` : ''} until ${accessDate(order.access_ends_at)}.`}
+          title={(cart?.total ?? order.total) > 0 ? 'Payment successful' : multi ? 'Packages added' : 'Package added'}
+          text={
+            multi
+              ? `${cart.orders.length} packages are now on your account.`
+              : `Your access is active${later ? ` from ${accessDate(order.access_starts_at)}` : ''} until ${accessDate(order.access_ends_at)}.`
+          }
         />
-        <Receipt order={order} />
+        {multi ? <CartReceipt cart={cart} /> : <Receipt order={order} />}
         <Pressable onPress={() => router.dismissTo(open.href)} style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed]}>
           <Text style={styles.primaryBtnText}>{open.label}</Text>
         </Pressable>
@@ -279,14 +351,14 @@ export default function CheckoutScreen() {
               <View style={styles.flex}>
                 <Text style={styles.bkName}>ProAssist</Text>
                 <Text style={styles.bkSub} numberOfLines={1}>
-                  Invoice: {order.invoice_no}
+                  {cart ? `${cart.orders.length} package${cart.orders.length === 1 ? '' : 's'}` : `Invoice: ${order.invoice_no}`}
                 </Text>
               </View>
               <View style={styles.bkAmountBox}>
-                <Text style={styles.bkAmount}>{formatBdt(order.total)}</Text>
-                {order.charge > 0 ? (
+                <Text style={styles.bkAmount}>{formatBdt(cart?.total ?? order.total)}</Text>
+                {(cart?.charge ?? order.charge) > 0 ? (
                   <Text style={styles.bkSub}>
-                    incl. {order.charge_label} {formatBdt(order.charge)}
+                    incl. {order.charge_label} {formatBdt(cart?.charge ?? order.charge)}
                   </Text>
                 ) : null}
               </View>
@@ -294,10 +366,14 @@ export default function CheckoutScreen() {
           </View>
 
           <View style={styles.bkBody}>
-            <Text style={styles.bkSummary}>
-              {order.package_name} · {durationLabel(order.duration_days)} · access {accessDate(order.access_starts_at)} →{' '}
-              {accessDate(order.access_ends_at)}
-            </Text>
+            {cart ? (
+              <CartItems cart={cart} />
+            ) : (
+              <Text style={styles.bkSummary}>
+                {order.package_name} · {durationLabel(order.duration_days)} · access {accessDate(order.access_starts_at)} →{' '}
+                {accessDate(order.access_ends_at)}
+              </Text>
+            )}
 
             {step === 'number' ? (
               <>
@@ -405,6 +481,8 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.md },
   rowLabel: { fontSize: 13, color: colors.textMuted },
   rowValue: { flex: 1, fontSize: 13, fontWeight: '600', color: colors.text, textAlign: 'right' },
+  itemName: { fontSize: 14, fontWeight: '700', color: colors.text },
+  itemPrice: { fontSize: 14, fontWeight: '700', color: colors.text },
 
   primaryBtn: { backgroundColor: colors.primary, borderRadius: 12, paddingVertical: 14, alignItems: 'center', alignSelf: 'stretch' },
   primaryBtnText: { color: colors.white, fontWeight: '700', fontSize: 15 },

@@ -22,8 +22,12 @@ async function normalizeExamSubjectIds(ids: string[] | undefined): Promise<mongo
 
 async function serializeUser(user: InstanceType<typeof User>) {
   const credentials = await Credentials.findOne({ user_id: user._id }).select(
-    'allow_multi_device bound_device_id bound_device_at bound_device_label',
+    'allow_multi_device bound_device_id bound_device_at bound_device_label status locked_until temp_password_set_at temp_password_expires_at',
   );
+  const lockedUntil =
+    credentials?.status === 'locked' && credentials.locked_until && credentials.locked_until > new Date()
+      ? credentials.locked_until
+      : null;
   const subjectAccess = await serializeExamSubjectAccess(user);
   return {
     id: String(user._id),
@@ -48,6 +52,8 @@ async function serializeUser(user: InstanceType<typeof User>) {
     bound_device_id: credentials?.bound_device_id ?? null,
     bound_device_at: credentials?.bound_device_at ?? null,
     bound_device_label: credentials?.bound_device_label ?? null,
+    login_locked_until: lockedUntil,
+    temp_password_expires_at: credentials?.temp_password_set_at ? (credentials.temp_password_expires_at ?? null) : null,
     client_app_version: user.client_app_version ?? null,
     client_platform: user.client_platform ?? null,
     client_app_version_at: user.client_app_version_at ?? null,

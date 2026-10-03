@@ -1,4 +1,4 @@
-import type { UserContactVerification } from '@ibas/shared-types';
+import type { BlockedAccountRecord, TempPasswordResult, UserContactVerification } from '@ibas/shared-types';
 import { apiFetch } from './api';
 
 export interface AdminUserRow {
@@ -23,6 +23,8 @@ export interface AdminUserDetail extends AdminUserRow {
   bound_device_id?: string | null;
   bound_device_at?: string | null;
   bound_device_label?: string | null;
+  login_locked_until?: string | null;
+  temp_password_expires_at?: string | null;
   workflow_roles?: Array<{ role_code: string; is_active: boolean; role_id: string }>;
   all_exam_subjects?: boolean;
   exam_subject_ids?: string[];
@@ -108,6 +110,23 @@ export async function fetchAdminUsers(params?: {
   return apiFetch<{ data: AdminUserRow[]; meta: { total: number; page?: number; limit?: number } }>(
     `/users?${search.toString()}`,
   );
+}
+
+export async function fetchBlockedAccounts(q?: string): Promise<BlockedAccountRecord[]> {
+  const qs = q?.trim() ? `?q=${encodeURIComponent(q.trim())}` : '';
+  return (await apiFetch<{ data: BlockedAccountRecord[] }>(`/users/blocked${qs}`)).data;
+}
+
+export async function setUserTempPassword(
+  id: string,
+  body: { password?: string; clear_bound_device?: boolean },
+): Promise<TempPasswordResult> {
+  return (
+    await apiFetch<{ data: TempPasswordResult }>(`/users/${id}/temp-password`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  ).data;
 }
 
 export async function fetchAdminUser(id: string) {

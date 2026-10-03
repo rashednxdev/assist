@@ -6,6 +6,8 @@ export interface IAccessPackage extends Document {
   name: string;
   name_bn?: string;
   description?: string;
+  /** Exam Preparation: with no subject, the package covers every subject of this part. Both empty = all of Part 1. */
+  exam_part_id?: Types.ObjectId | null;
   exam_subject_id?: Types.ObjectId | null;
   duration_days: number;
   price: number;
@@ -28,6 +30,7 @@ const schema = new Schema<IAccessPackage>(
     name: { type: String, required: true, trim: true },
     name_bn: { type: String, trim: true },
     description: { type: String, trim: true },
+    exam_part_id: { type: Schema.Types.ObjectId, ref: 'ExamPart', default: null },
     exam_subject_id: { type: Schema.Types.ObjectId, ref: 'ExamSubject', default: null },
     duration_days: { type: Number, required: true, min: 1 },
     price: { type: Number, required: true, min: 0 },

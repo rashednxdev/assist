@@ -81,6 +81,7 @@ function OrderRow({ order, onContinue }: { order: PaymentOrderRecord; onContinue
           <Text style={styles.orderTitle}>{order.package_name}</Text>
           <Text style={styles.small}>
             {ACCESS_PACKAGE_KIND_LABELS[order.kind]}
+            {order.exam_part_name ? ` · ${order.exam_part_name}` : ''}
             {order.exam_subject_name ? ` · ${order.exam_subject_name}` : ''} · {accessDateTime(order.created_at)}
           </Text>
           <Text style={[styles.small, styles.mono]}>{order.invoice_no}</Text>
@@ -200,6 +201,7 @@ export default function PaymentsScreen() {
                     <Text style={styles.orderTitle}>{e.package_name}</Text>
                     <Text style={styles.small}>
                       {ACCESS_PACKAGE_KIND_LABELS[e.kind]}
+                      {e.exam_part_name ? ` · ${e.exam_part_name}` : ''}
                       {e.exam_subject_name ? ` · ${e.exam_subject_name}` : ''}
                     </Text>
                     <Text style={styles.small}>

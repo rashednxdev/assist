@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { getAccessToken, fetchMe } from '@/lib/auth';
 import { AppShell } from '@/components/layout/app-shell';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ExamPartScope } from '@/components/exam-prep/exam-part-scope';
 
 export default function QuestionsLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -31,5 +32,9 @@ export default function QuestionsLayout({ children }: { children: React.ReactNod
     );
   }
 
-  return <AppShell>{children}</AppShell>;
+  return (
+    <AppShell>
+      <ExamPartScope listPath="/questions">{children}</ExamPartScope>
+    </AppShell>
+  );
 }

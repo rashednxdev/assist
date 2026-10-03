@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { FormField } from '@/components/shared/form-field';
 import { Alert } from '@/components/ui/alert';
 import { AuthBrandPanel } from '@/components/auth/auth-brand-panel';
-import { clearAccessToken, loginRequest, setAccessToken } from '@/lib/auth';
+import { clearAccessToken, loginRequest, setAccessToken, SET_PASSWORD_PATH } from '@/lib/auth';
 import { WEB_REGISTRATION_OPEN } from '@/lib/registration';
 
 export default function LoginPage() {
@@ -28,6 +28,10 @@ export default function LoginPage() {
       const res = await loginRequest(email.trim(), password);
       const user = res.data.user;
       setAccessToken(res.data.accessToken);
+      if (res.data.must_change_password) {
+        router.replace(SET_PASSWORD_PATH);
+        return;
+      }
       if (user.status === 'pending_verify') {
         router.replace('/register/verify');
         return;

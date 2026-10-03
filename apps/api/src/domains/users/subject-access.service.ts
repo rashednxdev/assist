@@ -6,7 +6,8 @@ import { forbidden } from '../../shared/errors/AppError.js';
 export type ExamSubjectScope =
   | { mode: 'all' }
   | { mode: 'none' }
-  | { mode: 'subset'; ids: string[] };
+  /** `includeUntagged`: content tagged to no subject at all is visible too (Exam Preparation Part 1). */
+  | { mode: 'subset'; ids: string[]; includeUntagged?: boolean };
 
 function isAdminUser(user?: {
   is_super_admin?: boolean;

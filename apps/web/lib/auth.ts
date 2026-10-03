@@ -38,6 +38,7 @@ export interface LoginResponse {
   data: {
     accessToken: string;
     expiresIn: number;
+    must_change_password?: boolean;
     user: AuthUser & {
       status?: string;
       phone?: string;
@@ -75,7 +76,11 @@ export type MeUser = AuthUser & {
   unpaid_message?: string;
   all_exam_subjects?: boolean;
   exam_subject_ids?: string[];
+  /** Signed in with an admin-issued temporary password; must set a new one first. */
+  must_change_password?: boolean;
 };
+
+export const SET_PASSWORD_PATH = '/set-password';
 
 export async function loginRequest(email: string, password: string): Promise<LoginResponse> {
   const device_id = getOrCreateDeviceId();

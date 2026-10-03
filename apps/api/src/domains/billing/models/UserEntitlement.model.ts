@@ -7,6 +7,12 @@ export interface IUserEntitlement extends Document {
   kind: AccessPackageKind;
   package_id: Types.ObjectId;
   package_name: string;
+  /**
+   * Exam Preparation scope. Set on every grant made since parts were introduced: with a subject it
+   * opens that subject, without one the whole part. Older grants have no part and open all of Part 1.
+   */
+  exam_part_id?: Types.ObjectId | null;
+  exam_part_name?: string;
   exam_subject_id?: Types.ObjectId | null;
   exam_subject_name?: string;
   order_id?: Types.ObjectId;
@@ -24,6 +30,8 @@ const schema = new Schema<IUserEntitlement>(
     kind: { type: String, enum: ['exam_prep', 'basic', 'live'], required: true },
     package_id: { type: Schema.Types.ObjectId, ref: 'AccessPackage', required: true },
     package_name: { type: String, required: true },
+    exam_part_id: { type: Schema.Types.ObjectId, ref: 'ExamPart' },
+    exam_part_name: { type: String },
     exam_subject_id: { type: Schema.Types.ObjectId, ref: 'ExamSubject', default: null },
     exam_subject_name: { type: String },
     order_id: { type: Schema.Types.ObjectId, ref: 'PaymentOrder' },

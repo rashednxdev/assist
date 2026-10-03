@@ -534,7 +534,7 @@ export function QuestionEditor({
           </CardHeader>
           <CardContent className="space-y-2">
             <p className="text-xs text-muted">
-              Users see these circulars with the answer when they open this question in the Books &amp; Policy Archive.
+              Users see these circulars with the answer when they open this question in the Books &amp; Query.
             </p>
             <CircularPicker value={value.circulars} onChange={(circulars) => patch({ circulars })} disabled={busy} />
           </CardContent>

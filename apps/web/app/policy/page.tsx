@@ -64,7 +64,7 @@ export default function PolicyLibraryPage() {
                 <Library className="h-6 w-6" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="font-semibold text-foreground">Books &amp; Policy Archive</p>
+                <p className="font-semibold text-foreground">Books &amp; Query</p>
                 <p className="text-sm text-muted">Read archived books, download them as PDF, and browse “Know, Because you asked any more”.</p>
               </div>
               <ChevronRight className="h-5 w-5 text-muted" />

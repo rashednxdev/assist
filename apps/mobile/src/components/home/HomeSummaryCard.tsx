@@ -15,6 +15,7 @@ import { canReadAnyModule } from '@/lib/module-access';
 import { fetchScheduleFeed, formatDayShort, occurrenceTimeText } from '@/lib/schedule-api';
 import { CIRCULAR_MODULE_CODES, EMPTY_CIRCULAR_FILTERS, fetchCirculars } from '@/lib/circulars-api';
 import { daysLeft, fetchMyAccess } from '@/lib/billing-api';
+import { fetchArchiveOverview } from '@/lib/policy-api';
 import { colors, spacing } from '@/theme';
 
 const WEEK_DAYS = 7;
@@ -41,6 +42,7 @@ interface Summary {
   weekCount: number;
   circular: { latest: CircularRecord | null; total: number } | null;
   access: MyAccessSummary | null;
+  archiveBooks: number | null;
 }
 
 interface HomeSummaryCardProps {
@@ -52,7 +54,7 @@ interface HomeSummaryCardProps {
   onWeekCount?: (n: number) => void;
 }
 
-/** Home summary card: next office events, contacts shortcut, latest circular, alerts and paid access. */
+/** Home summary card: next office events, contacts shortcut, latest circular, Books & Query (alerts without book access) and paid access. */
 export function HomeSummaryCard({ unreadCount, refreshKey, contactAccess, onWeekCount }: HomeSummaryCardProps) {
   const router = useRouter();
   const { user } = useAuth();
@@ -67,10 +69,11 @@ export function HomeSummaryCard({ unreadCount, refreshKey, contactAccess, onWeek
     const start = new Date();
     const from = localIso(start);
     const weekEnd = localIso(addDays(start, WEEK_DAYS - 1));
-    const [feed, circ, access] = await Promise.all([
+    const [feed, circ, access, archive] = await Promise.all([
       fetchScheduleFeed(from, localIso(addDays(start, LOOKAHEAD_DAYS))).catch(() => [] as ScheduleOccurrence[]),
       canCirculars ? fetchCirculars(EMPTY_CIRCULAR_FILTERS, 'newest', 0, 1).catch(() => null) : Promise.resolve(null),
       fetchMyAccess().catch(() => null),
+      canCirculars ? fetchArchiveOverview().catch(() => null) : Promise.resolve(null),
     ]);
     const upcoming = feed
       .filter((o) => o.status !== 'cancelled' && o.date >= from)
@@ -81,6 +84,7 @@ export function HomeSummaryCard({ unreadCount, refreshKey, contactAccess, onWeek
       weekCount,
       circular: circ ? { latest: circ.items[0] ?? null, total: circ.total } : null,
       access,
+      archiveBooks: archive ? archive.books.length : null,
     });
     onWeekCount?.(weekCount);
   }, [canCirculars, onWeekCount]);
@@ -184,14 +188,25 @@ export function HomeSummaryCard({ unreadCount, refreshKey, contactAccess, onWeek
             onPress={() => router.push('/(app)/ibas' as Href)}
           />
         )}
-        <Metric
-          icon="notifications-outline"
-          color={unreadCount > 0 ? colors.error : '#0f766e'}
-          label="Alerts"
-          value={String(unreadCount)}
-          meta={unreadCount > 0 ? 'unread' : 'All caught up'}
-          onPress={() => router.push('/(app)/notifications' as Href)}
-        />
+        {canCirculars ? (
+          <Metric
+            icon="library-outline"
+            color="#047857"
+            label="Books & Query"
+            value={data?.archiveBooks != null ? String(data.archiveBooks) : 'Open'}
+            meta="Books · Know, because you asked"
+            onPress={() => router.push('/(app)/policy/archive' as Href)}
+          />
+        ) : (
+          <Metric
+            icon="notifications-outline"
+            color={unreadCount > 0 ? colors.error : '#0f766e'}
+            label="Alerts"
+            value={String(unreadCount)}
+            meta={unreadCount > 0 ? 'unread' : 'All caught up'}
+            onPress={() => router.push('/(app)/notifications' as Href)}
+          />
+        )}
         <Metric
           icon="shield-checkmark-outline"
           color="#e2136e"

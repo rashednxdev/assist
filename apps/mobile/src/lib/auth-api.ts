@@ -22,6 +22,8 @@ export type MeUser = AuthUser & {
   all_exam_subjects?: boolean;
   exam_subject_ids?: string[];
   exam_subjects?: Array<{ id: string; name: string; name_bn?: string }>;
+  /** Signed in with an admin-issued temporary password; must set a new one first. */
+  must_change_password?: boolean;
 };
 
 export interface AccountSummary {

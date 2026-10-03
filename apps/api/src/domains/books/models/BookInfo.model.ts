@@ -21,7 +21,7 @@ export interface IBookInfo extends Document {
   tags: string[];
   /** Policy Library shelves (POLICY_COLLECTIONS codes) this book appears on. */
   policy_collections: string[];
-  /** Listed in the Policy Library's Books & Policy Archive (content and PDF only). */
+  /** Listed in the Policy Library's Books & Query (content and PDF only). */
   archive_book: boolean;
   created_at: Date;
   updated_at: Date;

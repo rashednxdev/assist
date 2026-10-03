@@ -4,6 +4,7 @@ import { moduleAccessGroup } from '@ibas/shared-constants';
 import type { AuthRequest } from '../../middleware/auth.js';
 import { login, refreshExpiresMs } from './auth.service.js';
 import { User } from '../users/models/User.model.js';
+import { Credentials } from '../users/models/Credentials.model.js';
 import * as usersService from '../users/users.service.js';
 import { listModuleAccessForSession } from '../users/module-access.service.js';
 import { listStoppedModules } from '../setup/setup.service.js';
@@ -16,7 +17,7 @@ import { areaModuleCodes } from '../billing/entitlements.service.js';
 
 export async function loginHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = loginSchema.parse(req.body);
-  const { tokens, userId } = await login(dto, req.ip);
+  const { tokens, userId, mustChangePassword } = await login(dto, req.ip);
   if (dto.app_version && dto.client_platform === 'mobile') {
     await usersService.reportClientVersion(userId, dto.app_version, dto.client_platform);
   }
@@ -37,6 +38,7 @@ export async function loginHandler(req: AuthRequest, res: Response): Promise<voi
     data: {
       accessToken: tokens.accessToken,
       expiresIn: tokens.expiresIn,
+      must_change_password: mustChangePassword,
       user: {
         id: String(user._id),
         email: user.email,
@@ -49,6 +51,7 @@ export async function loginHandler(req: AuthRequest, res: Response): Promise<voi
         is_verified: user.is_verified,
         email_verified: user.email_verified,
         phone_verified: user.phone_verified,
+        must_change_password: mustChangePassword,
         workflow_roles: user.workflow_roles.map((r) => ({
           role_code: r.role_code,
           is_active: r.is_active,
@@ -127,6 +130,7 @@ export async function meHandler(req: AuthRequest, res: Response): Promise<void> 
   }
   const module_access = grants;
   const appSettings = await getAppSettings();
+  const creds = await Credentials.findOne({ user_id: user._id }).select('temp_password_set_at').lean();
 
   res.json({
     data: {
@@ -141,6 +145,8 @@ export async function meHandler(req: AuthRequest, res: Response): Promise<void> 
       is_verified: user.is_verified,
       email_verified: user.email_verified,
       phone_verified: user.phone_verified,
+      /** Signed in with an admin-issued temporary password; clients must ask for a new one first. */
+      must_change_password: !!creds?.temp_password_set_at,
       workflow_roles: user.workflow_roles.map((r) => ({
         role_code: r.role_code,
         is_active: r.is_active,

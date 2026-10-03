@@ -37,6 +37,8 @@ export interface IUser extends Document {
    */
   all_exam_subjects: boolean;
   exam_subject_ids: Types.ObjectId[];
+  /** Exam part the learner studies in Exam Preparation; empty = Part 1. */
+  exam_prep_part_id?: Types.ObjectId | null;
   /** Last reported client build (e.g. ProAssist.1.0.0.11). */
   client_app_version?: string;
   client_platform?: 'mobile' | 'web';
@@ -147,6 +149,7 @@ const userSchema = new Schema<IUser>(
     amount_received: { type: Number, default: 0, min: 0 },
     all_exam_subjects: { type: Boolean, default: true },
     exam_subject_ids: { type: [Schema.Types.ObjectId], default: [], ref: 'ExamSubject' },
+    exam_prep_part_id: { type: Schema.Types.ObjectId, ref: 'ExamPart', default: null },
     client_app_version: { type: String, maxlength: 80 },
     client_platform: { type: String, enum: ['mobile', 'web'] },
     client_app_version_at: { type: Date },

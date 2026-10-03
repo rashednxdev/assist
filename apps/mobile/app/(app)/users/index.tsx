@@ -150,6 +150,12 @@ export default function UsersListScreen() {
             Unpaid first
           </Text>
         </Pressable>
+        <Pressable
+          style={[styles.sortChip, styles.blockedChip]}
+          onPress={() => router.push('/(app)/users/blocked' as Href)}
+        >
+          <Text style={[styles.sortChipText, styles.blockedChipText]}>Suspended accounts</Text>
+        </Pressable>
       </View>
 
       <Text style={styles.meta}>{subtitle}</Text>
@@ -309,6 +315,8 @@ const styles = StyleSheet.create({
   },
   sortChipText: { fontSize: 12, fontWeight: '700', color: colors.textMuted },
   sortChipTextActive: { color: '#9d174d' },
+  blockedChip: { marginLeft: 'auto', borderColor: '#fecaca', backgroundColor: '#fef2f2' },
+  blockedChipText: { color: colors.error },
   meta: {
     paddingHorizontal: spacing.md,
     marginBottom: spacing.xs,

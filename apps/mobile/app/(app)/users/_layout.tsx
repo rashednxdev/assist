@@ -26,6 +26,13 @@ export default function UsersLayout() {
         }}
       />
       <Stack.Screen
+        name="blocked"
+        options={{
+          title: 'Suspended accounts',
+          headerBackTitle: 'Users',
+        }}
+      />
+      <Stack.Screen
         name="[id]"
         options={{
           title: 'User',

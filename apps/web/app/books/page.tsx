@@ -19,6 +19,7 @@ import {
   type BookSubjectTag,
   type SubjectCatalogItem,
 } from '@/components/books/book-subject-tags';
+import { BookArchiveTag } from '@/components/books/book-archive-tag';
 
 interface BookItem {
   id: string;
@@ -32,6 +33,7 @@ interface BookItem {
   tags: string[];
   subjects?: BookSubjectTag[];
   subject_sort_order?: number;
+  archive_book?: boolean;
 }
 
 export default function BooksPage() {
@@ -217,14 +219,23 @@ export default function BooksPage() {
                     </div>
                   </Link>
                   {isAdmin ? (
-                    <BookSubjectTags
-                      bookId={b.id}
-                      subjects={b.subjects ?? []}
-                      catalog={subjectCatalog}
-                      onChange={(subjects) =>
-                        setBooks((prev) => prev.map((row) => (row.id === b.id ? { ...row, subjects } : row)))
-                      }
-                    />
+                    <>
+                      <BookSubjectTags
+                        bookId={b.id}
+                        subjects={b.subjects ?? []}
+                        catalog={subjectCatalog}
+                        onChange={(subjects) =>
+                          setBooks((prev) => prev.map((row) => (row.id === b.id ? { ...row, subjects } : row)))
+                        }
+                      />
+                      <BookArchiveTag
+                        bookId={b.id}
+                        archived={b.archive_book ?? false}
+                        onChange={(archive_book) =>
+                          setBooks((prev) => prev.map((row) => (row.id === b.id ? { ...row, archive_book } : row)))
+                        }
+                      />
+                    </>
                   ) : (b.subjects ?? []).length > 0 ? (
                     <div className="mt-2 flex flex-wrap gap-1">
                       {(b.subjects ?? []).map((s) => (

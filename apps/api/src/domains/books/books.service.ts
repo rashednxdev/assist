@@ -41,6 +41,7 @@ import {
   subjectObjectIds,
   type ExamSubjectScope,
 } from '../users/subject-access.service.js';
+import { partOfSubject } from '../exam-prep/exam-prep.service.js';
 import { notFound, badRequest, forbidden } from '../../shared/errors/AppError.js';
 import { cleanComparisonTable } from '@ibas/shared-types';
 
@@ -432,7 +433,7 @@ export async function listBookSubjectCatalog(subjectScope: ExamSubjectScope = { 
   if (subjects.length === 0) return [];
 
   const partIds = [...new Set(subjects.map((s) => String(s.exam_part_id)))];
-  const parts = await ExamPart.find({ _id: { $in: partIds } });
+  const [parts, subjectParts] = await Promise.all([ExamPart.find({ _id: { $in: partIds } }), partOfSubject()]);
   const partMap = new Map(parts.map((p) => [String(p._id), p]));
   const examIds = [...new Set(parts.map((p) => String(p.exam_name_id)))];
   const exams = examIds.length ? await ExamName.find({ _id: { $in: examIds } }) : [];
@@ -442,13 +443,16 @@ export async function listBookSubjectCatalog(subjectScope: ExamSubjectScope = { 
     const part = partMap.get(String(s.exam_part_id));
     const exam = part ? examMap.get(String(part.exam_name_id)) : undefined;
     const examLabel = exam?.short_name?.trim() || exam?.name?.trim() || '';
+    const partLabel = subjectParts.get(String(s._id))?.label;
     const subjectLabel = s.name_bn?.trim() || s.name;
-    const label = examLabel ? `${examLabel} · ${subjectLabel}` : subjectLabel;
+    const label = [examLabel, partLabel, subjectLabel].filter(Boolean).join(' · ');
     return {
       id: String(s._id),
       name: s.name,
       name_bn: s.name_bn,
       exam_name: exam?.name,
+      exam_part_id: s.exam_part_id ? String(s.exam_part_id) : undefined,
+      exam_part_label: partLabel,
       label,
     };
   });

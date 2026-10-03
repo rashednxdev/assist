@@ -50,7 +50,7 @@ export default function PolicyArchivePage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader
-        title="Books & Policy Archive"
+        title="Books & Query"
         description="Archived books to read or download as PDF, and short answers to the questions people ask most."
         backHref="/policy"
         backLabel="Policy Library"

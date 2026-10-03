@@ -3,6 +3,7 @@ import { authenticate } from '../../middleware/auth.js';
 import { requireAdmin } from '../../middleware/requireAdmin.js';
 import { requireModuleAccess } from '../../middleware/requireModuleAccess.js';
 import { asyncHandler } from '../../shared/asyncHandler.js';
+import { invalidateExamPrepParts } from '../exam-prep/exam-prep.service.js';
 import {
   listDepartmentsHandler,
   createDepartmentHandler,
@@ -45,6 +46,10 @@ import {
 export const examsRouter = Router();
 
 examsRouter.use(authenticate);
+examsRouter.use((req, res, next) => {
+  if (req.method !== 'GET') res.on('finish', invalidateExamPrepParts);
+  next();
+});
 
 examsRouter.get('/departments', requireModuleAccess('EXAM'), asyncHandler(listDepartmentsHandler));
 examsRouter.get('/departments/:id', requireModuleAccess('EXAM'), asyncHandler(getDepartmentHandler));

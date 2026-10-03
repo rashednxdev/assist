@@ -6,6 +6,7 @@ import { PerformanceCard } from '@/components/home/PerformanceCard';
 import { ExamCountdownCard } from '@/components/home/ExamCountdownCard';
 import { ModuleTile } from '@/components/home/ModuleTile';
 import { AccessRequiredScreen } from '@/components/home/AccessRequiredScreen';
+import { ExamPartSwitcher } from '@/components/exam-prep/ExamPartSwitcher';
 import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
 import { useAnswerHistory } from '@/hooks/useAnswerHistory';
 import { useModuleOpener } from '@/hooks/useModuleOpener';
@@ -24,6 +25,7 @@ export default function ExamPrepScreen() {
   const { openModule, checkingModuleId, accessScreen, closeAccessScreen } = useModuleOpener();
   const [progress, setProgress] = useState<ProgressDashboardData | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [partReload, setPartReload] = useState(0);
 
   const modules = useMemo(() => {
     const grants = user?.module_access ?? [];
@@ -49,6 +51,7 @@ export default function ExamPrepScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    setPartReload((n) => n + 1);
     try {
       await Promise.all([loadProgress(), refreshUser().catch(() => null)]);
     } finally {
@@ -62,6 +65,8 @@ export default function ExamPrepScreen() {
         contentContainerStyle={styles.scroll}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
+        <ExamPartSwitcher reloadKey={partReload} />
+
         <PerformanceCard
           progress={progress}
           savedCount={savedItems.length}

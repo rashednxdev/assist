@@ -30,6 +30,7 @@ import {
 import { BookChapter } from '../books/models/BookChapter.model.js';
 import { BookInfo } from '../books/models/BookInfo.model.js';
 import { BookSubTopic } from '../books/models/BookSubTopic.model.js';
+import { BookSubjectLink } from '../books/models/BookSubjectLink.model.js';
 import { BookTopic } from '../books/models/BookTopic.model.js';
 import { QuestionType } from './models/QuestionType.model.js';
 import { Question } from './models/Question.model.js';
@@ -60,11 +61,8 @@ import {
   questionTextMatchScore,
   wordMatchMongoOr,
 } from './question-similarity.js';
-import {
-  isExamSubjectAllowed,
-  subjectObjectIds,
-  type ExamSubjectScope,
-} from '../users/subject-access.service.js';
+import { subjectObjectIds, type ExamSubjectScope } from '../users/subject-access.service.js';
+import { partOfSubject } from '../exam-prep/exam-prep.service.js';
 
 /** Same pass bar as similar / link-search — ≥50% of query words found in the question text. */
 const QUESTION_SEARCH_MATCH_THRESHOLD = 0.5;
@@ -74,17 +72,135 @@ function filterList(value?: string | string[]): string[] {
   return (Array.isArray(value) ? value : [value]).map((v) => v.trim()).filter(Boolean);
 }
 
-async function questionIdsForSubjectScope(scope: ExamSubjectScope): Promise<mongoose.Types.ObjectId[] | null> {
-  const subjectIds = subjectObjectIds(scope);
-  if (subjectIds === null) return null;
+/** Chapters of the Books & Tools books tagged to any of these subjects. */
+async function chapterIdsOfSubjectBooks(subjectIds: string[]): Promise<mongoose.Types.ObjectId[]> {
   if (subjectIds.length === 0) return [];
-  const links = await QuestionSubjectLink.find({
-    exam_subject_id: { $in: subjectIds },
+  const bookIds = await BookSubjectLink.distinct('book_info_id', {
+    exam_subject_id: { $in: subjectIds.map((id) => new mongoose.Types.ObjectId(id)) },
     is_active: true,
-  }).select('question_id');
-  return [...new Set(links.map((l) => String(l.question_id)))].map(
-    (id) => new mongoose.Types.ObjectId(id),
-  );
+  });
+  if (bookIds.length === 0) return [];
+  return BookChapter.distinct('_id', { book_info_id: { $in: bookIds } });
+}
+
+/** Questions of these subjects: tagged to the subject directly, or on a book tagged to the subject. */
+export async function questionIdsForSubjects(subjectIds: string[]): Promise<Set<string>> {
+  if (subjectIds.length === 0) return new Set();
+  const [tagged, chapterIds] = await Promise.all([
+    QuestionSubjectLink.distinct('question_id', {
+      exam_subject_id: { $in: subjectIds.map((id) => new mongoose.Types.ObjectId(id)) },
+      is_active: true,
+    }),
+    chapterIdsOfSubjectBooks(subjectIds),
+  ]);
+  const ids = new Set(tagged.map(String));
+  if (chapterIds.length) {
+    const [primary, linked] = await Promise.all([
+      Question.distinct('_id', { book_chapter_id: { $in: chapterIds } }),
+      QuestionBookLink.distinct('question_id', { book_chapter_id: { $in: chapterIds }, is_active: true }),
+    ]);
+    for (const id of primary) ids.add(String(id));
+    for (const id of linked) ids.add(String(id));
+  }
+  return ids;
+}
+
+/** Every subject a question belongs to (direct tags plus the subjects of its books). */
+async function subjectIdsOfQuestion(questionId: string): Promise<string[]> {
+  const [direct, question, bookLinks] = await Promise.all([
+    QuestionSubjectLink.distinct('exam_subject_id', { question_id: questionId, is_active: true }),
+    Question.findById(questionId).select('book_chapter_id').lean(),
+    QuestionBookLink.distinct('book_chapter_id', { question_id: questionId, is_active: true }),
+  ]);
+  const chapterIds = [question?.book_chapter_id, ...bookLinks].filter(Boolean);
+  const bookIds = chapterIds.length ? await BookChapter.distinct('book_info_id', { _id: { $in: chapterIds } }) : [];
+  const viaBooks = bookIds.length
+    ? await BookSubjectLink.distinct('exam_subject_id', { book_info_id: { $in: bookIds }, is_active: true })
+    : [];
+  return [...new Set([...direct, ...viaBooks].map(String))];
+}
+
+/** True when the learner's subject scope includes this question. */
+export async function isQuestionInScope(questionId: string, scope: ExamSubjectScope): Promise<boolean> {
+  if (scope.mode === 'all') return true;
+  if (scope.mode === 'none') return false;
+  const subjects = await subjectIdsOfQuestion(questionId);
+  if (subjects.length === 0) return !!scope.includeUntagged;
+  return subjects.some((id) => scope.ids.includes(id));
+}
+
+type QuestionScopeFilter = null | { in: mongoose.Types.ObjectId[] } | { nin: mongoose.Types.ObjectId[] };
+
+/**
+ * Question-id filter for a subject scope. With `includeUntagged`, questions that belong to no
+ * subject stay visible, so the filter excludes what belongs only to subjects outside the scope.
+ */
+async function questionScopeFilter(scope: ExamSubjectScope): Promise<QuestionScopeFilter> {
+  if (scope.mode === 'all') return null;
+  if (scope.mode === 'none') return { in: [] };
+  const toIds = (s: Iterable<string>) => [...s].map((id) => new mongoose.Types.ObjectId(id));
+  if (!scope.includeUntagged) return { in: toIds(await questionIdsForSubjects(scope.ids)) };
+  const allowed = new Set(scope.ids);
+  const others = (await ExamSubject.distinct('_id', { is_active: true })).map(String).filter((id) => !allowed.has(id));
+  if (others.length === 0) return null;
+  const [inside, outside] = await Promise.all([questionIdsForSubjects(scope.ids), questionIdsForSubjects(others)]);
+  return { nin: toIds([...outside].filter((id) => !inside.has(id))) };
+}
+
+type SubjectMeta = { id: string; name: string; name_bn?: string };
+
+/** Adds the subjects of each question's Books & Tools books to its subject list (learner views). */
+async function addBookSubjects(
+  subjectsByQuestion: Map<string, SubjectMeta[]>,
+  bookIdsByQuestion: Map<string, string[]>,
+): Promise<void> {
+  const bookIds = [...new Set([...bookIdsByQuestion.values()].flat())];
+  if (bookIds.length === 0) return;
+  const links = await BookSubjectLink.find({ book_info_id: { $in: bookIds }, is_active: true })
+    .select('book_info_id exam_subject_id')
+    .lean();
+  if (links.length === 0) return;
+  const subjectIds = [...new Set(links.map((l) => String(l.exam_subject_id)))];
+  const subjects = await ExamSubject.find({ _id: { $in: subjectIds }, is_active: true }).select('name name_bn').lean();
+  const meta = new Map(subjects.map((s) => [String(s._id), { id: String(s._id), name: s.name, name_bn: s.name_bn }]));
+  const byBook = new Map<string, string[]>();
+  for (const l of links) {
+    const key = String(l.book_info_id);
+    byBook.set(key, [...(byBook.get(key) ?? []), String(l.exam_subject_id)]);
+  }
+  for (const [qid, books] of bookIdsByQuestion) {
+    const list = [...(subjectsByQuestion.get(qid) ?? [])];
+    const have = new Set(list.map((s) => s.id));
+    for (const b of books) {
+      for (const sid of byBook.get(b) ?? []) {
+        const m = meta.get(sid);
+        if (!m || have.has(sid)) continue;
+        list.push(m);
+        have.add(sid);
+      }
+    }
+    if (list.length) subjectsByQuestion.set(qid, list);
+  }
+}
+
+function isEmptyScopeFilter(f: QuestionScopeFilter): boolean {
+  return !!f && 'in' in f && f.in.length === 0;
+}
+
+/** Narrows a Question query by a scope filter. False when nothing can match. */
+async function applyQuestionScopeFilter(query: Record<string, unknown>, f: QuestionScopeFilter): Promise<boolean> {
+  if (!f) return true;
+  if ('in' in f) return intersectIdFilter(query, f.in);
+  if (f.nin.length === 0) return true;
+  const existing = query._id as { $in?: mongoose.Types.ObjectId[]; $nin?: mongoose.Types.ObjectId[] } | undefined;
+  if (existing?.$in) {
+    const drop = new Set(f.nin.map(String));
+    const next = existing.$in.filter((id) => !drop.has(String(id)));
+    query._id = { $in: next };
+    return next.length > 0;
+  }
+  query._id = { ...(existing ?? {}), $nin: [...(existing?.$nin ?? []), ...f.nin] };
+  return true;
 }
 
 async function intersectIdFilter(
@@ -1224,7 +1340,7 @@ export async function listQuestions(
     limit: number;
     offset?: number;
   },
-  options?: { bypassCache?: boolean; subjectScope?: ExamSubjectScope },
+  options?: { bypassCache?: boolean; subjectScope?: ExamSubjectScope; includeBookSubjects?: boolean },
 ) {
   const offset = Math.max(0, filters.offset ?? 0);
   const limit = filters.limit;
@@ -1232,8 +1348,8 @@ export async function listQuestions(
   const typeCodes = filterList(filters.question_type_code);
   const reviewStatuses = filterList(filters.review_status);
   let subjectIds = filterList(filters.exam_subject_id);
-  const scopedQuestionIds = await questionIdsForSubjectScope(subjectScope);
-  if (scopedQuestionIds && scopedQuestionIds.length === 0) {
+  const scopeFilter = await questionScopeFilter(subjectScope);
+  if (isEmptyScopeFilter(scopeFilter)) {
     return { items: [], total: 0, limit, offset };
   }
 
@@ -1250,7 +1366,7 @@ export async function listQuestions(
     filters.trashed !== true &&
     subjectIds.length === 0 &&
     reviewStatuses.length === 0 &&
-    !scopedQuestionIds;
+    !scopeFilter;
 
   if (canUsePublishedCache) {
     const { cachedPublishedQuestions } = await import('../content-cache/content-cache.service.js');
@@ -1360,11 +1476,7 @@ export async function listQuestions(
   }
 
   if (subjectIds.length) {
-    const tagged = await QuestionSubjectLink.find({
-      exam_subject_id: { $in: subjectIds.map((id) => new mongoose.Types.ObjectId(id)) },
-      is_active: true,
-    }).select('question_id');
-    const taggedIds = [...new Set(tagged.map((l) => String(l.question_id)))].map(
+    const taggedIds = [...(await questionIdsForSubjects(subjectIds))].map(
       (id) => new mongoose.Types.ObjectId(id),
     );
     if (taggedIds.length === 0) {
@@ -1372,8 +1484,8 @@ export async function listQuestions(
     }
     const ok = await intersectIdFilter(query, taggedIds);
     if (!ok) return { items: [], total: 0, limit, offset };
-  } else if (scopedQuestionIds) {
-    const ok = await intersectIdFilter(query, scopedQuestionIds);
+  } else if (scopeFilter) {
+    const ok = await applyQuestionScopeFilter(query, scopeFilter);
     if (!ok) return { items: [], total: 0, limit, offset };
   }
 
@@ -1507,6 +1619,12 @@ export async function listQuestions(
     if (!chapterId) continue;
     pushBookTag(String(q._id), chapterId);
   }
+  if (options?.includeBookSubjects) {
+    await addBookSubjects(
+      subjectsByQuestion,
+      new Map([...bookTagsByQuestion].map(([qid, tags]) => [qid, tags.map((t) => t.id)])),
+    );
+  }
 
   const chapterIds = [
     ...new Set(items.map((q) => idStr(q.book_chapter_id)).filter((id): id is string => Boolean(id))),
@@ -1544,6 +1662,7 @@ export async function listQuestions(
 /** Published MCQs linked to books/chapters, with explanations for marathon review. */
 export async function listMarathonReview(
   filters: { q?: string; limit?: number; offset?: number } = {},
+  options?: { subjectScope?: ExamSubjectScope },
 ) {
   const limit = Math.min(100, Math.max(1, filters.limit ?? 50));
   const offset = Math.max(0, filters.offset ?? 0);
@@ -1553,6 +1672,10 @@ export async function listMarathonReview(
     is_published: true,
     question_type_code: 'MCQ',
   };
+  const scopeFilter = await questionScopeFilter(options?.subjectScope ?? { mode: 'all' });
+  if (!(await applyQuestionScopeFilter(query, scopeFilter))) {
+    return { items: [], total: 0, limit, offset };
+  }
   if (filters.q?.trim()) {
     const q = filters.q.trim();
     const wordOr = wordMatchMongoOr(q);
@@ -1697,15 +1820,8 @@ export async function getQuestionById(
 ) {
   const detail = await loadQuestionDetail(id);
   const scope = options?.subjectScope;
-  if (scope && scope.mode !== 'all') {
-    const links = await QuestionSubjectLink.find({
-      question_id: id,
-      is_active: true,
-    }).select('exam_subject_id');
-    const ok = links.some((l) => isExamSubjectAllowed(scope, String(l.exam_subject_id)));
-    if (!ok) {
-      throw forbidden('This content is not available for your allowed subjects.');
-    }
+  if (scope && !(await isQuestionInScope(id, scope))) {
+    throw forbidden('This content is not available for your allowed subjects.');
   }
   return detail;
 }
@@ -1827,7 +1943,9 @@ export type QuestionSubjectTag = {
 
 export async function listQuestionSubjectCatalog(
   subjectScope?: ExamSubjectScope,
-): Promise<Array<{ id: string; name: string; name_bn?: string; label: string; exam_name?: string }>> {
+): Promise<
+  Array<{ id: string; name: string; name_bn?: string; label: string; exam_name?: string; exam_part_id?: string; exam_part_label?: string }>
+> {
   const subjectIds = subjectObjectIds(subjectScope ?? { mode: 'all' });
   if (subjectIds && subjectIds.length === 0) return [];
 
@@ -1838,7 +1956,7 @@ export async function listQuestionSubjectCatalog(
   if (subjects.length === 0) return [];
 
   const partIds = [...new Set(subjects.map((s) => String(s.exam_part_id)))];
-  const parts = await ExamPart.find({ _id: { $in: partIds } });
+  const [parts, subjectParts] = await Promise.all([ExamPart.find({ _id: { $in: partIds } }), partOfSubject()]);
   const partMap = new Map(parts.map((p) => [String(p._id), p]));
   const examIds = [...new Set(parts.map((p) => String(p.exam_name_id)))];
   const exams = examIds.length ? await ExamName.find({ _id: { $in: examIds } }) : [];
@@ -1848,13 +1966,16 @@ export async function listQuestionSubjectCatalog(
     const part = partMap.get(String(s.exam_part_id));
     const exam = part ? examMap.get(String(part.exam_name_id)) : undefined;
     const examLabel = exam?.short_name?.trim() || exam?.name?.trim() || '';
+    const partLabel = subjectParts.get(String(s._id))?.label;
     const subjectLabel = s.name_bn?.trim() || s.name;
-    const label = examLabel ? `${examLabel} · ${subjectLabel}` : subjectLabel;
+    const label = [examLabel, partLabel, subjectLabel].filter(Boolean).join(' · ');
     return {
       id: String(s._id),
       name: s.name,
       name_bn: s.name_bn,
       exam_name: exam?.name,
+      exam_part_id: s.exam_part_id ? String(s.exam_part_id) : undefined,
+      exam_part_label: partLabel,
       label,
     };
   });
@@ -2937,8 +3058,8 @@ export async function listQuestionsSync(
   synced_at: string;
 }> {
   const limit = Math.min(500, Math.max(1, filters.limit ?? 200));
-  const scopedQuestionIds = await questionIdsForSubjectScope(syncOptions?.subjectScope ?? { mode: 'all' });
-  if (scopedQuestionIds && scopedQuestionIds.length === 0) {
+  const scopeFilter = await questionScopeFilter(syncOptions?.subjectScope ?? { mode: 'all' });
+  if (isEmptyScopeFilter(scopeFilter)) {
     return {
       data: [],
       deletions: [],
@@ -2948,9 +3069,7 @@ export async function listQuestionsSync(
   }
 
   const seekFilter: Record<string, unknown> = {};
-  if (scopedQuestionIds) {
-    seekFilter._id = { $in: scopedQuestionIds };
-  }
+  await applyQuestionScopeFilter(seekFilter, scopeFilter);
   if (filters.cursor) {
     const [cursorTs, cursorId] = filters.cursor.split('|');
     const cursorDate = cursorTs ? new Date(cursorTs) : undefined;
@@ -3078,6 +3197,10 @@ export async function listQuestionsSync(
     list.push(meta);
     syncSubjectsByQuestion.set(key, list);
   }
+  await addBookSubjects(
+    syncSubjectsByQuestion,
+    new Map([...bookLinksByQuestion].map(([qid, links]) => [qid, links.map((l) => l.book_id)])),
+  );
 
   const data: QuestionSyncRow[] = page.map((q) => {
     const qidForBook = String(q._id);

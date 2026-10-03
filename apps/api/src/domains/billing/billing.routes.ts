@@ -58,7 +58,43 @@ billingRouter.post(
   }),
 );
 
+billingRouter.post(
+  '/carts',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    res.status(201).json({ data: await billing.createCart(req.user!, req.body) });
+  }),
+);
+
+billingRouter.get(
+  '/carts/:id',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    res.json({ data: await billing.getCart(String(req.params.id), req.user!) });
+  }),
+);
+
+billingRouter.post(
+  '/carts/:id/pay',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    res.json({ data: await billing.payCart(String(req.params.id), req.body, req.user!) });
+  }),
+);
+
+billingRouter.post(
+  '/carts/:id/cancel',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    res.json({ data: await billing.cancelCart(String(req.params.id), req.user!) });
+  }),
+);
+
 /* --------------------------------- admin --------------------------------- */
+
+billingRouter.post(
+  '/admin/packages/bulk-subjects',
+  requireAdmin,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    res.status(201).json({ data: await billing.bulkSubjectPackages(req.body, req.user!.id) });
+  }),
+);
 
 billingRouter.get(
   '/admin/packages',

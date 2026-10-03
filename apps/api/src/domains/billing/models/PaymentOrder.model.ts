@@ -9,8 +9,12 @@ export interface IPaymentOrder extends Document {
   /** Snapshot so history stays correct after the admin edits or removes the package. */
   kind: AccessPackageKind;
   package_name: string;
+  exam_part_id?: Types.ObjectId | null;
+  exam_part_name?: string;
   exam_subject_id?: Types.ObjectId | null;
   exam_subject_name?: string;
+  /** Orders paid together in one checkout share this id. */
+  cart_id?: string;
   duration_days: number;
   price: number;
   charge: number;
@@ -42,8 +46,11 @@ const schema = new Schema<IPaymentOrder>(
     package_id: { type: Schema.Types.ObjectId, ref: 'AccessPackage', required: true },
     kind: { type: String, enum: ['exam_prep', 'basic', 'live'], required: true },
     package_name: { type: String, required: true },
+    exam_part_id: { type: Schema.Types.ObjectId, ref: 'ExamPart' },
+    exam_part_name: { type: String },
     exam_subject_id: { type: Schema.Types.ObjectId, ref: 'ExamSubject', default: null },
     exam_subject_name: { type: String },
+    cart_id: { type: String },
     duration_days: { type: Number, required: true },
     price: { type: Number, required: true },
     charge: { type: Number, default: 0 },
@@ -70,5 +77,6 @@ schema.index({ user_id: 1, created_at: -1 });
 schema.index({ status: 1, created_at: -1 });
 schema.index({ package_id: 1, status: 1 });
 schema.index({ trx_id: 1 }, { sparse: true });
+schema.index({ cart_id: 1 }, { sparse: true });
 
 export const PaymentOrder = mongoose.model<IPaymentOrder>('PaymentOrder', schema, 'payment_orders');

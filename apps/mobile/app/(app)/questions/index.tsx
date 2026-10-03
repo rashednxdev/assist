@@ -20,7 +20,7 @@ import { RatingIndicator } from '@/components/evaluation/RatingIndicator';
 import { fetchQuestionEvaluationsBatchChunked, type QuestionEvalBrief } from '@/lib/evaluation-api';
 import { fetchQuestionTypes, fetchQuestionSubjectCatalog, fetchQuestionsBySubject } from '@/lib/questions-api';
 import { getCachedQuestionListItems, mergeCachedQuestionSubjects } from '@/lib/questions-db';
-import { subscribeQuestionsSync, syncQuestions } from '@/lib/questions-sync';
+import { questionSyncScopeKey, subscribeQuestionsSync, syncQuestions } from '@/lib/questions-sync';
 import { questionCacheScopeKey } from '@/lib/subject-scope';
 import { searchQuestionsByText } from '@/lib/question-search';
 import { questionDetailHref } from '@/lib/question-routes';
@@ -369,7 +369,7 @@ export default function QuestionsScreen() {
     setSyncing(true);
     try {
       const me = await refreshUserRef.current().catch(() => userRef.current);
-      await syncQuestions(questionCacheScopeKey(me));
+      await syncQuestions(await questionSyncScopeKey(questionCacheScopeKey(me)));
       const catalog = await loadSubjectCatalog();
       setSelectedSubjectId((current) =>
         current && catalog.some((row) => row.id === current) ? current : null,
@@ -394,7 +394,7 @@ export default function QuestionsScreen() {
         try {
           const me = await refreshUserRef.current().catch(() => userRef.current);
           if (cancelled) return;
-          await syncQuestions(questionCacheScopeKey(me));
+          await syncQuestions(await questionSyncScopeKey(questionCacheScopeKey(me)));
           if (cancelled) return;
           const catalog = await loadSubjectCatalog();
           if (cancelled) return;

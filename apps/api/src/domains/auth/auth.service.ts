@@ -91,7 +91,10 @@ export async function bindDeviceIfNeeded(
   }
 }
 
-export async function login(dto: LoginDto, ip?: string): Promise<{ tokens: TokenPair; userId: string }> {
+export async function login(
+  dto: LoginDto,
+  ip?: string,
+): Promise<{ tokens: TokenPair; userId: string; mustChangePassword: boolean }> {
   const raw = dto.email.trim();
   const isPhone = /^01[3-9]\d{8}$/.test(raw);
   const user = isPhone
@@ -107,7 +110,7 @@ export async function login(dto: LoginDto, ip?: string): Promise<{ tokens: Token
   }
 
   if (credentials.status === 'locked' && credentials.locked_until && credentials.locked_until > new Date()) {
-    throw unauthorized('Account temporarily locked');
+    throw unauthorized('Account temporarily locked after too many wrong passwords. Try again later or ask an admin.');
   }
 
   const valid = await bcrypt.compare(dto.password, credentials.password_hash);
@@ -122,13 +125,18 @@ export async function login(dto: LoginDto, ip?: string): Promise<{ tokens: Token
   }
 
   if (user.status !== 'active' && user.status !== 'pending_verify') {
-    throw unauthorized('Account is not active');
+    throw unauthorized('Account is not active. Ask an admin to set a temporary password.');
+  }
+
+  const mustChangePassword = !!credentials.temp_password_set_at;
+  if (mustChangePassword && credentials.temp_password_expires_at && credentials.temp_password_expires_at < new Date()) {
+    throw unauthorized('Your temporary password has expired. Ask an admin for a new one.');
   }
 
   assertDeviceAllowed(user, credentials, dto.device_id);
 
   credentials.failed_attempts = 0;
-  credentials.status = 'active';
+  credentials.status = mustChangePassword ? 'reset_required' : 'active';
   credentials.locked_until = undefined;
   credentials.last_login = new Date();
   credentials.last_ip = ip;
@@ -136,7 +144,7 @@ export async function login(dto: LoginDto, ip?: string): Promise<{ tokens: Token
   await credentials.save();
 
   const tokens = signTokens(String(user._id), dto.device_id, credentials.token_version);
-  return { tokens, userId: String(user._id) };
+  return { tokens, userId: String(user._id), mustChangePassword };
 }
 
 export function signTokens(userId: string, deviceId?: string, tokenVersion = 0): TokenPair {

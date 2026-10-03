@@ -20,6 +20,8 @@ import {
   listExamSubjectOptionsHandler,
 } from './users.controller.js';
 import * as verification from '../contacts/verification.service.js';
+import * as recovery from './account-recovery.service.js';
+import { logUserActivity } from './models/UserActivityLog.model.js';
 
 export const usersRouter = Router();
 
@@ -54,6 +56,14 @@ usersRouter.get(
     res.json({ data: items, meta });
   }),
 );
+usersRouter.get(
+  '/blocked',
+  userRead,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const q = typeof req.query.q === 'string' ? req.query.q : undefined;
+    res.json({ data: await recovery.listBlockedAccounts({ q }) });
+  }),
+);
 usersRouter.get('/', userRead, asyncHandler(listUsersHandler));
 usersRouter.post('/', userWrite, asyncHandler(createUserHandler));
 usersRouter.get('/:id', userRead, asyncHandler(getUserHandler));
@@ -80,6 +90,26 @@ usersRouter.post(
   userWrite,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     res.json({ data: await verification.adminRevokeVerification(String(req.params.id)) });
+  }),
+);
+
+usersRouter.post(
+  '/:id/temp-password',
+  userWrite,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const result = await recovery.setTempPassword(String(req.params.id), req.body, {
+      id: req.user!.id,
+      is_super_admin: req.user!.is_super_admin,
+    });
+    await logUserActivity({
+      userId: result.user_id,
+      action: 'USER_TEMP_PASSWORD',
+      description: 'Temporary password set by admin; account reactivated and sessions signed out',
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+      metadata: { by: req.user!.id, expires_at: result.expires_at },
+    });
+    res.json({ data: result });
   }),
 );
 

@@ -83,6 +83,7 @@ export * from './policy.js';
 export * from './toolkit.js';
 export * from './schedule.js';
 export * from './billing.js';
+export * from './exam-prep.js';
 export * from './community.js';
 export * from './org.js';
 export * from './contacts.js';

@@ -73,6 +73,7 @@ function Receipt({ order }: { order: PaymentOrderRecord }) {
     <dl className="space-y-2 rounded-xl border border-border bg-slate-50 p-4 text-sm">
       <Row label="Package" value={order.package_name} />
       <Row label="Type" value={ACCESS_PACKAGE_KIND_LABELS[order.kind]} />
+      {order.exam_part_name && <Row label="Part" value={order.exam_part_name} />}
       {order.exam_subject_name && <Row label="Subject" value={order.exam_subject_name} />}
       <Row label="Price" value={formatBdt(order.price)} />
       <Row label={order.charge_label} value={formatBdt(order.charge)} />
@@ -103,9 +104,12 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     apiFetch<{ data: PaymentOrderRecord }>(`/billing/orders/${params.orderId}`)
-      .then((r) => setOrder(r.data))
+      .then((r) => {
+        if (r.data.cart_id && r.data.status === 'pending') router.replace(`/checkout/cart/${r.data.cart_id}`);
+        else setOrder(r.data);
+      })
       .catch((e) => setLoadError(e instanceof Error ? e.message : 'Order not found'));
-  }, [params.orderId]);
+  }, [params.orderId, router]);
 
   function next() {
     setError('');

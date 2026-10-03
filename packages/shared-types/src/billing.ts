@@ -21,7 +21,9 @@ export const accessPackageInputSchema = z
     name: z.string().trim().min(1, 'Name is required').max(120),
     name_bn: z.string().trim().max(120).optional().or(z.literal('')),
     description: z.string().trim().max(2000).optional().or(z.literal('')),
-    /** Exam Preparation: the subject this price is for. Empty = all subjects. */
+    /** Exam Preparation: the exam part this price is for. With no subject = every subject of the part. */
+    exam_part_id: mongoId.optional().or(z.literal('')).nullable(),
+    /** Exam Preparation: the subject this price is for. Part and subject both empty = all of Part 1 (older packages). */
     exam_subject_id: mongoId.optional().or(z.literal('')).nullable(),
     duration_days: z.coerce.number().int().min(1, 'At least 1 day').max(3650),
     price: z.coerce.number().min(0).max(1_000_000),
@@ -36,11 +38,40 @@ export const accessPackageInputSchema = z
     if (d.kind !== 'exam_prep' && d.exam_subject_id) {
       ctx.addIssue({ code: 'custom', path: ['exam_subject_id'], message: 'Only Exam Preparation packages have a subject' });
     }
+    if (d.kind !== 'exam_prep' && d.exam_part_id) {
+      ctx.addIssue({ code: 'custom', path: ['exam_part_id'], message: 'Only Exam Preparation packages have an exam part' });
+    }
     if (d.compare_at_price != null && d.compare_at_price > 0 && d.compare_at_price <= d.price) {
       ctx.addIssue({ code: 'custom', path: ['compare_at_price'], message: '"Was" price must be higher than the price' });
     }
   });
 export type AccessPackageInput = z.input<typeof accessPackageInputSchema>;
+
+export const EXAM_PREP_SCOPE_KINDS = ['subject', 'part', 'legacy'] as const;
+export type ExamPrepScopeKind = (typeof EXAM_PREP_SCOPE_KINDS)[number];
+
+/** Admin: one subject package per subject of a part, in one go. */
+export const bulkSubjectPackagesSchema = z
+  .object({
+    exam_part_id: mongoId,
+    duration_days: z.coerce.number().int().min(1, 'At least 1 day').max(3650),
+    price: z.coerce.number().min(0).max(1_000_000),
+    compare_at_price: z.coerce.number().min(0).max(1_000_000).optional().nullable(),
+    /** Also set this price on subjects of the part that already have a package with the same duration. */
+    update_existing: z.boolean().default(false),
+  })
+  .superRefine((d, ctx) => {
+    if (d.compare_at_price != null && d.compare_at_price > 0 && d.compare_at_price <= d.price) {
+      ctx.addIssue({ code: 'custom', path: ['compare_at_price'], message: '"Was" price must be higher than the price' });
+    }
+  });
+export type BulkSubjectPackagesInput = z.input<typeof bulkSubjectPackagesSchema>;
+
+export interface BulkSubjectPackagesResult {
+  created: number;
+  updated: number;
+  skipped: number;
+}
 
 export interface LiveClassBrief {
   id: string;
@@ -56,8 +87,12 @@ export interface AccessPackageRecord {
   name: string;
   name_bn?: string;
   description?: string;
+  exam_part_id?: string;
+  exam_part_name?: string;
   exam_subject_id?: string;
   exam_subject_name?: string;
+  /** Exam Preparation: one subject, a whole part, or (older packages) all of Part 1. */
+  scope?: ExamPrepScopeKind;
   duration_days: number;
   price: number;
   compare_at_price?: number;
@@ -114,6 +149,12 @@ export function computeCharge(price: number, settings: Pick<BillingSettingsRecor
   return 0;
 }
 
+/** Charge for several packages paid together; a fixed charge is taken once per payment. */
+export function computeCartCharge(prices: number[], settings: Pick<BillingSettingsRecord, 'charge_type' | 'charge_value'>): number {
+  if (settings.charge_type === 'fixed') return prices.some((p) => p > 0) ? roundTaka(settings.charge_value) : 0;
+  return roundTaka(prices.reduce((s, p) => s + computeCharge(p, settings), 0));
+}
+
 export function formatBdt(n: number): string {
   const fixed = Number.isInteger(n) ? n.toLocaleString('en-IN') : n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return `৳${fixed}`;
@@ -131,6 +172,12 @@ export const ORDER_STATUSES = ['pending', 'paid', 'failed', 'cancelled', 'expire
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
 export const createOrderSchema = z.object({ package_id: mongoId });
+
+/** Several packages bought in one payment; each still gets its own invoice. */
+export const createCartSchema = z.object({
+  package_ids: z.array(mongoId).min(1, 'Pick at least one package').max(30),
+});
+export type CreateCartInput = z.infer<typeof createCartSchema>;
 
 export const demoPaySchema = z.object({
   msisdn: z.string().trim().regex(/^01[3-9]\d{8}$/, 'Enter your 11-digit bKash number'),
@@ -168,7 +215,10 @@ export interface PaymentOrderRecord {
   package_id: string;
   kind: AccessPackageKind;
   package_name: string;
+  exam_part_name?: string;
   exam_subject_name?: string;
+  /** Set when the order was bought together with others in one payment. */
+  cart_id?: string;
   duration_days: number;
   price: number;
   charge: number;
@@ -196,6 +246,7 @@ export interface EntitlementRecord {
   kind: AccessPackageKind;
   package_id: string;
   package_name: string;
+  exam_part_name?: string;
   exam_subject_name?: string;
   starts_at: string;
   ends_at: string;
@@ -211,7 +262,34 @@ export interface MyAccessSummary {
   exam_prep_until?: string;
   basic_until?: string;
   live_packages: Array<{ package_id: string; package_name: string; until: string }>;
+  /** Active Exam Preparation access per part; no subject = the whole part. */
+  exam_prep_access: ExamPrepAccessItem[];
   entitlements: EntitlementRecord[];
+}
+
+export interface ExamPrepAccessItem {
+  exam_part_id: string;
+  exam_part_name: string;
+  exam_subject_id?: string;
+  exam_subject_name?: string;
+  until: string;
+}
+
+/** Packages paid together in one checkout. */
+export interface CartRecord {
+  cart_id: string;
+  orders: PaymentOrderRecord[];
+  price: number;
+  charge: number;
+  charge_label: string;
+  total: number;
+  status: OrderStatus;
+  method: PaymentMethod;
+  payer_account?: string;
+  trx_id?: string;
+  failure_reason?: string;
+  expires_at?: string;
+  paid_at?: string;
 }
 
 export interface BillingCatalog {

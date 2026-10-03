@@ -11,6 +11,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert } from '@/components/ui/alert';
 import { GeographyCascade } from '@/components/geography/geography-cascade';
+import { TempPasswordDialog } from '@/components/admin/temp-password-dialog';
+import { KeyRound } from 'lucide-react';
 
 type Tab = 'profile' | 'roles' | 'access' | 'addresses' | 'activity';
 
@@ -28,6 +30,8 @@ interface UserDetail {
   bound_device_id?: string | null;
   bound_device_at?: string | null;
   bound_device_label?: string | null;
+  login_locked_until?: string | null;
+  temp_password_expires_at?: string | null;
   amount_received?: number;
   all_exam_subjects?: boolean;
   exam_subject_ids?: string[];
@@ -130,6 +134,7 @@ export default function EditUserPage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
+  const [tempOpen, setTempOpen] = useState(false);
   const [selectedRole, setSelectedRole] = useState('');
   const [accessDraft, setAccessDraft] = useState<Record<string, Partial<ModuleAccess>>>({});
   const [subjectOptions, setSubjectOptions] = useState<ExamSubjectOption[]>([]);
@@ -563,6 +568,30 @@ export default function EditUserPage() {
                   Force logout all sessions
                 </Button>
               </div>
+              <div className="space-y-3 rounded-lg border border-border p-4">
+                <p className="text-sm font-medium">Sign-in recovery</p>
+                <p className="text-xs text-muted">
+                  For a suspended, locked or forgotten-password account: set a temporary password. The account is reactivated
+                  and the user must choose a new password right after signing in.
+                </p>
+                {user.login_locked_until && (
+                  <p className="text-xs text-amber-700">
+                    Locked after wrong passwords until {new Date(user.login_locked_until).toLocaleString('en-GB')}
+                  </p>
+                )}
+                {user.temp_password_expires_at && (
+                  <p className="text-xs text-amber-700">
+                    Waiting for the user to set a new password · temporary password{' '}
+                    {new Date(user.temp_password_expires_at).getTime() < Date.now()
+                      ? 'expired'
+                      : `works until ${new Date(user.temp_password_expires_at).toLocaleString('en-GB')}`}
+                  </p>
+                )}
+                <Button type="button" variant="outline" onClick={() => setTempOpen(true)}>
+                  <KeyRound className="h-4 w-4" />
+                  Set temporary password
+                </Button>
+              </div>
               <Button type="submit">Save profile</Button>
             </form>
           </CardContent>
@@ -849,6 +878,17 @@ export default function EditUserPage() {
             )}
           </CardContent>
         </Card>
+      )}
+
+      {tempOpen && user && (
+        <TempPasswordDialog
+          user={user}
+          onClose={() => setTempOpen(false)}
+          onDone={() => {
+            setMessage('Temporary password set — the account is active and old sessions were signed out');
+            void loadUser();
+          }}
+        />
       )}
     </div>
   );

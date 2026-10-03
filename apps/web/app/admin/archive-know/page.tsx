@@ -153,7 +153,7 @@ export default function ArchiveKnowAdminPage() {
     <div className="space-y-6">
       <PageHeader
         title="Know, Because you asked any more"
-        description="Pick published MCQs from any Books & Tools book and file them under an iBAS++ area. Users see them in Policy Library → Books & Policy Archive; tapping one shows its explanation and tagged circulars."
+        description="Pick published MCQs from any Books & Tools book and file them under an iBAS++ area. Users see them in Policy Library → Books & Query; tapping one shows its explanation and tagged circulars."
         backHref="/policy/archive"
         backLabel="Archive"
       />

@@ -3,6 +3,7 @@ import { Redirect, Stack } from 'expo-router';
 import { useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { registerForPushNotifications } from '@/lib/push-notifications';
+import { SetNewPasswordScreen } from '@/components/auth/SetNewPasswordScreen';
 import { colors } from '@/theme';
 
 export default function AppLayout() {
@@ -23,6 +24,10 @@ export default function AppLayout() {
 
   if (!user) {
     return <Redirect href="/(auth)/login" />;
+  }
+
+  if (user.must_change_password) {
+    return <SetNewPasswordScreen />;
   }
 
   return (

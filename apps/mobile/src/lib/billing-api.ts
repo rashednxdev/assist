@@ -3,7 +3,9 @@ import type { AccessPackageKind } from '@ibas/shared-constants';
 import type {
   AccessPackageRecord,
   BillingCatalog,
+  CartRecord,
   EntitlementRecord,
+  ExamPrepPartsResponse,
   MyAccessSummary,
   OrderStatus,
   PaymentOrderRecord,
@@ -52,6 +54,48 @@ export async function payOrder(
 
 export async function cancelOrder(id: string): Promise<void> {
   await apiFetch(`/billing/orders/${id}/cancel`, { method: 'POST' });
+}
+
+export async function createCart(packageIds: string[]): Promise<CartRecord> {
+  return (
+    await apiFetch<{ data: CartRecord }>('/billing/carts', {
+      method: 'POST',
+      body: JSON.stringify({ package_ids: packageIds }),
+    })
+  ).data;
+}
+
+export async function fetchCart(cartId: string): Promise<CartRecord> {
+  return (await apiFetch<{ data: CartRecord }>(`/billing/carts/${cartId}`)).data;
+}
+
+export async function payCart(
+  cartId: string,
+  body: { msisdn: string; otp: string; pin: string; simulate_failure?: boolean },
+): Promise<CartRecord> {
+  return (
+    await apiFetch<{ data: CartRecord }>(`/billing/carts/${cartId}/pay`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  ).data;
+}
+
+export async function cancelCart(cartId: string): Promise<void> {
+  await apiFetch(`/billing/carts/${cartId}/cancel`, { method: 'POST' });
+}
+
+export async function fetchExamPrepParts(): Promise<ExamPrepPartsResponse> {
+  return (await apiFetch<{ data: ExamPrepPartsResponse }>('/exam-prep/parts')).data;
+}
+
+export async function selectExamPrepPart(partId: string): Promise<ExamPrepPartsResponse> {
+  return (
+    await apiFetch<{ data: ExamPrepPartsResponse }>('/exam-prep/part', {
+      method: 'PUT',
+      body: JSON.stringify({ exam_part_id: partId }),
+    })
+  ).data;
 }
 
 export const PACKAGE_TABS: Array<{

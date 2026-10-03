@@ -57,6 +57,7 @@ function OrderRow({ order }: { order: PaymentOrderRecord }) {
           <p className="font-medium">{order.package_name}</p>
           <p className="text-xs text-muted">
             {ACCESS_PACKAGE_KIND_LABELS[order.kind]}
+            {order.exam_part_name ? ` · ${order.exam_part_name}` : ''}
             {order.exam_subject_name ? ` · ${order.exam_subject_name}` : ''} · {accessDateTime(order.created_at)} · {order.invoice_no}
           </p>
         </div>
@@ -182,6 +183,20 @@ export default function SettingsPaymentsPage() {
             <AccessTile title="Exam Preparation" until={access.exam_prep_until} href="/packages?tab=exam_prep" />
             <AccessTile title="Basic Module" until={access.basic_until} href="/packages?tab=basic" />
           </div>
+          {access.exam_prep_access.length > 0 && (
+            <div>
+              <p className="mb-2 text-sm font-medium">Exam Preparation subjects</p>
+              <ul className="flex flex-wrap gap-2">
+                {access.exam_prep_access.map((a) => (
+                  <li key={`${a.exam_part_id}|${a.exam_subject_id ?? ''}`}>
+                    <Badge variant="success">
+                      {a.exam_part_name} · {a.exam_subject_name ?? 'All subjects'} · until {accessDate(a.until)}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div>
             <p className="mb-2 text-sm font-medium">Live class packages</p>
             {access.live_packages.length === 0 ? (
@@ -222,7 +237,13 @@ export default function SettingsPaymentsPage() {
                       {e.package_name}
                       <span className="ml-2 text-xs font-normal text-muted">{ACCESS_PACKAGE_KIND_LABELS[e.kind]}</span>
                     </p>
-                    {e.exam_subject_name && <p className="text-xs text-muted">{e.exam_subject_name}</p>}
+                    {(e.exam_part_name || e.exam_subject_name) && (
+                      <p className="text-xs text-muted">
+                        {[e.exam_part_name, e.exam_subject_name ?? (e.exam_part_name ? 'All subjects' : undefined)]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </p>
+                    )}
                     <p className="text-sm text-muted">
                       {accessDate(e.starts_at)} → {accessDate(e.ends_at)}
                       {e.invoice_no ? ` · ${e.invoice_no}` : ''}

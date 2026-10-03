@@ -1,9 +1,16 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Loader2, Pencil, Plus, Trash2, Video } from 'lucide-react';
+import { Layers, Loader2, Pencil, Plus, Trash2, Video } from 'lucide-react';
 import type { AccessPackageKind } from '@ibas/shared-constants';
-import { formatBdt, type AccessPackageRecord, type LiveClassBrief } from '@ibas/shared-types';
+import {
+  formatBdt,
+  type AccessPackageRecord,
+  type BulkSubjectPackagesResult,
+  type ExamPrepPartOption,
+  type ExamPrepPartsResponse,
+  type LiveClassBrief,
+} from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { accessDateTime, durationLabel } from '@/lib/billing-format';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,16 +26,15 @@ const SELECT = 'flex h-10 w-full rounded-md border border-input bg-background px
 
 const DURATION_PRESETS = [30, 90, 180, 365];
 
-interface SubjectOption {
-  id: string;
-  name: string;
-  group: string;
+function partTitle(p: ExamPrepPartOption): string {
+  return p.name && p.name !== p.label ? `${p.label} — ${p.name}` : p.label;
 }
 
 interface FormState {
   name: string;
   name_bn: string;
   description: string;
+  exam_part_id: string;
   exam_subject_id: string;
   duration_days: string;
   price: string;
@@ -44,6 +50,7 @@ function toForm(p?: AccessPackageRecord): FormState {
     name: p?.name ?? '',
     name_bn: p?.name_bn ?? '',
     description: p?.description ?? '',
+    exam_part_id: p?.exam_part_id ?? '',
     exam_subject_id: p?.exam_subject_id ?? '',
     duration_days: String(p?.duration_days ?? 30),
     price: p ? String(p.price) : '',
@@ -58,22 +65,34 @@ function toForm(p?: AccessPackageRecord): FormState {
 function PackageForm({
   kind,
   initial,
-  subjects,
+  parts,
+  defaultPartId,
   onSaved,
   onCancel,
 }: {
   kind: AccessPackageKind;
   initial?: AccessPackageRecord;
-  subjects: SubjectOption[];
+  parts: ExamPrepPartOption[];
+  defaultPartId?: string;
   onSaved: () => void;
   onCancel: () => void;
 }) {
-  const [f, setF] = useState<FormState>(() => toForm(initial));
+  const [f, setF] = useState<FormState>(() => {
+    const form = toForm(initial);
+    if (!initial && kind === 'exam_prep') form.exam_part_id = defaultPartId ?? parts[0]?.id ?? '';
+    return form;
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setF((prev) => ({ ...prev, [k]: v }));
+  const isLegacy = initial?.scope === 'legacy';
+  const part = parts.find((p) => p.id === f.exam_part_id);
 
   async function save() {
+    if (kind === 'exam_prep' && !f.exam_part_id && !isLegacy) {
+      setError('Pick the exam part this package is for');
+      return;
+    }
     setBusy(true);
     setError('');
     const body = {
@@ -81,6 +100,7 @@ function PackageForm({
       name: f.name,
       name_bn: f.name_bn,
       description: f.description,
+      exam_part_id: kind === 'exam_prep' ? f.exam_part_id || null : null,
       exam_subject_id: kind === 'exam_prep' ? f.exam_subject_id || null : null,
       duration_days: Number(f.duration_days),
       price: Number(f.price || 0),
@@ -122,21 +142,46 @@ function PackageForm({
             <Input id="pk-name-bn" value={f.name_bn} onChange={(e) => set('name_bn', e.target.value)} />
           </div>
           {kind === 'exam_prep' && (
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="pk-subject">Exam subject</Label>
-              <select id="pk-subject" className={SELECT} value={f.exam_subject_id} onChange={(e) => set('exam_subject_id', e.target.value)}>
-                <option value="">All subjects</option>
-                {subjects.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                    {s.group ? ` — ${s.group}` : ''}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-muted">
-                Users pick their subject when buying. Any Exam Preparation package opens every exam-prep module for its period.
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="pk-part">Exam part</Label>
+                <select
+                  id="pk-part"
+                  className={SELECT}
+                  value={f.exam_part_id}
+                  onChange={(e) => setF((prev) => ({ ...prev, exam_part_id: e.target.value, exam_subject_id: '' }))}
+                >
+                  {isLegacy && <option value="">All of Part 1 (older package)</option>}
+                  {!isLegacy && !f.exam_part_id && <option value="">Pick a part…</option>}
+                  {parts.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {partTitle(p)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="pk-subject">Covers</Label>
+                <select
+                  id="pk-subject"
+                  className={SELECT}
+                  value={f.exam_subject_id}
+                  disabled={!part}
+                  onChange={(e) => set('exam_subject_id', e.target.value)}
+                >
+                  <option value="">{part ? `Whole ${part.label} — every subject` : '—'}</option>
+                  {(part?.subjects ?? []).map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name_bn?.trim() ? `${s.name} (${s.name_bn})` : s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <p className="text-xs text-muted sm:col-span-2">
+                A subject package opens that subject in Question Bank, Marathon review and Exam Papers. A whole-part package opens every
+                subject of the part. Users can tick several subjects and pay once.
               </p>
-            </div>
+            </>
           )}
           <div className="space-y-1.5">
             <Label htmlFor="pk-days">{kind === 'live' ? 'Validity (days)' : 'Duration (days)'}</Label>
@@ -204,6 +249,123 @@ function PackageForm({
           <Button onClick={save} disabled={busy}>
             {busy && <Loader2 className="h-4 w-4 animate-spin" />}
             Save
+          </Button>
+          <Button variant="outline" onClick={onCancel} disabled={busy}>
+            Cancel
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Prices every subject of a part in one go (one subject package each). */
+function BulkSubjectPricing({
+  parts,
+  defaultPartId,
+  onDone,
+  onCancel,
+}: {
+  parts: ExamPrepPartOption[];
+  defaultPartId?: string;
+  onDone: (message: string) => void;
+  onCancel: () => void;
+}) {
+  const [partId, setPartId] = useState(defaultPartId ?? parts[0]?.id ?? '');
+  const [days, setDays] = useState('90');
+  const [price, setPrice] = useState('');
+  const [was, setWas] = useState('');
+  const [updateExisting, setUpdateExisting] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const part = parts.find((p) => p.id === partId);
+
+  async function run() {
+    if (!partId) return setError('Pick an exam part');
+    if (price === '') return setError('Enter the price per subject');
+    setBusy(true);
+    setError('');
+    try {
+      const r = await apiFetch<{ data: BulkSubjectPackagesResult }>('/billing/admin/packages/bulk-subjects', {
+        method: 'POST',
+        body: JSON.stringify({
+          exam_part_id: partId,
+          duration_days: Number(days),
+          price: Number(price),
+          compare_at_price: was ? Number(was) : null,
+          update_existing: updateExisting,
+        }),
+      });
+      const { created, updated, skipped } = r.data;
+      onDone(
+        `${part?.label ?? 'Part'}: ${created} subject package${created === 1 ? '' : 's'} created` +
+          (updated ? `, ${updated} updated` : '') +
+          (skipped ? `, ${skipped} already priced (left as they were)` : '') +
+          '.',
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to create packages');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="border-primary/40">
+      <CardHeader>
+        <CardTitle className="text-base">Price every subject of a part</CardTitle>
+        <p className="text-sm text-muted">
+          Creates one package per subject with the same price and duration. Edit any of them afterwards to fine-tune.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="bulk-part">Exam part</Label>
+            <select id="bulk-part" className={SELECT} value={partId} onChange={(e) => setPartId(e.target.value)}>
+              {parts.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {partTitle(p)} · {p.subjects.length} subject{p.subjects.length === 1 ? '' : 's'}
+                </option>
+              ))}
+            </select>
+            {part && part.subjects.length === 0 && (
+              <p className="text-xs text-destructive">This part has no subjects yet. Add them in Exam setup first.</p>
+            )}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="bulk-days">Duration (days)</Label>
+            <Input id="bulk-days" type="number" min={1} value={days} onChange={(e) => setDays(e.target.value)} />
+            <div className="flex flex-wrap gap-1">
+              {DURATION_PRESETS.map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setDays(String(d))}
+                  className="rounded-md border border-border px-2 py-0.5 text-xs text-muted hover:bg-slate-100"
+                >
+                  {durationLabel(d)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="bulk-price">Price per subject (৳)</Label>
+            <Input id="bulk-price" type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="bulk-was">“Was” price (optional)</Label>
+            <Input id="bulk-was" type="number" min={0} value={was} onChange={(e) => setWas(e.target.value)} />
+          </div>
+        </div>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={updateExisting} onChange={(e) => setUpdateExisting(e.target.checked)} />
+          Also change the price of subjects that already have a package with this duration
+        </label>
+        {error && <Alert variant="error">{error}</Alert>}
+        <div className="flex gap-2">
+          <Button onClick={run} disabled={busy || !part || part.subjects.length === 0}>
+            {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+            Create subject packages
           </Button>
           <Button variant="outline" onClick={onCancel} disabled={busy}>
             Cancel
@@ -319,10 +481,19 @@ function ClassPicker({ pkg, onDone }: { pkg: AccessPackageRecord; onDone: () => 
 
 export function PackageAdmin({ kind }: { kind: AccessPackageKind }) {
   const [items, setItems] = useState<AccessPackageRecord[] | null>(null);
-  const [subjects, setSubjects] = useState<SubjectOption[]>([]);
+  const [parts, setParts] = useState<ExamPrepPartOption[]>([]);
+  const [partFilter, setPartFilter] = useState('');
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
   const [editing, setEditing] = useState<AccessPackageRecord | 'new' | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [classesFor, setClassesFor] = useState<AccessPackageRecord | null>(null);
+
+  const shown = useMemo(() => {
+    if (!items || kind !== 'exam_prep' || !partFilter) return items;
+    const primaryId = parts.find((p) => p.is_primary)?.id;
+    return items.filter((p) => (p.exam_part_id ?? (p.scope === 'legacy' ? primaryId : undefined)) === partFilter);
+  }, [items, kind, partFilter, parts]);
 
   async function load() {
     try {
@@ -336,12 +507,14 @@ export function PackageAdmin({ kind }: { kind: AccessPackageKind }) {
   useEffect(() => {
     setItems(null);
     setEditing(null);
+    setBulkOpen(false);
     setClassesFor(null);
+    setMessage('');
     void load();
     if (kind === 'exam_prep') {
-      apiFetch<{ data: SubjectOption[] }>('/billing/admin/subject-options')
-        .then((r) => setSubjects(r.data))
-        .catch(() => setSubjects([]));
+      apiFetch<{ data: ExamPrepPartsResponse }>('/exam-prep/parts')
+        .then((r) => setParts(r.data.parts))
+        .catch(() => setParts([]));
     }
   }, [kind]);
 
@@ -363,30 +536,81 @@ export function PackageAdmin({ kind }: { kind: AccessPackageKind }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted">
           {kind === 'exam_prep'
-            ? 'Price each exam subject by duration. Buying any of them opens all exam-prep modules for that time.'
+            ? 'Price each subject of a part (or a whole part) by duration. A buyer opens only the subjects they bought; they can tick several and pay once.'
             : kind === 'basic'
               ? 'Plans by month and amount. Users choose one; Schedule and Salary stay free.'
               : 'Create a package, then assign its classes. Buyers join every class in the package until it expires.'}
         </p>
-        <Button
-          onClick={() => {
-            setClassesFor(null);
-            setEditing('new');
-          }}
-        >
-          <Plus className="h-4 w-4" />
-          New package
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {kind === 'exam_prep' && (
+            <Button
+              variant="outline"
+              disabled={parts.length === 0}
+              onClick={() => {
+                setEditing(null);
+                setClassesFor(null);
+                setBulkOpen(true);
+              }}
+            >
+              <Layers className="h-4 w-4" />
+              Price all subjects of a part
+            </Button>
+          )}
+          <Button
+            onClick={() => {
+              setClassesFor(null);
+              setBulkOpen(false);
+              setEditing('new');
+            }}
+          >
+            <Plus className="h-4 w-4" />
+            New package
+          </Button>
+        </div>
       </div>
 
+      {kind === 'exam_prep' && parts.length > 1 && (
+        <div className="inline-flex flex-wrap rounded-lg border border-border bg-background p-1" role="tablist">
+          {[{ id: '', label: 'All parts' }, ...parts.map((p) => ({ id: p.id, label: p.label }))].map((t) => (
+            <button
+              key={t.id || 'all'}
+              type="button"
+              role="tab"
+              aria-selected={partFilter === t.id}
+              onClick={() => setPartFilter(t.id)}
+              className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${
+                partFilter === t.id ? 'bg-primary text-primary-foreground' : 'text-muted hover:text-foreground'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {error && <Alert variant="error">{error}</Alert>}
+      {message && <Alert variant="success">{message}</Alert>}
+
+      {bulkOpen && (
+        <BulkSubjectPricing
+          parts={parts}
+          defaultPartId={partFilter || undefined}
+          onCancel={() => setBulkOpen(false)}
+          onDone={(msg) => {
+            setBulkOpen(false);
+            setMessage(msg);
+            void load();
+          }}
+        />
+      )}
 
       {editing && (
         <PackageForm
           key={editing === 'new' ? 'new' : editing.id}
           kind={kind}
           initial={editing === 'new' ? undefined : editing}
-          subjects={subjects}
+          parts={parts}
+          defaultPartId={partFilter || undefined}
           onCancel={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
@@ -406,9 +630,9 @@ export function PackageAdmin({ kind }: { kind: AccessPackageKind }) {
         />
       )}
 
-      {!items ? (
+      {!items || !shown ? (
         <Skeleton className="h-40 w-full" />
-      ) : items.length === 0 ? (
+      ) : shown.length === 0 ? (
         <EmptyState title="No packages yet" description="Create the first package for this section." />
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border bg-surface">
@@ -416,7 +640,8 @@ export function PackageAdmin({ kind }: { kind: AccessPackageKind }) {
             <thead className="bg-slate-50 text-left text-xs uppercase text-muted">
               <tr>
                 <th className="px-3 py-2">Package</th>
-                {kind === 'exam_prep' && <th className="px-3 py-2">Subject</th>}
+                {kind === 'exam_prep' && <th className="px-3 py-2">Part</th>}
+                {kind === 'exam_prep' && <th className="px-3 py-2">Covers</th>}
                 <th className="px-3 py-2">Duration</th>
                 <th className="px-3 py-2">Price</th>
                 {kind === 'live' && <th className="px-3 py-2">Classes</th>}
@@ -426,13 +651,20 @@ export function PackageAdmin({ kind }: { kind: AccessPackageKind }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {items.map((p) => (
+              {shown.map((p) => (
                 <tr key={p.id}>
                   <td className="px-3 py-2">
                     <p className="font-medium">{p.name}</p>
                     {p.is_featured && <Badge className="mt-0.5">Popular</Badge>}
                   </td>
-                  {kind === 'exam_prep' && <td className="px-3 py-2">{p.exam_subject_name ?? 'All subjects'}</td>}
+                  {kind === 'exam_prep' && <td className="px-3 py-2">{p.exam_part_name ?? '—'}</td>}
+                  {kind === 'exam_prep' && (
+                    <td className="px-3 py-2">
+                      {p.exam_subject_name ?? (
+                        <Badge variant="secondary">{p.scope === 'legacy' ? 'All subjects (older package)' : 'Whole part'}</Badge>
+                      )}
+                    </td>
+                  )}
                   <td className="px-3 py-2">{durationLabel(p.duration_days)}</td>
                   <td className="px-3 py-2">
                     {formatBdt(p.price)}
@@ -464,6 +696,7 @@ export function PackageAdmin({ kind }: { kind: AccessPackageKind }) {
                         aria-label="Edit"
                         onClick={() => {
                           setClassesFor(null);
+                          setBulkOpen(false);
                           setEditing(p);
                         }}
                       >

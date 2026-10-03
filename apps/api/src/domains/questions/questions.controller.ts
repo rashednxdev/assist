@@ -26,7 +26,25 @@ import type { AuthRequest } from '../../middleware/auth.js';
 import { hasModulePermission } from '../users/module-access.service.js';
 import * as questionsService from './questions.service.js';
 import * as answerPdfService from './answer-pdf.service.js';
-import { getExamSubjectScopeForAuthUser } from '../users/subject-access.service.js';
+import { getExamSubjectScopeForAuthUser, type ExamSubjectScope } from '../users/subject-access.service.js';
+import { getExamPrepScope } from '../exam-prep/exam-prep.service.js';
+import { isQuestionVisibleInQotd } from '../qotd/qotd.service.js';
+
+function isAdminUser(user: AuthRequest['user']): boolean {
+  return !!user && (user.is_super_admin || user.user_type === 'system_admin' || user.user_type === 'admin');
+}
+
+/**
+ * Learners see the subjects of their Exam Preparation part that they bought; Question Update
+ * editors keep the plain subject allow-list so review work is not limited by purchases.
+ */
+async function questionScopeFor(req: AuthRequest, canEdit?: boolean): Promise<ExamSubjectScope> {
+  const user = req.user;
+  if (!user || isAdminUser(user)) return { mode: 'all' };
+  const editor = canEdit ?? (await hasModulePermission(user.id, 'QUESTION_EDIT', 'can_read'));
+  if (editor) return getExamSubjectScopeForAuthUser(user);
+  return getExamPrepScope(user, { paid: true });
+}
 
 export async function createQuestionTypeHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = createQuestionTypeSchema.parse(req.body);
@@ -63,10 +81,11 @@ export async function listQuestionsHandler(req: AuthRequest, res: Response): Pro
   // Regular mobile Question Bank users only ever receive published questions; admins and
   // the mobile Question Update module (draft/quality_check/published review workflow) see all.
   const listFilters = canSeeAllStatuses ? filters : { ...filters, is_published: true as const };
-  const subjectScope = await getExamSubjectScopeForAuthUser(user);
+  const subjectScope = await questionScopeFor(req, canSeeAllStatuses);
 
   const { items, total, limit, offset } = await questionsService.listQuestions(listFilters, {
     subjectScope,
+    includeBookSubjects: !canSeeAllStatuses,
   });
   res.json({
     data: items,
@@ -101,7 +120,8 @@ export async function listTrashedQuestionsHandler(req: AuthRequest, res: Respons
 
 export async function listMarathonReviewHandler(req: AuthRequest, res: Response): Promise<void> {
   const filters = marathonReviewQuerySchema.parse(req.query);
-  const { items, total, limit, offset } = await questionsService.listMarathonReview(filters);
+  const subjectScope = await questionScopeFor(req);
+  const { items, total, limit, offset } = await questionsService.listMarathonReview(filters, { subjectScope });
   res.json({
     data: items,
     meta: {
@@ -115,7 +135,7 @@ export async function listMarathonReviewHandler(req: AuthRequest, res: Response)
 
 export async function questionsSyncHandler(req: AuthRequest, res: Response): Promise<void> {
   const filters = questionsSyncQuerySchema.parse(req.query);
-  const subjectScope = await getExamSubjectScopeForAuthUser(req.user);
+  const subjectScope = await questionScopeFor(req);
   const result = await questionsService.listQuestionsSync(filters, { subjectScope });
   res.json({ data: result });
 }
@@ -133,8 +153,17 @@ export async function linkQuestionSearchHandler(req: AuthRequest, res: Response)
 }
 
 export async function getQuestionHandler(req: AuthRequest, res: Response): Promise<void> {
-  const subjectScope = await getExamSubjectScopeForAuthUser(req.user);
-  const data = await questionsService.getQuestionById(String(req.params.id), { subjectScope });
+  const id = String(req.params.id);
+  let subjectScope = await questionScopeFor(req);
+  // A question on today's free Question of the Day stays readable without buying its subject.
+  if (
+    subjectScope.mode !== 'all' &&
+    !(await questionsService.isQuestionInScope(id, subjectScope)) &&
+    (await isQuestionVisibleInQotd(id, false, await getExamPrepScope(req.user, { paid: false })))
+  ) {
+    subjectScope = { mode: 'all' };
+  }
+  const data = await questionsService.getQuestionById(id, { subjectScope });
   res.json({ data });
 }
 
@@ -268,7 +297,7 @@ export async function listQuestionSubjectCatalogHandler(
   req: AuthRequest,
   res: Response,
 ): Promise<void> {
-  const subjectScope = await getExamSubjectScopeForAuthUser(req.user);
+  const subjectScope = await questionScopeFor(req);
   res.json({ data: await questionsService.listQuestionSubjectCatalog(subjectScope) });
 }
 

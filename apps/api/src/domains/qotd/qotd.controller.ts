@@ -2,20 +2,20 @@ import type { Response } from 'express';
 import { createQotdEntrySchema, updateQotdEntrySchema, qotdSettingsSchema, qotdQuestionsQuerySchema } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
 import * as qotdService from './qotd.service.js';
-import { getExamSubjectScopeForAuthUser } from '../users/subject-access.service.js';
+import { getExamPrepScope } from '../exam-prep/exam-prep.service.js';
 
 function isAdminUser(user: AuthRequest['user']): boolean {
   return !!user && (user.is_super_admin || user.user_type === 'system_admin' || user.user_type === 'admin');
 }
 
 export async function listDatesHandler(req: AuthRequest, res: Response): Promise<void> {
-  const scope = await getExamSubjectScopeForAuthUser(req.user);
+  const scope = await getExamPrepScope(req.user, { paid: false });
   const data = await qotdService.listQotdDates(isAdminUser(req.user), scope);
   res.json({ data });
 }
 
 export async function getDateDetailHandler(req: AuthRequest, res: Response): Promise<void> {
-  const scope = await getExamSubjectScopeForAuthUser(req.user);
+  const scope = await getExamPrepScope(req.user, { paid: false });
   const data = await qotdService.getEntriesForDate(String(req.params.date), isAdminUser(req.user), scope);
   res.json({ data });
 }

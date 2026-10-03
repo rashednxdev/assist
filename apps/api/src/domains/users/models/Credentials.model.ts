@@ -25,6 +25,10 @@ export interface ICredentials extends Document {
   /** "Forgot password" code, emailed to the account's on-file address. Separate from email_otp_* (account verification) so one flow can't consume/invalidate the other. */
   reset_otp_hash?: string;
   reset_otp_expires_at?: Date;
+  /** Set with status `reset_required`: the admin-issued temporary password stops working after this. */
+  temp_password_expires_at?: Date;
+  temp_password_set_at?: Date;
+  temp_password_set_by?: Types.ObjectId;
   updated_at: Date;
 }
 
@@ -54,6 +58,9 @@ const credentialsSchema = new Schema<ICredentials>(
     phone_otp_expires_at: { type: Date },
     reset_otp_hash: { type: String },
     reset_otp_expires_at: { type: Date },
+    temp_password_expires_at: { type: Date },
+    temp_password_set_at: { type: Date },
+    temp_password_set_by: { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: { createdAt: false, updatedAt: 'updated_at' } },
 );

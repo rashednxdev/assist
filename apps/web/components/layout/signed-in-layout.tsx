@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getAccessToken, fetchMe, clearAccessToken } from '@/lib/auth';
+import { getAccessToken, fetchMe, clearAccessToken, SET_PASSWORD_PATH } from '@/lib/auth';
 import { AppShell } from '@/components/layout/app-shell';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -18,7 +18,8 @@ export function SignedInLayout({ children }: { children: React.ReactNode }) {
     }
     fetchMe()
       .then((res) => {
-        if (res.data.status === 'pending_verify') router.replace('/register/verify');
+        if (res.data.must_change_password) router.replace(SET_PASSWORD_PATH);
+        else if (res.data.status === 'pending_verify') router.replace('/register/verify');
         else setReady(true);
       })
       .catch(() => {

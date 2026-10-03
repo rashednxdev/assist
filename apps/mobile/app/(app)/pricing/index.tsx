@@ -14,18 +14,28 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import type { AccessPackageKind } from '@ibas/shared-constants';
-import { computeCharge, formatBdt, roundTaka, type AccessPackageRecord, type BillingCatalog } from '@ibas/shared-types';
+import {
+  computeCharge,
+  formatBdt,
+  roundTaka,
+  type AccessPackageRecord,
+  type BillingCatalog,
+  type ExamPrepPartOption,
+} from '@ibas/shared-types';
 import { EmptyState } from '@/components/contacts/ContactBits';
+import { BasketBar, ExamPrepShop, useExamPrepBasket } from '@/components/billing/ExamPrepShop';
 import { openSupportWhatsApp } from '@/lib/contact';
 import {
   BKASH,
   PACKAGE_TABS,
   accessDate,
   accessDateTime,
+  createCart,
   createOrder,
   currentUntil,
   durationLabel,
   fetchCatalog,
+  fetchExamPrepParts,
   isPackageKind,
   purchaseWindow,
 } from '@/lib/billing-api';
@@ -215,22 +225,31 @@ function CheckoutSheet({
 
 export default function PricingScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ tab?: string }>();
+  const params = useLocalSearchParams<{ tab?: string; part?: string }>();
   const [tab, setTab] = useState<AccessPackageKind>(isPackageKind(params.tab) ? params.tab : 'exam_prep');
   const [catalog, setCatalog] = useState<BillingCatalog | null>(null);
+  const [parts, setParts] = useState<ExamPrepPartOption[]>([]);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<AccessPackageRecord | null>(null);
   const [busy, setBusy] = useState(false);
   const [buyError, setBuyError] = useState('');
+  const basket = useExamPrepBasket(catalog, parts, params.part);
+  const { setActive: setBasketPart } = basket;
 
   useEffect(() => {
     if (isPackageKind(params.tab)) setTab(params.tab);
   }, [params.tab]);
 
+  useEffect(() => {
+    if (params.part) setBasketPart(params.part);
+  }, [params.part, setBasketPart]);
+
   const load = useCallback(async () => {
     try {
-      setCatalog(await fetchCatalog());
+      const [c, p] = await Promise.all([fetchCatalog(), fetchExamPrepParts().catch(() => null)]);
+      setCatalog(c);
+      if (p) setParts(p.parts);
       setError('');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load packages');
@@ -250,19 +269,24 @@ export default function PricingScreen() {
   }
 
   const inTab = useMemo(() => (catalog?.packages ?? []).filter((p) => p.kind === tab), [catalog, tab]);
-  const examGroups = useMemo(() => {
-    if (tab !== 'exam_prep') return [];
-    const groups = new Map<string, AccessPackageRecord[]>();
-    for (const p of inTab) {
-      const key = p.exam_subject_name ?? 'All subjects';
-      groups.set(key, [...(groups.get(key) ?? []), p]);
-    }
-    return [...groups.entries()];
-  }, [inTab, tab]);
 
   const tabMeta = PACKAGE_TABS.find((t) => t.id === tab)!;
-  const activeUntil =
-    catalog && tab === 'exam_prep' ? catalog.access.exam_prep_until : catalog && tab === 'basic' ? catalog.access.basic_until : undefined;
+  const activeUntil = catalog && tab === 'basic' ? catalog.access.basic_until : undefined;
+
+  async function payBasket() {
+    if (basket.chosen.length === 0) return;
+    setBusy(true);
+    setBuyError('');
+    try {
+      const cart = await createCart(basket.chosen.map((p) => p.id));
+      basket.clear();
+      router.push(`/(app)/pricing/checkout/${cart.orders[0]!.id}` as Href);
+    } catch (e) {
+      setBuyError(e instanceof Error ? e.message : 'Could not start the payment');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function buy() {
     if (!selected) return;
@@ -360,21 +384,17 @@ export default function PricingScreen() {
         ) : catalog && inTab.length === 0 ? (
           <EmptyState icon="pricetags-outline" title="No packages yet" text="Packages for this section will be available soon." />
         ) : tab === 'exam_prep' ? (
-          <>
-            <Text style={styles.small}>
-              Pick your exam subject. Any Exam Preparation package opens every exam-prep module for its period.
-            </Text>
-            {examGroups.map(([subject, list]) => (
-              <View key={subject} style={styles.group}>
-                <Text style={styles.groupTitle}>{subject}</Text>
-                {cards(list)}
-              </View>
-            ))}
-          </>
+          <ExamPrepShop basket={basket} />
         ) : (
           cards(inTab)
         )}
       </ScrollView>
+
+      {catalog && tab === 'exam_prep' && basket.chosen.length > 0 ? (
+        <SafeAreaView edges={['bottom']} style={styles.barWrap}>
+          <BasketBar basket={basket} catalog={catalog} busy={busy} error={buyError} onPay={() => void payBasket()} />
+        </SafeAreaView>
+      ) : null}
 
       {catalog && selected ? (
         <CheckoutSheet
@@ -456,8 +476,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
 
-  group: { gap: spacing.sm },
-  groupTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
+  barWrap: { backgroundColor: colors.surface },
 
   card: {
     backgroundColor: colors.surface,

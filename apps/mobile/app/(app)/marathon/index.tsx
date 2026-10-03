@@ -27,7 +27,7 @@ import {
   type MarathonLastQuestion,
 } from '@/lib/marathon-progress';
 import { getCachedMarathonItems, getCachedQuestionSubjectLabel } from '@/lib/questions-db';
-import { subscribeQuestionsSync, syncQuestions } from '@/lib/questions-sync';
+import { questionSyncScopeKey, subscribeQuestionsSync, syncQuestions } from '@/lib/questions-sync';
 import { questionCacheScopeKey } from '@/lib/subject-scope';
 import { useAuth } from '@/lib/auth-context';
 import { questionMatchScore } from '@/lib/question-search';
@@ -197,7 +197,7 @@ export default function MarathonReviewScreen() {
     setSyncing(true);
     try {
       const me = await refreshUserRef.current().catch(() => userRef.current);
-      await syncQuestions(questionCacheScopeKey(me));
+      await syncQuestions(await questionSyncScopeKey(questionCacheScopeKey(me)));
       refreshFromCache();
     } catch (err) {
       if (itemsRef.current.length === 0) {
@@ -217,7 +217,7 @@ export default function MarathonReviewScreen() {
         try {
           const me = await refreshUserRef.current().catch(() => userRef.current);
           if (cancelled) return;
-          await syncQuestions(questionCacheScopeKey(me));
+          await syncQuestions(await questionSyncScopeKey(questionCacheScopeKey(me)));
           if (cancelled) return;
           refreshFromCache();
         } catch (err) {

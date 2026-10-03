@@ -137,6 +137,69 @@ export const resetPasswordSchema = z
 
 export type ResetPasswordDto = z.infer<typeof resetPasswordSchema>;
 
+/** Hours an admin-set temporary password stays usable before the user must ask again. */
+export const TEMP_PASSWORD_TTL_HOURS = 72;
+
+/** Admin sets a temporary password; blank = the server generates one. */
+export const setTempPasswordSchema = z.object({
+  password: z
+    .string()
+    .trim()
+    .min(6, 'Use at least 6 characters')
+    .max(64)
+    .optional()
+    .or(z.literal('')),
+  clear_bound_device: z.boolean().optional(),
+});
+
+export type SetTempPasswordDto = z.infer<typeof setTempPasswordSchema>;
+
+export interface TempPasswordResult {
+  user_id: string;
+  temp_password: string;
+  expires_at: string;
+}
+
+/** After signing in with a temporary password the user picks their own. */
+export const setNewPasswordSchema = z
+  .object({
+    new_password: z.string().min(8, 'Use at least 8 characters'),
+    confirm_password: z.string().min(8),
+  })
+  .refine((d) => d.new_password === d.confirm_password, {
+    message: 'Passwords do not match',
+    path: ['confirm_password'],
+  });
+
+export type SetNewPasswordDto = z.infer<typeof setNewPasswordSchema>;
+
+export const BLOCKED_ACCOUNT_REASONS = ['suspended', 'inactive', 'locked', 'temp_password'] as const;
+export type BlockedAccountReason = (typeof BLOCKED_ACCOUNT_REASONS)[number];
+
+export const BLOCKED_ACCOUNT_REASON_LABELS: Record<BlockedAccountReason, string> = {
+  suspended: 'Suspended',
+  inactive: 'Inactive',
+  locked: 'Locked (wrong passwords)',
+  temp_password: 'Waiting for new password',
+};
+
+export interface BlockedAccountRecord {
+  id: string;
+  full_name_en: string;
+  full_name_bn?: string;
+  phone: string;
+  email: string;
+  user_type: string;
+  status: string;
+  reasons: BlockedAccountReason[];
+  failed_attempts: number;
+  locked_until?: string;
+  temp_password_expires_at?: string;
+  temp_password_set_at?: string;
+  last_login?: string;
+  bound_device_label?: string;
+}
+
 const blankToNull = (v: unknown) => (v === '' ? null : v);
 const optionalDate = z.preprocess(blankToNull, z.coerce.date({ errorMap: () => ({ message: 'Enter a valid date' }) }).nullable()).optional();
 const optionalText = (max: number) => z.string().trim().max(max, `Keep it under ${max} characters`).optional();

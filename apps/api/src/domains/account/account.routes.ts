@@ -1,6 +1,7 @@
-import { Router } from 'express';
-import { authenticate } from '../../middleware/auth.js';
+import { Router, type Response } from 'express';
+import { authenticate, type AuthRequest } from '../../middleware/auth.js';
 import { asyncHandler } from '../../shared/asyncHandler.js';
+import { setNewPassword } from '../users/account-recovery.service.js';
 import {
   resendOtpHandler,
   verifyOtpHandler,
@@ -27,6 +28,12 @@ accountRouter.get('/summary', asyncHandler(getSummaryHandler));
 accountRouter.get('/profile', asyncHandler(getProfileHandler));
 accountRouter.patch('/profile', asyncHandler(updateProfileHandler));
 accountRouter.post('/change-password', asyncHandler(changePasswordHandler));
+accountRouter.post(
+  '/set-new-password',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    res.json({ data: await setNewPassword(req.user!.id, req.body) });
+  }),
+);
 accountRouter.get('/addresses', asyncHandler(listAddressesHandler));
 accountRouter.post('/addresses', asyncHandler(createAddressHandler));
 accountRouter.delete('/addresses/:id', asyncHandler(deleteAddressHandler));

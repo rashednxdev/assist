@@ -7,7 +7,7 @@ import { useTranslations } from 'next-intl';
 import { Menu, X, LogOut, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { logoutRequest, fetchMe, getAccessToken, clearAccessToken, type MeUser } from '@/lib/auth';
+import { logoutRequest, fetchMe, getAccessToken, clearAccessToken, SET_PASSWORD_PATH, type MeUser } from '@/lib/auth';
 import { buildVisibleNav } from '@/lib/capabilities';
 import { navGroups, type NavItem } from './nav-config';
 
@@ -150,6 +150,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (!getAccessToken()) return;
     fetchMe()
       .then((res) => {
+        if (res.data.must_change_password) {
+          router.replace(SET_PASSWORD_PATH);
+          return;
+        }
         setMe({
           ...res.data,
           module_access: res.data.module_access ?? [],

@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ExamPrepShop } from '@/components/billing/exam-prep-shop';
 
 const DAY_MS = 86_400_000;
 
@@ -212,15 +213,6 @@ function PackagesContent() {
   }, []);
 
   const inTab = useMemo(() => (catalog?.packages ?? []).filter((p) => p.kind === tab), [catalog, tab]);
-  const examGroups = useMemo(() => {
-    if (tab !== 'exam_prep') return [];
-    const groups = new Map<string, AccessPackageRecord[]>();
-    for (const p of inTab) {
-      const key = p.exam_subject_name ?? 'All subjects';
-      groups.set(key, [...(groups.get(key) ?? []), p]);
-    }
-    return [...groups.entries()];
-  }, [inTab, tab]);
 
   async function buy() {
     if (!selected) return;
@@ -239,8 +231,7 @@ function PackagesContent() {
   }
 
   const tabMeta = PACKAGE_TABS.find((t) => t.id === tab)!;
-  const activeUntil =
-    catalog && tab === 'exam_prep' ? catalog.access.exam_prep_until : catalog && tab === 'basic' ? catalog.access.basic_until : undefined;
+  const activeUntil = catalog && tab === 'basic' ? catalog.access.basic_until : undefined;
 
   function grid(list: AccessPackageRecord[]) {
     return (
@@ -315,18 +306,8 @@ function PackagesContent() {
         </div>
       ) : inTab.length === 0 ? (
         <EmptyState title="No packages yet" description="Packages for this section will be available soon." />
-      ) : tab === 'exam_prep' ? (
-        <div className="space-y-8">
-          <p className="text-sm text-muted">
-            Pick your exam subject. Any Exam Preparation package opens every exam-prep module for its period.
-          </p>
-          {examGroups.map(([subject, list]) => (
-            <section key={subject} className="space-y-3">
-              <h2 className="text-lg font-semibold">{subject}</h2>
-              {grid(list)}
-            </section>
-          ))}
-        </div>
+      ) : tab === 'exam_prep' && catalog ? (
+        <ExamPrepShop catalog={catalog} />
       ) : (
         grid(inTab)
       )}

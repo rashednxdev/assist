@@ -145,7 +145,7 @@ export default function PolicyLibraryScreen() {
         icon="library"
         tint="#047857"
         bg="#ecfdf5"
-        title="Books & Policy Archive"
+        title="Books & Query"
         text="Read archived books, download them as PDF, and browse “Know, Because you asked any more”."
         onPress={() => router.push('/(app)/policy/archive' as Href)}
       />

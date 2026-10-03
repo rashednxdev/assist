@@ -13,6 +13,7 @@ import { TextField } from '@/components/ui/TextField';
 import { Button } from '@/components/ui/Button';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
 import { ContactVerificationSection } from '@/components/users/ContactVerificationSection';
+import { TempPasswordSheet } from '@/components/users/TempPasswordSheet';
 import { useAuth } from '@/lib/auth-context';
 import {
   canManageUsers,
@@ -64,6 +65,7 @@ export default function UserDetailScreen() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
+  const [tempOpen, setTempOpen] = useState(false);
   const [notifyTitle, setNotifyTitle] = useState('');
   const [notifyMessage, setNotifyMessage] = useState('');
   const [notifying, setNotifying] = useState(false);
@@ -468,6 +470,20 @@ export default function UserDetailScreen() {
               onPress={() => void forceLogout()}
               disabled={saving}
             />
+            {detail.login_locked_until ? (
+              <Text style={styles.recoveryNote}>
+                Locked after wrong passwords until {new Date(detail.login_locked_until).toLocaleString('en-GB')}
+              </Text>
+            ) : null}
+            {detail.temp_password_expires_at ? (
+              <Text style={styles.recoveryNote}>
+                Waiting for a new password · temporary password{' '}
+                {new Date(detail.temp_password_expires_at).getTime() < Date.now()
+                  ? 'expired'
+                  : `works until ${new Date(detail.temp_password_expires_at).toLocaleString('en-GB')}`}
+              </Text>
+            ) : null}
+            <Button title="Set temporary password" variant="secondary" onPress={() => setTempOpen(true)} disabled={saving} />
             {id ? <ContactVerificationSection userId={id} /> : null}
           </View>
         ) : null}
@@ -603,6 +619,16 @@ export default function UserDetailScreen() {
           </View>
         ) : null}
       </ScrollView>
+      {tempOpen && id ? (
+        <TempPasswordSheet
+          user={{ ...detail, id }}
+          onClose={() => setTempOpen(false)}
+          onDone={() => {
+            setMessage('Temporary password set — account active, old sessions signed out');
+            void load();
+          }}
+        />
+      ) : null}
     </>
   );
 }
@@ -654,6 +680,7 @@ const styles = StyleSheet.create({
   },
   message: { fontSize: 13, color: '#059669', fontWeight: '600' },
   error: { fontSize: 13, color: colors.error },
+  recoveryNote: { fontSize: 12, color: colors.warning, lineHeight: 18 },
   accessRow: {
     borderWidth: 1,
     borderColor: colors.border,

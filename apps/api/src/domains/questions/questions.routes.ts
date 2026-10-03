@@ -12,7 +12,7 @@ import { requireModulePermission } from '../../middleware/requireModulePermissio
 import { asyncHandler } from '../../shared/asyncHandler.js';
 import { forbidden, unauthorized } from '../../shared/errors/AppError.js';
 import { hasModulePermission } from '../users/module-access.service.js';
-import { getExamSubjectScopeForAuthUser } from '../users/subject-access.service.js';
+import { getExamPrepScope } from '../exam-prep/exam-prep.service.js';
 import { isQuestionVisibleInQotd } from '../qotd/qotd.service.js';
 import {
   listQuestionTypesHandler,
@@ -118,7 +118,7 @@ const canReadQuestionDetail: RequestHandler = async (
     }
 
     if (qotdAllowed) {
-      const scope = await getExamSubjectScopeForAuthUser(req.user);
+      const scope = await getExamPrepScope(req.user, { paid: false });
       if (await isQuestionVisibleInQotd(String(req.params.id), false, scope)) {
         next();
         return;

@@ -17,6 +17,7 @@ import {
 import type { AuthRequest } from '../../middleware/auth.js';
 import * as papersService from './papers.service.js';
 import { getExamSubjectScopeForAuthUser } from '../users/subject-access.service.js';
+import { getExamPrepScope } from '../exam-prep/exam-prep.service.js';
 
 function isAdminUser(user: AuthRequest['user']): boolean {
   return !!user && (user.is_super_admin || user.user_type === 'system_admin' || user.user_type === 'admin');
@@ -45,12 +46,12 @@ export async function listPapersHandler(req: AuthRequest, res: Response): Promis
   const publishedOnly =
     !req.user ||
     !(req.user.is_super_admin || req.user.user_type === 'system_admin' || req.user.user_type === 'admin');
-  const subjectScope = await getExamSubjectScopeForAuthUser(req.user);
+  const subjectScope = await getExamPrepScope(req.user, { paid: true });
   res.json({ data: await papersService.listPapers(filters, { publishedOnly, subjectScope }) });
 }
 
 export async function getPaperHandler(req: AuthRequest, res: Response): Promise<void> {
-  const subjectScope = await getExamSubjectScopeForAuthUser(req.user);
+  const subjectScope = await getExamPrepScope(req.user, { paid: true });
   res.json({
     data: await papersService.getPaperById(String(req.params.id), req.user, subjectScope),
   });
@@ -100,12 +101,12 @@ export async function unpublishPaperExamWeekHandler(req: AuthRequest, res: Respo
 }
 
 export async function listExamWeeksHandler(req: AuthRequest, res: Response): Promise<void> {
-  const subjectScope = await getExamSubjectScopeForAuthUser(req.user);
+  const subjectScope = await getExamPrepScope(req.user, { paid: true });
   res.json({ data: await papersService.listExamWeeks(isAdminUser(req.user), subjectScope) });
 }
 
 export async function getExamWeekPapersHandler(req: AuthRequest, res: Response): Promise<void> {
-  const subjectScope = await getExamSubjectScopeForAuthUser(req.user);
+  const subjectScope = await getExamPrepScope(req.user, { paid: true });
   const data = await papersService.listExamWeekPapersInWeek(
     String(req.params.weekStart),
     isAdminUser(req.user),

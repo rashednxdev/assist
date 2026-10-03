@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Plus, Search, ChevronLeft, ChevronRight, Phone, MessageCircle } from 'lucide-react';
+import { Plus, Search, ChevronLeft, ChevronRight, Phone, MessageCircle, KeyRound } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { phoneTelHref, phoneWhatsAppHref } from '@/lib/contact';
 import { Button } from '@/components/ui/button';
@@ -110,12 +110,20 @@ export default function UsersPage() {
         title="Users"
         description="Manage system users, workflow roles, and module access."
         action={
-          <Button asChild>
-            <Link href="/admin/users/new">
-              <Plus className="h-4 w-4" />
-              Add user
-            </Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline">
+              <Link href="/admin/users/blocked">
+                <KeyRound className="h-4 w-4" />
+                Suspended accounts
+              </Link>
+            </Button>
+            <Button asChild>
+              <Link href="/admin/users/new">
+                <Plus className="h-4 w-4" />
+                Add user
+              </Link>
+            </Button>
+          </div>
         }
       />
 

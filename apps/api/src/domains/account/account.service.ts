@@ -22,6 +22,7 @@ import { Question } from '../questions/models/Question.model.js';
 import { ExamName } from '../exams/models/ExamName.model.js';
 import { PaperDetail } from '../papers/models/PaperDetail.model.js';
 import { hashPassword, signTokens } from '../auth/auth.service.js';
+import { clearTempPassword } from '../users/account-recovery.service.js';
 import { badRequest, notFound, unauthorized } from '../../shared/errors/AppError.js';
 import { logger } from '../../shared/logger.js';
 import { sendEmail } from '../../shared/mailer.js';
@@ -308,6 +309,10 @@ export async function changeMyPassword(userId: string, dto: ChangePasswordDto) {
 
   creds.password_hash = await hashPassword(dto.new_password);
   creds.password_changed_at = new Date();
+  if (creds.temp_password_set_at) {
+    clearTempPassword(creds);
+    creds.status = 'active';
+  }
   await creds.save();
   return { success: true };
 }
@@ -362,6 +367,7 @@ export async function resetPasswordWithOtp(dto: ResetPasswordDto) {
   creds.password_changed_at = new Date();
   creds.reset_otp_hash = undefined;
   creds.reset_otp_expires_at = undefined;
+  clearTempPassword(creds);
   creds.failed_attempts = 0;
   creds.status = 'active';
   creds.locked_until = undefined;

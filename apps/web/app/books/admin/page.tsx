@@ -255,7 +255,7 @@ export default function BooksAdminPage() {
         method: 'PATCH',
         body: JSON.stringify({ archive: !b.archive_book }),
       });
-      setMessage(b.archive_book ? 'Removed from Books & Policy Archive' : 'Added to Books & Policy Archive');
+      setMessage(b.archive_book ? 'Removed from Books & Query' : 'Added to Books & Query');
       await loadBooks();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update the archive');
@@ -660,7 +660,7 @@ export default function BooksAdminPage() {
                   checked={form.archive_book}
                   onChange={(e) => setForm({ ...form, archive_book: e.target.checked })}
                 />
-                Show in Policy Library → Books &amp; Policy Archive (content and PDF only, no questions)
+                Show in Policy Library → Books &amp; Query (content and PDF only, no questions)
               </label>
 
               <Button type="submit" disabled={busy || types.length === 0}>
@@ -713,7 +713,7 @@ export default function BooksAdminPage() {
                       size="sm"
                       variant={b.archive_book ? 'default' : 'outline'}
                       className="h-8 px-2"
-                      title={b.archive_book ? 'Remove from Books & Policy Archive' : 'Add to Books & Policy Archive'}
+                      title={b.archive_book ? 'Remove from Books & Query' : 'Add to Books & Query'}
                       disabled={publishBusyId === b.id || busy}
                       onClick={() => void toggleArchive(b)}
                     >

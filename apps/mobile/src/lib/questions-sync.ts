@@ -36,6 +36,20 @@ export function notifyQuestionsCacheChanged() {
   notify();
 }
 
+/**
+ * `baseKey` plus the selected exam part and purchased subjects, so switching part or buying resyncs.
+ * Offline, the last key for the same user is kept so the cache is not wiped.
+ */
+export async function questionSyncScopeKey(baseKey: string): Promise<string> {
+  try {
+    const res = await apiFetch<{ data: { scope_key: string } }>('/exam-prep/parts');
+    return `${baseKey}|${res.data.scope_key}`;
+  } catch {
+    const cached = getCachedSubjectScopeKey();
+    return cached && cached.startsWith(`${baseKey}|`) ? cached : baseKey;
+  }
+}
+
 let inFlight: Promise<void> | null = null;
 let syncGeneration = 0;
 

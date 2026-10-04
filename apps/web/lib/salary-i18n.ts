@@ -7,18 +7,24 @@ import {
   type Salary2026Result,
   type Salary2026StepRow,
 } from '@ibas/shared-types';
-import type { CalcLocale } from '@/lib/calc-i18n';
 import { toBanglaDigits } from '@/lib/bangla-format';
+
+export type SalaryLocale = 'en' | 'bn';
 
 /** Rich text as [text, bold] segments. */
 export type Segments = Array<[string, boolean]>;
 
 const salaryEn = {
   title: 'Salary On 2026',
-  heroKicker: 'NATIONAL PAY SCALE',
+  brandSub: 'Salary calculator',
+  shareBtn: 'Share',
+  linkCopied: 'Link copied — share it with anyone.',
+  heroKicker: 'National Pay Scale',
   heroTitle: 'Your Basic on Proposed National Pay scale-2026',
   heroBadge: 'Published calculation',
-  heroText: 'Three conversions shown in order: 01-07-2026, 01-01-2027, then 01-07-2027.',
+  heroIntro: 'Public calculator — no login required. Three conversions shown in order:',
+  then: 'then',
+  publishedNote: 'Based on the National Pay Scale 2026 conversion stages shown below.',
   rules: [
     [
       ['1. Stage-1 (01-07-2026): ', true],
@@ -41,7 +47,7 @@ const salaryEn = {
       ['01-07-2026 basic = next stage after matched Step 4; 01-07-2027 basic = next stage after that.', false],
     ],
   ] as Segments[],
-  startHere: 'START HERE',
+  startHere: 'Start here',
   currentPay: 'Your current pay (NPS 2015)',
   grade: 'Grade',
   fixedSuffix: ' (Fixed)',
@@ -49,9 +55,9 @@ const salaryEn = {
   minimum: ' (minimum)',
   last: ' (last)',
   fixedPay: 'Fixed pay',
-  nps2015: 'NPS 2015: ',
-  nps2026: 'NPS 2026: ',
-  confirmGross: 'CONFIRM FOR GROSS PAY',
+  nps2015: 'NPS 2015:',
+  nps2026: 'NPS 2026:',
+  confirmGross: 'Confirm for gross pay',
   allowancesWithBasic: 'Allowances with Basic (30 June 2026)',
   postType: 'Post type (Grades 2–10)',
   regular: 'Regular (default)',
@@ -76,20 +82,25 @@ const salaryEn = {
   grossNote:
     'Medical ৳ 1,500 is included for all. Tiffin ৳ 200 and Conveyance ৳ 300 apply for Grades 11–15 (or substantive Grade 11–15 when pay grade is 7–10). Grades 2–10 may add Current charge ৳ 1,500. Festival (2× basic / year), Pahela Baishakh (20%), and Rest & Recreation (1× basic every 3 years) are shown separately after calculation.',
   calculate: 'Calculate by ProAssist',
+  calculating: 'Calculating…',
   calcError: 'Could not calculate',
-  resultKicker: 'YOUR RESULT',
-  resultSummary: (grade: string, basic: string) => `Grade ${grade} · Basic on 30 June 2026: ${basic}`,
-  editInputs: 'Change inputs',
+  pdf: 'Give me a PDF',
+  pdfLoading: 'Opening print…',
+  rateBadge: (date: string, pct: string) => `${date} · ${pct}%`,
   totalAllowance: 'Total Allowance (01 June to 31-12-2027)',
   grossSub: (grade: string, housing: string) => `Fixed on Basic 30 June 2026 · Grade ${grade} · Housing: ${housing}`,
   govtHousing: 'Government accommodation',
   component: 'Component',
+  note: 'Note',
   amount: 'Amount (৳)',
   basicShown: 'Basic pay (30 June 2026) — shown, not summed',
   basicRef: 'Reference basic for allowances',
   annualHead: 'Annual / periodic benefit',
   stageTitle: (n: number, date: string) => `Stage-${n} · ${date}`,
   step5Rate: (pct: string) => `${pct}% Step 5`,
+  stepCol: 'Step',
+  descCol: 'Description',
+  calcCol: 'Calculation',
   oldBasic: 'Old basic (30-06-26)',
   matched: 'Matched 2026 stage',
   newBasic: (date: string) => `New basic (${date})`,
@@ -106,7 +117,7 @@ const salaryEn = {
   netPayable: 'Net payable',
   netFormula: 'Basic + Total Allowance − GPF',
   draft: 'This is a draft. Final calculation will be fixed by iBASS++.',
-  thanksKicker: 'WITH GRATITUDE',
+  thanksKicker: 'With gratitude',
   thanksTitle: 'Thank you, Government of Bangladesh',
   thanksText: [
     ['From ', false],
@@ -117,7 +128,8 @@ const salaryEn = {
     ],
   ] as Segments,
   thanksSign: '— All Government Employees',
-  share: 'Share the calculator link',
+  footerTagline: 'Rules, exams, and compliance assistant',
+  footerNote: 'Salary On 2026 · Free public tool · Share the link with anyone',
 
   arrTitle: 'Arrears on the 2026 pay fixation',
   arrSub: 'From July 2026 · Stage-1 basic for Jul–Dec 2026, Stage-2 basic from Jan 2027',
@@ -137,11 +149,13 @@ const salaryEn = {
   arrHraCalc: (aNext: string, next: string, pNext: string, aOld: string, old: string, pOld: string) =>
     `${aNext} (on ${next} at ${pNext}%) − ${aOld} (on ${old} at ${pOld}%)`,
   arrHraNone: 'Government accommodation — no house rent was paid',
+  arrColMonth: 'Month',
+  arrColNewBasic: 'New basic',
+  arrColOldBasic: 'Basic 30-06-26',
   arrColDiff: 'Difference',
   arrColSpecial: 'Special allowance',
   arrColHra: 'Excess house rent',
   arrColNet: 'Net arrears',
-  arrRowCalc: (newBasic: string, oldBasic: string) => `New basic ${newBasic} − ${oldBasic}`,
   arrTotalRow: (n: string, one: boolean) => `Total (${n} ${one ? 'month' : 'months'})`,
   arrTotalDue: 'Total arrears due',
   arrTotalFormula: (diff: string, ded: string) => `Difference ${diff} − deductions ${ded}`,
@@ -153,12 +167,19 @@ const salaryEn = {
   ],
 };
 
-const salaryBn: typeof salaryEn = {
+export type SalaryCopy = typeof salaryEn;
+
+const salaryBn: SalaryCopy = {
   title: 'বেতন ২০২৬',
+  brandSub: 'বেতন ক্যালকুলেটর',
+  shareBtn: 'শেয়ার',
+  linkCopied: 'লিংক কপি হয়েছে — যে কাউকে শেয়ার করুন।',
   heroKicker: 'জাতীয় বেতনস্কেল',
   heroTitle: 'প্রস্তাবিত জাতীয় বেতনস্কেল-২০২৬-এ আপনার মূল বেতন',
   heroBadge: 'প্রকাশিত হিসাব',
-  heroText: 'তিনটি রূপান্তর ক্রমানুসারে দেখানো হয়েছে: ০১-০৭-২০২৬, ০১-০১-২০২৭, এরপর ০১-০৭-২০২৭।',
+  heroIntro: 'উন্মুক্ত ক্যালকুলেটর — লগইন লাগবে না। তিনটি রূপান্তর ক্রমানুসারে দেখানো হয়েছে:',
+  then: 'এরপর',
+  publishedNote: 'নিচে দেখানো জাতীয় বেতনস্কেল ২০২৬-এর রূপান্তর পর্যায়ের ভিত্তিতে।',
   rules: [
     [
       ['১. পর্যায়-১ (০১-০৭-২০২৬): ', true],
@@ -189,8 +210,8 @@ const salaryBn: typeof salaryEn = {
   minimum: ' (সর্বনিম্ন)',
   last: ' (সর্বশেষ)',
   fixedPay: 'নির্ধারিত বেতন',
-  nps2015: 'বেতনস্কেল ২০১৫: ',
-  nps2026: 'বেতনস্কেল ২০২৬: ',
+  nps2015: 'বেতনস্কেল ২০১৫:',
+  nps2026: 'বেতনস্কেল ২০২৬:',
   confirmGross: 'মোট বেতনের জন্য নিশ্চিত করুন',
   allowancesWithBasic: 'মূল বেতনসহ ভাতাসমূহ (৩০ জুন ২০২৬)',
   postType: 'পদের ধরন (গ্রেড ২–১০)',
@@ -216,20 +237,25 @@ const salaryBn: typeof salaryEn = {
   grossNote:
     'চিকিৎসা ভাতা ৳ ১,৫০০ সবার জন্য অন্তর্ভুক্ত। টিফিন ৳ ২০০ ও যাতায়াত ৳ ৩০০ গ্রেড ১১–১৫-এর জন্য প্রযোজ্য (অথবা বেতন গ্রেড ৭–১০ হলে মূল গ্রেড ১১–১৫)। গ্রেড ২–১০-এ চলতি দায়িত্ব ভাতা ৳ ১,৫০০ যোগ হতে পারে। উৎসব ভাতা (বছরে ২× মূল বেতন), পহেলা বৈশাখ (২০%) এবং শ্রান্তি ও বিনোদন ভাতা (প্রতি ৩ বছরে ১× মূল বেতন) হিসাবের পর আলাদাভাবে দেখানো হয়।',
   calculate: 'ProAssist দিয়ে হিসাব করুন',
+  calculating: 'হিসাব করা হচ্ছে…',
   calcError: 'হিসাব করা যায়নি',
-  resultKicker: 'আপনার ফলাফল',
-  resultSummary: (grade, basic) => `গ্রেড ${grade} · ৩০ জুন ২০২৬-এ মূল বেতন: ${basic}`,
-  editInputs: 'তথ্য পরিবর্তন করুন',
+  pdf: 'পিডিএফ নিন',
+  pdfLoading: 'প্রিন্ট খোলা হচ্ছে…',
+  rateBadge: (date, pct) => `${date} · ${pct}%`,
   totalAllowance: 'মোট ভাতা (০১ জুন থেকে ৩১-১২-২০২৭)',
   grossSub: (grade, housing) => `৩০ জুন ২০২৬-এর মূল বেতনের ভিত্তিতে নির্ধারিত · গ্রেড ${grade} · আবাসন: ${housing}`,
   govtHousing: 'সরকারি বাসা',
   component: 'উপাদান',
+  note: 'মন্তব্য',
   amount: 'পরিমাণ (৳)',
   basicShown: 'মূল বেতন (৩০ জুন ২০২৬) — দেখানো হয়েছে, যোগ করা হয়নি',
   basicRef: 'ভাতা হিসাবের ভিত্তি মূল বেতন',
   annualHead: 'বার্ষিক / পর্যায়ক্রমিক সুবিধা',
   stageTitle: (n, date) => `পর্যায়-${toBanglaDigits(n)} · ${date}`,
   step5Rate: (pct) => `স্টেপ ৫: ${pct}%`,
+  stepCol: 'স্টেপ',
+  descCol: 'বিবরণ',
+  calcCol: 'হিসাব',
   oldBasic: 'পুরাতন মূল বেতন (৩০-০৬-২৬)',
   matched: 'মিলে যাওয়া ২০২৬ ধাপ',
   newBasic: (date) => `নতুন মূল বেতন (${date})`,
@@ -256,7 +282,8 @@ const salaryBn: typeof salaryEn = {
     ],
   ],
   thanksSign: '— সকল সরকারি কর্মচারী',
-  share: 'ক্যালকুলেটরের লিংক শেয়ার করুন',
+  footerTagline: 'বিধি, পরীক্ষা ও কমপ্লায়েন্স সহকারী',
+  footerNote: 'বেতন ২০২৬ · বিনামূল্যের উন্মুক্ত টুল · যে কাউকে লিংক শেয়ার করুন',
 
   arrTitle: '২০২৬ বেতন নির্ধারণে বকেয়া',
   arrSub: 'জুলাই ২০২৬ থেকে · জুলাই–ডিসেম্বর ২০২৬-এ পর্যায়-১-এর মূল বেতন, জানুয়ারি ২০২৭ থেকে পর্যায়-২-এর মূল বেতন',
@@ -275,11 +302,13 @@ const salaryBn: typeof salaryEn = {
   arrHraCalc: (aNext, next, pNext, aOld, old, pOld) =>
     `${aNext} (${next}-এর ${pNext}%) − ${aOld} (${old}-এর ${pOld}%)`,
   arrHraNone: 'সরকারি বাসা — বাড়ি ভাড়া প্রদান করা হয়নি',
+  arrColMonth: 'মাস',
+  arrColNewBasic: 'নতুন মূল বেতন',
+  arrColOldBasic: 'মূল বেতন ৩০-০৬-২৬',
   arrColDiff: 'পার্থক্য',
   arrColSpecial: 'বিশেষ ভাতা',
   arrColHra: 'অতিরিক্ত বাড়ি ভাড়া',
   arrColNet: 'নিট বকেয়া',
-  arrRowCalc: (newBasic, oldBasic) => `নতুন মূল বেতন ${newBasic} − ${oldBasic}`,
   arrTotalRow: (n) => `মোট (${n} মাস)`,
   arrTotalDue: 'মোট প্রাপ্য বকেয়া',
   arrTotalFormula: (diff, ded) => `পার্থক্য ${diff} − কর্তন ${ded}`,
@@ -291,22 +320,20 @@ const salaryBn: typeof salaryEn = {
   ],
 };
 
-export type SalaryCopy = typeof salaryEn;
-
-export function salaryCopy(locale: CalcLocale): SalaryCopy {
+export function salaryCopy(locale: SalaryLocale): SalaryCopy {
   return locale === 'bn' ? salaryBn : salaryEn;
 }
 
-export function localNum(locale: CalcLocale, value: string | number): string {
+export function localNum(locale: SalaryLocale, value: string | number): string {
   return locale === 'bn' ? toBanglaDigits(value) : String(value);
 }
 
-export function localTaka(locale: CalcLocale, amount: number): string {
+export function localTaka(locale: SalaryLocale, amount: number): string {
   return `৳ ${localNum(locale, formatTaka(amount))}`;
 }
 
 /** "YYYY-MM" → "July 2026" / "জুলাই ২০২৬". */
-export function monthText(locale: CalcLocale, key: string): string {
+export function monthText(locale: SalaryLocale, key: string): string {
   const [y, m] = key.split('-');
   const name = salaryCopy(locale).months[Number(m) - 1];
   return name ? `${name} ${localNum(locale, y ?? '')}` : key;
@@ -320,11 +347,11 @@ const HRA_AREA_BN: Record<HraArea, string> = {
 
 export const HRA_AREAS: HraArea[] = ['dhaka', 'major_city', 'other'];
 
-export function hraAreaText(locale: CalcLocale, area: HraArea): string {
+export function hraAreaText(locale: SalaryLocale, area: HraArea): string {
   return locale === 'bn' ? HRA_AREA_BN[area] : hraAreaLabel(area);
 }
 
-export function housingText(locale: CalcLocale, gross: EmployeeGrossResult): string {
+export function housingText(locale: SalaryLocale, gross: EmployeeGrossResult): string {
   return gross.housing_status === 'govt_accommodation'
     ? salaryCopy(locale).govtHousing
     : hraAreaText(locale, gross.hra_area);
@@ -341,7 +368,7 @@ function rateNoteBn(grade: number, pct: number): string {
 }
 
 /** Bangla wording for a calculator step; English rows are returned unchanged. */
-export function stepText(locale: CalcLocale, result: Salary2026Result, row: Salary2026StepRow): LineText {
+export function stepText(locale: SalaryLocale, result: Salary2026Result, row: Salary2026StepRow): LineText {
   if (locale !== 'bn') return row;
   const bn = (v: string | number) => toBanglaDigits(v);
   const date = bn(result.phase_label);
@@ -396,7 +423,7 @@ export function stepText(locale: CalcLocale, result: Salary2026Result, row: Sala
 }
 
 /** Bangla wording for an allowance / benefit line; English rows are returned unchanged. */
-export function allowanceText(locale: CalcLocale, row: AllowanceLine, gross: EmployeeGrossResult): LineText {
+export function allowanceText(locale: SalaryLocale, row: AllowanceLine, gross: EmployeeGrossResult): LineText {
   if (locale !== 'bn') return row;
   const bn = (v: string | number) => toBanglaDigits(v);
   const eligibleGrade = row.note?.match(/Grade (\d+)/)?.[1];

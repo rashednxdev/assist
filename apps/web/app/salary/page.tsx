@@ -10,7 +10,6 @@ import {
   calculateSalary2026AllPhases,
   calculateEmployeeGross,
   formatTaka,
-  hraAreaLabel,
   isFixedPayGrade,
   salaryConversionRate,
   type EducationChildren,
@@ -28,6 +27,20 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { SalaryArrearsCard } from '@/components/salary/salary-arrears-card';
+import {
+  HRA_AREAS,
+  allowanceText,
+  housingText,
+  hraAreaText,
+  localNum,
+  localTaka,
+  salaryCopy,
+  stepText,
+  type SalaryCopy,
+  type SalaryLocale,
+  type Segments,
+} from '@/lib/salary-i18n';
 
 /** Accept ASCII + Bangla digits from any keyboard; strip other characters. */
 function parseAmountInput(raw: string): number {
@@ -53,25 +66,56 @@ function parseAmountInput(raw: string): number {
   return Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
 }
 
-const STAGE_HEADER: Record<
-  Salary2026Result['phase'],
-  { bar: string; title: string }
-> = {
-  '2026-07-01': { bar: 'bg-emerald-600', title: 'Stage-1 · 01-07-2026' },
-  '2027-01-01': { bar: 'bg-amber-600', title: 'Stage-2 · 01-01-2027' },
-  '2027-07-01': { bar: 'bg-violet-600', title: 'Stage-3 · 01-07-2027' },
+interface Ctx {
+  t: SalaryCopy;
+  locale: SalaryLocale;
+}
+
+const STAGE_HEADER: Record<Salary2026Result['phase'], { bar: string; n: number }> = {
+  '2026-07-01': { bar: 'bg-emerald-600', n: 1 },
+  '2027-01-01': { bar: 'bg-amber-600', n: 2 },
+  '2027-07-01': { bar: 'bg-violet-600', n: 3 },
 };
 
-function StageHeader({ result }: { result: Salary2026Result }) {
-  const { bar, title } = STAGE_HEADER[result.phase];
+function RichText({ segments }: { segments: Segments }) {
+  return (
+    <>
+      {segments.map(([text, bold], i) => (bold ? <strong key={i}>{text}</strong> : <span key={i}>{text}</span>))}
+    </>
+  );
+}
+
+function SalaryLocaleToggle({ value, onChange }: { value: SalaryLocale; onChange: (v: SalaryLocale) => void }) {
+  return (
+    <div className="inline-flex items-center rounded-lg border border-white/30 bg-white/5 p-0.5 text-sm print:hidden" role="group" aria-label="Language">
+      {(['en', 'bn'] as const).map((loc) => (
+        <button
+          key={loc}
+          type="button"
+          onClick={() => onChange(loc)}
+          aria-pressed={value === loc}
+          className={`rounded-md px-2.5 py-1 font-medium transition-colors ${
+            value === loc ? 'bg-white text-[#0b3d2e]' : 'text-white/80 hover:text-white'
+          }`}
+        >
+          {loc === 'en' ? 'EN' : 'বাং'}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function StageHeader({ ctx, result }: { ctx: Ctx; result: Salary2026Result }) {
+  const { t, locale } = ctx;
+  const { bar, n } = STAGE_HEADER[result.phase];
   return (
     <div className={`${bar} salary-print-stage-header px-4 py-2.5 text-white sm:px-5`}>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-bold">{title}</span>
+        <span className="text-sm font-bold">{t.stageTitle(n, localNum(locale, result.phase_label))}</span>
         {result.phase !== '2027-07-01' ? (
           <>
             <span className="text-white/50">|</span>
-            <span className="text-sm text-white/90">{result.rate_percent}% Step 5</span>
+            <span className="text-sm text-white/90">{t.step5Rate(localNum(locale, result.rate_percent))}</span>
           </>
         ) : null}
       </div>
@@ -104,14 +148,18 @@ function ResultStat({
 
 /** Stage summary only — fixed allowances from 30 June 2026 (same every stage). */
 function StageTotalAllowanceSummary({
+  ctx,
   stageBasic,
   fixedAllowancesTotal,
   gpfDeduction,
 }: {
+  ctx: Ctx;
   stageBasic: number;
   fixedAllowancesTotal: number;
   gpfDeduction: number;
 }) {
+  const { t, locale } = ctx;
+  const tk = (n: number) => localTaka(locale, n);
   const gpf = Number.isFinite(gpfDeduction) && gpfDeduction > 0 ? Math.round(gpfDeduction) : 0;
   const basicPlusAllowances = stageBasic + fixedAllowancesTotal;
   const netPayable = basicPlusAllowances - gpf;
@@ -120,51 +168,33 @@ function StageTotalAllowanceSummary({
     <div className="rounded-xl border border-teal-200 bg-teal-50/50 p-3 sm:p-4">
       <div className="grid gap-2 sm:grid-cols-2">
         <div className="rounded-lg border border-border bg-white px-3 py-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Basic</p>
-          <p className="mt-0.5 font-mono text-lg font-bold text-slate-900">
-            ৳ {formatTaka(stageBasic)}
-          </p>
-          <p className="text-[11px] text-muted">This stage — not included in Total Allowance</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">{t.basic}</p>
+          <p className="mt-0.5 font-mono text-lg font-bold text-slate-900">{tk(stageBasic)}</p>
+          <p className="text-[11px] text-muted">{t.basicNote}</p>
         </div>
         <div className="rounded-lg border border-teal-300 bg-teal-100/80 px-3 py-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-teal-900">
-            Total Allowance (01 June to 31-12-2027)
-          </p>
-          <p className="mt-0.5 font-mono text-lg font-bold text-teal-950">
-            ৳ {formatTaka(fixedAllowancesTotal)}
-          </p>
-          <p className="text-[11px] text-teal-800/80">Fixed on Basic 30 June 2026</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-teal-900">{t.totalAllowance}</p>
+          <p className="mt-0.5 font-mono text-lg font-bold text-teal-950">{tk(fixedAllowancesTotal)}</p>
+          <p className="text-[11px] text-teal-800/80">{t.fixedOnBasic}</p>
         </div>
       </div>
       <div className="mt-2 rounded-lg border border-emerald-300 bg-emerald-100/80 px-3 py-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-900">
-          Basic + Total Allowance
-        </p>
-        <p className="mt-0.5 font-mono text-lg font-bold text-emerald-950">
-          ৳ {formatTaka(basicPlusAllowances)}
-        </p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-900">{t.basicPlusAllowance}</p>
+        <p className="mt-0.5 font-mono text-lg font-bold text-emerald-950">{tk(basicPlusAllowances)}</p>
         <p className="text-[11px] text-emerald-800/80">
-          ৳ {formatTaka(stageBasic)} + ৳ {formatTaka(fixedAllowancesTotal)}
+          {tk(stageBasic)} + {tk(fixedAllowancesTotal)}
         </p>
       </div>
       {gpf > 0 ? (
         <div className="mt-2 grid gap-2 sm:grid-cols-2">
           <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-rose-800">
-              GPF deduction
-            </p>
-            <p className="mt-0.5 font-mono text-lg font-bold text-rose-900">
-              − ৳ {formatTaka(gpf)}
-            </p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-rose-800">{t.gpfDeduction}</p>
+            <p className="mt-0.5 font-mono text-lg font-bold text-rose-900">− {tk(gpf)}</p>
           </div>
           <div className="rounded-lg border border-slate-300 bg-slate-100 px-3 py-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-              Net payable
-            </p>
-            <p className="mt-0.5 font-mono text-lg font-bold text-slate-900">
-              ৳ {formatTaka(netPayable)}
-            </p>
-            <p className="text-[11px] text-muted">Basic + Total Allowance − GPF</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">{t.netPayable}</p>
+            <p className="mt-0.5 font-mono text-lg font-bold text-slate-900">{tk(netPayable)}</p>
+            <p className="text-[11px] text-muted">{t.netFormula}</p>
           </div>
         </div>
       ) : null}
@@ -173,16 +203,21 @@ function StageTotalAllowanceSummary({
 }
 
 function PhaseResultCard({
+  ctx,
   result,
   stageClass,
   fixedAllowancesTotal,
   gpfDeduction,
 }: {
+  ctx: Ctx;
   result: Salary2026Result;
   stageClass?: string;
   fixedAllowancesTotal: number;
   gpfDeduction: number;
 }) {
+  const { t, locale } = ctx;
+  const tk = (n: number) => localTaka(locale, n);
+
   if (result.phase === '2027-07-01') {
     const basic2026 = result.basic_on_2026_07 ?? result.matched_new_stage ?? result.new_pay;
     const basic2027 = result.basic_on_2027_07 ?? result.new_pay;
@@ -193,14 +228,12 @@ function PhaseResultCard({
       <Card
         className={`salary-print-stage overflow-hidden border border-border shadow-sm${stageClass ? ` ${stageClass}` : ''}`}
       >
-        <StageHeader result={result} />
+        <StageHeader ctx={ctx} result={result} />
         <CardContent className="space-y-4 p-4 sm:p-5">
           <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
             <div className="rounded-lg border border-border bg-slate-50 salary-print-stage3-box p-3">
-              <p className="text-xs text-muted">01-07-2026 basic</p>
-              <p className="mt-1 font-mono text-lg font-bold text-slate-900">
-                ৳ {formatTaka(basic2026)}
-              </p>
+              <p className="text-xs text-muted">{t.basic2026}</p>
+              <p className="mt-1 font-mono text-lg font-bold text-slate-900">{tk(basic2026)}</p>
             </div>
             <ArrowRight className="salary-print-hide mx-auto h-5 w-5 text-violet-500" aria-hidden />
             <div
@@ -208,17 +241,16 @@ function PhaseResultCard({
                 moved ? 'border-violet-200 bg-violet-50' : 'border-amber-200 bg-amber-50'
               }`}
             >
-              <p className="text-xs text-muted">01-07-2027 basic</p>
-              <p className="mt-1 font-mono text-lg font-bold text-slate-900">
-                ৳ {formatTaka(basic2027)}
-              </p>
+              <p className="text-xs text-muted">{t.basic2027}</p>
+              <p className="mt-1 font-mono text-lg font-bold text-slate-900">{tk(basic2027)}</p>
               <p className="mt-1 text-xs font-medium text-muted">
-                {moved ? `+ ৳ ${formatTaka(delta)} (next stage)` : 'Last stage — no change'}
+                {moved ? t.nextStage(tk(delta)) : t.lastStage}
               </p>
             </div>
           </div>
 
           <StageTotalAllowanceSummary
+            ctx={ctx}
             stageBasic={basic2027}
             fixedAllowancesTotal={fixedAllowancesTotal}
             gpfDeduction={gpfDeduction}
@@ -232,19 +264,17 @@ function PhaseResultCard({
     <Card
       className={`salary-print-stage overflow-hidden border border-border shadow-sm${stageClass ? ` ${stageClass}` : ''}`}
     >
-      <StageHeader result={result} />
+      <StageHeader ctx={ctx} result={result} />
       <CardContent className="space-y-4 p-4 sm:p-5">
         <div className="grid gap-3 sm:grid-cols-3">
-          <ResultStat label="Old basic (30-06-26)" value={`৳ ${formatTaka(result.old_pay)}`} />
+          <ResultStat label={t.oldBasic} value={tk(result.old_pay)} />
           <ResultStat
-            label="Matched 2026 stage"
-            value={
-              result.matched_new_stage != null ? `৳ ${formatTaka(result.matched_new_stage)}` : '—'
-            }
+            label={t.matched}
+            value={result.matched_new_stage != null ? tk(result.matched_new_stage) : '—'}
           />
           <ResultStat
-            label={`New basic (${result.phase_label})`}
-            value={`৳ ${formatTaka(result.new_pay)}`}
+            label={t.newBasic(localNum(locale, result.phase_label))}
+            value={tk(result.new_pay)}
             emphasize
           />
         </div>
@@ -253,98 +283,94 @@ function PhaseResultCard({
           <table className="w-full min-w-[640px] text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-muted">
               <tr>
-                <th className="px-3 py-2 font-semibold">Step</th>
-                <th className="px-3 py-2 font-semibold">Description</th>
-                <th className="px-3 py-2 font-semibold">Calculation</th>
-                <th className="px-3 py-2 text-right font-semibold">Amount (৳)</th>
+                <th className="px-3 py-2 font-semibold">{t.stepCol}</th>
+                <th className="px-3 py-2 font-semibold">{t.descCol}</th>
+                <th className="px-3 py-2 font-semibold">{t.calcCol}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t.amount}</th>
               </tr>
             </thead>
             <tbody>
-              {result.steps.map((row) => (
-                <tr key={`${result.phase}-${row.step}-${row.label}`} className="border-t border-border">
-                  <td className="px-3 py-2 font-semibold text-slate-700">{row.step}</td>
-                  <td className="px-3 py-2">
-                    <div>{row.label}</div>
-                    {row.note ? <div className="text-xs text-muted">{row.note}</div> : null}
-                  </td>
-                  <td className="px-3 py-2 font-mono text-xs text-slate-600">
-                    {row.calculation?.trim() ? row.calculation : '—'}
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono font-semibold">
-                    {formatTaka(row.value)}
-                  </td>
-                </tr>
-              ))}
+              {result.steps.map((row) => {
+                const text = stepText(locale, result, row);
+                return (
+                  <tr key={`${result.phase}-${row.step}-${row.label}`} className="border-t border-border">
+                    <td className="px-3 py-2 font-semibold text-slate-700">{localNum(locale, row.step)}</td>
+                    <td className="px-3 py-2">
+                      <div>{text.label}</div>
+                      {text.note ? <div className="text-xs text-muted">{text.note}</div> : null}
+                    </td>
+                    <td className="px-3 py-2 font-mono text-xs text-slate-600">
+                      {text.calculation?.trim() ? text.calculation : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold">
+                      {localNum(locale, formatTaka(row.value))}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
 
         <StageTotalAllowanceSummary
+          ctx={ctx}
           stageBasic={result.new_pay}
           fixedAllowancesTotal={fixedAllowancesTotal}
           gpfDeduction={gpfDeduction}
         />
 
         {result.increment_skipped && !result.fixed ? (
-          <p className="text-xs text-amber-800">
-            Matched stage is the last stage on the 2026 scale — Step 6 = 0 (no next stage).
-          </p>
+          <p className="text-xs text-amber-800">{t.lastStageWarn}</p>
         ) : null}
       </CardContent>
     </Card>
   );
 }
 
-function GrossResultCard({ gross }: { gross: EmployeeGrossResult }) {
+function GrossResultCard({ ctx, gross }: { ctx: Ctx; gross: EmployeeGrossResult }) {
+  const { t, locale } = ctx;
+  const num = (v: string | number) => localNum(locale, v);
   const allowanceLines = gross.monthly_lines.filter((row) => row.code !== 'basic');
   const allowanceOnlyTotal = allowanceLines.reduce((sum, row) => sum + row.amount, 0);
 
   return (
     <Card className="salary-print-avoid-break overflow-hidden border border-teal-200 shadow-sm">
       <div className="bg-teal-700 px-4 py-2.5 text-white sm:px-5">
-        <div className="text-sm font-bold">Total Allowance (01 June to 31-12-2027)</div>
-        <p className="mt-0.5 text-xs text-teal-100/90">
-          Fixed on Basic 30 June 2026 · Grade {gross.grade} · Housing:{' '}
-          {gross.housing_status === 'govt_accommodation'
-            ? 'Government accommodation'
-            : hraAreaLabel(gross.hra_area)}
-        </p>
+        <div className="text-sm font-bold">{t.totalAllowance}</div>
+        <p className="mt-0.5 text-xs text-teal-100/90">{t.grossSub(num(gross.grade), housingText(locale, gross))}</p>
       </div>
       <CardContent className="space-y-4 p-4 sm:p-5">
         <div className="overflow-x-auto rounded-xl border border-border">
           <table className="w-full min-w-[480px] text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-muted">
               <tr>
-                <th className="px-3 py-2 font-semibold">Component</th>
-                <th className="px-3 py-2 font-semibold">Note</th>
-                <th className="px-3 py-2 text-right font-semibold">Amount (৳)</th>
+                <th className="px-3 py-2 font-semibold">{t.component}</th>
+                <th className="px-3 py-2 font-semibold">{t.note}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t.amount}</th>
               </tr>
             </thead>
             <tbody>
               <tr className="border-t border-border bg-slate-50/80">
-                <td className="px-3 py-2 font-medium text-slate-800">
-                  Basic pay (30 June 2026) — shown, not summed
-                </td>
-                <td className="px-3 py-2 text-xs text-muted">Reference basic for allowances</td>
-                <td className="px-3 py-2 text-right font-mono font-semibold">
-                  {formatTaka(gross.basic)}
-                </td>
+                <td className="px-3 py-2 font-medium text-slate-800">{t.basicShown}</td>
+                <td className="px-3 py-2 text-xs text-muted">{t.basicRef}</td>
+                <td className="px-3 py-2 text-right font-mono font-semibold">{num(formatTaka(gross.basic))}</td>
               </tr>
-              {allowanceLines.map((row) => (
-                <tr key={row.code} className="border-t border-border">
-                  <td className="px-3 py-2 font-medium text-slate-800">{row.label}</td>
-                  <td className="px-3 py-2 text-xs text-muted">{row.note ?? '—'}</td>
-                  <td className="px-3 py-2 text-right font-mono font-semibold">
-                    {formatTaka(row.amount)}
-                  </td>
-                </tr>
-              ))}
+              {allowanceLines.map((row) => {
+                const text = allowanceText(locale, row, gross);
+                return (
+                  <tr key={row.code} className="border-t border-border">
+                    <td className="px-3 py-2 font-medium text-slate-800">{text.label}</td>
+                    <td className="px-3 py-2 text-xs text-muted">{text.note ?? '—'}</td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold">{num(formatTaka(row.amount))}</td>
+                  </tr>
+                );
+              })}
               <tr className="border-t-2 border-teal-200 bg-teal-50">
                 <td className="px-3 py-2.5 font-bold text-teal-950" colSpan={2}>
-                  Total Allowance (01 June to 31-12-2027)
+                  {t.totalAllowance}
                 </td>
                 <td className="px-3 py-2.5 text-right font-mono text-lg font-bold text-teal-900">
-                  {formatTaka(allowanceOnlyTotal)}
+                  {num(formatTaka(allowanceOnlyTotal))}
                 </td>
               </tr>
             </tbody>
@@ -355,21 +381,22 @@ function GrossResultCard({ gross }: { gross: EmployeeGrossResult }) {
           <table className="w-full min-w-[480px] text-sm">
             <thead className="bg-amber-50 text-left text-xs uppercase tracking-wide text-muted">
               <tr>
-                <th className="px-3 py-2 font-semibold">Annual / periodic benefit</th>
-                <th className="px-3 py-2 font-semibold">Note</th>
-                <th className="px-3 py-2 text-right font-semibold">Amount (৳)</th>
+                <th className="px-3 py-2 font-semibold">{t.annualHead}</th>
+                <th className="px-3 py-2 font-semibold">{t.note}</th>
+                <th className="px-3 py-2 text-right font-semibold">{t.amount}</th>
               </tr>
             </thead>
             <tbody>
-              {gross.annual_lines.map((row) => (
-                <tr key={row.code} className="border-t border-border">
-                  <td className="px-3 py-2 font-medium text-slate-800">{row.label}</td>
-                  <td className="px-3 py-2 text-xs text-muted">{row.note ?? '—'}</td>
-                  <td className="px-3 py-2 text-right font-mono font-semibold">
-                    {formatTaka(row.amount)}
-                  </td>
-                </tr>
-              ))}
+              {gross.annual_lines.map((row) => {
+                const text = allowanceText(locale, row, gross);
+                return (
+                  <tr key={row.code} className="border-t border-border">
+                    <td className="px-3 py-2 font-medium text-slate-800">{text.label}</td>
+                    <td className="px-3 py-2 text-xs text-muted">{text.note ?? '—'}</td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold">{num(formatTaka(row.amount))}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -379,6 +406,7 @@ function GrossResultCard({ gross }: { gross: EmployeeGrossResult }) {
 }
 
 export default function SalaryOn2026Page() {
+  const [locale, setLocale] = useState<SalaryLocale>('bn');
   const [grade, setGrade] = useState<PayGrade>(5);
   const [oldPay, setOldPay] = useState<number>(NPS_2015[5][5]!);
   const [housingStatus, setHousingStatus] = useState<HousingStatus>('hra_eligible');
@@ -395,6 +423,11 @@ export default function SalaryOn2026Page() {
   const [calculating, setCalculating] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
 
+  const t = salaryCopy(locale);
+  const ctx: Ctx = { t, locale };
+  const num = (v: string | number) => localNum(locale, v);
+  const tk = (n: number) => localTaka(locale, n);
+
   const oldStages = NPS_2015[grade];
   const newStages = NPS_2026[grade];
   const fixed = isFixedPayGrade(grade);
@@ -402,24 +435,15 @@ export default function SalaryOn2026Page() {
   const ratePct2027 = Math.round(salaryConversionRate(grade, '2027-01-01') * 100);
   const gpfDeduction = useMemo(() => parseAmountInput(gpfDeductionInput), [gpfDeductionInput]);
 
-  const scalePreview = useMemo(
-    () => ({
-      old: oldStages.join('–'),
-      neu: newStages.join('–'),
-    }),
-    [oldStages, newStages],
-  );
+  const scalePreview = {
+    old: num(oldStages.join('–')),
+    neu: num(newStages.join('–')),
+  };
 
-  const oldPayLabel = useMemo(() => {
-    const idx = oldStages.indexOf(oldPay);
-    const suffix =
-      idx === 0
-        ? ' (minimum)'
-        : idx === oldStages.length - 1 && oldStages.length > 1
-          ? ' (last)'
-          : '';
-    return `৳ ${formatTaka(oldPay)}${suffix}`;
-  }, [oldPay, oldStages]);
+  const stageSuffix = (i: number, len: number) =>
+    i === 0 ? t.minimum : i === len - 1 && len > 1 ? t.last : '';
+
+  const oldPayLabel = `${tk(oldPay)}${stageSuffix(oldStages.indexOf(oldPay), oldStages.length)}`;
 
   function onGradeChange(next: PayGrade) {
     setGrade(next);
@@ -429,6 +453,11 @@ export default function SalaryOn2026Page() {
     setResults(null);
     setGross(null);
     setError('');
+  }
+
+  function resetResults() {
+    setGross(null);
+    setResults(null);
   }
 
   function buildGross() {
@@ -463,7 +492,7 @@ export default function SalaryOn2026Page() {
         body: JSON.stringify({ grade, old_pay: oldPay }),
       }).catch(() => {});
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not calculate');
+      setError(err instanceof Error ? err.message : t.calcError);
     } finally {
       setCalculating(false);
     }
@@ -514,14 +543,14 @@ export default function SalaryOn2026Page() {
     try {
       if (navigator.share) {
         await navigator.share({
-          title: 'Salary On 2026 — ProAssist',
-          text: 'Your Basic on Proposed National Pay scale-2026',
+          title: `${t.title} — ProAssist`,
+          text: t.heroTitle,
           url,
         });
         return;
       }
       await navigator.clipboard.writeText(url);
-      setShareNote('Link copied — share it with anyone.');
+      setShareNote(t.linkCopied);
       setTimeout(() => setShareNote(''), 2500);
     } catch {
       setShareNote('');
@@ -529,7 +558,7 @@ export default function SalaryOn2026Page() {
   }
 
   return (
-    <div className="salary-print-root flex min-h-screen flex-col bg-[#f4f7f5] text-slate-900">
+    <div lang={locale} className="salary-print-root flex min-h-screen flex-col bg-[#f4f7f5] text-slate-900">
       <div className="salary-print-watermark" aria-hidden>
         <span>ProAssist. Developed by Rashed. Office of the Controller General of Accounts.</span>
         <span>ProAssist. Developed by Rashed. Office of the Controller General of Accounts.</span>
@@ -540,42 +569,43 @@ export default function SalaryOn2026Page() {
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <Link href="/salary" className="min-w-0">
             <div className="text-sm font-bold tracking-wide">ProAssist</div>
-            <div className="text-[11px] text-emerald-100/80">Salary calculator</div>
+            <div className="text-[11px] text-emerald-100/80">{t.brandSub}</div>
           </Link>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => void handleShare()}
-            className="gap-1.5 border-white/30 bg-white/5 text-white hover:bg-white/15 hover:text-white print:hidden"
-          >
-            <Share2 className="h-3.5 w-3.5" />
-            Share
-          </Button>
+          <div className="flex items-center gap-2">
+            <SalaryLocaleToggle value={locale} onChange={setLocale} />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void handleShare()}
+              className="gap-1.5 border-white/30 bg-white/5 text-white hover:bg-white/15 hover:text-white print:hidden"
+            >
+              <Share2 className="h-3.5 w-3.5" />
+              {t.shareBtn}
+            </Button>
+          </div>
         </div>
       </header>
 
       <div className="salary-print-hero border-b border-emerald-200 bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-600">
         <div className="mx-auto max-w-5xl px-4 py-8 text-center sm:px-6 sm:py-10">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-100/90">
-            National Pay Scale
-          </p>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-100/90">{t.heroKicker}</p>
           <h1 className="mt-2 text-balance text-2xl font-extrabold leading-snug text-white sm:text-3xl">
-            Your Basic on Proposed National Pay scale-2026
+            {t.heroTitle}
           </h1>
           <p className="mx-auto mt-4 inline-block rounded-full bg-emerald-200 px-4 py-1.5 text-sm font-extrabold text-emerald-950 shadow-sm ring-2 ring-emerald-100/80">
-            Published calculation
+            {t.heroBadge}
           </p>
           <p className="salary-print-hide mx-auto mt-3 max-w-2xl text-sm text-emerald-50/90 sm:text-base">
-            Public calculator — no login required. Three conversions shown in order:
+            {t.heroIntro}
           </p>
           <p className="mx-auto mt-1 max-w-2xl text-sm font-semibold text-emerald-50 sm:text-base">
-            <span className="whitespace-nowrap">01-07-2026</span>
+            <span className="whitespace-nowrap">{num('01-07-2026')}</span>
             {', '}
-            <span className="whitespace-nowrap">01-01-2027</span>
-            {', then '}
-            <span className="whitespace-nowrap">01-07-2027</span>
-            {'.'}
+            <span className="whitespace-nowrap">{num('01-01-2027')}</span>
+            {`, ${t.then} `}
+            <span className="whitespace-nowrap">{num('01-07-2027')}</span>
+            {locale === 'bn' ? '।' : '.'}
           </p>
           {shareNote ? <p className="mt-2 text-xs text-emerald-100 print:hidden">{shareNote}</p> : null}
         </div>
@@ -585,40 +615,32 @@ export default function SalaryOn2026Page() {
         <Alert className="salary-print-hide border-emerald-200 bg-emerald-50 text-emerald-950 shadow-sm">
           <p className="text-sm leading-relaxed">
             <span className="rounded bg-emerald-200 px-1.5 py-0.5 font-extrabold text-emerald-950">
-              Published calculation
+              {t.heroBadge}
             </span>{' '}
-            Based on the National Pay Scale 2026 conversion stages shown below.
+            {t.publishedNote}
           </p>
         </Alert>
 
         <Alert className="salary-print-rules border-emerald-200 bg-white text-emerald-950 shadow-sm">
-          <ol className="list-decimal space-y-1.5 pl-4 text-sm leading-relaxed">
-            <li>
-              <strong>Stage-1 (01-07-2026):</strong> Step 5 = (Step 4 − old pay) ×{' '}
-              <strong>40%</strong> (grades 1–9) / <strong>50%</strong> (grades 10–20); Step 6 = next
-              stage − Step 4; Step 7 = old pay + Step 5 + Step 6.
-            </li>
-            <li>
-              <strong>Stage-2 (01-01-2027):</strong> Same steps; Step 5 rate <strong>70%</strong>{' '}
-              (grades 1–9) / <strong>75%</strong> (grades 10–20).
-            </li>
-            <li>
-              <strong>Stage-3:</strong> 01-07-2026 basic = next stage after matched Step 4; 01-07-2027
-              basic = next stage after that.
-            </li>
-          </ol>
+          <div className="space-y-1.5 text-sm leading-relaxed">
+            {t.rules.map((segments, i) => (
+              <p key={i}>
+                <RichText segments={segments} />
+              </p>
+            ))}
+          </div>
         </Alert>
 
         <Card className="salary-print-input shadow-sm">
           <CardHeader className="space-y-0.5 pb-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Start here</p>
-            <CardTitle className="text-base">Your current pay (NPS 2015)</CardTitle>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">{t.startHere}</p>
+            <CardTitle className="text-base">{t.currentPay}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="grade" className="text-sm font-medium">
-                  Grade
+                  {t.grade}
                 </Label>
                 <select
                   id="grade"
@@ -628,19 +650,19 @@ export default function SalaryOn2026Page() {
                 >
                   {PAY_GRADES.map((g) => (
                     <option key={g} value={g}>
-                      Grade {g}
-                      {isFixedPayGrade(g) ? ' (Fixed)' : ''}
+                      {t.grade} {num(g)}
+                      {isFixedPayGrade(g) ? t.fixedSuffix : ''}
                     </option>
                   ))}
                 </select>
                 <p className="hidden rounded-md border border-amber-300 bg-amber-50/80 px-3 py-2 text-sm font-semibold print:block">
-                  Grade {grade}
-                  {fixed ? ' (Fixed)' : ''}
+                  {t.grade} {num(grade)}
+                  {fixed ? t.fixedSuffix : ''}
                 </p>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="oldPay" className="text-sm font-medium">
-                  Basic on 30 June 2026
+                  {t.basicJune}
                 </Label>
                 <select
                   id="oldPay"
@@ -655,9 +677,8 @@ export default function SalaryOn2026Page() {
                 >
                   {oldStages.map((amt, i) => (
                     <option key={`${amt}-${i}`} value={amt}>
-                      ৳ {formatTaka(amt)}
-                      {i === 0 ? ' (minimum)' : ''}
-                      {i === oldStages.length - 1 && oldStages.length > 1 ? ' (last)' : ''}
+                      {tk(amt)}
+                      {stageSuffix(i, oldStages.length)}
                     </option>
                   ))}
                 </select>
@@ -668,38 +689,34 @@ export default function SalaryOn2026Page() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline">Grade {grade}</Badge>
-              <Badge variant="outline">01-07-26 · {ratePct2026}%</Badge>
-              <Badge variant="outline">01-01-27 · {ratePct2027}%</Badge>
+              <Badge variant="outline">
+                {t.grade} {num(grade)}
+              </Badge>
+              <Badge variant="outline">{t.rateBadge(num('01-07-26'), num(ratePct2026))}</Badge>
+              <Badge variant="outline">{t.rateBadge(num('01-01-27'), num(ratePct2027))}</Badge>
               {fixed ? (
-                <Badge className="bg-amber-100 text-amber-900 hover:bg-amber-100">Fixed pay</Badge>
+                <Badge className="bg-amber-100 text-amber-900 hover:bg-amber-100">{t.fixedPay}</Badge>
               ) : null}
             </div>
 
             <div className="salary-print-scale space-y-1 rounded-lg border border-dashed border-border bg-slate-50/50 p-3 text-xs text-muted">
               <p>
-                <span className="font-semibold text-slate-700">NPS 2015:</span> {scalePreview.old}
+                <span className="font-semibold text-slate-700">{t.nps2015}</span> {scalePreview.old}
               </p>
               <p>
-                <span className="font-semibold text-slate-700">NPS 2026:</span> {scalePreview.neu}
+                <span className="font-semibold text-slate-700">{t.nps2026}</span> {scalePreview.neu}
               </p>
             </div>
 
             <div className="space-y-4 rounded-xl border border-teal-200 bg-teal-50/40 p-4">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-teal-800">
-                  Confirm for gross pay
-                </p>
-                <p className="mt-0.5 text-sm font-semibold text-slate-900">
-                  Allowances with Basic (30 June 2026)
-                </p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-teal-800">{t.confirmGross}</p>
+                <p className="mt-0.5 text-sm font-semibold text-slate-900">{t.allowancesWithBasic}</p>
               </div>
 
               {grade >= 2 && grade <= 10 ? (
                 <fieldset className="space-y-2">
-                  <legend className="text-sm font-medium text-slate-800">
-                    Post type (Grades 2–10)
-                  </legend>
+                  <legend className="text-sm font-medium text-slate-800">{t.postType}</legend>
                   <label className="flex cursor-pointer items-center gap-2 text-sm">
                     <input
                       type="radio"
@@ -708,11 +725,10 @@ export default function SalaryOn2026Page() {
                       checked={chargeType === 'regular'}
                       onChange={() => {
                         setChargeType('regular');
-                        setGross(null);
-                        setResults(null);
+                        resetResults();
                       }}
                     />
-                    Regular (default)
+                    {t.regular}
                   </label>
                   <label className="flex cursor-pointer items-center gap-2 text-sm">
                     <input
@@ -722,11 +738,10 @@ export default function SalaryOn2026Page() {
                       checked={chargeType === 'current_charge'}
                       onChange={() => {
                         setChargeType('current_charge');
-                        setGross(null);
-                        setResults(null);
+                        resetResults();
                       }}
                     />
-                    Current charge — extra ৳ 1,500 / month
+                    {t.currentCharge}
                   </label>
                 </fieldset>
               ) : null}
@@ -734,7 +749,7 @@ export default function SalaryOn2026Page() {
               {grade >= 7 && grade <= 10 ? (
                 <div className="space-y-1.5">
                   <Label htmlFor="substantiveGrade" className="text-sm font-medium">
-                    Substantive grade (for tiffin &amp; conveyance)
+                    {t.substantive}
                   </Label>
                   <select
                     id="substantiveGrade"
@@ -742,29 +757,23 @@ export default function SalaryOn2026Page() {
                     value={substantiveGrade ?? ''}
                     onChange={(e) => {
                       const v = e.target.value;
-                      setSubstantiveGrade(
-                        v === '' ? null : (Number(v) as SubstantiveGrade),
-                      );
-                      setGross(null);
-                      setResults(null);
+                      setSubstantiveGrade(v === '' ? null : (Number(v) as SubstantiveGrade));
+                      resetResults();
                     }}
                   >
-                    <option value="">Not applicable / not Grade 11–15</option>
-                    <option value={11}>Grade 11</option>
-                    <option value={12}>Grade 12</option>
-                    <option value={13}>Grade 13</option>
-                    <option value={14}>Grade 14</option>
-                    <option value={15}>Grade 15</option>
+                    <option value="">{t.substantiveNA}</option>
+                    {([11, 12, 13, 14, 15] as const).map((g) => (
+                      <option key={g} value={g}>
+                        {t.grade} {num(g)}
+                      </option>
+                    ))}
                   </select>
-                  <p className="text-xs text-muted">
-                    Grades 7–10: if substantive grade is 11–15, tiffin ৳ 200 and conveyance ৳ 300
-                    apply.
-                  </p>
+                  <p className="text-xs text-muted">{t.substantiveHint}</p>
                 </div>
               ) : null}
 
               <fieldset className="space-y-2">
-                <legend className="text-sm font-medium text-slate-800">Housing</legend>
+                <legend className="text-sm font-medium text-slate-800">{t.housing}</legend>
                 <label className="flex cursor-pointer items-start gap-2 text-sm">
                   <input
                     type="radio"
@@ -773,11 +782,10 @@ export default function SalaryOn2026Page() {
                     checked={housingStatus === 'hra_eligible'}
                     onChange={() => {
                       setHousingStatus('hra_eligible');
-                      setGross(null);
-                      setResults(null);
+                      resetResults();
                     }}
                   />
-                  <span>Eligible for House Rent Allowance (select posting area)</span>
+                  <span>{t.hraEligible}</span>
                 </label>
                 <label className="flex cursor-pointer items-start gap-2 text-sm">
                   <input
@@ -787,21 +795,17 @@ export default function SalaryOn2026Page() {
                     checked={housingStatus === 'govt_accommodation'}
                     onChange={() => {
                       setHousingStatus('govt_accommodation');
-                      setGross(null);
-                      setResults(null);
+                      resetResults();
                     }}
                   />
-                  <span>
-                    Government-provided accommodation (HRA not payable; house-rent deduction may
-                    apply)
-                  </span>
+                  <span>{t.govtAccommodation}</span>
                 </label>
               </fieldset>
 
               {housingStatus === 'hra_eligible' ? (
                 <div className="space-y-1.5">
                   <Label htmlFor="hraArea" className="text-sm font-medium">
-                    Posting / HRA area
+                    {t.hraArea}
                   </Label>
                   <select
                     id="hraArea"
@@ -809,16 +813,14 @@ export default function SalaryOn2026Page() {
                     value={hraArea}
                     onChange={(e) => {
                       setHraArea(e.target.value as HraArea);
-                      setGross(null);
-                      setResults(null);
+                      resetResults();
                     }}
                   >
-                    <option value="dhaka">Dhaka Metropolitan Area</option>
-                    <option value="major_city">
-                      Chittagong, Khulna, Rajshahi, Sylhet, Barisal, Rangpur, Narayanganj, Gazipur,
-                      Savar
-                    </option>
-                    <option value="other">Other areas (District / Upazila)</option>
+                    {HRA_AREAS.map((a) => (
+                      <option key={a} value={a}>
+                        {hraAreaText(locale, a)}
+                      </option>
+                    ))}
                   </select>
                 </div>
               ) : null}
@@ -826,7 +828,7 @@ export default function SalaryOn2026Page() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="educationChildren" className="text-sm font-medium">
-                    Education assistance (children)
+                    {t.education}
                   </Label>
                   <select
                     id="educationChildren"
@@ -834,20 +836,19 @@ export default function SalaryOn2026Page() {
                     value={educationChildren}
                     onChange={(e) => {
                       setEducationChildren(Number(e.target.value) as EducationChildren);
-                      setGross(null);
-                      setResults(null);
+                      resetResults();
                     }}
                   >
-                    <option value={0}>None — ৳ 0</option>
-                    <option value={1}>1 child — ৳ 500 / month</option>
-                    <option value={2}>2 children (max) — ৳ 1,000 / month</option>
+                    {t.educationOptions.map((label, i) => (
+                      <option key={i} value={i}>
+                        {label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
                 <fieldset className="space-y-2">
-                  <legend className="text-sm font-medium text-slate-800">
-                    Washing allowance (uniformed 4th Class)
-                  </legend>
+                  <legend className="text-sm font-medium text-slate-800">{t.washing}</legend>
                   <label className="flex cursor-pointer items-center gap-2 text-sm">
                     <input
                       type="radio"
@@ -855,11 +856,10 @@ export default function SalaryOn2026Page() {
                       checked={!washingAllowance}
                       onChange={() => {
                         setWashingAllowance(false);
-                        setGross(null);
-                        setResults(null);
+                        resetResults();
                       }}
                     />
-                    No
+                    {t.no}
                   </label>
                   <label className="flex cursor-pointer items-center gap-2 text-sm">
                     <input
@@ -868,48 +868,32 @@ export default function SalaryOn2026Page() {
                       checked={washingAllowance}
                       onChange={() => {
                         setWashingAllowance(true);
-                        setGross(null);
-                        setResults(null);
+                        resetResults();
                       }}
                     />
-                    Yes — ৳ 100 / month
+                    {t.washingYes}
                   </label>
                 </fieldset>
               </div>
 
               <div className="space-y-1.5">
                 <Label htmlFor="gpf-deduction" className="text-sm font-medium">
-                  GPF deduction (optional)
+                  {t.gpf}
                 </Label>
                 <Input
                   id="gpf-deduction"
                   type="text"
                   inputMode="decimal"
                   autoComplete="off"
-                  placeholder="Type GPF amount, e.g. 5000"
+                  placeholder={t.gpfPlaceholder}
                   className="border-teal-300 bg-white font-medium tabular-nums focus-visible:border-teal-500 focus-visible:ring-teal-200"
                   value={gpfDeductionInput}
                   onChange={(e) => setGpfDeductionInput(e.target.value)}
                 />
-                <p className="text-xs text-muted">
-                  Applied on each of the 3 stages only (Basic + Total Allowance − GPF → Net payable)
-                  {gpfDeduction > 0 ? (
-                    <span className="font-semibold text-teal-800">
-                      {' '}
-                      (GPF ৳ {formatTaka(gpfDeduction)})
-                    </span>
-                  ) : null}
-                  .
-                </p>
+                <p className="text-xs text-muted">{t.gpfHint(gpfDeduction > 0 ? tk(gpfDeduction) : null)}</p>
               </div>
 
-              <p className="text-xs text-teal-900/80">
-                Medical ৳ 1,500 is included for all. Tiffin ৳ 200 and Conveyance ৳ 300 apply for
-                Grades 11–15 (or substantive Grade 11–15 when pay grade is 7–10). Grades 2–10 may
-                add Current charge ৳ 1,500. Festival (2× basic / year), Pahela Baishakh (20%), and
-                Rest &amp; Recreation (1× basic every 3 years) are shown separately after
-                calculation.
-              </p>
+              <p className="text-xs text-teal-900/80">{t.grossNote}</p>
             </div>
 
             {error ? (
@@ -922,7 +906,7 @@ export default function SalaryOn2026Page() {
               <div className="flex flex-wrap gap-2 print:hidden">
                 <Button type="button" onClick={() => void handleCalculate()} disabled={calculating} className="gap-2">
                   <Calculator className="h-4 w-4" />
-                  {calculating ? 'Calculating…' : 'Calculate by ProAssist'}
+                  {calculating ? t.calculating : t.calculate}
                 </Button>
               </div>
               <p className="inline-block rounded-md bg-emerald-200 px-2.5 py-1 text-xs font-semibold text-emerald-950 ring-1 ring-emerald-400/60">
@@ -934,24 +918,19 @@ export default function SalaryOn2026Page() {
 
         {results ? (
           <div className="flex justify-center print:hidden">
-            <Button
-              type="button"
-              size="lg"
-              onClick={handleGivePdf}
-              disabled={pdfLoading}
-              className="gap-2 px-8"
-            >
+            <Button type="button" size="lg" onClick={handleGivePdf} disabled={pdfLoading} className="gap-2 px-8">
               <Download className="h-4 w-4" />
-              {pdfLoading ? 'Opening print…' : 'Give me a PDF'}
+              {pdfLoading ? t.pdfLoading : t.pdf}
             </Button>
           </div>
         ) : null}
 
-        {gross ? <GrossResultCard gross={gross} /> : null}
+        {gross ? <GrossResultCard ctx={ctx} gross={gross} /> : null}
 
         {results?.map((result, index) => (
           <PhaseResultCard
             key={result.phase}
+            ctx={ctx}
             result={result}
             fixedAllowancesTotal={
               gross
@@ -968,15 +947,24 @@ export default function SalaryOn2026Page() {
         ))}
 
         {results ? (
+          <SalaryArrearsCard
+            locale={locale}
+            grade={grade}
+            oldPay={oldPay}
+            substantiveGrade={substantiveGrade}
+            housingStatus={housingStatus}
+            hraArea={hraArea}
+          />
+        ) : null}
+
+        {results ? (
           <>
             <Alert className="border-amber-300 bg-amber-50 text-amber-950 shadow-sm">
-              <p className="text-sm font-semibold leading-relaxed">
-                This is a draft. Final calculation will be fixed by iBASS++.
-              </p>
+              <p className="text-sm font-semibold leading-relaxed">{t.draft}</p>
             </Alert>
 
             <section
-              aria-label="Thanks to Government"
+              aria-label={t.thanksTitle}
               className="salary-print-thanks relative overflow-hidden rounded-2xl border border-rose-200/80 bg-gradient-to-br from-rose-50 via-white to-amber-50 px-5 py-8 text-center shadow-sm sm:px-8"
             >
               <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-rose-200/40 blur-2xl salary-print-hide" />
@@ -985,20 +973,12 @@ export default function SalaryOn2026Page() {
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-rose-100 text-rose-700 ring-4 ring-rose-50">
                   <HeartHandshake className="h-6 w-6" aria-hidden />
                 </div>
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-rose-700/80">
-                  With gratitude
-                </p>
-                <h2 className="text-balance text-xl font-extrabold text-slate-900 sm:text-2xl">
-                  Thank you, Government of Bangladesh
-                </h2>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-rose-700/80">{t.thanksKicker}</p>
+                <h2 className="text-balance text-xl font-extrabold text-slate-900 sm:text-2xl">{t.thanksTitle}</h2>
                 <p className="text-pretty text-sm leading-relaxed text-slate-700 sm:text-base">
-                  From <strong>all government employees</strong> — we gratefully acknowledge the
-                  proposed National Pay Scale 2026 and the continued efforts to improve the
-                  livelihood and dignity of public servants across the country.
+                  <RichText segments={t.thanksText} />
                 </p>
-                <p className="text-sm font-semibold italic text-rose-800/90">
-                  — All Government Employees
-                </p>
+                <p className="text-sm font-semibold italic text-rose-800/90">{t.thanksSign}</p>
               </div>
             </section>
           </>
@@ -1009,13 +989,9 @@ export default function SalaryOn2026Page() {
         <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-5 text-center sm:flex-row sm:items-center sm:justify-between sm:text-left sm:px-6">
           <div>
             <div className="text-sm font-bold text-white">ProAssist</div>
-            <div className="text-xs text-emerald-100/75">
-              Rules, exams, and compliance assistant
-            </div>
+            <div className="text-xs text-emerald-100/75">{t.footerTagline}</div>
           </div>
-          <div className="text-xs text-emerald-100/70">
-            Salary On 2026 · Free public tool · Share the link with anyone
-          </div>
+          <div className="text-xs text-emerald-100/70">{t.footerNote}</div>
         </div>
       </footer>
     </div>

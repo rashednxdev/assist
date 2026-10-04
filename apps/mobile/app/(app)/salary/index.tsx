@@ -31,6 +31,7 @@ import {
   type SubstantiveGrade,
 } from '@ibas/shared-types';
 import { LocaleToggle } from '@/components/calc/LocaleToggle';
+import { SalaryArrearsCard } from '@/components/salary/SalaryArrearsCard';
 import { PickerSheet, SelectField } from '@/components/ui/PickerSheet';
 import { TextField } from '@/components/ui/TextField';
 import type { CalcLocale } from '@/lib/calc-i18n';
@@ -464,6 +465,15 @@ export default function SalaryOn2026Screen() {
             {results.map((result) => (
               <StageCard key={result.phase} ctx={ctx} result={result} allowances={allowances} gpf={gpf} />
             ))}
+
+            <SalaryArrearsCard
+              locale={locale}
+              grade={grade}
+              oldPay={oldPay}
+              substantiveGrade={substantiveGrade}
+              housingStatus={housingStatus}
+              hraArea={hraArea}
+            />
 
             <View style={styles.draft}>
               <Ionicons name="alert-circle-outline" size={18} color="#92400e" />

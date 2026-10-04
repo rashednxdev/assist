@@ -1,4 +1,5 @@
 import { Stack } from 'expo-router';
+import { HeaderTitle } from '@/components/ui/HeaderTitle';
 import { colors } from '@/theme';
 
 export default function UsersLayout() {
@@ -29,6 +30,7 @@ export default function UsersLayout() {
         name="blocked"
         options={{
           title: 'Suspended accounts',
+          headerTitle: () => <HeaderTitle text="Suspended accounts" />,
           headerBackTitle: 'Users',
         }}
       />

@@ -761,6 +761,199 @@ export function resolveTiffinConveyanceGrade(
   return null;
 }
 
+/** First month with arrears — the 2026 basic takes effect on 01-07-2026. */
+export const ARREAR_START_MONTH = '2026-07';
+
+/** Stage-2 basic applies from this month onwards. */
+const ARREAR_STAGE2_MONTH = '2027-01';
+
+const MONTH_KEY_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
+
+export function isArrearMonthKey(key: string): boolean {
+  return MONTH_KEY_RE.test(key) && key >= ARREAR_START_MONTH;
+}
+
+export function arrearMonthLabel(key: string): string {
+  const m = MONTH_KEY_RE.exec(key);
+  if (!m) return key;
+  const names = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+  return `${names[Number(m[2]) - 1]} ${m[1]}`;
+}
+
+function monthKeyOf(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** Month keys (YYYY-MM) from July 2026 up to and including the month of `today`. */
+export function arrearMonthOptions(today: Date = new Date()): string[] {
+  const end = monthKeyOf(today);
+  const keys: string[] = [];
+  let year = 2026;
+  let month = 7;
+  for (;;) {
+    const key = `${year}-${String(month).padStart(2, '0')}`;
+    if (key > end) break;
+    keys.push(key);
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+  }
+  return keys;
+}
+
+/** Completed months before the current one; the current month alone when none has completed yet. */
+export function defaultArrearMonths(today: Date = new Date()): string[] {
+  const all = arrearMonthOptions(today);
+  const current = monthKeyOf(today);
+  const past = all.filter((k) => k < current);
+  return past.length > 0 ? past : all;
+}
+
+export function arrearPhaseForMonth(key: string): SalaryPhase {
+  return key >= ARREAR_STAGE2_MONTH ? '2027-01-01' : '2026-07-01';
+}
+
+/** Special allowance rate by substantive grade: 10% for grades 1–9, 15% for grades 10–20. */
+export function specialAllowanceRate(substantiveGrade: PayGrade): number {
+  return substantiveGrade >= 10 ? 0.15 : 0.1;
+}
+
+export interface SalaryArrearInput {
+  grade: PayGrade;
+  /** Basic on 30 June 2026 (NPS 2015 stage). */
+  old_pay: number;
+  /** Grades 7–10 only: substantive grade 11–15 when it differs from the pay grade. */
+  substantive_grade?: SubstantiveGrade | null;
+  housing_status: HousingStatus;
+  hra_area: HraArea;
+  /** Month keys (YYYY-MM), July 2026 or later. */
+  months: string[];
+}
+
+export interface SalaryArrearMonthRow {
+  month: string;
+  label: string;
+  phase: SalaryPhase;
+  phase_title: string;
+  new_basic: number;
+  /** New basic − basic on 30 June 2026. */
+  basic_difference: number;
+  special_allowance: number;
+  excess_hra: number;
+  /** basic_difference − special_allowance − excess_hra. */
+  net_arrear: number;
+}
+
+export interface SalaryArrearResult {
+  grade: PayGrade;
+  substantive_grade: PayGrade;
+  old_pay: number;
+  /** NPS 2015 stage after the 30 June 2026 basic (the basic itself when it is the last stage). */
+  next_step: number;
+  next_step_is_last: boolean;
+  special_rate_percent: number;
+  special_allowance: number;
+  hra_eligible: boolean;
+  hra_on_next_step: number;
+  hra_on_old_pay: number;
+  hra_rate_percent_next_step: number;
+  hra_rate_percent_old_pay: number;
+  excess_hra: number;
+  monthly_deduction: number;
+  rows: SalaryArrearMonthRow[];
+  total_basic_difference: number;
+  total_special_allowance: number;
+  total_excess_hra: number;
+  total_deduction: number;
+  total_net_arrear: number;
+}
+
+/**
+ * Monthly arrears on the 2026 fixation:
+ * (new basic − basic on 30-06-2026) − special allowance − excess house rent.
+ * Special allowance and excess house rent are both worked out on the NPS 2015 stage
+ * after the 30-06-2026 basic, because that is what was paid in those months.
+ */
+export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearResult {
+  const grade = input.grade;
+  if (!isPayGrade(grade)) throw new Error('Grade must be between 1 and 20');
+  const oldScale = NPS_2015[grade];
+  const oldPay = Math.round(Number(input.old_pay));
+  if (!oldScale.includes(oldPay)) {
+    throw new Error(`Basic ${oldPay} is not a stage on Grade ${grade} of NPS 2015`);
+  }
+
+  const months = [...new Set(input.months)].filter(isArrearMonthKey).sort();
+  if (months.length === 0) throw new Error('Select at least one month from July 2026');
+
+  const oldIndex = oldScale.indexOf(oldPay);
+  const nextIsLast = oldIndex >= oldScale.length - 1;
+  const nextStep = nextIsLast ? oldPay : oldScale[oldIndex + 1]!;
+
+  const substantive: PayGrade =
+    resolveTiffinConveyanceGrade({ grade, substantive_grade: input.substantive_grade }) ?? grade;
+  const specialRate = specialAllowanceRate(substantive);
+  const specialAllowance = Math.round(nextStep * specialRate);
+
+  const hraEligible = input.housing_status !== 'govt_accommodation';
+  const hraNext = hraEligible ? calculateHouseRentAllowance(nextStep, input.hra_area) : null;
+  const hraOld = hraEligible ? calculateHouseRentAllowance(oldPay, input.hra_area) : null;
+  const excessHra = hraNext && hraOld ? Math.max(0, hraNext.amount - hraOld.amount) : 0;
+  const monthlyDeduction = specialAllowance + excessHra;
+
+  const basicByPhase = new Map<SalaryPhase, number>();
+  const rows: SalaryArrearMonthRow[] = months.map((month) => {
+    const phase = arrearPhaseForMonth(month);
+    let newBasic = basicByPhase.get(phase);
+    if (newBasic == null) {
+      newBasic = calculateSalary2026({ grade, old_pay: oldPay, phase }).new_pay;
+      basicByPhase.set(phase, newBasic);
+    }
+    const basicDifference = newBasic - oldPay;
+    return {
+      month,
+      label: arrearMonthLabel(month),
+      phase,
+      phase_title: salaryPhaseTitle(phase),
+      new_basic: newBasic,
+      basic_difference: basicDifference,
+      special_allowance: specialAllowance,
+      excess_hra: excessHra,
+      net_arrear: basicDifference - monthlyDeduction,
+    };
+  });
+
+  const sum = (pick: (r: SalaryArrearMonthRow) => number) => rows.reduce((s, r) => s + pick(r), 0);
+
+  return {
+    grade,
+    substantive_grade: substantive,
+    old_pay: oldPay,
+    next_step: nextStep,
+    next_step_is_last: nextIsLast,
+    special_rate_percent: Math.round(specialRate * 100),
+    special_allowance: specialAllowance,
+    hra_eligible: hraEligible,
+    hra_on_next_step: hraNext?.amount ?? 0,
+    hra_on_old_pay: hraOld?.amount ?? 0,
+    hra_rate_percent_next_step: hraNext?.rate_percent ?? 0,
+    hra_rate_percent_old_pay: hraOld?.rate_percent ?? 0,
+    excess_hra: excessHra,
+    monthly_deduction: monthlyDeduction,
+    rows,
+    total_basic_difference: sum((r) => r.basic_difference),
+    total_special_allowance: sum((r) => r.special_allowance),
+    total_excess_hra: sum((r) => r.excess_hra),
+    total_deduction: sum((r) => r.special_allowance + r.excess_hra),
+    total_net_arrear: sum((r) => r.net_arrear),
+  };
+}
+
 /** Monthly + annual/periodic benefits on Basic (30 June 2026) and Grade. */
 export function calculateEmployeeGross(input: EmployeeGrossInput): EmployeeGrossResult {
   const grade = input.grade;

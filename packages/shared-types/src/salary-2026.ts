@@ -841,7 +841,9 @@ export interface SalaryArrearMonthRow {
   phase: SalaryPhase;
   phase_title: string;
   new_basic: number;
-  /** New basic − basic on 30 June 2026. */
+  /** Basic drawn in the month: NPS 2015 stage after the 30 June 2026 basic. */
+  drawn_basic: number;
+  /** New basic − drawn basic. */
   basic_difference: number;
   special_allowance: number;
   excess_hra: number;
@@ -875,9 +877,9 @@ export interface SalaryArrearResult {
 
 /**
  * Monthly arrears on the 2026 fixation:
- * (new basic − basic on 30-06-2026) − special allowance − excess house rent.
- * Special allowance and excess house rent are both worked out on the NPS 2015 stage
- * after the 30-06-2026 basic, because that is what was paid in those months.
+ * (new basic − next stage after the 30-06-2026 basic) − special allowance − excess house rent.
+ * The difference, special allowance and excess house rent are all worked out on the NPS 2015
+ * stage after the 30-06-2026 basic, because that is what was paid in those months.
  */
 export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearResult {
   const grade = input.grade;
@@ -914,13 +916,14 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
       newBasic = calculateSalary2026({ grade, old_pay: oldPay, phase }).new_pay;
       basicByPhase.set(phase, newBasic);
     }
-    const basicDifference = newBasic - oldPay;
+    const basicDifference = newBasic - nextStep;
     return {
       month,
       label: arrearMonthLabel(month),
       phase,
       phase_title: salaryPhaseTitle(phase),
       new_basic: newBasic,
+      drawn_basic: nextStep,
       basic_difference: basicDifference,
       special_allowance: specialAllowance,
       excess_hra: excessHra,

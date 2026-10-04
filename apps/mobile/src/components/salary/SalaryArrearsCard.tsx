@@ -161,7 +161,7 @@ export function SalaryArrearsCard({
                       <Text style={styles.rowStage}>{`  ·  ${t.stageName(STAGE_NUMBER[row.phase])}`}</Text>
                     </Text>
                     <Text style={styles.calc}>
-                      {t.arrRowCalc(amt(row.new_basic), amt(result.old_pay))} = {signed(row.basic_difference)}
+                      {t.arrRowCalc(amt(row.new_basic), amt(row.drawn_basic))} = {signed(row.basic_difference)}
                     </Text>
                     <Text style={[styles.calc, styles.minus]}>
                       − {amt(row.special_allowance)} ({t.arrColSpecial}) − {amt(row.excess_hra)} ({t.arrColHra})

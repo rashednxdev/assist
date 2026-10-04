@@ -26,6 +26,7 @@ import {
   type SalaryCopy,
   type SalaryLocale,
 } from '@/lib/salary-i18n';
+import { takaInWords } from '@/lib/amount-words';
 
 const STAGE_NUMBER = { '2026-07-01': 1, '2027-01-01': 2, '2027-07-01': 3 } as const;
 
@@ -104,7 +105,7 @@ function MonthMath({ f, result, group }: { f: Fmt; result: SalaryArrearResult; g
     <div className="salary-bill-month overflow-hidden rounded-xl border border-border">
       <div className="flex items-center justify-between gap-2 bg-slate-50 px-3 py-1.5 text-sm font-bold text-slate-800">
         <span>{leadMonth}</span>
-        <span className="text-xs font-semibold text-muted">{t.stageName(STAGE_NUMBER[row.phase])}</span>
+        <span className="text-xs font-semibold text-muted">{t.amountHead}</span>
       </div>
       <table className="w-full text-sm">
         <tbody>
@@ -197,7 +198,6 @@ export function SalaryArrearsBill({
     <Card className="overflow-hidden border border-indigo-200 shadow-sm">
       <div className="bg-indigo-700 px-4 py-2.5 text-white sm:px-5">
         <div className="text-sm font-bold">{t.billTitle}</div>
-        <p className="mt-0.5 text-xs text-indigo-100/90">{t.billSub}</p>
       </div>
       <CardContent className="space-y-4 p-4 sm:p-5">
         <div className="space-y-2 print:hidden">
@@ -328,12 +328,19 @@ export function SalaryArrearsBill({
             </section>
 
             <div className="rounded-xl border border-indigo-300 bg-indigo-100/70 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-indigo-900">{t.arrTotalDue}</p>
-              <p className="mt-0.5 font-mono text-2xl font-bold text-indigo-950">৳ {signed(result.total_net_arrear)}</p>
-              <p className="text-[11px] text-indigo-900/80">
-                {t.arrTotalFormula(`৳ ${signed(result.total_basic_difference)}`, tk(result.total_deduction))}
-                {result.total_net_arrear < 0 ? t.arrNegative : ''}
+              <p className="text-base font-bold text-indigo-950">
+                {t.arrTotalLine(
+                  `৳ ${signed(result.total_basic_difference)}`,
+                  tk(result.total_deduction),
+                  `৳ ${signed(result.total_net_arrear)}`,
+                )}
               </p>
+              <p className="mt-1 text-sm font-semibold text-indigo-900">
+                {t.inWords(takaInWords(locale, result.total_net_arrear))}
+              </p>
+              {result.total_net_arrear < 0 ? (
+                <p className="text-[11px] text-indigo-900/80">{t.arrNegative}</p>
+              ) : null}
             </div>
 
             <div className="flex justify-center print:hidden">

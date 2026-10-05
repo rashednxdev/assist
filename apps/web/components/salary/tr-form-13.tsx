@@ -462,7 +462,6 @@ export function TrForm13({
         <p className="tr-small">
           {t.preparedOn}: {preparedOn}
         </p>
-        <p className="tr-attach-footer">{t.printFooter}</p>
       </section>
     </div>
   );

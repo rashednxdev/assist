@@ -9,8 +9,9 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { FormField } from '@/components/shared/form-field';
 import { Alert } from '@/components/ui/alert';
-import { AuthBrandPanel } from '@/components/auth/auth-brand-panel';
-import { clearAccessToken, loginRequest, setAccessToken, SET_PASSWORD_PATH } from '@/lib/auth';
+import { LoginShowcasePanel } from '@/components/auth/login-showcase-panel';
+import { clearAccessToken, fetchMe, loginRequest, setAccessToken, SET_PASSWORD_PATH } from '@/lib/auth';
+import { homePathFor } from '@/lib/salary-only';
 import { WEB_REGISTRATION_OPEN } from '@/lib/registration';
 
 /** Only same-site paths, so ?next= cannot redirect to another origin. */
@@ -43,7 +44,13 @@ export default function LoginPage() {
         router.replace('/register/verify');
         return;
       }
-      router.replace(safeNextPath() ?? '/dashboard');
+      const next = safeNextPath();
+      if (next) {
+        router.replace(next);
+        return;
+      }
+      const me = await fetchMe().catch(() => null);
+      router.replace(homePathFor(me?.data ?? null));
     } catch (err) {
       clearAccessToken();
       setError(err instanceof Error ? err.message : 'Sign in failed. Try again.');
@@ -54,8 +61,13 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen flex-col lg:flex-row">
-      <AuthBrandPanel />
-      <div className="flex flex-1 items-center justify-center bg-background p-4 sm:p-8">
+      <LoginShowcasePanel />
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 bg-background p-4 sm:p-8">
+        <div className="w-full max-w-md rounded-xl bg-gradient-to-r from-[#0b3d2e] to-teal-700 px-4 py-3 text-white shadow-md lg:hidden">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-200">New · Pay Scale 2026</p>
+          <p className="text-sm font-bold">Arrears bill &amp; T.R. Form 13, ready in minutes</p>
+          <p className="text-xs text-emerald-50/80">Sign in to calculate month-by-month arrears and print T.R. Form 13.</p>
+        </div>
         <Card className="w-full max-w-md border-0 shadow-lg sm:border">
           <CardHeader className="space-y-1 pb-2 text-center lg:text-left">
             <div className="mx-auto mb-3 lg:hidden">

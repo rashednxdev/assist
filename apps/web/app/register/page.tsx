@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FormField } from '@/components/shared/form-field';
 import { Alert } from '@/components/ui/alert';
-import { AuthBrandPanel } from '@/components/auth/auth-brand-panel';
+import { LoginShowcasePanel } from '@/components/auth/login-showcase-panel';
 import { TermsViewerModal } from '@/components/auth/terms-viewer-modal';
 import { registerRequest, setAccessToken } from '@/lib/auth';
 import { WEB_REGISTRATION_OPEN } from '@/lib/registration';
@@ -71,7 +71,7 @@ function RegisterForm() {
 
   return (
     <div className="flex min-h-screen flex-col lg:flex-row">
-      <AuthBrandPanel />
+      <LoginShowcasePanel />
       <div className="flex flex-1 items-center justify-center bg-background p-4 sm:p-8">
         <Card className="w-full max-w-lg border-0 shadow-lg sm:border">
           <CardHeader className="space-y-1 pb-2">
@@ -160,7 +160,7 @@ function RegisterForm() {
               </label>
               {error && <Alert variant="error">{error}</Alert>}
               <Button type="submit" className="h-11 w-full" disabled={loading || !acceptedTerms}>
-                {loading ? 'Creating accountΓÇª' : 'Create account'}
+                {loading ? 'Creating account…' : 'Create account'}
               </Button>
               <p className="text-center text-sm text-muted">
                 Already have an account?{' '}

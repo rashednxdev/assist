@@ -7,12 +7,14 @@ import {
   calculateAllPhasesHandler,
   consumeBillHandler,
   getMyBillAccessHandler,
+  getMySalaryOfficeHandler,
   getSalaryContactsHandler,
   getSalaryStatsHandler,
   listBillAccessHandler,
   listBillUsageHandler,
   rejectBillRequestHandler,
   requestBillsHandler,
+  saveMySalaryOfficeHandler,
   trackSalaryPdfHandler,
   updateBillAccessHandler,
   updateSalaryContactsHandler,
@@ -37,6 +39,8 @@ salaryRouter.post('/pdf', publicLimit, asyncHandler(trackSalaryPdfHandler));
 
 salaryRouter.get('/admin/stats', authenticate, requireAdmin, asyncHandler(getSalaryStatsHandler));
 
+salaryRouter.get('/office', authenticate, asyncHandler(getMySalaryOfficeHandler));
+salaryRouter.put('/office', authenticate, publicLimit, asyncHandler(saveMySalaryOfficeHandler));
 salaryRouter.get('/access', authenticate, asyncHandler(getMyBillAccessHandler));
 salaryRouter.post('/access/request', authenticate, publicLimit, asyncHandler(requestBillsHandler));
 salaryRouter.post('/bills', authenticate, publicLimit, asyncHandler(consumeBillHandler));

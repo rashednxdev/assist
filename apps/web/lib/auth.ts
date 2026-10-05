@@ -93,6 +93,7 @@ export async function loginRequest(email: string, password: string): Promise<Log
       password,
       device_id,
       device_label: 'web:browser',
+      client_platform: 'web',
     }),
   });
 

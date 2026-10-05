@@ -5,6 +5,7 @@ import {
   consumeSalaryBillSchema,
   rejectSalaryBillRequestSchema,
   requestSalaryBillsSchema,
+  saveSalaryOfficeSchema,
   updateSalaryBillAccessSchema,
   updateSalaryContactsSchema,
 } from '@ibas/shared-types';
@@ -13,6 +14,7 @@ import { parsePagination } from '../../shared/pagination.js';
 import { badRequest, unauthorized } from '../../shared/errors/AppError.js';
 import * as salaryService from './salary.service.js';
 import * as accessService from './salary-access.service.js';
+import * as officeService from './salary-office.service.js';
 
 function parseBody<S extends z.ZodTypeAny>(schema: S, body: unknown): z.output<S> {
   const parsed = schema.safeParse(body);
@@ -47,6 +49,15 @@ export async function getSalaryStatsHandler(_req: AuthRequest, res: Response): P
 
 export async function getMyBillAccessHandler(req: AuthRequest, res: Response): Promise<void> {
   res.json({ data: await accessService.getMyBillAccess(authUser(req)) });
+}
+
+export async function getMySalaryOfficeHandler(req: AuthRequest, res: Response): Promise<void> {
+  res.json({ data: await officeService.getMySalaryOffice(authUser(req).id) });
+}
+
+export async function saveMySalaryOfficeHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = parseBody(saveSalaryOfficeSchema, req.body);
+  res.json({ data: await officeService.saveMySalaryOffice(authUser(req).id, dto) });
 }
 
 export async function requestBillsHandler(req: AuthRequest, res: Response): Promise<void> {

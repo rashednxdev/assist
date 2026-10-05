@@ -52,7 +52,8 @@ export const authenticate: RequestHandler = async (
 
     const deviceId = typeof payload.did === 'string' ? payload.did : undefined;
     const tokenVersion = typeof payload.tv === 'number' ? payload.tv : 0;
-    assertDeviceAllowed(user, credentials, deviceId, tokenVersion);
+    const platform = payload.plat === 'web' ? 'web' : undefined;
+    assertDeviceAllowed(user, credentials, deviceId, tokenVersion, platform);
 
     req.user = {
       id: String(user._id),

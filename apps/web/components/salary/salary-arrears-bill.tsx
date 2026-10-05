@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Download, Printer } from 'lucide-react';
+import { Printer } from 'lucide-react';
 import {
   arrearMonthOptions,
   calculateSalaryArrears,
@@ -172,10 +172,10 @@ export function SalaryArrearsBill({
   hraArea,
   months,
   onMonthsChange,
-  onPdf,
   onTrForm,
   canBill,
   accessPanel,
+  contactsPanel,
 }: {
   locale: SalaryLocale;
   grade: PayGrade;
@@ -185,10 +185,10 @@ export function SalaryArrearsBill({
   hraArea: HraArea;
   months: string[];
   onMonthsChange: (months: string[]) => void;
-  onPdf: () => void;
   onTrForm: () => void;
   canBill: boolean;
   accessPanel: React.ReactNode;
+  contactsPanel: React.ReactNode;
 }) {
   const t = salaryCopy(locale);
   const num = (v: string | number) => localNum(locale, v);
@@ -393,25 +393,16 @@ export function SalaryArrearsBill({
               <Button
                 type="button"
                 size="lg"
-                onClick={onPdf}
-                disabled={!canBill}
-                className="gap-2 bg-indigo-700 px-8 hover:bg-indigo-800"
-              >
-                <Download className="h-4 w-4" />
-                {t.billPdf}
-              </Button>
-              <Button
-                type="button"
-                size="lg"
-                variant="outline"
                 onClick={onTrForm}
                 disabled={!canBill}
-                className="gap-2 border-indigo-300 px-8 text-indigo-800"
+                className="gap-2 bg-indigo-700 px-8 hover:bg-indigo-800"
               >
                 <Printer className="h-4 w-4" />
                 {t.trForm}
               </Button>
             </div>
+
+            {contactsPanel}
           </>
         ) : null}
       </CardContent>

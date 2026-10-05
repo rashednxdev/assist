@@ -9,6 +9,8 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { logoutRequest, fetchMe, getAccessToken, clearAccessToken, SET_PASSWORD_PATH, type MeUser } from '@/lib/auth';
 import { buildVisibleNav } from '@/lib/capabilities';
+import { SALARY_HOME, isSalaryOnlyUser, salaryOnlyAllows } from '@/lib/salary-only';
+import { Skeleton } from '@/components/ui/skeleton';
 import { navGroups, type NavItem } from './nav-config';
 
 function matchesPath(pathname: string, href: string): boolean {
@@ -78,6 +80,7 @@ function SidebarContent({
   onLogout,
   logoutLabel,
   appName,
+  showSearch,
 }: {
   pathname: string;
   visibleNav: ReturnType<typeof buildVisibleNav>;
@@ -85,6 +88,7 @@ function SidebarContent({
   onLogout: () => void;
   logoutLabel: string;
   appName: string;
+  showSearch: boolean;
 }) {
   const activeHref =
     visibleNav
@@ -98,7 +102,7 @@ function SidebarContent({
         <div className="truncate text-base font-bold text-sidebar-foreground">{appName}</div>
       </div>
 
-      <SidebarSearch onNavigate={onNavigate} />
+      {showSearch ? <SidebarSearch onNavigate={onNavigate} /> : null}
 
       <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-4">
         {visibleNav.map((group) => (
@@ -165,8 +169,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       });
   }, [router]);
 
-  const visibleNav =
-    me !== null ? buildVisibleNav(me, me.module_access, navGroups) : [{ title: 'Overview', items: navGroups[0]!.items }];
+  const salaryOnly = isSalaryOnlyUser(me);
+  const blocked = salaryOnly && !salaryOnlyAllows(pathname);
+
+  useEffect(() => {
+    if (blocked) router.replace(SALARY_HOME);
+  }, [blocked, router]);
+
+  const visibleNav = salaryOnly
+    ? navGroups
+        .map((g) => ({ ...g, items: g.items.filter((i) => salaryOnlyAllows(i.href)) }))
+        .filter((g) => g.items.length > 0)
+    : me !== null
+      ? buildVisibleNav(me, me.module_access, navGroups)
+      : [{ title: 'Overview', items: navGroups[0]!.items }];
 
   async function handleLogout() {
     await logoutRequest();
@@ -179,6 +195,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     onLogout: handleLogout,
     logoutLabel: tAuth('logout'),
     appName: tApp('name'),
+    showSearch: !salaryOnly,
   };
 
   return (
@@ -196,13 +213,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-bold text-foreground">{tApp('name')}</p>
         </div>
-        <Link
-          href="/search"
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-foreground"
-          aria-label="Search"
-        >
-          <Search className="h-5 w-5" />
-        </Link>
+        {salaryOnly ? null : (
+          <Link
+            href="/search"
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-foreground"
+            aria-label="Search"
+          >
+            <Search className="h-5 w-5" />
+          </Link>
+        )}
       </header>
 
       {/* Mobile drawer */}
@@ -233,7 +252,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <main className="lg:pl-64 print:pl-0">
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 print:max-w-none print:p-0">{children}</div>
+        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 print:max-w-none print:p-0">
+          {blocked ? <Skeleton className="h-32 w-full rounded-2xl" /> : children}
+        </div>
       </main>
     </div>
   );

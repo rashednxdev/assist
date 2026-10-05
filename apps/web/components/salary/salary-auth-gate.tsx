@@ -1,16 +1,22 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { fetchMe, getAccessToken, SET_PASSWORD_PATH } from '@/lib/auth';
+import { fetchMe, getAccessToken, SET_PASSWORD_PATH, type MeUser } from '@/lib/auth';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const LOGIN_PATH = '/login?next=%2Fsalary';
 
+const SalaryUserContext = createContext<MeUser | null>(null);
+
+export function useSalaryUser(): MeUser | null {
+  return useContext(SalaryUserContext);
+}
+
 /** /salary is for registered, signed-in users only. */
 export function SalaryAuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const [ready, setReady] = useState(false);
+  const [me, setMe] = useState<MeUser | null>(null);
 
   useEffect(() => {
     if (!getAccessToken()) {
@@ -21,12 +27,12 @@ export function SalaryAuthGate({ children }: { children: React.ReactNode }) {
       .then((res) => {
         if (res.data.must_change_password) router.replace(SET_PASSWORD_PATH);
         else if (res.data.status === 'pending_verify') router.replace('/register/verify');
-        else setReady(true);
+        else setMe({ ...res.data, module_access: res.data.module_access ?? [] });
       })
       .catch(() => router.replace(LOGIN_PATH));
   }, [router]);
 
-  if (!ready) {
+  if (!me) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#f4f7f5] p-6">
         <div className="w-full max-w-sm space-y-3 rounded-xl border border-border bg-white p-6 shadow-md">
@@ -38,5 +44,5 @@ export function SalaryAuthGate({ children }: { children: React.ReactNode }) {
     );
   }
 
-  return <>{children}</>;
+  return <SalaryUserContext.Provider value={me}>{children}</SalaryUserContext.Provider>;
 }

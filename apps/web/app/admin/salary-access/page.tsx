@@ -247,6 +247,9 @@ function AccessRow({ row, onSaved }: { row: SalaryBillAccessAdminRow; onSaved: (
             {row.user.phone}
             {row.user.email ? ` · ${row.user.email}` : ''}
           </p>
+          <p className="text-xs text-slate-600">
+            <span className="font-medium">Office:</span> {row.office_label || 'Not selected yet'}
+          </p>
         </div>
         <StatusBadge row={row} />
       </div>

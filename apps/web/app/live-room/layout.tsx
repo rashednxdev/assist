@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getAccessToken, fetchMe } from '@/lib/auth';
+import { SALARY_HOME, isSalaryOnlyUser } from '@/lib/salary-only';
 import { Skeleton } from '@/components/ui/skeleton';
 
 /** Minimal chrome for the Live Class control room (opened in a new tab). */
@@ -16,7 +17,10 @@ export default function LiveRoomLayout({ children }: { children: React.ReactNode
       return;
     }
     fetchMe()
-      .then(() => setReady(true))
+      .then((res) => {
+        if (isSalaryOnlyUser(res.data)) router.replace(SALARY_HOME);
+        else setReady(true);
+      })
       .catch(() => router.replace('/login'));
   }, [router]);
 

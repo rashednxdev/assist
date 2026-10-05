@@ -4,13 +4,21 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowRight,
+  Building2,
   Calculator,
   ChevronDown,
   Download,
   HeartHandshake,
+  LayoutDashboard,
+  LogOut,
   ReceiptText,
   Share2,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { logoutRequest } from '@/lib/auth';
+import { isSalaryOnlyUser } from '@/lib/salary-only';
+import { useSalaryUser } from '@/components/salary/salary-auth-gate';
+import { useSalaryOffice } from '@/components/salary/salary-office-gate';
 import {
   NPS_2015,
   NPS_2026,
@@ -34,7 +42,7 @@ import {
   SALARY_BILL_LIMIT_CODE,
 } from '@ibas/shared-types';
 import { ApiError, apiFetch } from '@/lib/api-client';
-import { SalaryBillAccessPanel } from '@/components/salary/salary-bill-access';
+import { SalaryBillAccessPanel, SalaryBillContacts } from '@/components/salary/salary-bill-access';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -488,6 +496,7 @@ function SalarySummaryCard({
 
 export default function SalaryOn2026Page() {
   const [locale, setLocale] = useState<SalaryLocale>('bn');
+  const { office: salaryOffice, changeOffice } = useSalaryOffice();
   const [grade, setGrade] = useState<PayGrade | null>(null);
   const [oldPay, setOldPay] = useState(0);
   const [housingStatus, setHousingStatus] = useState<HousingStatus>('hra_eligible');
@@ -514,6 +523,8 @@ export default function SalaryOn2026Page() {
   const resultsRef = useRef<HTMLDivElement>(null);
   const arrearsRef = useRef<HTMLDivElement>(null);
 
+  const router = useRouter();
+  const salaryOnly = isSalaryOnlyUser(useSalaryUser());
   const t = salaryCopy(locale);
   const ctx: Ctx = { t, locale };
   const num = (v: string | number) => localNum(locale, v);
@@ -696,6 +707,11 @@ export default function SalaryOn2026Page() {
     setPrintMode(target);
   }
 
+  async function handleLogout() {
+    await logoutRequest();
+    router.replace('/login');
+  }
+
   async function handleShare() {
     const url = typeof window !== 'undefined' ? window.location.href : '/salary';
     try {
@@ -744,6 +760,24 @@ export default function SalaryOn2026Page() {
               <Share2 className="h-3.5 w-3.5" />
               {t.shareBtn}
             </Button>
+            {salaryOnly ? null : (
+              <Link
+                href="/dashboard"
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-white/30 bg-white/5 px-2.5 text-sm font-medium text-white hover:bg-white/15 print:hidden"
+              >
+                <LayoutDashboard className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Dashboard</span>
+              </Link>
+            )}
+            <button
+              type="button"
+              onClick={() => void handleLogout()}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-white/30 bg-white/5 px-2.5 text-sm font-medium text-white hover:bg-white/15 print:hidden"
+              aria-label="Sign out"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Sign out</span>
+            </button>
           </div>
         </div>
       </header>
@@ -769,34 +803,22 @@ export default function SalaryOn2026Page() {
             {locale === 'bn' ? '।' : '.'}
           </p>
           {shareNote ? <p className="mt-2 text-xs text-emerald-100 print:hidden">{shareNote}</p> : null}
+          <p className="mx-auto mt-3 inline-flex max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-full bg-white/10 px-3 py-1 text-xs text-emerald-50 ring-1 ring-white/20 print:hidden">
+            <Building2 className="h-3.5 w-3.5 shrink-0" />
+            <span className="font-semibold">{t.officeYour}:</span>
+            <span className="min-w-0 truncate">{salaryOffice?.label ?? t.officeNotSet}</span>
+            <button type="button" onClick={changeOffice} className="font-semibold underline underline-offset-2 hover:text-white">
+              {t.officeChange}
+            </button>
+          </p>
         </div>
       </div>
 
       <main className="mx-auto w-full max-w-5xl flex-1 space-y-6 px-4 py-6 sm:px-6 sm:py-8">
         <SalaryPrintMeta t={t} info={printInfo} preparedOn={preparedOn} />
 
-        <Alert className="salary-print-hide border-emerald-200 bg-emerald-50 text-emerald-950 shadow-sm">
-          <p className="text-sm leading-relaxed">
-            <span className="rounded bg-emerald-200 px-1.5 py-0.5 font-extrabold text-emerald-950">
-              {t.heroBadge}
-            </span>{' '}
-            {t.publishedNote}
-          </p>
-        </Alert>
-
-        <Alert className="salary-print-rules border-emerald-200 bg-white text-emerald-950 shadow-sm">
-          <div className="space-y-1.5 text-sm leading-relaxed">
-            {t.rules.map((segments, i) => (
-              <p key={i}>
-                <RichText segments={segments} />
-              </p>
-            ))}
-          </div>
-        </Alert>
-
         <Card className="salary-print-hide shadow-sm">
-          <CardHeader className="space-y-0.5 pb-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">{t.startHere}</p>
+          <CardHeader className="pb-3">
             <CardTitle className="text-base">{t.currentPay}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -1063,20 +1085,15 @@ export default function SalaryOn2026Page() {
 
             {error ? <Alert variant="error">{error}</Alert> : null}
 
-            <div className="space-y-2">
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" onClick={handleCalculate} className="gap-2">
-                  <Calculator className="h-4 w-4" />
-                  {t.calculate}
-                </Button>
-                <Button type="button" onClick={handleArrears} className="gap-2 bg-indigo-700 hover:bg-indigo-800">
-                  <ReceiptText className="h-4 w-4" />
-                  {t.calcArrears}
-                </Button>
-              </div>
-              <p className="inline-block rounded-md bg-emerald-200 px-2.5 py-1 text-xs font-semibold text-emerald-950 ring-1 ring-emerald-400/60">
-                Developed by Rashed. Office of the Controller General of Accounts.
-              </p>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" onClick={handleArrears} className="gap-2 bg-indigo-700 hover:bg-indigo-800">
+                <ReceiptText className="h-4 w-4" />
+                {t.calcArrears}
+              </Button>
+              <Button type="button" onClick={handleCalculate} className="gap-2">
+                <Calculator className="h-4 w-4" />
+                {t.calculate}
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -1138,7 +1155,6 @@ export default function SalaryOn2026Page() {
               hraArea={hraArea}
               months={arrearMonths}
               onMonthsChange={setArrearMonths}
-              onPdf={() => setPrintDialog('arrears')}
               onTrForm={() => setPrintDialog('trform')}
               canBill={Boolean(billAccess?.can_bill)}
               accessPanel={
@@ -1157,6 +1173,7 @@ export default function SalaryOn2026Page() {
                   ) : null}
                 </>
               }
+              contactsPanel={<SalaryBillContacts locale={locale} contacts={billAccess?.contacts ?? []} />}
             />
           </div>
         ) : null}

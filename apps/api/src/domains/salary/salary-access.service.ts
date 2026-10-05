@@ -19,6 +19,7 @@ import { User } from '../users/models/User.model.js';
 import { SalaryBillAccess, type ISalaryBillAccess } from './models/SalaryBillAccess.model.js';
 import { SalaryBillUsage } from './models/SalaryBillUsage.model.js';
 import { SalarySettings } from './models/SalarySettings.model.js';
+import { assertSalaryOfficeChosen, salaryOfficeLabels } from './salary-office.service.js';
 
 const SETTINGS_KEY = 'global';
 
@@ -91,6 +92,7 @@ export async function getMyBillAccess(user: AuthUser): Promise<SalaryBillAccessR
 export async function requestBills(user: AuthUser, dto: RequestSalaryBillsDto): Promise<SalaryBillAccessRecord> {
   if (isPlatformAdmin(user)) throw badRequest('Admins can bill without approval.');
   if (user.status !== 'active') throw forbidden('Account is not active');
+  await assertSalaryOfficeChosen(user.id);
   await SalaryBillAccess.findOneAndUpdate(
     { user_id: user.id },
     {
@@ -114,6 +116,7 @@ export async function consumeBill(user: AuthUser, dto: ConsumeSalaryBillDto): Pr
   if (user.status !== 'active') throw forbidden('Account is not active');
   const now = new Date();
   if (!isPlatformAdmin(user)) {
+    await assertSalaryOfficeChosen(user.id);
     const updated = await SalaryBillAccess.findOneAndUpdate(
       { user_id: user.id, $expr: { $lt: ['$bills_used', '$bill_limit'] } },
       { $inc: { bills_used: 1 }, $set: { last_used_at: now, updated_at: now } },
@@ -140,7 +143,11 @@ export async function consumeBill(user: AuthUser, dto: ConsumeSalaryBillDto): Pr
 }
 
 async function toAdminRows(docs: ISalaryBillAccess[]): Promise<SalaryBillAccessAdminRow[]> {
-  const users = await User.find({ _id: { $in: docs.map((d) => d.user_id) } }).select('full_name_en email phone');
+  const userIds = docs.map((d) => String(d.user_id));
+  const [users, offices] = await Promise.all([
+    User.find({ _id: { $in: userIds } }).select('full_name_en email phone'),
+    salaryOfficeLabels(userIds),
+  ]);
   const byId = new Map(users.map((u) => [String(u._id), u]));
   return docs.map((doc) => {
     const u = byId.get(String(doc.user_id));
@@ -151,6 +158,7 @@ async function toAdminRows(docs: ISalaryBillAccess[]): Promise<SalaryBillAccessA
         email: u?.email ?? '',
         phone: u?.phone ?? '',
       },
+      office_label: offices.get(String(doc.user_id)) ?? '',
       status: doc.status,
       bill_limit: doc.bill_limit,
       bills_used: doc.bills_used,

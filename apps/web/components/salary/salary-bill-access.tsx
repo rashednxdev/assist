@@ -1,14 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { MessageCircle, Phone, ShieldCheck } from 'lucide-react';
+import { MessageCircle, Phone } from 'lucide-react';
 import type { SalaryBillAccessRecord, SalaryContactNumber } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert } from '@/components/ui/alert';
-import { localNum, salaryCopy, type SalaryLocale } from '@/lib/salary-i18n';
+import { localNum, salaryCopy, type SalaryCopy, type SalaryLocale } from '@/lib/salary-i18n';
 
 function whatsappHref(number: string): string {
   const digits = number.replace(/\D/g, '');
@@ -16,34 +16,25 @@ function whatsappHref(number: string): string {
   return `https://wa.me/${intl}`;
 }
 
-function ContactList({ title, contacts, whatsappLabel }: { title: string; contacts: SalaryContactNumber[]; whatsappLabel: string }) {
-  if (contacts.length === 0) return null;
+function statusLabel(t: SalaryCopy, access: SalaryBillAccessRecord): string {
+  if (access.unlimited || access.remaining > 0) return t.accessStatusApproved;
+  if (access.request.pending) return t.accessStatusPending;
+  if (access.status === 'rejected') return t.accessStatusRejected;
+  if (access.bill_limit > 0) return t.accessStatusUsedUp;
+  return t.accessStatusNone;
+}
+
+function SectionFrame({ title, badge, children }: { title: string; badge?: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-1.5">
-      <p className="text-xs font-semibold uppercase tracking-wide text-indigo-900/80">{title}</p>
-      <ul className="space-y-1.5">
-        {contacts.map((c, i) => (
-          <li key={`${c.number}-${i}`} className="flex flex-wrap items-center gap-2 text-sm">
-            {c.label ? <span className="font-medium text-slate-800">{c.label}:</span> : null}
-            <a href={`tel:${c.number.replace(/\s/g, '')}`} className="inline-flex items-center gap-1 font-mono font-semibold text-indigo-800 hover:underline">
-              <Phone className="h-3.5 w-3.5" />
-              {c.number}
-            </a>
-            {c.whatsapp ? (
-              <a
-                href={whatsappHref(c.number)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-200"
-              >
-                <MessageCircle className="h-3.5 w-3.5" />
-                {whatsappLabel}
-              </a>
-            ) : null}
-          </li>
-        ))}
-      </ul>
-    </div>
+    <section className="overflow-hidden rounded-2xl border border-red-100 bg-gradient-to-br from-rose-50 via-white to-white shadow-sm print:hidden">
+      <div className="flex items-center justify-between gap-2 bg-gradient-to-br from-red-600 via-rose-600 to-red-900 px-4 py-2.5">
+        <h3 className="text-sm font-bold text-white">{title}</h3>
+        {badge ? (
+          <span className="rounded-full bg-white px-2.5 py-0.5 text-[11px] font-semibold text-red-700">{badge}</span>
+        ) : null}
+      </div>
+      <div className="space-y-3 px-4 py-3 text-sm text-slate-700">{children}</div>
+    </section>
   );
 }
 
@@ -71,23 +62,24 @@ export function SalaryBillAccessPanel({
 
   if (loadError || !access) {
     return (
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 print:hidden">
-        <span>{loadError ? t.accessLoadError : '…'}</span>
-        {loadError ? (
-          <Button type="button" size="sm" variant="outline" onClick={onRetry}>
-            {t.retry}
-          </Button>
-        ) : null}
-      </div>
+      <SectionFrame title={t.accessTitle}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span>{loadError ? t.accessLoadError : '…'}</span>
+          {loadError ? (
+            <Button type="button" size="sm" variant="outline" onClick={onRetry}>
+              {t.retry}
+            </Button>
+          ) : null}
+        </div>
+      </SectionFrame>
     );
   }
 
   if (access.unlimited) {
     return (
-      <p className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-900 print:hidden">
-        <ShieldCheck className="h-4 w-4" />
-        {t.accessUnlimited}
-      </p>
+      <SectionFrame title={t.accessTitle} badge={statusLabel(t, access)}>
+        <p>{t.accessUnlimited}</p>
+      </SectionFrame>
     );
   }
 
@@ -121,32 +113,27 @@ export function SalaryBillAccessPanel({
   }
 
   return (
-    <div className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/60 px-4 py-3 print:hidden">
+    <SectionFrame title={t.accessTitle} badge={statusLabel(t, access)}>
       <div className="space-y-1">
-        <p className="text-sm font-bold text-indigo-950">{t.accessTitle}</p>
         {access.remaining > 0 ? (
-          <p className="text-sm font-semibold text-emerald-800">
+          <p className="font-semibold text-red-700">
             {t.accessRemaining(num(access.remaining), num(access.bill_limit), num(access.bills_used))}
           </p>
         ) : access.status === 'none' ? (
-          <p className="text-sm font-semibold text-indigo-900">{t.accessNone}</p>
+          <p className="font-semibold text-red-700">{t.accessNone}</p>
         ) : access.bill_limit > 0 && !pending ? (
-          <p className="text-sm font-semibold text-rose-800">{t.accessUsedUp(num(access.bill_limit))}</p>
+          <p className="font-semibold text-red-700">{t.accessUsedUp(num(access.bill_limit))}</p>
         ) : null}
         {pending ? (
-          <p className="text-sm font-semibold text-amber-800">
-            {t.accessPending(num(access.request.requested_bills ?? 0))}
-          </p>
+          <p className="font-semibold text-red-700">{t.accessPending(num(access.request.requested_bills ?? 0))}</p>
         ) : null}
-        {access.status === 'rejected' && !pending ? (
-          <p className="text-sm font-semibold text-rose-800">{t.accessRejected}</p>
-        ) : null}
+        {access.status === 'rejected' && !pending ? <p className="font-semibold text-red-700">{t.accessRejected}</p> : null}
         {access.admin_note && !pending ? (
-          <p className="text-xs text-slate-700">
+          <p className="text-xs">
             <span className="font-semibold">{t.accessAdminNote}:</span> {access.admin_note}
           </p>
         ) : null}
-        <p className="text-xs text-indigo-900/80">{t.accessUseNote}</p>
+        <p className="text-xs text-slate-500">{t.accessUseNote}</p>
       </div>
 
       {sent ? <Alert variant="success">{t.requestSent}</Alert> : null}
@@ -165,7 +152,6 @@ export function SalaryBillAccessPanel({
               inputMode="numeric"
               value={countText}
               onChange={(e) => setCount(e.target.value)}
-              className="bg-white"
             />
           </div>
           <div className="space-y-1">
@@ -178,24 +164,74 @@ export function SalaryBillAccessPanel({
               value={note}
               placeholder={t.requestNotePlaceholder}
               onChange={(e) => setNote(e.target.value)}
-              className="bg-white"
             />
           </div>
           <div className="sm:col-span-2">
-            <Button type="button" onClick={() => void submit()} disabled={sending} className="bg-indigo-700 hover:bg-indigo-800">
+            <Button type="button" onClick={() => void submit()} disabled={sending} className="bg-red-600 shadow-sm hover:bg-red-700">
               {sending ? t.requestSending : requestLabel}
             </Button>
           </div>
         </div>
       ) : (
-        <Button type="button" size="sm" variant="outline" onClick={() => setFormOpen(true)} className="border-indigo-300 text-indigo-800">
+        <Button type="button" size="sm" variant="outline" onClick={() => setFormOpen(true)} className="border-red-200 bg-white text-red-700 hover:bg-rose-50">
           {requestLabel}
         </Button>
       )}
 
       {error ? <Alert variant="error">{error}</Alert> : null}
+    </SectionFrame>
+  );
+}
 
-      <ContactList title={t.contactsTitle} contacts={access.contacts} whatsappLabel={t.whatsapp} />
-    </div>
+export function SalaryBillContacts({ locale, contacts }: { locale: SalaryLocale; contacts: SalaryContactNumber[] }) {
+  const t = salaryCopy(locale);
+  if (contacts.length === 0) return null;
+  return (
+    <SectionFrame title={t.contactsTitle}>
+      <div className="-mx-4 -my-3 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-rose-50 text-left text-xs font-semibold uppercase tracking-wide text-red-700">
+            <tr>
+              <th className="w-10 px-4 py-2">#</th>
+              <th className="px-4 py-2">{t.contactName}</th>
+              <th className="px-4 py-2">{t.contactNumber}</th>
+              <th className="px-4 py-2">{t.whatsapp}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {contacts.map((c, i) => (
+              <tr key={`${c.number}-${i}`} className="border-t border-red-100">
+                <td className="px-4 py-2 text-slate-500">{localNum(locale, i + 1)}</td>
+                <td className="px-4 py-2 font-medium text-slate-800">{c.label || '—'}</td>
+                <td className="px-4 py-2">
+                  <a
+                    href={`tel:${c.number.replace(/\s/g, '')}`}
+                    className="inline-flex items-center gap-1.5 font-mono font-semibold text-red-700 hover:underline"
+                  >
+                    <Phone className="h-3.5 w-3.5" />
+                    {c.number}
+                  </a>
+                </td>
+                <td className="px-4 py-2">
+                  {c.whatsapp ? (
+                    <a
+                      href={whatsappHref(c.number)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-full bg-red-600 px-2.5 py-0.5 text-xs font-semibold text-white shadow-sm hover:bg-red-700"
+                    >
+                      <MessageCircle className="h-3.5 w-3.5" />
+                      {t.whatsapp}
+                    </a>
+                  ) : (
+                    <span className="text-slate-400">—</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </SectionFrame>
   );
 }

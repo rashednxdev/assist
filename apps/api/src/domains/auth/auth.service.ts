@@ -9,6 +9,15 @@ import { Credentials, type ICredentials } from '../users/models/Credentials.mode
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_DURATION_MS = 15 * 60 * 1000;
 
+/** Temporary: web sign-ins neither count against nor bind the one-device limit. Set false to enforce again. */
+export const WEB_LOGIN_IGNORES_DEVICE_LIMIT = true;
+
+export type SessionPlatform = 'web' | 'mobile';
+
+function isWebLogin(dto: Pick<LoginDto, 'client_platform' | 'device_label'>): boolean {
+  return dto.client_platform === 'web' || Boolean(dto.device_label?.startsWith('web:'));
+}
+
 export interface TokenPair {
   accessToken: string;
   refreshToken: string;
@@ -56,8 +65,9 @@ export function assertDeviceAllowed(
   credentials: Pick<ICredentials, 'bound_device_id' | 'allow_multi_device' | 'token_version'>,
   deviceId: string | undefined,
   tokenVersion?: number,
+  platform?: SessionPlatform,
 ): void {
-  if (allowsAnyDevice(user, credentials)) {
+  if (allowsAnyDevice(user, credentials) || (platform === 'web' && WEB_LOGIN_IGNORES_DEVICE_LIMIT)) {
     if (tokenVersion !== undefined && credentials.token_version !== tokenVersion) {
       throw unauthorized('Session expired. Please sign in again.');
     }
@@ -133,29 +143,41 @@ export async function login(
     throw unauthorized('Your temporary password has expired. Ask an admin for a new one.');
   }
 
-  assertDeviceAllowed(user, credentials, dto.device_id);
+  const platform: SessionPlatform = isWebLogin(dto) ? 'web' : 'mobile';
+  const skipDeviceLimit = platform === 'web' && WEB_LOGIN_IGNORES_DEVICE_LIMIT;
+  assertDeviceAllowed(user, credentials, dto.device_id, undefined, platform);
 
   credentials.failed_attempts = 0;
   credentials.status = mustChangePassword ? 'reset_required' : 'active';
   credentials.locked_until = undefined;
   credentials.last_login = new Date();
   credentials.last_ip = ip;
-  await bindDeviceIfNeeded(credentials, dto.device_id, dto.device_label);
+  if (!skipDeviceLimit) await bindDeviceIfNeeded(credentials, dto.device_id, dto.device_label);
   await credentials.save();
 
-  const tokens = signTokens(String(user._id), dto.device_id, credentials.token_version);
+  const tokens = signTokens(
+    String(user._id),
+    dto.device_id,
+    credentials.token_version,
+    skipDeviceLimit ? 'web' : undefined,
+  );
   return { tokens, userId: String(user._id), mustChangePassword };
 }
 
-export function signTokens(userId: string, deviceId?: string, tokenVersion = 0): TokenPair {
+export function signTokens(
+  userId: string,
+  deviceId?: string,
+  tokenVersion = 0,
+  platform?: SessionPlatform,
+): TokenPair {
   const expiresIn = accessExpiresSeconds();
   const accessToken = jwt.sign(
-    { sub: userId, type: 'access', did: deviceId, tv: tokenVersion },
+    { sub: userId, type: 'access', did: deviceId, tv: tokenVersion, plat: platform },
     env.JWT_SECRET,
     { expiresIn: env.JWT_ACCESS_EXPIRES_IN as jwt.SignOptions['expiresIn'] },
   );
   const refreshToken = jwt.sign(
-    { sub: userId, type: 'refresh', did: deviceId, tv: tokenVersion },
+    { sub: userId, type: 'refresh', did: deviceId, tv: tokenVersion, plat: platform },
     env.JWT_SECRET,
     { expiresIn: env.JWT_REFRESH_EXPIRES_IN as jwt.SignOptions['expiresIn'] },
   );

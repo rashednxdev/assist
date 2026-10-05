@@ -138,8 +138,8 @@ const salaryEn = {
   arrColHraProtection: 'House rent protection',
   arrColNet: 'Net arrears',
   arrTotalRow: (n: string, one: boolean) => `Total (${n} ${one ? 'month' : 'months'})`,
-  arrTotalLine: (diff: string, ded: string, total: string, add?: string) =>
-    `Total arrears due: (${diff}${add ? ` + ${add}` : ''} − ${ded}) = ${total}`,
+  arrTotalLine: (diff: string, special: string, hra: string, total: string, add?: string) =>
+    `Total arrears due: (${diff}${add ? ` + ${add}` : ''} − (${special} + ${hra})) = ${total}`,
   inWords: (words: string) => `In words: ${words}`,
   arrNegative: 'A negative amount is to be recovered.',
   stageName: (n: number) => `Stage-${n}`,
@@ -226,7 +226,7 @@ const salaryEn = {
   requestNotePlaceholder: 'Office, purpose, or anything the admin should know',
   requestBtn: 'Send request',
   newBulkBtn: 'New bulk request',
-  requestUpdateBtn: 'Update request',
+  requestUpdateBtn: 'Send request for more Arrear Bill Download',
   requestSending: 'Sending…',
   requestSent: 'Request sent.',
   contactAdminHint: 'Call or WhatsApp the admin using the numbers below to get bulk access.',
@@ -396,8 +396,8 @@ const salaryBn: SalaryCopy = {
   arrColHraProtection: 'বাড়ি ভাড়া সুরক্ষা',
   arrColNet: 'নিট বকেয়া',
   arrTotalRow: (n) => `মোট (${n} মাস)`,
-  arrTotalLine: (diff, ded, total, add) =>
-    `মোট প্রাপ্য বকেয়া: (${diff}${add ? ` + ${add}` : ''} − ${ded}) = ${total}`,
+  arrTotalLine: (diff, special, hra, total, add) =>
+    `মোট প্রাপ্য বকেয়া: (${diff}${add ? ` + ${add}` : ''} − (${special} + ${hra})) = ${total}`,
   inWords: (words) => `কথায়: ${words}`,
   arrNegative: 'ঋণাত্মক হলে তা আদায়যোগ্য।',
   stageName: (n) => `পর্যায়-${toBanglaDigits(n)}`,

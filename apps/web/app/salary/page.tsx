@@ -1135,7 +1135,7 @@ export default function SalaryOn2026Page() {
 
             {error ? <Alert variant="error">{error}</Alert> : null}
 
-            <div className="grid w-full gap-2 sm:w-80">
+            <div className="mx-auto grid w-full gap-2 sm:w-80">
               <Button type="button" onClick={handleArrears} className="gap-2 bg-indigo-700 hover:bg-indigo-800">
                 <ReceiptText className="h-4 w-4" />
                 {t.calcArrears}

@@ -245,7 +245,8 @@ export function TrAttachment({
       <p className="tr-attach-total">
         {t.arrTotalLine(
           `৳ ${taka(result.total_basic_difference)}`,
-          `৳ ${taka(result.total_deduction)}`,
+          `৳ ${taka(result.total_special_allowance)}`,
+          `৳ ${taka(result.total_excess_hra)}`,
           `৳ ${taka(result.total_net_arrear)}`,
           result.total_hra_protection > 0 ? `৳ ${taka(result.total_hra_protection)}` : undefined,
         )}

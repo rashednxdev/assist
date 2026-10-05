@@ -377,7 +377,8 @@ export function SalaryArrearsBill({
               <p className="text-base font-bold text-indigo-950">
                 {t.arrTotalLine(
                   `৳ ${signed(result.total_basic_difference)}`,
-                  tk(result.total_deduction),
+                  tk(result.total_special_allowance),
+                  tk(result.total_excess_hra),
                   `৳ ${signed(result.total_net_arrear)}`,
                   result.total_hra_protection > 0 ? tk(result.total_hra_protection) : undefined,
                 )}
@@ -389,8 +390,6 @@ export function SalaryArrearsBill({
                 <p className="text-[11px] text-indigo-900/80">{t.arrNegative}</p>
               ) : null}
             </div>
-
-            {accessPanel}
 
             <div className="flex flex-wrap justify-center gap-3 print:hidden">
               <Button
@@ -404,6 +403,8 @@ export function SalaryArrearsBill({
                 {downloading ? t.downloading : t.trFormDownload(String(salaryTrFormNo(result.substantive_grade)))}
               </Button>
             </div>
+
+            {accessPanel}
 
             {contactsPanel}
           </>

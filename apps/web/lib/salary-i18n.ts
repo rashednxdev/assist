@@ -167,6 +167,8 @@ const salaryEn = {
   basisDrawn: 'Basic drawn (01-07-2026)',
   basisSpecial: 'Special allowance rate',
   basisHousing: 'House rent',
+  basisHraProtection: 'House rent protection (July 2026 raised to June 2026 level)',
+  hraProtectionWord: 'protection',
   basisMonths: 'Months',
   billMonthsHead: 'Month-by-month calculation',
   lineNewBasic: 'Basic (On Fixation 2026)',
@@ -349,6 +351,8 @@ const salaryBn: SalaryCopy = {
   basisDrawn: 'উত্তোলিত মূল বেতন (০১-০৭-২০২৬)',
   basisSpecial: 'বিশেষ ভাতার হার',
   basisHousing: 'বাড়ি ভাড়া',
+  basisHraProtection: 'বাড়ি ভাড়া সুরক্ষা (জুলাই ২০২৬-এর বাড়ি ভাড়া জুন ২০২৬-এর সমপরিমাণে উন্নীত)',
+  hraProtectionWord: 'সুরক্ষা',
   basisMonths: 'মাস সমূহ',
   billMonthsHead: 'মাসভিত্তিক হিসাব',
   lineNewBasic: 'মূল বেতন (বেতন স্কেল ২০২৬)',
@@ -397,9 +401,9 @@ export function monthText(locale: SalaryLocale, key: string): string {
 }
 
 const HRA_AREA_BN: Record<HraArea, string> = {
-  dhaka: 'ঢাকা মহানগর এলাকা',
-  major_city: 'চট্টগ্রাম, খুলনা, রাজশাহী, সিলেট, বরিশাল, রংপুর, নারায়ণগঞ্জ, গাজীপুর, সাভার',
-  other: 'অন্যান্য এলাকা (জেলা / উপজেলা)',
+  dhaka: 'ঢাকা সিটি কর্পোরেশন এলাকা',
+  major_city: 'চট্টগ্রাম, খুলনা, রাজশাহী, সিলেট, বরিশাল, রংপুর, নারায়ণগঞ্জ ও গাজীপুর সিটি কর্পোরেশন এবং সাভার পৌর এলাকা',
+  other: 'অন্যান্য স্থান',
 };
 
 export const HRA_AREAS: HraArea[] = ['dhaka', 'major_city', 'other'];

@@ -91,13 +91,24 @@ function Dots({ value, width }: { value?: string; width: string }) {
   );
 }
 
+function takaPaisa(amount: number): { taka: string; paisa: string } {
+  const totalPaisa = Math.round(Math.abs(amount) * 100);
+  const whole = Math.floor(totalPaisa / 100);
+  const text = toBanglaDigits(formatTaka(whole));
+  return {
+    taka: amount < 0 ? `− ${text}` : text,
+    paisa: toBanglaDigits(String(totalPaisa % 100).padStart(2, '0')),
+  };
+}
+
 function AmountCells({ amount }: { amount?: number }) {
+  const parts = amount !== undefined ? takaPaisa(amount) : null;
   return (
     <>
       <td />
       <td />
-      <td className="tr-num">{amount !== undefined ? taka(amount) : ''}</td>
-      <td className="tr-num">{amount !== undefined ? '০০' : ''}</td>
+      <td className="tr-num">{parts?.taka ?? ''}</td>
+      <td className="tr-num">{parts?.paisa ?? ''}</td>
     </>
   );
 }
@@ -375,6 +386,12 @@ export function TrForm13({
               <td>{t.basisHousing}</td>
               <td>{result.hra_eligible ? hraAreaText('bn', hraArea) : t.govtHousing}</td>
             </tr>
+            {result.hra_protection > 0 ? (
+              <tr>
+                <td>{t.basisHraProtection}</td>
+                <td>৳ {taka(result.hra_protection)}</td>
+              </tr>
+            ) : null}
             <tr>
               <td>{t.basisMonths}</td>
               <td>{result.rows.map((r) => monthText('bn', r.month)).join(', ')}</td>

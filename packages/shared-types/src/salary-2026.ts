@@ -214,8 +214,16 @@ export function salaryPhaseRateNote(grade: PayGrade, phase: SalaryPhase): string
   return grade >= 10 ? 'Rate 75% (grades 10–20)' : 'Rate 70% (grades 1–9)';
 }
 
+/** Whole taka as-is; amounts with paisa (e.g. house rent) keep two decimals. */
 export function formatTaka(amount: number): string {
-  return new Intl.NumberFormat('en-BD').format(Math.round(amount));
+  const paisa = Math.round(amount * 100);
+  if (paisa % 100 === 0) return new Intl.NumberFormat('en-BD').format(paisa / 100);
+  return new Intl.NumberFormat('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(paisa / 100);
+}
+
+/** Basic × whole-percent rates never need more than two decimals; this only strips floating-point noise. */
+function toPaisa(amount: number): number {
+  return Math.round(amount * 100) / 100;
 }
 
 function stageOrNextHigher(scale: readonly number[], target: number): { amount: number; index: number } {
@@ -587,46 +595,51 @@ export interface EmployeeGrossResult {
   estimated_average_monthly: number;
 }
 
+interface HraRule {
+  rate: number;
+  min: number;
+}
+
 const HRA_BANDS: Array<{
   maxBasic: number;
-  dhaka: { rate: number; min: number };
-  major_city: { rate: number; min: number };
-  other: { rate: number; min: number };
+  dhaka: HraRule;
+  major_city: HraRule;
+  other: HraRule;
 }> = [
   {
     maxBasic: 9700,
     dhaka: { rate: 0.65, min: 5600 },
     major_city: { rate: 0.55, min: 5000 },
-    other: { rate: 0.45, min: 4500 },
+    other: { rate: 0.5, min: 4500 },
   },
   {
     maxBasic: 16000,
-    dhaka: { rate: 0.6, min: 6300 },
+    dhaka: { rate: 0.6, min: 6400 },
     major_city: { rate: 0.5, min: 5400 },
-    other: { rate: 0.4, min: 4500 },
+    other: { rate: 0.45, min: 4800 },
   },
   {
     maxBasic: 35500,
     dhaka: { rate: 0.55, min: 9600 },
     major_city: { rate: 0.45, min: 8000 },
-    other: { rate: 0.35, min: 6400 },
+    other: { rate: 0.4, min: 7000 },
   },
   {
     maxBasic: Number.POSITIVE_INFINITY,
-    dhaka: { rate: 0.5, min: 19600 },
+    dhaka: { rate: 0.5, min: 19500 },
     major_city: { rate: 0.4, min: 16000 },
-    other: { rate: 0.3, min: 12500 },
+    other: { rate: 0.35, min: 13800 },
   },
 ];
 
 export function hraAreaLabel(area: HraArea): string {
   switch (area) {
     case 'dhaka':
-      return 'Dhaka Metropolitan Area';
+      return 'Dhaka City Corporation Area';
     case 'major_city':
-      return 'Chittagong, Khulna, Rajshahi, Sylhet, Barisal, Rangpur, Narayanganj, Gazipur, Savar';
+      return 'Chittagong, Khulna, Rajshahi, Sylhet, Barisal, Rangpur, Narayanganj & Gazipur City Corporations, and Savar Municipal Area';
     case 'other':
-      return 'Other areas (District / Upazila)';
+      return 'Other Places';
   }
 }
 
@@ -643,10 +656,8 @@ export function calculateHouseRentAllowance(
 ): { amount: number; rate_percent: number; minimum: number } {
   const band = hraBandForBasic(basic);
   const rule = band[area];
-  const percentAmount = basic * rule.rate;
-  const amount = Math.round(Math.max(percentAmount, rule.min));
   return {
-    amount,
+    amount: toPaisa(Math.max(basic * rule.rate, rule.min)),
     rate_percent: Math.round(rule.rate * 100),
     minimum: rule.min,
   };
@@ -744,7 +755,7 @@ export function calculateAllowancesExcludingBasic(input: EmployeeGrossInput): {
 
   return {
     lines,
-    allowances_total: lines.reduce((sum, line) => sum + line.amount, 0),
+    allowances_total: toPaisa(lines.reduce((sum, line) => sum + line.amount, 0)),
   };
 }
 
@@ -861,7 +872,12 @@ export interface SalaryArrearResult {
   special_rate_percent: number;
   special_allowance: number;
   hra_eligible: boolean;
+  /** July 2026 house rent on the next stage, after protection. */
   hra_on_next_step: number;
+  /** July 2026 house rent on the next stage as calculated, before protection. */
+  hra_on_next_step_calculated: number;
+  /** Deficit added so July 2026 house rent is not below June 2026. */
+  hra_protection: number;
   hra_on_old_pay: number;
   hra_rate_percent_next_step: number;
   hra_rate_percent_old_pay: number;
@@ -905,8 +921,11 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
   const hraEligible = input.housing_status !== 'govt_accommodation';
   const hraNext = hraEligible ? calculateHouseRentAllowance(nextStep, input.hra_area) : null;
   const hraOld = hraEligible ? calculateHouseRentAllowance(oldPay, input.hra_area) : null;
-  const excessHra = hraNext && hraOld ? Math.max(0, hraNext.amount - hraOld.amount) : 0;
-  const monthlyDeduction = specialAllowance + excessHra;
+  // July 2026 house rent may not fall below June 2026; the deficit is added back.
+  const hraProtection = hraNext && hraOld ? toPaisa(Math.max(0, hraOld.amount - hraNext.amount)) : 0;
+  const hraJuly = hraNext ? toPaisa(hraNext.amount + hraProtection) : 0;
+  const excessHra = hraOld ? toPaisa(hraJuly - hraOld.amount) : 0;
+  const monthlyDeduction = toPaisa(specialAllowance + excessHra);
 
   const basicByPhase = new Map<SalaryPhase, number>();
   const rows: SalaryArrearMonthRow[] = months.map((month) => {
@@ -927,11 +946,11 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
       basic_difference: basicDifference,
       special_allowance: specialAllowance,
       excess_hra: excessHra,
-      net_arrear: basicDifference - monthlyDeduction,
+      net_arrear: toPaisa(basicDifference - monthlyDeduction),
     };
   });
 
-  const sum = (pick: (r: SalaryArrearMonthRow) => number) => rows.reduce((s, r) => s + pick(r), 0);
+  const sum = (pick: (r: SalaryArrearMonthRow) => number) => toPaisa(rows.reduce((s, r) => s + pick(r), 0));
 
   return {
     grade,
@@ -942,7 +961,9 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
     special_rate_percent: Math.round(specialRate * 100),
     special_allowance: specialAllowance,
     hra_eligible: hraEligible,
-    hra_on_next_step: hraNext?.amount ?? 0,
+    hra_on_next_step: hraJuly,
+    hra_on_next_step_calculated: hraNext?.amount ?? 0,
+    hra_protection: hraProtection,
     hra_on_old_pay: hraOld?.amount ?? 0,
     hra_rate_percent_next_step: hraNext?.rate_percent ?? 0,
     hra_rate_percent_old_pay: hraOld?.rate_percent ?? 0,
@@ -978,7 +999,7 @@ export function calculateEmployeeGross(input: EmployeeGrossInput): EmployeeGross
     ...allowanceLines,
   ];
 
-  const monthly_gross = basic + allowances_total;
+  const monthly_gross = toPaisa(basic + allowances_total);
 
   const festival = basic * 2;
   const baishakh = Math.round(basic * 0.2);

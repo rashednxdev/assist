@@ -76,9 +76,11 @@ export function MonthMath({ f, result, group }: { f: Fmt; result: SalaryArrearRe
   const row = group.lead;
   const leadMonth = monthText(locale, row.month);
   const specialCalc = `${amt(result.next_step)} × ${num(result.special_rate_percent)}%`;
-  const hraCalc = result.hra_eligible
-    ? `${amt(result.hra_on_next_step)} − ${amt(result.hra_on_old_pay)}`
-    : t.arrHraNone;
+  const hraCalc = !result.hra_eligible
+    ? t.arrHraNone
+    : result.hra_protection > 0
+      ? `(${amt(result.hra_on_next_step_calculated)} + ${amt(result.hra_protection)} ${t.hraProtectionWord}) − ${amt(result.hra_on_old_pay)}`
+      : `${amt(result.hra_on_next_step)} − ${amt(result.hra_on_old_pay)}`;
 
   const lines: Array<{ no: number; label: string; calc?: string; value: string; tone?: 'minus' | 'sum' | 'net' }> = [
     { no: 1, label: t.lineNewBasic, value: amt(row.new_basic) },
@@ -261,6 +263,9 @@ export function SalaryArrearsBill({
                   label={t.basisHousing}
                   value={result.hra_eligible ? hraAreaText(locale, hraArea) : t.govtHousing}
                 />
+                {result.hra_protection > 0 ? (
+                  <BasisRow label={t.basisHraProtection} value={tk(result.hra_protection)} />
+                ) : null}
                 <BasisRow
                   label={t.basisMonths}
                   value={result.rows.map((r) => monthText(locale, r.month)).join(', ')}

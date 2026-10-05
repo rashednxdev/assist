@@ -58,14 +58,18 @@ function groupWords(n: number, below1000: (v: number) => string, units: [string,
   return parts.join(' ');
 }
 
-/** Whole-taka amount in words, e.g. "Fifteen Thousand One Hundred Two Taka Only" / "পনেরো হাজার একশত দুই টাকা মাত্র". */
+/** Amount in words with paisa, e.g. "Fifteen Thousand One Hundred Two Taka and Fifty Paisa Only" / "পনেরো হাজার একশত দুই টাকা পঞ্চাশ পয়সা মাত্র". */
 export function takaInWords(locale: 'en' | 'bn', amount: number): string {
-  const rounded = Math.round(amount);
-  const n = Math.abs(rounded);
+  const totalPaisa = Math.round(Math.abs(amount) * 100);
+  const n = Math.floor(totalPaisa / 100);
+  const paisa = totalPaisa % 100;
+  const negative = amount < 0 && totalPaisa > 0;
   if (locale === 'bn') {
     const words = n === 0 ? BN_0_99[0] : groupWords(n, bnBelow1000, ['কোটি', 'লক্ষ', 'হাজার']);
-    return `${rounded < 0 ? 'ঋণাত্মক ' : ''}${words} টাকা মাত্র`;
+    const paisaText = paisa ? ` ${BN_0_99[paisa]} পয়সা` : '';
+    return `${negative ? 'ঋণাত্মক ' : ''}${words} টাকা${paisaText} মাত্র`;
   }
   const words = n === 0 ? EN_ONES[0] : groupWords(n, enBelow1000, ['Crore', 'Lakh', 'Thousand']);
-  return `${rounded < 0 ? 'Minus ' : ''}${words} Taka Only`;
+  const paisaText = paisa ? ` and ${enBelow100(paisa)} Paisa` : '';
+  return `${negative ? 'Minus ' : ''}${words} Taka${paisaText} Only`;
 }

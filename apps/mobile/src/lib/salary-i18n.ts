@@ -313,9 +313,9 @@ export function monthText(locale: CalcLocale, key: string): string {
 }
 
 const HRA_AREA_BN: Record<HraArea, string> = {
-  dhaka: 'ঢাকা মহানগর এলাকা',
-  major_city: 'চট্টগ্রাম, খুলনা, রাজশাহী, সিলেট, বরিশাল, রংপুর, নারায়ণগঞ্জ, গাজীপুর, সাভার',
-  other: 'অন্যান্য এলাকা (জেলা / উপজেলা)',
+  dhaka: 'ঢাকা সিটি কর্পোরেশন এলাকা',
+  major_city: 'চট্টগ্রাম, খুলনা, রাজশাহী, সিলেট, বরিশাল, রংপুর, নারায়ণগঞ্জ ও গাজীপুর সিটি কর্পোরেশন এবং সাভার পৌর এলাকা',
+  other: 'অন্যান্য স্থান',
 };
 
 export const HRA_AREAS: HraArea[] = ['dhaka', 'major_city', 'other'];

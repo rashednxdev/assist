@@ -16,6 +16,7 @@ import {
   NPS_2026,
   calculateSalary2026AllPhases,
   calculateEmployeeGross,
+  calculateSalaryArrears,
   defaultArrearMonths,
   formatTaka,
   PAY_GRADES,
@@ -35,6 +36,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
 import { SalaryArrearsBill } from '@/components/salary/salary-arrears-bill';
+import { TrForm13 } from '@/components/salary/tr-form-13';
 import {
   EMPTY_PRINT_INFO,
   SalaryPrintDialog,
@@ -55,7 +57,7 @@ import {
   type Segments,
 } from '@/lib/salary-i18n';
 
-type PrintTarget = 'salary' | 'arrears';
+type PrintTarget = 'salary' | 'arrears' | 'trform';
 
 /** Accept ASCII + Bangla digits from any keyboard; strip other characters. */
 function parseAmountInput(raw: string): number {
@@ -515,6 +517,21 @@ export default function SalaryOn2026Page() {
     ? gross.monthly_lines.filter((row) => row.code !== 'basic').reduce((sum, row) => sum + row.amount, 0)
     : 0;
   const detailsVisible = showDetails || printMode === 'salary';
+  const arrearResult = useMemo(() => {
+    if (!showArrears || !grade || stepNo <= 0 || arrearMonths.length === 0) return null;
+    try {
+      return calculateSalaryArrears({
+        grade,
+        old_pay: oldPay,
+        substantive_grade: substantiveGrade,
+        housing_status: housingStatus,
+        hra_area: hraArea,
+        months: arrearMonths,
+      });
+    } catch {
+      return null;
+    }
+  }, [showArrears, grade, stepNo, oldPay, substantiveGrade, housingStatus, hraArea, arrearMonths]);
 
   function resetResults() {
     setResults(null);
@@ -595,9 +612,11 @@ export default function SalaryOn2026Page() {
     if (!printMode) return;
     const prevTitle = document.title;
     document.title =
-      printMode === 'arrears'
-        ? `ProAssist Arrears Bill — Grade ${grade ?? ''}`
-        : `ProAssist Salary 2026 — Grade ${grade ?? ''}`;
+      printMode === 'trform'
+        ? `TR Form 13 — Arrears — Grade ${grade ?? ''}`
+        : printMode === 'arrears'
+          ? `ProAssist Arrears Bill — Grade ${grade ?? ''}`
+          : `ProAssist Salary 2026 — Grade ${grade ?? ''}`;
     if (printMode === 'salary') {
       void fetch('/api/proxy/v1/salary/pdf', { method: 'POST' }).catch(() => {});
     }
@@ -1075,6 +1094,7 @@ export default function SalaryOn2026Page() {
               months={arrearMonths}
               onMonthsChange={setArrearMonths}
               onPdf={() => setPrintDialog('arrears')}
+              onTrForm={() => setPrintDialog('trform')}
             />
           </div>
         ) : null}
@@ -1112,6 +1132,10 @@ export default function SalaryOn2026Page() {
       </footer>
 
       <p className="salary-print-footer hidden">{t.printFooter}</p>
+
+      {arrearResult ? (
+        <TrForm13 result={arrearResult} hraArea={hraArea} info={printInfo} preparedOn={localNum('bn', preparedOn)} />
+      ) : null}
 
       {printDialog ? (
         <SalaryPrintDialog

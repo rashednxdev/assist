@@ -451,4 +451,324 @@ body {
     break-inside: avoid;
     page-break-inside: avoid;
   }
+
+  /* T.R. Form 13: only the form pages */
+  html:has(.salary-print-mode-trform),
+  body:has(.salary-print-mode-trform),
+  .salary-print-root.salary-print-mode-trform {
+    background: #fff !important;
+  }
+
+  .salary-print-mode-trform > *:not(.salary-tr-form) {
+    display: none !important;
+  }
+
+  .salary-print-mode-trform > .salary-tr-form {
+    display: block !important;
+  }
+}
+
+/* T.R. Form 13 layout (A4, 8mm page margins) */
+.salary-tr-form {
+  color: #000;
+  font-size: 9pt;
+  line-height: 1.3;
+}
+
+.salary-tr-form .tr-page {
+  break-after: page;
+  page-break-after: always;
+}
+
+.salary-tr-form .tr-page:last-child {
+  break-after: auto;
+  page-break-after: auto;
+}
+
+.salary-tr-form .tr-dots {
+  display: inline-block;
+  border-bottom: 0.8pt dotted #000;
+  padding: 0 1mm;
+  text-align: center;
+  font-weight: 600;
+}
+
+.salary-tr-form .tr-head {
+  position: relative;
+  text-align: center;
+}
+
+.salary-tr-form .tr-head-ref {
+  position: absolute;
+  left: 0;
+  top: 0;
+  text-align: left;
+  font-size: 8.5pt;
+}
+
+.salary-tr-form .tr-title {
+  font-size: 13pt;
+  font-weight: 700;
+}
+
+.salary-tr-form .tr-head-line {
+  margin-top: 1.5mm;
+}
+
+.salary-tr-form .tr-code-boxes {
+  display: inline-flex;
+  vertical-align: middle;
+  border: 0.6pt solid #000;
+}
+
+.salary-tr-form .tr-code-boxes span {
+  width: 5mm;
+  height: 5mm;
+}
+
+.salary-tr-form .tr-code-boxes span + span {
+  border-left: 0.6pt solid #000;
+}
+
+.salary-tr-form .tr-fields {
+  margin: 3mm 0 2mm;
+}
+
+.salary-tr-form .tr-fields > div + div {
+  margin-top: 2mm;
+}
+
+.salary-tr-form table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.salary-tr-form .tr-grid th,
+.salary-tr-form .tr-grid td {
+  border: 0.6pt solid #000;
+  padding: 0.5mm 1.5mm;
+  height: 5mm;
+  vertical-align: middle;
+}
+
+.salary-tr-form .tr-grid th {
+  font-weight: 500;
+  text-align: center;
+}
+
+.salary-tr-form .tr-section {
+  font-weight: 700;
+}
+
+.salary-tr-form .tr-box-cell {
+  text-align: center;
+}
+
+.salary-tr-form .tr-box {
+  display: inline-block;
+  width: 3.2mm;
+  height: 3.2mm;
+  border: 0.6pt solid #000;
+  font-size: 7pt;
+  line-height: 3mm;
+  text-align: center;
+}
+
+.salary-tr-form .tr-code {
+  text-align: center;
+}
+
+.salary-tr-form .tr-num {
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.salary-tr-form .tr-right {
+  text-align: right;
+}
+
+.salary-tr-form .tr-total td {
+  font-weight: 700;
+}
+
+.salary-tr-form .tr-words {
+  height: 7mm;
+}
+
+.salary-tr-form .tr-footnote,
+.salary-tr-form .tr-small {
+  margin-top: 1.5mm;
+  font-size: 7.5pt;
+  font-style: italic;
+}
+
+.salary-tr-form .tr-page-no {
+  text-align: center;
+  margin-bottom: 6mm;
+}
+
+.salary-tr-form .tr-p2-row {
+  margin-top: 6mm;
+}
+
+.salary-tr-form .tr-p2-officer {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  align-items: end;
+  margin-top: 8mm;
+}
+
+.salary-tr-form .tr-stamp-wrap {
+  justify-self: end;
+  text-align: right;
+}
+
+.salary-tr-form .tr-stamp {
+  width: 34mm;
+  height: 18mm;
+  border: 0.6pt solid #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.salary-tr-form .tr-sign > div + div {
+  margin-top: 1.5mm;
+}
+
+.salary-tr-form .tr-sign-line {
+  display: inline-block;
+  border-top: 0.6pt solid #000;
+  padding-top: 1mm;
+  min-width: 26mm;
+}
+
+.salary-tr-form .tr-p2-heading {
+  margin-top: 10mm;
+  text-align: center;
+  font-size: 11pt;
+  font-weight: 600;
+}
+
+.salary-tr-form .tr-p2-signs {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.3fr;
+  gap: 6mm;
+  margin-top: 16mm;
+}
+
+.salary-tr-form .tr-p2-cheque {
+  display: grid;
+  grid-template-columns: 1fr 1.3fr;
+  margin: 18mm 0 0 34%;
+}
+
+.salary-tr-form .tr-p2-payer {
+  margin: 16mm 0 0 66%;
+}
+
+.salary-tr-form .tr-instructions {
+  margin-top: 4mm;
+  list-style: none;
+  padding: 0;
+}
+
+.salary-tr-form .tr-instructions li + li,
+.salary-tr-form .tr-note {
+  margin-top: 3mm;
+}
+
+.salary-tr-form .tr-note {
+  padding-left: 4mm;
+}
+
+.salary-tr-form .tr-attach-kicker {
+  font-size: 8.5pt;
+  font-weight: 600;
+}
+
+.salary-tr-form .tr-attach-title {
+  margin: 1mm 0 3mm;
+  font-size: 12pt;
+  font-weight: 700;
+}
+
+.salary-tr-form .tr-info {
+  margin-bottom: 4mm;
+}
+
+.salary-tr-form .tr-info td {
+  border-bottom: 0.4pt solid #94a3b8;
+  padding: 1mm 1.5mm;
+}
+
+.salary-tr-form .tr-info td:first-child {
+  width: 40%;
+  font-weight: 600;
+}
+
+.salary-tr-form .tr-attach-head {
+  margin: 4mm 0 1.5mm;
+  font-size: 10pt;
+  font-weight: 700;
+}
+
+.salary-tr-form .tr-month-blocks .salary-bill-month {
+  break-inside: avoid;
+  page-break-inside: avoid;
+  font-size: 8.5pt;
+}
+
+.salary-tr-form .tr-month-blocks .salary-bill-month + .salary-bill-month {
+  margin-top: 2mm;
+}
+
+.salary-tr-form .tr-month-blocks td,
+.salary-tr-form .tr-month-blocks .px-3 {
+  padding-top: 0.6mm;
+  padding-bottom: 0.6mm;
+}
+
+.salary-tr-form .tr-month-blocks .text-sm {
+  font-size: 8.5pt;
+}
+
+.salary-tr-form .tr-month-blocks .text-xs {
+  font-size: 7.5pt;
+}
+
+.salary-tr-form .tr-summary {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.salary-tr-form .tr-summary th {
+  font-size: 8pt;
+  font-weight: 700;
+}
+
+.salary-tr-form .tr-summary td:first-child {
+  white-space: nowrap;
+}
+
+.salary-tr-form .tr-attach-total {
+  margin-top: 4mm;
+  font-size: 10pt;
+  font-weight: 700;
+}
+
+.salary-tr-form .tr-attach-words {
+  margin-top: 1.5mm;
+  font-weight: 600;
+}
+
+.salary-tr-form .tr-attach-footer {
+  margin-top: 8mm;
+  border-top: 0.6pt solid #cbd5e1;
+  padding-top: 1mm;
+  text-align: center;
+  font-size: 7.5pt;
+  color: #475569;
 }

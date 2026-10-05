@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Download } from 'lucide-react';
+import { Download, Printer } from 'lucide-react';
 import {
   arrearMonthOptions,
   calculateSalaryArrears,
@@ -30,7 +30,7 @@ import { takaInWords } from '@/lib/amount-words';
 
 const STAGE_NUMBER = { '2026-07-01': 1, '2027-01-01': 2, '2027-07-01': 3 } as const;
 
-interface Fmt {
+export interface Fmt {
   t: SalaryCopy;
   locale: SalaryLocale;
   num: (v: string | number) => string;
@@ -47,7 +47,7 @@ function BasisRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-interface MonthGroup {
+export interface MonthGroup {
   lead: SalaryArrearMonthRow;
   same: SalaryArrearMonthRow[];
 }
@@ -61,7 +61,7 @@ function sameMath(a: SalaryArrearMonthRow, b: SalaryArrearMonthRow): boolean {
   );
 }
 
-function groupMonths(rows: SalaryArrearMonthRow[]): MonthGroup[] {
+export function groupMonths(rows: SalaryArrearMonthRow[]): MonthGroup[] {
   const groups: MonthGroup[] = [];
   for (const row of rows) {
     const last = groups[groups.length - 1];
@@ -71,7 +71,7 @@ function groupMonths(rows: SalaryArrearMonthRow[]): MonthGroup[] {
   return groups;
 }
 
-function MonthMath({ f, result, group }: { f: Fmt; result: SalaryArrearResult; group: MonthGroup }) {
+export function MonthMath({ f, result, group }: { f: Fmt; result: SalaryArrearResult; group: MonthGroup }) {
   const { t, locale, num, amt, signed } = f;
   const row = group.lead;
   const leadMonth = monthText(locale, row.month);
@@ -151,6 +151,7 @@ export function SalaryArrearsBill({
   months,
   onMonthsChange,
   onPdf,
+  onTrForm,
 }: {
   locale: SalaryLocale;
   grade: PayGrade;
@@ -161,6 +162,7 @@ export function SalaryArrearsBill({
   months: string[];
   onMonthsChange: (months: string[]) => void;
   onPdf: () => void;
+  onTrForm: () => void;
 }) {
   const t = salaryCopy(locale);
   const num = (v: string | number) => localNum(locale, v);
@@ -343,10 +345,14 @@ export function SalaryArrearsBill({
               ) : null}
             </div>
 
-            <div className="flex justify-center print:hidden">
+            <div className="flex flex-wrap justify-center gap-3 print:hidden">
               <Button type="button" size="lg" onClick={onPdf} className="gap-2 bg-indigo-700 px-8 hover:bg-indigo-800">
                 <Download className="h-4 w-4" />
                 {t.billPdf}
+              </Button>
+              <Button type="button" size="lg" variant="outline" onClick={onTrForm} className="gap-2 border-indigo-300 px-8 text-indigo-800">
+                <Printer className="h-4 w-4" />
+                {t.trForm}
               </Button>
             </div>
           </>

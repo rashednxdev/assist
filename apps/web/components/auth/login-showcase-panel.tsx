@@ -21,6 +21,12 @@ const FEATURES = [
   { icon: Languages, text: 'বাংলা ও English' },
 ];
 
+const STEPS = [
+  'Enter grade, basic on 30 June, housing & substantive grade',
+  'Get Bill print Access from the admin',
+  'Download T.R. Form 13 / 15',
+];
+
 const tk = (n: number) => formatTaka(n);
 const bnTk = (n: number) => toBanglaDigits(formatTaka(n));
 
@@ -187,9 +193,24 @@ export function LoginShowcasePanel() {
         </div>
       </div>
 
-      <p className="relative text-xs text-emerald-100/70">
-        Developed by Office of the Controller General of Accounts (Accounts Section)
-      </p>
+      <div className="relative rounded-2xl bg-white/[0.06] p-4 ring-1 ring-white/15">
+        <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-emerald-200">
+          Arrears bill in 3 steps
+        </p>
+        <ol className="grid gap-3 sm:grid-cols-3">
+          {STEPS.map((step, i) => (
+            <li key={step} className="relative flex items-start gap-2 sm:flex-col sm:gap-2">
+              {i < STEPS.length - 1 ? (
+                <span className="absolute left-[calc(1.75rem+0.5rem)] right-0 top-3.5 hidden h-px bg-white/20 sm:block" />
+              ) : null}
+              <span className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-300 text-xs font-bold text-emerald-950 shadow">
+                {i + 1}
+              </span>
+              <span className="text-xs leading-snug text-emerald-50/90">{step}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
     </div>
   );
 }

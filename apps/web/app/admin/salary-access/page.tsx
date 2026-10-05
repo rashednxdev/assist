@@ -5,10 +5,11 @@ import { Plus, Search, Trash2 } from 'lucide-react';
 import type {
   SalaryBillAccessAdminRow,
   SalaryBillUsageRecord,
+  SalaryBulkSizeRecord,
   SalaryContactNumber,
   SalaryContactsRecord,
 } from '@ibas/shared-types';
-import { formatTaka } from '@ibas/shared-types';
+import { SALARY_DEFAULT_BULK_SIZE, formatTaka } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -46,6 +47,81 @@ function StatusBadge({ row }: { row: SalaryBillAccessAdminRow }) {
   if (row.status === 'approved') return <Badge variant="success">Approved</Badge>;
   if (row.status === 'rejected') return <Badge variant="destructive">Rejected</Badge>;
   return <Badge variant="secondary">—</Badge>;
+}
+
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
+function addBulk(limit: string, bulkSize: number, floor: number): string {
+  const current = Number(limit);
+  return String((Number.isInteger(current) && current >= floor ? current : floor) + bulkSize);
+}
+
+function BulkSizeEditor({ bulkSize, onSaved }: { bulkSize: number; onSaved: (size: number) => void }) {
+  const [value, setValue] = useState(String(bulkSize));
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => setValue(String(bulkSize)), [bulkSize]);
+
+  async function save() {
+    const size = Number(value);
+    if (!Number.isInteger(size) || size < 1 || size > 1000) {
+      setError('Enter a whole number of bills from 1 to 1000.');
+      return;
+    }
+    setSaving(true);
+    setStatus('');
+    setError('');
+    try {
+      const res = await apiFetch<{ data: SalaryBulkSizeRecord }>('/salary/admin/bulk-size', {
+        method: 'PUT',
+        body: JSON.stringify({ bulk_size: size }),
+      });
+      onSaved(res.data.bulk_size);
+      setStatus(`Saved. Users now request bills in bulks of ${res.data.bulk_size}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Bill bulk size</CardTitle>
+        <CardDescription>
+          Users request one or more bulks. A request for 2 bulks asks for {plural(bulkSize * 2, 'bill')}.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {status ? <Alert variant="success">{status}</Alert> : null}
+        {error ? <Alert variant="error">{error}</Alert> : null}
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="w-40 space-y-1">
+            <Label htmlFor="bulk-size" className="text-xs">
+              Bills per bulk
+            </Label>
+            <Input
+              id="bulk-size"
+              type="number"
+              min={1}
+              max={1000}
+              inputMode="numeric"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+            />
+          </div>
+          <Button type="button" onClick={() => void save()} disabled={saving}>
+            {saving ? 'Saving…' : 'Save bulk size'}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 function ContactsEditor() {
@@ -182,7 +258,7 @@ function UsageHistory({ userId }: { userId: string }) {
     <ul className="space-y-1 text-xs text-slate-700">
       {items.map((u) => (
         <li key={u.id}>
-          {formatWhen(u.created_at)} · {u.kind === 'tr_form_13' ? 'T.R. Form 13' : 'Arrears PDF'} · Grade {u.grade} · Basic{' '}
+          {formatWhen(u.created_at)} · {u.kind === 'tr_form_13' ? 'T.R. Form 13' : u.kind === 'tr_form_15' ? 'T.R. Form 15' : 'Arrears PDF'} · Grade {u.grade} · Basic{' '}
           {formatTaka(u.old_pay)} · {u.months.length} month{u.months.length === 1 ? '' : 's'} · Net ৳ {formatTaka(u.net_total)}
         </li>
       ))}
@@ -190,7 +266,7 @@ function UsageHistory({ userId }: { userId: string }) {
   );
 }
 
-function AccessRow({ row, onSaved }: { row: SalaryBillAccessAdminRow; onSaved: () => void }) {
+function AccessRow({ row, bulkSize, onSaved }: { row: SalaryBillAccessAdminRow; bulkSize: number; onSaved: () => void }) {
   const suggested = row.request.pending
     ? row.bills_used + (row.request.requested_bills ?? 0)
     : row.bill_limit;
@@ -275,25 +351,44 @@ function AccessRow({ row, onSaved }: { row: SalaryBillAccessAdminRow; onSaved: (
 
       {row.request.pending ? (
         <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-950">
-          Requested <strong>{row.request.requested_bills}</strong> bill{row.request.requested_bills === 1 ? '' : 's'} on{' '}
-          {formatWhen(row.request.requested_at)}
+          Requested{' '}
+          {row.request.requested_bulks ? (
+            <>
+              <strong>{plural(row.request.requested_bulks, 'bulk')}</strong> ({plural(row.request.requested_bills ?? 0, 'bill')})
+            </>
+          ) : (
+            <strong>{plural(row.request.requested_bills ?? 0, 'bill')}</strong>
+          )}{' '}
+          on {formatWhen(row.request.requested_at)}
           {row.request.note ? <span className="block text-xs">Note: {row.request.note}</span> : null}
         </div>
       ) : null}
 
-      <div className="grid items-end gap-2 sm:grid-cols-[10rem_minmax(0,1fr)_auto]">
+      <div className="grid items-end gap-2 sm:grid-cols-[14rem_minmax(0,1fr)_auto]">
         <div className="space-y-1">
           <Label htmlFor={`limit-${row.user.id}`} className="text-xs">
             Total bills allowed
           </Label>
-          <Input
-            id={`limit-${row.user.id}`}
-            type="number"
-            min={0}
-            inputMode="numeric"
-            value={limit}
-            onChange={(e) => setLimit(e.target.value)}
-          />
+          <div className="flex gap-1.5">
+            <Input
+              id={`limit-${row.user.id}`}
+              type="number"
+              min={0}
+              inputMode="numeric"
+              value={limit}
+              onChange={(e) => setLimit(e.target.value)}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-10 shrink-0"
+              title={`Add 1 bulk (${bulkSize} bills)`}
+              onClick={() => setLimit((l) => addBulk(l, bulkSize, row.bills_used))}
+            >
+              +1 bulk
+            </Button>
+          </div>
         </div>
         <div className="space-y-1">
           <Label htmlFor={`note-${row.user.id}`} className="text-xs">
@@ -313,7 +408,8 @@ function AccessRow({ row, onSaved }: { row: SalaryBillAccessAdminRow; onSaved: (
         </div>
       </div>
       <p className="text-xs text-muted">
-        Total includes bills already used ({row.bills_used}). Set it to {row.bills_used} to stop further bills.
+        1 bulk = {plural(bulkSize, 'bill')}. Total includes bills already used ({row.bills_used}). Set it to {row.bills_used} to stop
+        further bills.
       </p>
       {error ? <Alert variant="error">{error}</Alert> : null}
 
@@ -325,11 +421,13 @@ function AccessRow({ row, onSaved }: { row: SalaryBillAccessAdminRow; onSaved: (
   );
 }
 
-function GrantUser({ onSaved }: { onSaved: () => void }) {
+function GrantUser({ bulkSize, onSaved }: { bulkSize: number; onSaved: () => void }) {
   const [q, setQ] = useState('');
   const [results, setResults] = useState<UserOption[]>([]);
   const [selected, setSelected] = useState<UserOption | null>(null);
-  const [limit, setLimit] = useState('5');
+  const [limit, setLimit] = useState(String(bulkSize));
+
+  useEffect(() => setLimit(String(bulkSize)), [bulkSize]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
@@ -414,7 +512,7 @@ function GrantUser({ onSaved }: { onSaved: () => void }) {
           </ul>
         ) : null}
         {selected ? (
-          <div className="grid items-end gap-2 sm:grid-cols-[minmax(0,1fr)_10rem_auto_auto]">
+          <div className="grid items-end gap-2 sm:grid-cols-[minmax(0,1fr)_14rem_auto_auto]">
             <div>
               <p className="text-xs text-muted">Selected user</p>
               <p className="text-sm font-semibold">{selected.full_name_en}</p>
@@ -424,7 +522,19 @@ function GrantUser({ onSaved }: { onSaved: () => void }) {
               <Label htmlFor="grant-limit" className="text-xs">
                 Total bills allowed
               </Label>
-              <Input id="grant-limit" type="number" min={1} value={limit} onChange={(e) => setLimit(e.target.value)} />
+              <div className="flex gap-1.5">
+                <Input id="grant-limit" type="number" min={1} value={limit} onChange={(e) => setLimit(e.target.value)} />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-10 shrink-0"
+                  title={`Add 1 bulk (${bulkSize} bills)`}
+                  onClick={() => setLimit((l) => addBulk(l, bulkSize, 0))}
+                >
+                  +1 bulk
+                </Button>
+              </div>
             </div>
             <Button type="button" onClick={() => void grant()} disabled={busy}>
               Approve
@@ -449,6 +559,13 @@ export default function SalaryAccessAdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
+  const [bulkSize, setBulkSize] = useState(SALARY_DEFAULT_BULK_SIZE);
+
+  useEffect(() => {
+    apiFetch<{ data: SalaryBulkSizeRecord }>('/salary/admin/bulk-size')
+      .then((res) => setBulkSize(res.data.bulk_size))
+      .catch(() => undefined);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -480,8 +597,10 @@ export default function SalaryAccessAdminPage() {
     <div className="mx-auto max-w-4xl space-y-6">
       <PageHeader
         title="Salary arrears bill access"
-        description="The salary page is for signed-in users only. Each arrears bill PDF download or T.R. Form 13 print uses one approved bill."
+        description="The salary page is for signed-in users only. Users request bills in bulks; each T.R. Form 13 / 15 download uses one approved bill."
       />
+
+      <BulkSizeEditor bulkSize={bulkSize} onSaved={setBulkSize} />
 
       <ContactsEditor />
 
@@ -530,7 +649,7 @@ export default function SalaryAccessAdminPage() {
           ) : (
             <div className="space-y-3">
               {rows.map((row) => (
-                <AccessRow key={`${row.user.id}-${row.updated_at}`} row={row} onSaved={reload} />
+                <AccessRow key={`${row.user.id}-${row.updated_at}`} row={row} bulkSize={bulkSize} onSaved={reload} />
               ))}
             </div>
           )}
@@ -551,7 +670,7 @@ export default function SalaryAccessAdminPage() {
         </CardContent>
       </Card>
 
-      <GrantUser onSaved={reload} />
+      <GrantUser bulkSize={bulkSize} onSaved={reload} />
     </div>
   );
 }

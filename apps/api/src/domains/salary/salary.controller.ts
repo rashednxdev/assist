@@ -7,6 +7,7 @@ import {
   requestSalaryBillsSchema,
   saveSalaryOfficeSchema,
   updateSalaryBillAccessSchema,
+  updateSalaryBulkSizeSchema,
   updateSalaryContactsSchema,
 } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
@@ -102,4 +103,13 @@ export async function getSalaryContactsHandler(_req: AuthRequest, res: Response)
 export async function updateSalaryContactsHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = parseBody(updateSalaryContactsSchema, req.body);
   res.json({ data: await accessService.updateSalaryContacts(dto, authUser(req).id) });
+}
+
+export async function getSalaryBulkSizeHandler(_req: AuthRequest, res: Response): Promise<void> {
+  res.json({ data: await accessService.getSalaryBulkSize() });
+}
+
+export async function updateSalaryBulkSizeHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = parseBody(updateSalaryBulkSizeSchema, req.body);
+  res.json({ data: await accessService.updateSalaryBulkSize(dto, authUser(req).id) });
 }

@@ -40,7 +40,11 @@ import {
   type SalaryBillAccessRecord,
   type SalaryBillKind,
   SALARY_BILL_LIMIT_CODE,
+  salaryTrFormNo,
 } from '@ibas/shared-types';
+import { downloadFormPdf, pdfFileName } from '@/lib/salary-pdf';
+import { SalaryArrearsDialog, type ArrearsInputs } from '@/components/salary/salary-arrears-dialog';
+import { TrForm15 } from '@/components/salary/tr-form-15';
 import { ApiError, apiFetch } from '@/lib/api-client';
 import { SalaryBillAccessPanel, SalaryBillContacts } from '@/components/salary/salary-bill-access';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -520,6 +524,8 @@ export default function SalaryOn2026Page() {
   const [billAccess, setBillAccess] = useState<SalaryBillAccessRecord | null>(null);
   const [billAccessError, setBillAccessError] = useState(false);
   const [billError, setBillError] = useState('');
+  const [arrearsDialog, setArrearsDialog] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const resultsRef = useRef<HTMLDivElement>(null);
   const arrearsRef = useRef<HTMLDivElement>(null);
 
@@ -551,6 +557,7 @@ export default function SalaryOn2026Page() {
       return null;
     }
   }, [showArrears, grade, stepNo, oldPay, substantiveGrade, housingStatus, hraArea, arrearMonths]);
+  const trFormNo = arrearResult ? salaryTrFormNo(arrearResult.substantive_grade) : 13;
 
   function resetResults() {
     setResults(null);
@@ -606,7 +613,28 @@ export default function SalaryOn2026Page() {
   }
 
   function handleArrears() {
-    if (!requireGrade()) return;
+    setError('');
+    setArrearsDialog(true);
+  }
+
+  function applyArrearsInputs(v: ArrearsInputs) {
+    const changed =
+      v.grade !== grade ||
+      v.oldPay !== oldPay ||
+      v.housingStatus !== housingStatus ||
+      v.hraArea !== hraArea ||
+      v.substantiveGrade !== substantiveGrade;
+    if (changed) {
+      setResults(null);
+      setGross(null);
+    }
+    setGrade(v.grade);
+    setOldPay(v.oldPay);
+    setHousingStatus(v.housingStatus);
+    setHraArea(v.hraArea);
+    setSubstantiveGrade(v.substantiveGrade);
+    setArrearsDialog(false);
+    setError('');
     setShowArrears(true);
     scrollTo(arrearsRef);
   }
@@ -632,7 +660,7 @@ export default function SalaryOn2026Page() {
     const prevTitle = document.title;
     document.title =
       printMode === 'trform'
-        ? `TR Form 13 — Arrears — Grade ${grade ?? ''}`
+        ? `TR Form ${trFormNo} — Arrears — Grade ${grade ?? ''}`
         : printMode === 'arrears'
           ? `ProAssist Arrears Bill — Grade ${grade ?? ''}`
           : `ProAssist Salary 2026 — Grade ${grade ?? ''}`;
@@ -662,7 +690,22 @@ export default function SalaryOn2026Page() {
       window.setTimeout(finish, 1500);
     }, 60);
     return () => window.clearTimeout(timer);
-  }, [printMode, grade]);
+  }, [printMode, grade, trFormNo]);
+
+  async function downloadTrForm(employee: string) {
+    setDownloading(true);
+    try {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const root = document.querySelector<HTMLElement>('.salary-tr-form');
+      if (!root) throw new Error('Form not ready');
+      await downloadFormPdf(root, pdfFileName(`TR Form ${trFormNo}`, 'Arrears', employee, `Grade ${grade ?? ''}`));
+    } catch {
+      setBillError(t.downloadFailed);
+      setPrintMode('trform');
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   async function loadBillAccess() {
     setBillAccessError(false);
@@ -676,6 +719,11 @@ export default function SalaryOn2026Page() {
 
   useEffect(() => {
     void loadBillAccess();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void loadBillAccess();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
   }, []);
 
   async function confirmPrint(info: SalaryPrintInfo) {
@@ -684,7 +732,8 @@ export default function SalaryOn2026Page() {
     setPrintDialog(null);
     if (target === 'arrears' || target === 'trform') {
       if (!arrearResult || !grade) return;
-      const kind: SalaryBillKind = target === 'trform' ? 'tr_form_13' : 'arrears_pdf';
+      const kind: SalaryBillKind =
+        target === 'trform' ? (trFormNo === 15 ? 'tr_form_15' : 'tr_form_13') : 'arrears_pdf';
       setBillError('');
       try {
         const res = await apiFetch<{ data: SalaryBillAccessRecord }>('/salary/bills', {
@@ -704,7 +753,8 @@ export default function SalaryOn2026Page() {
         return;
       }
     }
-    setPrintMode(target);
+    if (target === 'trform') await downloadTrForm(info.employee);
+    else setPrintMode(target);
   }
 
   async function handleLogout() {
@@ -1085,7 +1135,7 @@ export default function SalaryOn2026Page() {
 
             {error ? <Alert variant="error">{error}</Alert> : null}
 
-            <div className="flex flex-wrap gap-2">
+            <div className="grid w-full gap-2 sm:w-80">
               <Button type="button" onClick={handleArrears} className="gap-2 bg-indigo-700 hover:bg-indigo-800">
                 <ReceiptText className="h-4 w-4" />
                 {t.calcArrears}
@@ -1157,6 +1207,7 @@ export default function SalaryOn2026Page() {
               onMonthsChange={setArrearMonths}
               onTrForm={() => setPrintDialog('trform')}
               canBill={Boolean(billAccess?.can_bill)}
+              downloading={downloading}
               accessPanel={
                 <>
                   <SalaryBillAccessPanel
@@ -1213,7 +1264,11 @@ export default function SalaryOn2026Page() {
       <p className="salary-print-footer hidden">{t.printFooter}</p>
 
       {arrearResult ? (
-        <TrForm13 result={arrearResult} hraArea={hraArea} info={printInfo} preparedOn={localNum('bn', preparedOn)} />
+        trFormNo === 15 ? (
+          <TrForm15 result={arrearResult} hraArea={hraArea} info={printInfo} preparedOn={localNum('bn', preparedOn)} />
+        ) : (
+          <TrForm13 result={arrearResult} hraArea={hraArea} info={printInfo} preparedOn={localNum('bn', preparedOn)} />
+        )
       ) : null}
 
       {printDialog ? (
@@ -1222,6 +1277,18 @@ export default function SalaryOn2026Page() {
           initial={printInfo}
           onCancel={() => setPrintDialog(null)}
           onConfirm={confirmPrint}
+          {...(printDialog === 'trform'
+            ? { title: t.trFormDetails(num(trFormNo)), confirmLabel: t.downloadNow, requireName: true }
+            : {})}
+        />
+      ) : null}
+
+      {arrearsDialog ? (
+        <SalaryArrearsDialog
+          locale={locale}
+          initial={{ grade, oldPay, housingStatus, hraArea, substantiveGrade }}
+          onCancel={() => setArrearsDialog(false)}
+          onConfirm={applyArrearsInputs}
         />
       ) : null}
     </div>

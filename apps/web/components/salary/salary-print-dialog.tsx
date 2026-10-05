@@ -20,18 +20,31 @@ export function SalaryPrintDialog({
   initial,
   onCancel,
   onConfirm,
+  title,
+  confirmLabel,
+  requireName = false,
 }: {
   t: SalaryCopy;
   initial: SalaryPrintInfo;
   onCancel: () => void;
   onConfirm: (info: SalaryPrintInfo) => void;
+  title?: string;
+  confirmLabel?: string;
+  requireName?: boolean;
 }) {
   const [info, setInfo] = useState<SalaryPrintInfo>(initial);
-  const set = (key: keyof SalaryPrintInfo) => (e: React.ChangeEvent<HTMLInputElement>) =>
+  const [nameError, setNameError] = useState(false);
+  const set = (key: keyof SalaryPrintInfo) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (key === 'employee') setNameError(false);
     setInfo((prev) => ({ ...prev, [key]: e.target.value }));
+  };
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (requireName && !info.employee.trim()) {
+      setNameError(true);
+      return;
+    }
     onConfirm({
       office: info.office.trim(),
       employee: info.employee.trim(),
@@ -47,9 +60,9 @@ export function SalaryPrintDialog({
           <div>
             <h2 className="flex items-center gap-2 text-lg font-bold">
               <FileDown className="h-5 w-5 text-primary" />
-              {t.printTitle}
+              {title ?? t.printTitle}
             </h2>
-            <p className="mt-1 text-sm text-muted">{t.printHint}</p>
+            <p className="mt-1 text-sm text-muted">{requireName ? t.printHintNameRequired : t.printHint}</p>
           </div>
           <button type="button" onClick={onCancel} className="rounded-md p-1 text-muted hover:bg-slate-100" aria-label={t.cancel}>
             <X className="h-5 w-5" />
@@ -61,8 +74,20 @@ export function SalaryPrintDialog({
             <Input id="print-office" value={info.office} onChange={set('office')} autoComplete="organization" autoFocus />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="print-employee">{t.employeeName}</Label>
-            <Input id="print-employee" value={info.employee} onChange={set('employee')} autoComplete="name" />
+            <Label htmlFor="print-employee">
+              {t.employeeName}
+              {requireName ? <span className="text-destructive"> *</span> : null}
+            </Label>
+            <Input
+              id="print-employee"
+              value={info.employee}
+              onChange={set('employee')}
+              autoComplete="name"
+              required={requireName}
+              aria-invalid={nameError || undefined}
+              className={nameError ? 'border-destructive focus-visible:ring-destructive/30' : undefined}
+            />
+            {nameError ? <p className="text-xs font-medium text-destructive">{t.nameRequired}</p> : null}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="print-designation">{t.designation}</Label>
@@ -75,7 +100,7 @@ export function SalaryPrintDialog({
           </Button>
           <Button type="submit" className="gap-2">
             <FileDown className="h-4 w-4" />
-            {t.printNow}
+            {confirmLabel ?? t.printNow}
           </Button>
         </div>
       </form>

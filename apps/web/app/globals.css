@@ -772,3 +772,129 @@ body {
   font-size: 7.5pt;
   color: #475569;
 }
+
+/* T.R. Form 15: instructions column beside the code table */
+.salary-tr-form .tr15-body .tr-grid td {
+  height: 5.1mm;
+  padding-top: 0.2mm;
+  padding-bottom: 0.2mm;
+}
+
+.salary-tr-form .tr15-body .tr-grid th {
+  white-space: nowrap;
+}
+
+.salary-tr-form .tr15-body {
+  display: grid;
+  grid-template-columns: 58mm minmax(0, 1fr);
+  border: 0.6pt solid #000;
+}
+
+.salary-tr-form .tr15-body > .tr-grid {
+  margin: -0.6pt -0.6pt -0.6pt 0;
+  width: calc(100% + 0.6pt);
+}
+
+.salary-tr-form .tr15-notes {
+  border-right: 0.6pt solid #000;
+  font-size: 8.5pt;
+}
+
+.salary-tr-form .tr15-notes-head {
+  height: 5mm;
+  line-height: 5mm;
+  border-bottom: 0.6pt solid #000;
+  text-align: center;
+}
+
+.salary-tr-form .tr15-notes ol {
+  list-style: none;
+  margin: 0;
+  padding: 2mm 2mm 0;
+}
+
+.salary-tr-form .tr15-notes li {
+  display: grid;
+  grid-template-columns: 5mm 1fr;
+  text-align: justify;
+}
+
+.salary-tr-form .tr15-notes li + li {
+  margin-top: 7mm;
+}
+
+.salary-tr-form .tr15-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4mm;
+}
+
+.salary-tr-form .tr15-certs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  text-align: justify;
+}
+
+.salary-tr-form .tr15-certs li {
+  display: grid;
+  grid-template-columns: 6mm 1fr;
+}
+
+.salary-tr-form .tr15-certs li + li,
+.salary-tr-form .tr15-certs li > div > div + div {
+  margin-top: 1.6mm;
+}
+
+.salary-tr-form .tr15-absent-head {
+  margin-top: 4mm;
+  margin-bottom: 1.5mm;
+}
+
+.salary-tr-form .tr15-absent-body td {
+  height: 42mm;
+}
+
+.salary-tr-form .tr15-sign-block {
+  display: grid;
+  grid-template-columns: 1fr 1.25fr;
+  gap: 6mm;
+  margin-top: 7mm;
+}
+
+.salary-tr-form .tr15-sign-left > div + div,
+.salary-tr-form .tr15-sign-right > div + div {
+  margin-top: 5mm;
+}
+
+.salary-tr-form .tr15-office {
+  margin-top: 8mm;
+  border-top: 0.8pt solid #000;
+}
+
+.salary-tr-form .tr15-office .tr-p2-heading {
+  margin-top: 2mm;
+}
+
+.salary-tr-form .tr15-office .tr-p2-signs {
+  margin-top: 12mm;
+}
+
+/* Off-screen A4 pages captured for the PDF download */
+.salary-tr-form.tr-capture {
+  display: block !important;
+  position: fixed;
+  top: 0;
+  left: -10000px;
+  width: 210mm;
+  background: #fff;
+}
+
+.salary-tr-form.tr-capture .tr-page {
+  box-sizing: border-box;
+  width: 210mm;
+  min-height: 297mm;
+  padding: 8mm;
+  background: #fff;
+}

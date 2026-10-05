@@ -1,9 +1,14 @@
 import { z } from 'zod';
 import type { OfficeOption } from './org.js';
 
-/** Each arrears bill PDF download or T.R. Form 13 print uses one approved bill. */
-export const SALARY_BILL_KINDS = ['arrears_pdf', 'tr_form_13'] as const;
+/** Each T.R. Form download (or legacy arrears bill PDF) uses one approved bill. */
+export const SALARY_BILL_KINDS = ['arrears_pdf', 'tr_form_13', 'tr_form_15'] as const;
 export type SalaryBillKind = (typeof SALARY_BILL_KINDS)[number];
+
+/** T.R. Form 13 for substantive grades 1–10, T.R. Form 15 for 11–20. */
+export function salaryTrFormNo(substantiveGrade: number): 13 | 15 {
+  return substantiveGrade >= 11 ? 15 : 13;
+}
 
 export const SALARY_ACCESS_STATUSES = ['none', 'pending', 'approved', 'rejected'] as const;
 export type SalaryAccessStatus = (typeof SALARY_ACCESS_STATUSES)[number];
@@ -59,8 +64,22 @@ export const updateSalaryContactsSchema = z.object({
 });
 export type UpdateSalaryContactsDto = z.infer<typeof updateSalaryContactsSchema>;
 
+/** Bills are requested and approved in bulks set by the admin. */
+export const SALARY_DEFAULT_BULK_SIZE = 50;
+export const SALARY_MAX_BULKS_PER_REQUEST = 20;
+
+export const updateSalaryBulkSizeSchema = z.object({
+  bulk_size: z.number().int().min(1, 'A bulk needs at least 1 bill').max(1000, 'A bulk can have at most 1000 bills'),
+});
+export type UpdateSalaryBulkSizeDto = z.infer<typeof updateSalaryBulkSizeSchema>;
+
+export interface SalaryBulkSizeRecord {
+  bulk_size: number;
+  updated_at: string | null;
+}
+
 export const requestSalaryBillsSchema = z.object({
-  requested_bills: z.number().int().min(1).max(1000),
+  requested_bulks: z.number().int().min(1).max(SALARY_MAX_BULKS_PER_REQUEST),
   note: z.string().trim().max(500).default(''),
 });
 export type RequestSalaryBillsDto = z.infer<typeof requestSalaryBillsSchema>;
@@ -88,6 +107,8 @@ export type ConsumeSalaryBillDto = z.infer<typeof consumeSalaryBillSchema>;
 
 export interface SalaryBillRequestInfo {
   pending: boolean;
+  /** Null for requests sent before bulks existed. */
+  requested_bulks: number | null;
   requested_bills: number | null;
   note: string;
   requested_at: string | null;
@@ -102,6 +123,8 @@ export interface SalaryBillAccessRecord {
   bills_used: number;
   remaining: number;
   can_bill: boolean;
+  /** Bills in one bulk. */
+  bulk_size: number;
   request: SalaryBillRequestInfo;
   admin_note: string;
   contacts: SalaryContactNumber[];

@@ -8,6 +8,7 @@ import {
   consumeBillHandler,
   getMyBillAccessHandler,
   getMySalaryOfficeHandler,
+  getSalaryBulkSizeHandler,
   getSalaryContactsHandler,
   getSalaryStatsHandler,
   listBillAccessHandler,
@@ -17,6 +18,7 @@ import {
   saveMySalaryOfficeHandler,
   trackSalaryPdfHandler,
   updateBillAccessHandler,
+  updateSalaryBulkSizeHandler,
   updateSalaryContactsHandler,
 } from './salary.controller.js';
 
@@ -51,3 +53,5 @@ salaryRouter.post('/admin/access/:userId/reject', authenticate, requireAdmin, as
 salaryRouter.get('/admin/access/:userId/usage', authenticate, requireAdmin, asyncHandler(listBillUsageHandler));
 salaryRouter.get('/admin/contacts', authenticate, requireAdmin, asyncHandler(getSalaryContactsHandler));
 salaryRouter.put('/admin/contacts', authenticate, requireAdmin, asyncHandler(updateSalaryContactsHandler));
+salaryRouter.get('/admin/bulk-size', authenticate, requireAdmin, asyncHandler(getSalaryBulkSizeHandler));
+salaryRouter.put('/admin/bulk-size', authenticate, requireAdmin, asyncHandler(updateSalaryBulkSizeHandler));

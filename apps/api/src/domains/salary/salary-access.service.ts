@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import {
   SALARY_BILL_LIMIT_CODE,
+  SALARY_DEFAULT_BULK_SIZE,
   type ConsumeSalaryBillDto,
   type RejectSalaryBillRequestDto,
   type RequestSalaryBillsDto,
@@ -9,8 +10,10 @@ import {
   type SalaryBillAccessRecord,
   type SalaryBillRequestInfo,
   type SalaryBillUsageRecord,
+  type SalaryBulkSizeRecord,
   type SalaryContactsRecord,
   type UpdateSalaryBillAccessDto,
+  type UpdateSalaryBulkSizeDto,
   type UpdateSalaryContactsDto,
 } from '@ibas/shared-types';
 import type { AuthUser } from '../../middleware/auth.js';
@@ -34,6 +37,7 @@ function escapeRegex(text: string): string {
 function requestInfo(doc: ISalaryBillAccess | null): SalaryBillRequestInfo {
   return {
     pending: Boolean(doc?.request_pending),
+    requested_bulks: doc?.requested_bulks ?? null,
     requested_bills: doc?.requested_bills ?? null,
     note: doc?.request_note ?? '',
     requested_at: doc?.requested_at?.toISOString() ?? null,
@@ -68,10 +72,32 @@ export async function updateSalaryContacts(
   return getSalaryContacts();
 }
 
+export async function getSalaryBulkSize(): Promise<SalaryBulkSizeRecord> {
+  const doc = await SalarySettings.findOne({ key: SETTINGS_KEY }).select('bulk_size updated_at').lean();
+  return {
+    bulk_size: doc?.bulk_size ?? SALARY_DEFAULT_BULK_SIZE,
+    updated_at: doc?.updated_at?.toISOString() ?? null,
+  };
+}
+
+export async function updateSalaryBulkSize(dto: UpdateSalaryBulkSizeDto, updatedBy: string): Promise<SalaryBulkSizeRecord> {
+  await SalarySettings.findOneAndUpdate(
+    { key: SETTINGS_KEY },
+    {
+      bulk_size: dto.bulk_size,
+      updated_by: new mongoose.Types.ObjectId(updatedBy),
+      updated_at: new Date(),
+    },
+    { upsert: true, setDefaultsOnInsert: true },
+  );
+  return getSalaryBulkSize();
+}
+
 export async function getMyBillAccess(user: AuthUser): Promise<SalaryBillAccessRecord> {
-  const [doc, { contacts }] = await Promise.all([
+  const [doc, { contacts }, { bulk_size }] = await Promise.all([
     SalaryBillAccess.findOne({ user_id: user.id }),
     getSalaryContacts(),
+    getSalaryBulkSize(),
   ]);
   const unlimited = isPlatformAdmin(user);
   const remaining = remainingOf(doc);
@@ -83,6 +109,7 @@ export async function getMyBillAccess(user: AuthUser): Promise<SalaryBillAccessR
     bills_used: doc?.bills_used ?? 0,
     remaining,
     can_bill: user.status === 'active' && (unlimited || remaining > 0),
+    bulk_size,
     request: requestInfo(doc),
     admin_note: doc?.admin_note ?? '',
     contacts,
@@ -93,13 +120,15 @@ export async function requestBills(user: AuthUser, dto: RequestSalaryBillsDto): 
   if (isPlatformAdmin(user)) throw badRequest('Admins can bill without approval.');
   if (user.status !== 'active') throw forbidden('Account is not active');
   await assertSalaryOfficeChosen(user.id);
+  const { bulk_size } = await getSalaryBulkSize();
   await SalaryBillAccess.findOneAndUpdate(
     { user_id: user.id },
     {
       $set: {
         status: 'pending',
         request_pending: true,
-        requested_bills: dto.requested_bills,
+        requested_bulks: dto.requested_bulks,
+        requested_bills: dto.requested_bulks * bulk_size,
         request_note: dto.note,
         requested_at: new Date(),
         updated_at: new Date(),

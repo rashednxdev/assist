@@ -3,6 +3,8 @@ import mongoose, { Schema, type Document, type Types } from 'mongoose';
 export interface ISalarySettings extends Document {
   key: 'global';
   contacts: Array<{ label: string; number: string; whatsapp: boolean }>;
+  /** Null means the default bulk size. */
+  bulk_size: number | null;
   updated_by: Types.ObjectId | null;
   updated_at: Date | null;
 }
@@ -21,6 +23,7 @@ const schema = new Schema<ISalarySettings>(
       ],
       default: [],
     },
+    bulk_size: { type: Number, default: null, min: 1 },
     updated_by: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     updated_at: { type: Date, default: null },
   },

@@ -7,6 +7,7 @@ export interface ISalaryBillAccess extends Document {
   bill_limit: number;
   bills_used: number;
   request_pending: boolean;
+  requested_bulks: number | null;
   requested_bills: number | null;
   request_note: string;
   requested_at: Date | null;
@@ -24,6 +25,7 @@ const schema = new Schema<ISalaryBillAccess>(
     bill_limit: { type: Number, default: 0, min: 0 },
     bills_used: { type: Number, default: 0, min: 0 },
     request_pending: { type: Boolean, default: false },
+    requested_bulks: { type: Number, default: null },
     requested_bills: { type: Number, default: null },
     request_note: { type: String, default: '' },
     requested_at: { type: Date, default: null },

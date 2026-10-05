@@ -1,17 +1,20 @@
 'use client';
 
-import { formatTaka, type HraArea, type SalaryArrearResult } from '@ibas/shared-types';
-import { toBanglaDigits } from '@/lib/bangla-format';
+import type { HraArea, SalaryArrearResult } from '@ibas/shared-types';
 import { takaInWords } from '@/lib/amount-words';
-import { hraAreaText, monthText, salaryCopy } from '@/lib/salary-i18n';
+import { toBanglaDigits } from '@/lib/bangla-format';
 import type { SalaryPrintInfo } from '@/components/salary/salary-print-dialog';
-import { MonthMath, groupMonths, type Fmt } from '@/components/salary/salary-arrears-bill';
-
-interface FormRow {
-  code: string;
-  label: string;
-  amount?: number;
-}
+import {
+  CodeRow,
+  Dots,
+  STAMP_DUTY,
+  STAMP_DUTY_CODE,
+  Signature,
+  TotalRow,
+  TrAttachment,
+  periodText,
+  type FormRow,
+} from '@/components/salary/tr-form-parts';
 
 const PAY_ROWS: FormRow[] = [
   { code: '৩১১১১০১', label: 'মূল বেতন (অফিসার) (বেতনস্কেল ২০২৬ এর বকেয়া)' },
@@ -50,105 +53,13 @@ const DEDUCTION_ROWS: FormRow[] = [
   { code: '৮১৭২৫০৪', label: 'কর্মচারী যৌথবিমা তহবিল' },
 ];
 
-const STAMP_DUTY_CODE = '১১৬২১০১';
-const STAMP_DUTY = 10;
-
 const INSTRUCTIONS = [
   'যে মাসের কাজের বিনিময়ে বেতন অর্জন করা হয়েছে মাসের শেষ কার্যদিবসের ৫ (পাঁচ) দিন পূর্বে হিসাবরক্ষণ অফিসে বিল পেশ করতে হবে।',
   'পেশকৃত প্রতিটি বিলের জন্য একটি করে টোকেন নাম্বার দেওয়া হবে। আপত্তিসহ ফেরত বিল গ্রহণের প্রাক্কালে উক্ত টোকেন নাম্বার বাতিল করতে হবে। এতদ্ব্যতীত চেক গ্রহণকালে স্ট্যাম্পসহ একটি লিখিত রসিদ (প্রযোজ্য ক্ষেত্রে) প্রদান করতে হবে।',
   'ব্যাংক অ্যাকাউন্টে টাকা প্রদানের জন্য ইচ্ছানুসারে বেতন বিলে নির্দেশ করা যাবে। এরূপ ক্ষেত্রে নিজ ব্যাংক অ্যাকাউন্টে ইএফটি-এর মাধ্যমে টাকা সংগ্রহের জন্য বেতন বিল পেশ করা যাবে। ইএফটি-এর মাধ্যমে বিল গ্রহণের জন্য ইএফটি ফরম পূরণ করে সংশ্লিষ্ট হিসাবরক্ষণ অফিসে প্রেরণ করতে হবে। ইএফটি-এর মাধ্যমে ব্যাংক অ্যাকাউন্টে সরাসরি টাকা প্রদান করা হবে।',
 ];
 
-function taka(n: number): string {
-  const text = toBanglaDigits(formatTaka(Math.abs(n)));
-  return n < 0 ? `− ${text}` : text;
-}
-
-function periodText(keys: string[]): { month: string; year: string } {
-  const names = salaryCopy('bn').months;
-  const sorted = [...keys].sort();
-  const parse = (k: string) => ({ y: Number(k.slice(0, 4)), m: Number(k.slice(5, 7)) });
-  const first = parse(sorted[0]!);
-  const last = parse(sorted[sorted.length - 1]!);
-  const name = (p: { m: number }) => names[p.m - 1]!;
-  if (first.y === last.y) {
-    return {
-      month: sorted.length === 1 ? name(first) : `${name(first)} – ${name(last)}`,
-      year: toBanglaDigits(first.y),
-    };
-  }
-  return {
-    month: `${name(first)} ${toBanglaDigits(first.y)} – ${name(last)} ${toBanglaDigits(last.y)}`,
-    year: `${toBanglaDigits(first.y)}-${toBanglaDigits(last.y)}`,
-  };
-}
-
-function Dots({ value, width }: { value?: string; width: string }) {
-  return (
-    <span className="tr-dots" style={{ minWidth: width }}>
-      {value || '\u00a0'}
-    </span>
-  );
-}
-
-function takaPaisa(amount: number): { taka: string; paisa: string } {
-  const totalPaisa = Math.round(Math.abs(amount) * 100);
-  const whole = Math.floor(totalPaisa / 100);
-  const text = toBanglaDigits(formatTaka(whole));
-  return {
-    taka: amount < 0 ? `− ${text}` : text,
-    paisa: toBanglaDigits(String(totalPaisa % 100).padStart(2, '0')),
-  };
-}
-
-function AmountCells({ amount }: { amount?: number }) {
-  const parts = amount !== undefined ? takaPaisa(amount) : null;
-  return (
-    <>
-      <td />
-      <td />
-      <td className="tr-num">{parts?.taka ?? ''}</td>
-      <td className="tr-num">{parts?.paisa ?? ''}</td>
-    </>
-  );
-}
-
-function CodeRow({ row }: { row: FormRow }) {
-  return (
-    <tr>
-      <td className="tr-box-cell">
-        <span className="tr-box">{row.amount !== undefined ? '✓' : ''}</span>
-      </td>
-      <td className="tr-code">{row.code}</td>
-      <td>{row.label}</td>
-      <AmountCells amount={row.amount} />
-    </tr>
-  );
-}
-
-function TotalRow({ label, amount }: { label: string; amount: number }) {
-  return (
-    <tr className="tr-total">
-      <td colSpan={3} className="tr-right">
-        {label}
-      </td>
-      <AmountCells amount={amount} />
-    </tr>
-  );
-}
-
-function Signature({ title, lines }: { title: string; lines: string[] }) {
-  return (
-    <div className="tr-sign">
-      <div className="tr-sign-line">{title}</div>
-      {lines.map((line) => (
-        <div key={line}>{line}</div>
-      ))}
-    </div>
-  );
-}
-
-/** T.R. Form No. 13 (gazetted officer's pay bill) filled with the arrears totals, plus a summary attachment. Print only. */
+/** T.R. Form No. 13 (gazetted officer's pay bill, substantive grades 1–10) filled with the arrears totals, plus a summary attachment. */
 export function TrForm13({
   result,
   hraArea,
@@ -160,7 +71,6 @@ export function TrForm13({
   info: SalaryPrintInfo;
   preparedOn: string;
 }) {
-  const t = salaryCopy('bn');
   const period = periodText(result.rows.map((r) => r.month));
   const payRows = PAY_ROWS.map((row, i) => (i === 0 ? { ...row, amount: result.total_net_arrear } : row));
   const deductionRows: FormRow[] = [
@@ -170,13 +80,6 @@ export function TrForm13({
   ];
   const payable = result.total_net_arrear - STAMP_DUTY;
   const payableWords = takaInWords('bn', payable);
-  const fmt: Fmt = {
-    t,
-    locale: 'bn',
-    num: (v) => toBanglaDigits(v),
-    amt: (n) => toBanglaDigits(formatTaka(n)),
-    signed: taka,
-  };
 
   return (
     <div className="salary-tr-form hidden" lang="bn">
@@ -339,130 +242,15 @@ export function TrForm13({
         </p>
       </section>
 
-      <section className="tr-page">
-        <div className="tr-attach-kicker">সংযুক্তি — টি, আর, ফরম নং ১৩</div>
-        <div className="tr-attach-title">{t.billTitle}</div>
-        <table className="tr-info">
-          <tbody>
-            {info.employee ? (
-              <tr>
-                <td>{t.employeeName}</td>
-                <td>{info.employee}</td>
-              </tr>
-            ) : null}
-            {info.designation ? (
-              <tr>
-                <td>{t.designation}</td>
-                <td>{info.designation}</td>
-              </tr>
-            ) : null}
-            {info.office ? (
-              <tr>
-                <td>{t.officeName}</td>
-                <td>{info.office}</td>
-              </tr>
-            ) : null}
-            <tr>
-              <td>{t.basisGrade}</td>
-              <td>{toBanglaDigits(result.grade)}</td>
-            </tr>
-            {result.substantive_grade !== result.grade ? (
-              <tr>
-                <td>{t.basisSubstantive}</td>
-                <td>{toBanglaDigits(result.substantive_grade)}</td>
-              </tr>
-            ) : null}
-            <tr>
-              <td>{t.basisDrawn}</td>
-              <td>৳ {taka(result.next_step)}</td>
-            </tr>
-            <tr>
-              <td>{t.basisSpecial}</td>
-              <td>
-                {toBanglaDigits(result.special_rate_percent)}% ({result.substantive_grade >= 10 ? t.arrBandHigh : t.arrBandLow})
-              </td>
-            </tr>
-            <tr>
-              <td>{t.basisHousing}</td>
-              <td>{result.hra_eligible ? hraAreaText('bn', hraArea) : t.govtHousing}</td>
-            </tr>
-            {result.hra_protection > 0 ? (
-              <tr>
-                <td>{t.basisHraProtection}</td>
-                <td>৳ {taka(result.hra_protection)}</td>
-              </tr>
-            ) : null}
-            <tr>
-              <td>{t.basisMonths}</td>
-              <td>{result.rows.map((r) => monthText('bn', r.month)).join(', ')}</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div className="tr-attach-head">{t.billMonthsHead}</div>
-        <div className="tr-month-blocks">
-          {groupMonths(result.rows).map((group) => (
-            <MonthMath key={group.lead.month} f={fmt} result={result} group={group} />
-          ))}
-        </div>
-
-        <div className="tr-attach-head">{t.billSummary}</div>
-        <table className="tr-grid tr-summary">
-          <thead>
-            <tr>
-              <th>{t.arrColMonth}</th>
-              <th>{t.arrColNewBasic}</th>
-              <th>{t.arrColDrawn}</th>
-              <th>{t.arrColDiff}</th>
-              <th>{t.arrColSpecial}</th>
-              <th>{result.hra_protection > 0 ? t.arrColHraProtection : t.arrColHra}</th>
-              <th>{t.arrColNet}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {result.rows.map((row) => (
-              <tr key={row.month}>
-                <td>{monthText('bn', row.month)}</td>
-                <td className="tr-num">{taka(row.new_basic)}</td>
-                <td className="tr-num">{taka(row.drawn_basic)}</td>
-                <td className="tr-num">{taka(row.basic_difference)}</td>
-                <td className="tr-num">{taka(row.special_allowance)}</td>
-                <td className="tr-num">
-                  {row.hra_protection > 0 ? `+ ${taka(row.hra_protection)}` : taka(row.excess_hra)}
-                </td>
-                <td className="tr-num">{taka(row.net_arrear)}</td>
-              </tr>
-            ))}
-            <tr className="tr-total">
-              <td colSpan={3}>{t.arrTotalRow(toBanglaDigits(result.rows.length), result.rows.length === 1)}</td>
-              <td className="tr-num">{taka(result.total_basic_difference)}</td>
-              <td className="tr-num">{taka(result.total_special_allowance)}</td>
-              <td className="tr-num">
-                {result.total_hra_protection > 0
-                  ? `+ ${taka(result.total_hra_protection)}`
-                  : taka(result.total_excess_hra)}
-              </td>
-              <td className="tr-num">{taka(result.total_net_arrear)}</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <p className="tr-attach-total">
-          {t.arrTotalLine(
-            `৳ ${taka(result.total_basic_difference)}`,
-            `৳ ${taka(result.total_deduction)}`,
-            `৳ ${taka(result.total_net_arrear)}`,
-            result.total_hra_protection > 0 ? `৳ ${taka(result.total_hra_protection)}` : undefined,
-          )}
-        </p>
-        <p className="tr-attach-total">
-          স্ট্যাম্প ডিউটি বাদে প্রদেয়: (৳ {taka(result.total_net_arrear)} − ৳ {taka(STAMP_DUTY)}) = ৳ {taka(payable)}
-        </p>
-        <p className="tr-attach-words">{t.inWords(payableWords)}</p>
-        <p className="tr-small">
-          {t.preparedOn}: {preparedOn}
-        </p>
-      </section>
+      <TrAttachment
+        formNo={13}
+        result={result}
+        hraArea={hraArea}
+        info={info}
+        preparedOn={preparedOn}
+        payable={payable}
+        payableWords={payableWords}
+      />
     </div>
   );
 }

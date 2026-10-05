@@ -1,12 +1,13 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Printer } from 'lucide-react';
+import { Download, Loader2 } from 'lucide-react';
 import {
   arrearMonthOptions,
   calculateSalaryArrears,
   defaultArrearMonths,
   formatTaka,
+  salaryTrFormNo,
   type HousingStatus,
   type HraArea,
   type PayGrade,
@@ -174,6 +175,7 @@ export function SalaryArrearsBill({
   onMonthsChange,
   onTrForm,
   canBill,
+  downloading,
   accessPanel,
   contactsPanel,
 }: {
@@ -187,6 +189,7 @@ export function SalaryArrearsBill({
   onMonthsChange: (months: string[]) => void;
   onTrForm: () => void;
   canBill: boolean;
+  downloading: boolean;
   accessPanel: React.ReactNode;
   contactsPanel: React.ReactNode;
 }) {
@@ -394,11 +397,11 @@ export function SalaryArrearsBill({
                 type="button"
                 size="lg"
                 onClick={onTrForm}
-                disabled={!canBill}
+                disabled={!canBill || downloading}
                 className="gap-2 bg-indigo-700 px-8 hover:bg-indigo-800"
               >
-                <Printer className="h-4 w-4" />
-                {t.trForm}
+                {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                {downloading ? t.downloading : t.trFormDownload(String(salaryTrFormNo(result.substantive_grade)))}
               </Button>
             </div>
 

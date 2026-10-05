@@ -127,19 +127,30 @@ export function SalaryArrearsCard({
               </Text>
             </View>
             <View style={styles.box}>
-              <Text style={styles.label}>{t.arrHraHead}</Text>
-              <Text style={styles.boxValue}>{tk(result.excess_hra)}</Text>
+              <Text style={styles.label}>{result.hra_protection > 0 ? t.arrHraProtectionHead : t.arrHraHead}</Text>
+              <Text style={styles.boxValue}>
+                {result.hra_protection > 0 ? `+ ${tk(result.hra_protection)}` : tk(result.excess_hra)}
+              </Text>
               {result.hra_eligible ? (
                 <>
                   <Text style={styles.tiny}>
-                    {t.arrHraCalc(
-                      amt(result.hra_on_next_step),
-                      amt(result.next_step),
-                      num(result.hra_rate_percent_next_step),
-                      amt(result.hra_on_old_pay),
-                      amt(result.old_pay),
-                      num(result.hra_rate_percent_old_pay),
-                    )}
+                    {result.hra_protection > 0
+                      ? t.arrHraCalc(
+                          amt(result.hra_on_old_pay),
+                          amt(result.old_pay),
+                          num(result.hra_rate_percent_old_pay),
+                          amt(result.hra_on_next_step),
+                          amt(result.next_step),
+                          num(result.hra_rate_percent_next_step),
+                        )
+                      : t.arrHraCalc(
+                          amt(result.hra_on_next_step),
+                          amt(result.next_step),
+                          num(result.hra_rate_percent_next_step),
+                          amt(result.hra_on_old_pay),
+                          amt(result.old_pay),
+                          num(result.hra_rate_percent_old_pay),
+                        )}
                   </Text>
                   <Text style={styles.tiny}>{hraAreaText(locale, hraArea)}</Text>
                 </>
@@ -164,7 +175,10 @@ export function SalaryArrearsCard({
                       {t.arrRowCalc(amt(row.new_basic), amt(row.drawn_basic))} = {signed(row.basic_difference)}
                     </Text>
                     <Text style={[styles.calc, styles.minus]}>
-                      − {amt(row.special_allowance)} ({t.arrColSpecial}) − {amt(row.excess_hra)} ({t.arrColHra})
+                      − {amt(row.special_allowance)} ({t.arrColSpecial}){' '}
+                      {row.hra_protection > 0
+                        ? `+ ${amt(row.hra_protection)} (${t.arrColHraProtection})`
+                        : `− ${amt(row.excess_hra)} (${t.arrColHra})`}
                     </Text>
                   </View>
                   <Text style={styles.rowAmount}>{signed(row.net_arrear)}</Text>
@@ -179,8 +193,10 @@ export function SalaryArrearsCard({
                     {t.arrColDiff} {signed(result.total_basic_difference)}
                   </Text>
                   <Text style={[styles.calc, styles.minus]}>
-                    − {amt(result.total_special_allowance)} ({t.arrColSpecial}) − {amt(result.total_excess_hra)} (
-                    {t.arrColHra})
+                    − {amt(result.total_special_allowance)} ({t.arrColSpecial}){' '}
+                    {result.total_hra_protection > 0
+                      ? `+ ${amt(result.total_hra_protection)} (${t.arrColHraProtection})`
+                      : `− ${amt(result.total_excess_hra)} (${t.arrColHra})`}
                   </Text>
                 </View>
                 <Text style={[styles.rowAmount, styles.totalAmount]}>{signed(result.total_net_arrear)}</Text>
@@ -191,7 +207,11 @@ export function SalaryArrearsCard({
               <Text style={[styles.label, { color: '#312e81' }]}>{t.arrTotalDue}</Text>
               <Text style={styles.dueValue}>৳ {signed(result.total_net_arrear)}</Text>
               <Text style={styles.tiny}>
-                {t.arrTotalFormula(`৳ ${signed(result.total_basic_difference)}`, tk(result.total_deduction))}
+                {t.arrTotalFormula(
+                  `৳ ${signed(result.total_basic_difference)}`,
+                  tk(result.total_deduction),
+                  result.total_hra_protection > 0 ? tk(result.total_hra_protection) : undefined,
+                )}
                 {result.total_net_arrear < 0 ? t.arrNegative : ''}
               </Text>
             </View>

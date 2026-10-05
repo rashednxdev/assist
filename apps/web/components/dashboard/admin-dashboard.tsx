@@ -111,6 +111,7 @@ const QUICK_GROUPS: Array<{ title: string; links: QuickLink[] }> = [
       { href: '/notifications/admin', label: 'Send notification', desc: 'Broadcast to all or selected users', icon: Bell },
       { href: '/admin/schedule', label: 'Official schedule', desc: 'Meetings, bill dates, R&R rules, PDFs', icon: CalendarClock },
       { href: '/admin/unpaid-message', label: 'Unpaid message', desc: 'Text shown on locked modules', icon: MessageCircle },
+      { href: '/admin/salary-access', label: 'Salary bill access', desc: 'Approve arrears bills, contact numbers', icon: Wallet },
       { href: '/admin/contact-verifications', label: 'Contact verifications', desc: 'Who verified whom for Contacts', icon: ShieldCheck },
     ],
   },
@@ -152,7 +153,7 @@ const QUICK_GROUPS: Array<{ title: string; links: QuickLink[] }> = [
       { href: '/admin/cache', label: 'Content cache', desc: 'Rebuild cached content', icon: Database },
       { href: '/admin/terms', label: 'Terms & Conditions', desc: 'Registration terms', icon: FileCheck },
       { href: '/admin/audit', label: 'Audit log', desc: 'System activity trail', icon: ScrollText },
-      { href: '/admin/salary-stats', label: 'Salary calculator', desc: 'Public tool usage', icon: Wallet },
+      { href: '/admin/salary-stats', label: 'Salary calculator', desc: 'Calculator usage', icon: Wallet },
     ],
   },
   {

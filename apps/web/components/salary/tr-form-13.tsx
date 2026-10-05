@@ -415,7 +415,7 @@ export function TrForm13({
               <th>{t.arrColDrawn}</th>
               <th>{t.arrColDiff}</th>
               <th>{t.arrColSpecial}</th>
-              <th>{t.arrColHra}</th>
+              <th>{result.hra_protection > 0 ? t.arrColHraProtection : t.arrColHra}</th>
               <th>{t.arrColNet}</th>
             </tr>
           </thead>
@@ -427,7 +427,9 @@ export function TrForm13({
                 <td className="tr-num">{taka(row.drawn_basic)}</td>
                 <td className="tr-num">{taka(row.basic_difference)}</td>
                 <td className="tr-num">{taka(row.special_allowance)}</td>
-                <td className="tr-num">{taka(row.excess_hra)}</td>
+                <td className="tr-num">
+                  {row.hra_protection > 0 ? `+ ${taka(row.hra_protection)}` : taka(row.excess_hra)}
+                </td>
                 <td className="tr-num">{taka(row.net_arrear)}</td>
               </tr>
             ))}
@@ -435,7 +437,11 @@ export function TrForm13({
               <td colSpan={3}>{t.arrTotalRow(toBanglaDigits(result.rows.length), result.rows.length === 1)}</td>
               <td className="tr-num">{taka(result.total_basic_difference)}</td>
               <td className="tr-num">{taka(result.total_special_allowance)}</td>
-              <td className="tr-num">{taka(result.total_excess_hra)}</td>
+              <td className="tr-num">
+                {result.total_hra_protection > 0
+                  ? `+ ${taka(result.total_hra_protection)}`
+                  : taka(result.total_excess_hra)}
+              </td>
               <td className="tr-num">{taka(result.total_net_arrear)}</td>
             </tr>
           </tbody>
@@ -446,6 +452,7 @@ export function TrForm13({
             `৳ ${taka(result.total_basic_difference)}`,
             `৳ ${taka(result.total_deduction)}`,
             `৳ ${taka(result.total_net_arrear)}`,
+            result.total_hra_protection > 0 ? `৳ ${taka(result.total_hra_protection)}` : undefined,
           )}
         </p>
         <p className="tr-attach-total">

@@ -57,7 +57,8 @@ function sameMath(a: SalaryArrearMonthRow, b: SalaryArrearMonthRow): boolean {
     a.new_basic === b.new_basic &&
     a.drawn_basic === b.drawn_basic &&
     a.special_allowance === b.special_allowance &&
-    a.excess_hra === b.excess_hra
+    a.excess_hra === b.excess_hra &&
+    a.hra_protection === b.hra_protection
   );
 }
 
@@ -76,13 +77,30 @@ export function MonthMath({ f, result, group }: { f: Fmt; result: SalaryArrearRe
   const row = group.lead;
   const leadMonth = monthText(locale, row.month);
   const specialCalc = `${amt(result.next_step)} × ${num(result.special_rate_percent)}%`;
-  const hraCalc = !result.hra_eligible
-    ? t.arrHraNone
-    : result.hra_protection > 0
-      ? `(${amt(result.hra_on_next_step_calculated)} + ${amt(result.hra_protection)} ${t.hraProtectionWord}) − ${amt(result.hra_on_old_pay)}`
-      : `${amt(result.hra_on_next_step)} − ${amt(result.hra_on_old_pay)}`;
+  const protection = row.hra_protection > 0;
+  const hraLine = protection
+    ? {
+        no: 5,
+        label: t.lineHraProtection,
+        calc: `${amt(result.hra_on_old_pay)} − ${amt(result.hra_on_next_step)}`,
+        value: `+ ${amt(row.hra_protection)}`,
+        tone: 'plus' as const,
+      }
+    : {
+        no: 5,
+        label: t.lineHra,
+        calc: result.hra_eligible ? `${amt(result.hra_on_next_step)} − ${amt(result.hra_on_old_pay)}` : t.arrHraNone,
+        value: `− ${amt(row.excess_hra)}`,
+        tone: 'minus' as const,
+      };
 
-  const lines: Array<{ no: number; label: string; calc?: string; value: string; tone?: 'minus' | 'sum' | 'net' }> = [
+  const lines: Array<{
+    no: number;
+    label: string;
+    calc?: string;
+    value: string;
+    tone?: 'minus' | 'plus' | 'sum' | 'net';
+  }> = [
     { no: 1, label: t.lineNewBasic, value: amt(row.new_basic) },
     { no: 2, label: t.lineDrawn, value: `− ${amt(row.drawn_basic)}`, tone: 'minus' },
     {
@@ -93,11 +111,13 @@ export function MonthMath({ f, result, group }: { f: Fmt; result: SalaryArrearRe
       tone: 'sum',
     },
     { no: 4, label: t.lineSpecial, calc: specialCalc, value: `− ${amt(row.special_allowance)}`, tone: 'minus' },
-    { no: 5, label: t.lineHra, calc: hraCalc, value: `− ${amt(row.excess_hra)}`, tone: 'minus' },
+    hraLine,
     {
       no: 6,
-      label: t.lineNet,
-      calc: `${signed(row.basic_difference)} − ${amt(row.special_allowance)} − ${amt(row.excess_hra)}`,
+      label: protection ? t.lineNetProtection : t.lineNet,
+      calc: protection
+        ? `${signed(row.basic_difference)} − ${amt(row.special_allowance)} + ${amt(row.hra_protection)}`
+        : `${signed(row.basic_difference)} − ${amt(row.special_allowance)} − ${amt(row.excess_hra)}`,
       value: signed(row.net_arrear),
       tone: 'net',
     },
@@ -125,7 +145,7 @@ export function MonthMath({ f, result, group }: { f: Fmt; result: SalaryArrearRe
               </td>
               <td
                 className={`whitespace-nowrap px-3 py-1.5 text-right align-top font-mono ${
-                  line.tone === 'minus' ? 'text-rose-700' : 'text-slate-900'
+                  line.tone === 'minus' ? 'text-rose-700' : line.tone === 'plus' ? 'text-emerald-700' : 'text-slate-900'
                 }`}
               >
                 {line.value}
@@ -154,6 +174,8 @@ export function SalaryArrearsBill({
   onMonthsChange,
   onPdf,
   onTrForm,
+  canBill,
+  accessPanel,
 }: {
   locale: SalaryLocale;
   grade: PayGrade;
@@ -165,6 +187,8 @@ export function SalaryArrearsBill({
   onMonthsChange: (months: string[]) => void;
   onPdf: () => void;
   onTrForm: () => void;
+  canBill: boolean;
+  accessPanel: React.ReactNode;
 }) {
   const t = salaryCopy(locale);
   const num = (v: string | number) => localNum(locale, v);
@@ -293,7 +317,9 @@ export function SalaryArrearsBill({
                       <th className="px-3 py-2 text-right font-semibold">{t.arrColDrawn}</th>
                       <th className="px-3 py-2 text-right font-semibold">{t.arrColDiff}</th>
                       <th className="px-3 py-2 text-right font-semibold">{t.arrColSpecial}</th>
-                      <th className="px-3 py-2 text-right font-semibold">{t.arrColHra}</th>
+                      <th className="px-3 py-2 text-right font-semibold">
+                        {result.hra_protection > 0 ? t.arrColHraProtection : t.arrColHra}
+                      </th>
                       <th className="px-3 py-2 text-right font-semibold">{t.arrColNet}</th>
                     </tr>
                   </thead>
@@ -308,7 +334,11 @@ export function SalaryArrearsBill({
                         <td className="px-3 py-2 text-right font-mono">{amt(row.drawn_basic)}</td>
                         <td className="px-3 py-2 text-right font-mono">{signed(row.basic_difference)}</td>
                         <td className="px-3 py-2 text-right font-mono text-rose-700">− {amt(row.special_allowance)}</td>
-                        <td className="px-3 py-2 text-right font-mono text-rose-700">− {amt(row.excess_hra)}</td>
+                        {row.hra_protection > 0 ? (
+                          <td className="px-3 py-2 text-right font-mono text-emerald-700">+ {amt(row.hra_protection)}</td>
+                        ) : (
+                          <td className="px-3 py-2 text-right font-mono text-rose-700">− {amt(row.excess_hra)}</td>
+                        )}
                         <td className="px-3 py-2 text-right font-mono font-semibold">{signed(row.net_arrear)}</td>
                       </tr>
                     ))}
@@ -322,9 +352,15 @@ export function SalaryArrearsBill({
                       <td className="px-3 py-2.5 text-right font-mono font-semibold text-rose-700">
                         − {amt(result.total_special_allowance)}
                       </td>
-                      <td className="px-3 py-2.5 text-right font-mono font-semibold text-rose-700">
-                        − {amt(result.total_excess_hra)}
-                      </td>
+                      {result.total_hra_protection > 0 ? (
+                        <td className="px-3 py-2.5 text-right font-mono font-semibold text-emerald-700">
+                          + {amt(result.total_hra_protection)}
+                        </td>
+                      ) : (
+                        <td className="px-3 py-2.5 text-right font-mono font-semibold text-rose-700">
+                          − {amt(result.total_excess_hra)}
+                        </td>
+                      )}
                       <td className="px-3 py-2.5 text-right font-mono text-lg font-bold text-indigo-900">
                         {signed(result.total_net_arrear)}
                       </td>
@@ -340,6 +376,7 @@ export function SalaryArrearsBill({
                   `৳ ${signed(result.total_basic_difference)}`,
                   tk(result.total_deduction),
                   `৳ ${signed(result.total_net_arrear)}`,
+                  result.total_hra_protection > 0 ? tk(result.total_hra_protection) : undefined,
                 )}
               </p>
               <p className="mt-1 text-sm font-semibold text-indigo-900">
@@ -350,12 +387,27 @@ export function SalaryArrearsBill({
               ) : null}
             </div>
 
+            {accessPanel}
+
             <div className="flex flex-wrap justify-center gap-3 print:hidden">
-              <Button type="button" size="lg" onClick={onPdf} className="gap-2 bg-indigo-700 px-8 hover:bg-indigo-800">
+              <Button
+                type="button"
+                size="lg"
+                onClick={onPdf}
+                disabled={!canBill}
+                className="gap-2 bg-indigo-700 px-8 hover:bg-indigo-800"
+              >
                 <Download className="h-4 w-4" />
                 {t.billPdf}
               </Button>
-              <Button type="button" size="lg" variant="outline" onClick={onTrForm} className="gap-2 border-indigo-300 px-8 text-indigo-800">
+              <Button
+                type="button"
+                size="lg"
+                variant="outline"
+                onClick={onTrForm}
+                disabled={!canBill}
+                className="gap-2 border-indigo-300 px-8 text-indigo-800"
+              >
                 <Printer className="h-4 w-4" />
                 {t.trForm}
               </Button>

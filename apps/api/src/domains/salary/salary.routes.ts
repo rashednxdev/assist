@@ -5,8 +5,17 @@ import { requireAdmin } from '../../middleware/requireAdmin.js';
 import { asyncHandler } from '../../shared/asyncHandler.js';
 import {
   calculateAllPhasesHandler,
+  consumeBillHandler,
+  getMyBillAccessHandler,
+  getSalaryContactsHandler,
   getSalaryStatsHandler,
+  listBillAccessHandler,
+  listBillUsageHandler,
+  rejectBillRequestHandler,
+  requestBillsHandler,
   trackSalaryPdfHandler,
+  updateBillAccessHandler,
+  updateSalaryContactsHandler,
 } from './salary.controller.js';
 
 export const salaryRouter = Router();
@@ -27,3 +36,14 @@ salaryRouter.post('/calculate-all-phases', publicLimit, asyncHandler(calculateAl
 salaryRouter.post('/pdf', publicLimit, asyncHandler(trackSalaryPdfHandler));
 
 salaryRouter.get('/admin/stats', authenticate, requireAdmin, asyncHandler(getSalaryStatsHandler));
+
+salaryRouter.get('/access', authenticate, asyncHandler(getMyBillAccessHandler));
+salaryRouter.post('/access/request', authenticate, publicLimit, asyncHandler(requestBillsHandler));
+salaryRouter.post('/bills', authenticate, publicLimit, asyncHandler(consumeBillHandler));
+
+salaryRouter.get('/admin/access', authenticate, requireAdmin, asyncHandler(listBillAccessHandler));
+salaryRouter.put('/admin/access/:userId', authenticate, requireAdmin, asyncHandler(updateBillAccessHandler));
+salaryRouter.post('/admin/access/:userId/reject', authenticate, requireAdmin, asyncHandler(rejectBillRequestHandler));
+salaryRouter.get('/admin/access/:userId/usage', authenticate, requireAdmin, asyncHandler(listBillUsageHandler));
+salaryRouter.get('/admin/contacts', authenticate, requireAdmin, asyncHandler(getSalaryContactsHandler));
+salaryRouter.put('/admin/contacts', authenticate, requireAdmin, asyncHandler(updateSalaryContactsHandler));

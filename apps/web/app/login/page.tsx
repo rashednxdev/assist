@@ -13,6 +13,13 @@ import { AuthBrandPanel } from '@/components/auth/auth-brand-panel';
 import { clearAccessToken, loginRequest, setAccessToken, SET_PASSWORD_PATH } from '@/lib/auth';
 import { WEB_REGISTRATION_OPEN } from '@/lib/registration';
 
+/** Only same-site paths, so ?next= cannot redirect to another origin. */
+function safeNextPath(): string | null {
+  if (typeof window === 'undefined') return null;
+  const next = new URLSearchParams(window.location.search).get('next');
+  return next && next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/\\') ? next : null;
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -36,7 +43,7 @@ export default function LoginPage() {
         router.replace('/register/verify');
         return;
       }
-      router.replace('/dashboard');
+      router.replace(safeNextPath() ?? '/dashboard');
     } catch (err) {
       clearAccessToken();
       setError(err instanceof Error ? err.message : 'Sign in failed. Try again.');

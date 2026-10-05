@@ -1,4 +1,5 @@
-/** Public salary calculator — no login required. */
-export default function SalaryPublicLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+import { SalaryAuthGate } from '@/components/salary/salary-auth-gate';
+
+export default function SalaryLayout({ children }: { children: React.ReactNode }) {
+  return <SalaryAuthGate>{children}</SalaryAuthGate>;
 }

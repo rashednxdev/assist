@@ -29,7 +29,12 @@ import {
   type SubstantiveGrade,
   type PayGrade,
   type Salary2026Result,
+  type SalaryBillAccessRecord,
+  type SalaryBillKind,
+  SALARY_BILL_LIMIT_CODE,
 } from '@ibas/shared-types';
+import { ApiError, apiFetch } from '@/lib/api-client';
+import { SalaryBillAccessPanel } from '@/components/salary/salary-bill-access';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -503,6 +508,9 @@ export default function SalaryOn2026Page() {
   const [printMode, setPrintMode] = useState<PrintTarget | null>(null);
   const [printInfo, setPrintInfo] = useState<SalaryPrintInfo>(EMPTY_PRINT_INFO);
   const [shareNote, setShareNote] = useState('');
+  const [billAccess, setBillAccess] = useState<SalaryBillAccessRecord | null>(null);
+  const [billAccessError, setBillAccessError] = useState(false);
+  const [billError, setBillError] = useState('');
   const resultsRef = useRef<HTMLDivElement>(null);
   const arrearsRef = useRef<HTMLDivElement>(null);
 
@@ -645,10 +653,47 @@ export default function SalaryOn2026Page() {
     return () => window.clearTimeout(timer);
   }, [printMode, grade]);
 
-  function confirmPrint(info: SalaryPrintInfo) {
+  async function loadBillAccess() {
+    setBillAccessError(false);
+    try {
+      const res = await apiFetch<{ data: SalaryBillAccessRecord }>('/salary/access');
+      setBillAccess(res.data);
+    } catch {
+      setBillAccessError(true);
+    }
+  }
+
+  useEffect(() => {
+    void loadBillAccess();
+  }, []);
+
+  async function confirmPrint(info: SalaryPrintInfo) {
+    const target = printDialog;
     setPrintInfo(info);
-    setPrintMode(printDialog);
     setPrintDialog(null);
+    if (target === 'arrears' || target === 'trform') {
+      if (!arrearResult || !grade) return;
+      const kind: SalaryBillKind = target === 'trform' ? 'tr_form_13' : 'arrears_pdf';
+      setBillError('');
+      try {
+        const res = await apiFetch<{ data: SalaryBillAccessRecord }>('/salary/bills', {
+          method: 'POST',
+          body: JSON.stringify({
+            kind,
+            grade,
+            old_pay: oldPay,
+            months: arrearResult.rows.map((r) => r.month),
+            net_total: arrearResult.total_net_arrear,
+          }),
+        });
+        setBillAccess(res.data);
+      } catch (err) {
+        setBillError(err instanceof Error ? err.message : t.calcError);
+        if (err instanceof ApiError && err.code === SALARY_BILL_LIMIT_CODE) void loadBillAccess();
+        return;
+      }
+    }
+    setPrintMode(target);
   }
 
   async function handleShare() {
@@ -1095,6 +1140,23 @@ export default function SalaryOn2026Page() {
               onMonthsChange={setArrearMonths}
               onPdf={() => setPrintDialog('arrears')}
               onTrForm={() => setPrintDialog('trform')}
+              canBill={Boolean(billAccess?.can_bill)}
+              accessPanel={
+                <>
+                  <SalaryBillAccessPanel
+                    locale={locale}
+                    access={billAccess}
+                    loadError={billAccessError}
+                    onRetry={() => void loadBillAccess()}
+                    onAccessChange={setBillAccess}
+                  />
+                  {billError ? (
+                    <Alert variant="error" className="print:hidden">
+                      {billError}
+                    </Alert>
+                  ) : null}
+                </>
+              }
             />
           </div>
         ) : null}

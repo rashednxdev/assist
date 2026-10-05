@@ -79,6 +79,7 @@ export * from './app-settings.js';
 export * from './process.js';
 export * from './live-stream.js';
 export * from './salary-2026.js';
+export * from './salary-access.js';
 export * from './policy.js';
 export * from './toolkit.js';
 export * from './schedule.js';

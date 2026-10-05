@@ -28,7 +28,7 @@ export default function SalaryStatsAdminPage() {
     <div className="space-y-6">
       <PageHeader
         title="Salary calculator usage"
-        description="Public /salary tool — counts are visible to admins only."
+        description="/salary tool (signed-in users) — counts are visible to admins only."
       />
 
       {error ? (

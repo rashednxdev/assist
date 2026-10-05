@@ -216,6 +216,7 @@ export const navGroups: NavGroup[] = [
         moduleCode: 'SETUP',
         requireCreate: true,
       },
+      { href: '/admin/salary-access', label: 'Salary bill access', icon: Wallet, requirePlatformAdmin: true },
     ],
   },
 ];

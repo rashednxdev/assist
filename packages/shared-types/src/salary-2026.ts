@@ -858,7 +858,9 @@ export interface SalaryArrearMonthRow {
   basic_difference: number;
   special_allowance: number;
   excess_hra: number;
-  /** basic_difference − special_allowance − excess_hra. */
+  /** June 2026 house rent − July 2026 house rent when July is lower; added to the arrears. */
+  hra_protection: number;
+  /** basic_difference − special_allowance − excess_hra + hra_protection. */
   net_arrear: number;
 }
 
@@ -872,11 +874,9 @@ export interface SalaryArrearResult {
   special_rate_percent: number;
   special_allowance: number;
   hra_eligible: boolean;
-  /** July 2026 house rent on the next stage, after protection. */
+  /** July 2026 house rent on the next stage. */
   hra_on_next_step: number;
-  /** July 2026 house rent on the next stage as calculated, before protection. */
-  hra_on_next_step_calculated: number;
-  /** Deficit added so July 2026 house rent is not below June 2026. */
+  /** June 2026 house rent − July 2026 house rent when July is lower; added to the arrears each month. */
   hra_protection: number;
   hra_on_old_pay: number;
   hra_rate_percent_next_step: number;
@@ -887,13 +887,15 @@ export interface SalaryArrearResult {
   total_basic_difference: number;
   total_special_allowance: number;
   total_excess_hra: number;
+  total_hra_protection: number;
   total_deduction: number;
   total_net_arrear: number;
 }
 
 /**
  * Monthly arrears on the 2026 fixation:
- * (new basic − next stage after the 30-06-2026 basic) − special allowance − excess house rent.
+ * (new basic − next stage after the 30-06-2026 basic) − special allowance − excess house rent
+ * + house rent protection (when July 2026 house rent is below June 2026).
  * The difference, special allowance and excess house rent are all worked out on the NPS 2015
  * stage after the 30-06-2026 basic, because that is what was paid in those months.
  */
@@ -921,10 +923,10 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
   const hraEligible = input.housing_status !== 'govt_accommodation';
   const hraNext = hraEligible ? calculateHouseRentAllowance(nextStep, input.hra_area) : null;
   const hraOld = hraEligible ? calculateHouseRentAllowance(oldPay, input.hra_area) : null;
-  // July 2026 house rent may not fall below June 2026; the deficit is added back.
-  const hraProtection = hraNext && hraOld ? toPaisa(Math.max(0, hraOld.amount - hraNext.amount)) : 0;
-  const hraJuly = hraNext ? toPaisa(hraNext.amount + hraProtection) : 0;
-  const excessHra = hraOld ? toPaisa(hraJuly - hraOld.amount) : 0;
+  // July 2026 house rent may not fall below June 2026; the deficit is added to the arrears.
+  const hraGap = hraNext && hraOld ? toPaisa(hraNext.amount - hraOld.amount) : 0;
+  const excessHra = Math.max(0, hraGap);
+  const hraProtection = Math.max(0, -hraGap);
   const monthlyDeduction = toPaisa(specialAllowance + excessHra);
 
   const basicByPhase = new Map<SalaryPhase, number>();
@@ -946,7 +948,8 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
       basic_difference: basicDifference,
       special_allowance: specialAllowance,
       excess_hra: excessHra,
-      net_arrear: toPaisa(basicDifference - monthlyDeduction),
+      hra_protection: hraProtection,
+      net_arrear: toPaisa(basicDifference - monthlyDeduction + hraProtection),
     };
   });
 
@@ -961,8 +964,7 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
     special_rate_percent: Math.round(specialRate * 100),
     special_allowance: specialAllowance,
     hra_eligible: hraEligible,
-    hra_on_next_step: hraJuly,
-    hra_on_next_step_calculated: hraNext?.amount ?? 0,
+    hra_on_next_step: hraNext?.amount ?? 0,
     hra_protection: hraProtection,
     hra_on_old_pay: hraOld?.amount ?? 0,
     hra_rate_percent_next_step: hraNext?.rate_percent ?? 0,
@@ -973,6 +975,7 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
     total_basic_difference: sum((r) => r.basic_difference),
     total_special_allowance: sum((r) => r.special_allowance),
     total_excess_hra: sum((r) => r.excess_hra),
+    total_hra_protection: sum((r) => r.hra_protection),
     total_deduction: sum((r) => r.special_allowance + r.excess_hra),
     total_net_arrear: sum((r) => r.net_arrear),
   };

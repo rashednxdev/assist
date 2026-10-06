@@ -172,6 +172,11 @@ export function SalaryBillAccessPanel({
           </p>
         ) : null}
         <p className="text-xs text-slate-500">{t.accessUseNote(num(access.bulk_size))}</p>
+        <p className="text-xs font-semibold text-amber-800">
+          {access.calc.free_used < access.calc.free_limit
+            ? t.calcFreeLeft(num(access.calc.free_limit - access.calc.free_used), num(access.calc.free_limit))
+            : t.calcCounted(num(access.calc.unprinted), num(access.calc.per_bill))}
+        </p>
       </div>
 
       {sent ? (

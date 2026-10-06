@@ -38,27 +38,36 @@ const selectClass =
 export function SalaryArrearsDialog({
   locale,
   initial,
+  calcNote,
   onCancel,
   onConfirm,
 }: {
   locale: SalaryLocale;
   initial: ArrearsInputs;
+  /** Free / counted calculation status shown above the buttons. */
+  calcNote?: string;
   onCancel: () => void;
-  onConfirm: (inputs: ArrearsInputs) => void;
+  /** Resolves to an error message to keep the dialog open, or null when done. */
+  onConfirm: (inputs: ArrearsInputs) => Promise<string | null>;
 }) {
   const t = salaryCopy(locale);
   const num = (v: string | number) => localNum(locale, v);
   const [v, setV] = useState<ArrearsInputs>(initial);
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const stepNo = v.grade && v.oldPay > 0 ? NPS_2015[v.grade].indexOf(v.oldPay) + 1 : 0;
   const effectiveSubstantive = v.grade ? (hasSubstantiveChoice(v.grade) && v.substantiveGrade ? v.substantiveGrade : v.grade) : null;
   const formNo = effectiveSubstantive ? salaryTrFormNo(effectiveSubstantive) : null;
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!v.grade) return setError(t.gradeRequired);
     if (stepNo <= 0) return setError(t.basicRequired);
-    onConfirm({ ...v, substantiveGrade: hasSubstantiveChoice(v.grade) ? v.substantiveGrade : null });
+    setSubmitting(true);
+    setError('');
+    const message = await onConfirm({ ...v, substantiveGrade: hasSubstantiveChoice(v.grade) ? v.substantiveGrade : null });
+    setSubmitting(false);
+    if (message) setError(message);
   }
 
   return (
@@ -209,16 +218,22 @@ export function SalaryArrearsDialog({
             </div>
           ) : null}
 
+          {calcNote ? (
+            <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">
+              {calcNote}
+            </p>
+          ) : null}
+
           {error ? <Alert variant="error">{error}</Alert> : null}
         </div>
 
         <div className="flex justify-end gap-2 border-t border-border p-4">
-          <Button type="button" variant="outline" onClick={onCancel}>
+          <Button type="button" variant="outline" onClick={onCancel} disabled={submitting}>
             {t.cancel}
           </Button>
-          <Button type="submit" className="gap-2 bg-indigo-700 hover:bg-indigo-800">
+          <Button type="submit" className="gap-2 bg-indigo-700 hover:bg-indigo-800" disabled={submitting}>
             <ReceiptText className="h-4 w-4" />
-            {t.calcArrears}
+            {submitting ? t.calcChecking : t.calcArrears}
           </Button>
         </div>
       </form>

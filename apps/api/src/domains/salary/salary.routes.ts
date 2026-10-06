@@ -13,6 +13,7 @@ import {
   getSalaryStatsHandler,
   listBillAccessHandler,
   listBillUsageHandler,
+  recordArrearsCalcHandler,
   rejectBillRequestHandler,
   requestBillsHandler,
   saveMySalaryOfficeHandler,
@@ -46,6 +47,7 @@ salaryRouter.put('/office', authenticate, publicLimit, asyncHandler(saveMySalary
 salaryRouter.get('/access', authenticate, asyncHandler(getMyBillAccessHandler));
 salaryRouter.post('/access/request', authenticate, publicLimit, asyncHandler(requestBillsHandler));
 salaryRouter.post('/bills', authenticate, publicLimit, asyncHandler(consumeBillHandler));
+salaryRouter.post('/arrears-calc', authenticate, publicLimit, asyncHandler(recordArrearsCalcHandler));
 
 salaryRouter.get('/admin/access', authenticate, requireAdmin, asyncHandler(listBillAccessHandler));
 salaryRouter.put('/admin/access/:userId', authenticate, requireAdmin, asyncHandler(updateBillAccessHandler));

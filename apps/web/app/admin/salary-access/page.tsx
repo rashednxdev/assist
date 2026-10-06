@@ -9,7 +9,7 @@ import type {
   SalaryContactNumber,
   SalaryContactsRecord,
 } from '@ibas/shared-types';
-import { SALARY_DEFAULT_BULK_SIZE, formatTaka } from '@ibas/shared-types';
+import { SALARY_CALCS_PER_BILL, SALARY_DEFAULT_BULK_SIZE, formatTaka } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -241,6 +241,13 @@ function ContactsEditor() {
   );
 }
 
+const USAGE_LABEL: Record<SalaryBillUsageRecord['kind'], string> = {
+  tr_form_13: 'T.R. Form 13',
+  tr_form_15: 'T.R. Form 15',
+  arrears_pdf: 'Arrears PDF',
+  arrears_calc: `${SALARY_CALCS_PER_BILL} calculations without download`,
+};
+
 function UsageHistory({ userId }: { userId: string }) {
   const [items, setItems] = useState<SalaryBillUsageRecord[] | null>(null);
   const [error, setError] = useState('');
@@ -258,7 +265,7 @@ function UsageHistory({ userId }: { userId: string }) {
     <ul className="space-y-1 text-xs text-slate-700">
       {items.map((u) => (
         <li key={u.id}>
-          {formatWhen(u.created_at)} · {u.kind === 'tr_form_13' ? 'T.R. Form 13' : u.kind === 'tr_form_15' ? 'T.R. Form 15' : 'Arrears PDF'} · Grade {u.grade} · Basic{' '}
+          {formatWhen(u.created_at)} · {USAGE_LABEL[u.kind]} · Grade {u.grade} · Basic{' '}
           {formatTaka(u.old_pay)} · {u.months.length} month{u.months.length === 1 ? '' : 's'} · Net ৳ {formatTaka(u.net_total)}
         </li>
       ))}
@@ -348,6 +355,10 @@ function AccessRow({ row, bulkSize, onSaved }: { row: SalaryBillAccessAdminRow; 
           <p className="text-xs">{formatWhen(row.last_used_at)}</p>
         </div>
       </div>
+      <p className="text-xs text-slate-600">
+        Free calculations used: {row.calc.free_used} of {row.calc.free_limit} · Calculations toward next bill:{' '}
+        {row.calc.unprinted} of {row.calc.per_bill}
+      </p>
 
       {row.request.pending ? (
         <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-950">

@@ -1,8 +1,13 @@
 import mongoose from 'mongoose';
 import {
   SALARY_BILL_LIMIT_CODE,
+  SALARY_CALCS_PER_BILL,
+  SALARY_CALC_LIMIT_CODE,
   SALARY_DEFAULT_BULK_SIZE,
+  SALARY_FREE_ARREARS_CALCS,
   type ConsumeSalaryBillDto,
+  type RecordArrearsCalcDto,
+  type SalaryArrearsCalcInfo,
   type RejectSalaryBillRequestDto,
   type RequestSalaryBillsDto,
   type SalaryAccessStatus,
@@ -21,6 +26,7 @@ import { AppError, badRequest, forbidden, notFound } from '../../shared/errors/A
 import { User } from '../users/models/User.model.js';
 import { SalaryBillAccess, type ISalaryBillAccess } from './models/SalaryBillAccess.model.js';
 import { SalaryBillUsage } from './models/SalaryBillUsage.model.js';
+import { SalaryCalcUsage, type ISalaryCalcUsage } from './models/SalaryCalcUsage.model.js';
 import { SalarySettings } from './models/SalarySettings.model.js';
 import { assertSalaryOfficeChosen, salaryOfficeLabels } from './salary-office.service.js';
 
@@ -46,6 +52,23 @@ function requestInfo(doc: ISalaryBillAccess | null): SalaryBillRequestInfo {
 
 function remainingOf(doc: ISalaryBillAccess | null): number {
   return doc ? Math.max(0, doc.bill_limit - doc.bills_used) : 0;
+}
+
+function calcInfo(doc: Pick<ISalaryCalcUsage, 'free_used' | 'unprinted'> | null): SalaryArrearsCalcInfo {
+  return {
+    free_limit: SALARY_FREE_ARREARS_CALCS,
+    free_used: Math.min(doc?.free_used ?? 0, SALARY_FREE_ARREARS_CALCS),
+    per_bill: SALARY_CALCS_PER_BILL,
+    unprinted: doc?.unprinted ?? 0,
+  };
+}
+
+function calcLimitError(): AppError {
+  return new AppError(
+    403,
+    SALARY_CALC_LIMIT_CODE,
+    `You have used your ${SALARY_FREE_ARREARS_CALCS} free arrears calculations. Request a bulk from the admin to continue.`,
+  );
 }
 
 export async function getSalaryContacts(): Promise<SalaryContactsRecord> {
@@ -94,13 +117,15 @@ export async function updateSalaryBulkSize(dto: UpdateSalaryBulkSizeDto, updated
 }
 
 export async function getMyBillAccess(user: AuthUser): Promise<SalaryBillAccessRecord> {
-  const [doc, { contacts }, { bulk_size }] = await Promise.all([
+  const [doc, { contacts }, { bulk_size }, calcDoc] = await Promise.all([
     SalaryBillAccess.findOne({ user_id: user.id }),
     getSalaryContacts(),
     getSalaryBulkSize(),
+    SalaryCalcUsage.findOne({ user_id: user.id }).select('free_used unprinted').lean(),
   ]);
   const unlimited = isPlatformAdmin(user);
   const remaining = remainingOf(doc);
+  const calc = calcInfo(calcDoc);
   const status: SalaryAccessStatus = unlimited ? 'approved' : (doc?.status ?? 'none');
   return {
     status,
@@ -110,6 +135,8 @@ export async function getMyBillAccess(user: AuthUser): Promise<SalaryBillAccessR
     remaining,
     can_bill: user.status === 'active' && (unlimited || remaining > 0),
     bulk_size,
+    calc,
+    can_calculate: user.status === 'active' && (unlimited || calc.free_used < calc.free_limit || remaining > 0),
     request: requestInfo(doc),
     admin_note: doc?.admin_note ?? '',
     contacts,
@@ -168,16 +195,73 @@ export async function consumeBill(user: AuthUser, dto: ConsumeSalaryBillDto): Pr
     net_total: dto.net_total,
     created_at: now,
   });
+  if (!isPlatformAdmin(user)) {
+    await SalaryCalcUsage.updateOne({ user_id: user.id, unprinted: { $gt: 0 } }, { $inc: { unprinted: -1 } });
+  }
+  return getMyBillAccess(user);
+}
+
+/**
+ * Counts one "Calculate arrears bill". The first free calculations cost nothing; after that a bill
+ * must be available, and every block of not-downloaded calculations uses one bill.
+ */
+export async function recordArrearsCalc(user: AuthUser, dto: RecordArrearsCalcDto): Promise<SalaryBillAccessRecord> {
+  if (user.status !== 'active') throw forbidden('Account is not active');
+  if (isPlatformAdmin(user)) return getMyBillAccess(user);
+  await assertSalaryOfficeChosen(user.id);
+
+  const userId = new mongoose.Types.ObjectId(user.id);
+  const now = new Date();
+  await SalaryCalcUsage.updateOne({ user_id: userId }, { $setOnInsert: { user_id: userId } }, { upsert: true });
+
+  const free = await SalaryCalcUsage.findOneAndUpdate(
+    { user_id: userId, free_used: { $lt: SALARY_FREE_ARREARS_CALCS } },
+    { $inc: { free_used: 1, total: 1 }, $set: { updated_at: now } },
+    { new: true },
+  );
+  if (free) return getMyBillAccess(user);
+
+  const access = await SalaryBillAccess.findOne({ user_id: userId });
+  if (remainingOf(access) <= 0) throw calcLimitError();
+
+  await SalaryCalcUsage.updateOne({ user_id: userId }, { $inc: { unprinted: 1, total: 1 }, $set: { updated_at: now } });
+  const claimed = await SalaryCalcUsage.findOneAndUpdate(
+    { user_id: userId, unprinted: { $gte: SALARY_CALCS_PER_BILL } },
+    { $inc: { unprinted: -SALARY_CALCS_PER_BILL } },
+    { new: true },
+  );
+  if (claimed) {
+    const charged = await SalaryBillAccess.findOneAndUpdate(
+      { user_id: userId, $expr: { $lt: ['$bills_used', '$bill_limit'] } },
+      { $inc: { bills_used: 1 }, $set: { last_used_at: now, updated_at: now } },
+      { new: true },
+    );
+    if (!charged) {
+      await SalaryCalcUsage.updateOne({ user_id: userId }, { $inc: { unprinted: SALARY_CALCS_PER_BILL - 1, total: -1 } });
+      throw calcLimitError();
+    }
+    await SalaryBillUsage.create({
+      user_id: userId,
+      kind: 'arrears_calc',
+      grade: dto.grade,
+      old_pay: dto.old_pay,
+      months: dto.months,
+      net_total: dto.net_total,
+      created_at: now,
+    });
+  }
   return getMyBillAccess(user);
 }
 
 async function toAdminRows(docs: ISalaryBillAccess[]): Promise<SalaryBillAccessAdminRow[]> {
   const userIds = docs.map((d) => String(d.user_id));
-  const [users, offices] = await Promise.all([
+  const [users, offices, calcs] = await Promise.all([
     User.find({ _id: { $in: userIds } }).select('full_name_en email phone'),
     salaryOfficeLabels(userIds),
+    SalaryCalcUsage.find({ user_id: { $in: userIds } }).select('user_id free_used unprinted').lean(),
   ]);
   const byId = new Map(users.map((u) => [String(u._id), u]));
+  const calcById = new Map(calcs.map((c) => [String(c.user_id), c]));
   return docs.map((doc) => {
     const u = byId.get(String(doc.user_id));
     return {
@@ -192,6 +276,7 @@ async function toAdminRows(docs: ISalaryBillAccess[]): Promise<SalaryBillAccessA
       bill_limit: doc.bill_limit,
       bills_used: doc.bills_used,
       remaining: remainingOf(doc),
+      calc: calcInfo(calcById.get(String(doc.user_id)) ?? null),
       request: requestInfo(doc),
       admin_note: doc.admin_note ?? '',
       approved_at: doc.approved_at?.toISOString() ?? null,

@@ -242,15 +242,36 @@ export function TrAttachment({
         </tbody>
       </table>
 
-      <p className="tr-attach-total">
-        {t.arrTotalLine(
-          `৳ ${taka(result.total_basic_difference)}`,
-          `৳ ${taka(result.total_special_allowance)}`,
-          `৳ ${taka(result.total_excess_hra)}`,
-          `৳ ${taka(result.total_net_arrear)}`,
-          result.total_hra_protection > 0 ? `৳ ${taka(result.total_hra_protection)}` : undefined,
-        )}
-      </p>
+      <div className="tr-attach-head">{t.arrMathTitle}</div>
+      <table className="tr-math">
+        <tbody>
+          <tr>
+            <td>
+              {t.arrMathTotal}
+              {result.total_hra_protection > 0 ? (
+                <span className="tr-math-sub">
+                  {t.arrColDiff} ৳ {taka(result.total_basic_difference)} + {t.arrColHraProtection} ৳{' '}
+                  {taka(result.total_hra_protection)}
+                </span>
+              ) : null}
+            </td>
+            <td className="tr-num">৳ {taka(result.total_basic_difference + result.total_hra_protection)}</td>
+          </tr>
+          <tr>
+            <td>
+              {t.arrMathDeductions}
+              <span className="tr-math-sub">
+                {t.arrColSpecial} ৳ {taka(result.total_special_allowance)} + {t.arrColHra} ৳ {taka(result.total_excess_hra)}
+              </span>
+            </td>
+            <td className="tr-num">− ৳ {taka(result.total_deduction)}</td>
+          </tr>
+          <tr className="tr-math-net">
+            <td>{t.arrMathNet}</td>
+            <td className="tr-num">৳ {taka(result.total_net_arrear)}</td>
+          </tr>
+        </tbody>
+      </table>
       <p className="tr-attach-total">
         স্ট্যাম্প ডিউটি বাদে প্রদেয়: (৳ {taka(result.total_net_arrear)} − ৳ {taka(STAMP_DUTY)}) = ৳ {taka(payable)}
       </p>

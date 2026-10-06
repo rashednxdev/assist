@@ -753,6 +753,36 @@ body {
   white-space: nowrap;
 }
 
+.salary-tr-form .tr-math {
+  width: 62%;
+  border-collapse: collapse;
+  font-size: 10pt;
+  font-weight: 700;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.salary-tr-form .tr-math td {
+  padding: 0.8mm 1mm;
+  vertical-align: top;
+}
+
+.salary-tr-form .tr-math td.tr-num {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.salary-tr-form .tr-math-sub {
+  display: block;
+  font-size: 8pt;
+  font-weight: 400;
+}
+
+.salary-tr-form .tr-math .tr-math-net td {
+  border-top: 0.8pt solid #000;
+  font-size: 11pt;
+}
+
 .salary-tr-form .tr-attach-total {
   margin-top: 4mm;
   font-size: 10pt;

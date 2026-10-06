@@ -40,6 +40,8 @@ import {
   type SalaryBillAccessRecord,
   type SalaryBillKind,
   SALARY_BILL_LIMIT_CODE,
+  SALARY_CALC_LIMIT_CODE,
+  SALARY_FREE_ARREARS_CALCS,
   salaryTrFormNo,
 } from '@ibas/shared-types';
 import { downloadFormPdf, pdfFileName } from '@/lib/salary-pdf';
@@ -374,6 +376,9 @@ function GrossResultCard({ ctx, gross }: { ctx: Ctx; gross: EmployeeGrossResult 
         <p className="mt-0.5 text-xs text-teal-100/90">{t.grossSub(num(gross.grade), housingText(locale, gross))}</p>
       </div>
       <CardContent className="space-y-4 p-4 sm:p-5">
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
+          {t.allowanceInputNote}
+        </p>
         <div className="overflow-x-auto rounded-xl border border-border">
           <table className="w-full min-w-[480px] text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-muted">
@@ -445,8 +450,6 @@ function SalarySummaryCard({
   oldPay,
   results,
   allowancesTotal,
-  showDetails,
-  onToggleDetails,
   onPdf,
 }: {
   ctx: Ctx;
@@ -454,8 +457,6 @@ function SalarySummaryCard({
   oldPay: number;
   results: Salary2026Result[];
   allowancesTotal: number;
-  showDetails: boolean;
-  onToggleDetails: () => void;
   onPdf: () => void;
 }) {
   const { t, locale } = ctx;
@@ -479,15 +480,14 @@ function SalarySummaryCard({
             />
           ))}
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2">
-          <span className="text-sm font-semibold text-teal-900">{t.summaryAllowance}</span>
-          <span className="font-mono text-lg font-bold text-teal-950">{tk(allowancesTotal)}</span>
+        <div className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-sm font-semibold text-teal-900">{t.summaryAllowance}</span>
+            <span className="font-mono text-lg font-bold text-teal-950">{tk(allowancesTotal)}</span>
+          </div>
+          <p className="mt-1 text-xs font-medium text-amber-800">{t.allowanceInputNote}</p>
         </div>
         <div className="flex flex-wrap gap-2 print:hidden">
-          <Button type="button" variant="outline" onClick={onToggleDetails} className="gap-1.5">
-            <ChevronDown className={`h-4 w-4 transition-transform ${showDetails ? 'rotate-180' : ''}`} />
-            {showDetails ? t.hideDetails : t.viewDetails}
-          </Button>
           <Button type="button" onClick={onPdf} className="gap-2">
             <Download className="h-4 w-4" />
             {t.pdf}
@@ -511,7 +511,6 @@ export default function SalaryOn2026Page() {
   const [substantiveGrade, setSubstantiveGrade] = useState<SubstantiveGrade | null>(null);
   const [gpfDeductionInput, setGpfDeductionInput] = useState('');
   const [moreOpen, setMoreOpen] = useState(false);
-  const [showDetails, setShowDetails] = useState(false);
   const [error, setError] = useState('');
   const [results, setResults] = useState<Salary2026Result[] | null>(null);
   const [gross, setGross] = useState<EmployeeGrossResult | null>(null);
@@ -525,6 +524,7 @@ export default function SalaryOn2026Page() {
   const [billAccessError, setBillAccessError] = useState(false);
   const [billError, setBillError] = useState('');
   const [arrearsDialog, setArrearsDialog] = useState(false);
+  const [calcBlocked, setCalcBlocked] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const resultsRef = useRef<HTMLDivElement>(null);
   const arrearsRef = useRef<HTMLDivElement>(null);
@@ -541,7 +541,6 @@ export default function SalaryOn2026Page() {
   const allowancesTotal = gross
     ? gross.monthly_lines.filter((row) => row.code !== 'basic').reduce((sum, row) => sum + row.amount, 0)
     : 0;
-  const detailsVisible = showDetails || printMode === 'salary';
   const arrearResult = useMemo(() => {
     if (!showArrears || !grade || stepNo <= 0 || arrearMonths.length === 0) return null;
     try {
@@ -617,7 +616,46 @@ export default function SalaryOn2026Page() {
     setArrearsDialog(true);
   }
 
-  function applyArrearsInputs(v: ArrearsInputs) {
+  function calcNote(): string | undefined {
+    if (!billAccess || billAccess.unlimited) return undefined;
+    const { free_limit, free_used, per_bill, unprinted } = billAccess.calc;
+    if (free_used < free_limit) return t.calcFreeLeft(num(free_limit - free_used), num(free_limit));
+    return t.calcCounted(num(unprinted), num(per_bill));
+  }
+
+  async function applyArrearsInputs(v: ArrearsInputs): Promise<string | null> {
+    if (!v.grade) return t.gradeRequired;
+    let netTotal: number;
+    try {
+      netTotal = calculateSalaryArrears({
+        grade: v.grade,
+        old_pay: v.oldPay,
+        substantive_grade: v.substantiveGrade,
+        housing_status: v.housingStatus,
+        hra_area: v.hraArea,
+        months: arrearMonths,
+      }).total_net_arrear;
+    } catch (err) {
+      return err instanceof Error ? err.message : t.calcError;
+    }
+    try {
+      const res = await apiFetch<{ data: SalaryBillAccessRecord }>('/salary/arrears-calc', {
+        method: 'POST',
+        body: JSON.stringify({ grade: v.grade, old_pay: v.oldPay, months: arrearMonths, net_total: netTotal }),
+      });
+      setBillAccess(res.data);
+    } catch (err) {
+      if (err instanceof ApiError && err.code === SALARY_CALC_LIMIT_CODE) {
+        setArrearsDialog(false);
+        setShowArrears(false);
+        setCalcBlocked(true);
+        setError(t.calcLimit(num(SALARY_FREE_ARREARS_CALCS)));
+        void loadBillAccess();
+        return null;
+      }
+      return err instanceof Error ? err.message : t.calcError;
+    }
+    setCalcBlocked(false);
     const changed =
       v.grade !== grade ||
       v.oldPay !== oldPay ||
@@ -637,6 +675,7 @@ export default function SalaryOn2026Page() {
     setError('');
     setShowArrears(true);
     scrollTo(arrearsRef);
+    return null;
   }
 
   function updatePrintPageBreaks() {
@@ -838,22 +877,11 @@ export default function SalaryOn2026Page() {
           <h1 className="mt-2 text-balance text-2xl font-extrabold leading-snug text-white sm:text-3xl">
             {t.heroTitle}
           </h1>
-          <p className="mx-auto mt-4 inline-block rounded-full bg-emerald-200 px-4 py-1.5 text-sm font-extrabold text-emerald-950 shadow-sm ring-2 ring-emerald-100/80">
+          <p className="mx-auto mt-4 block w-fit max-w-full rounded-2xl bg-gradient-to-br from-red-600 via-rose-600 to-red-900 px-4 py-1.5 text-sm font-extrabold text-white shadow-md ring-2 ring-white/70">
             {t.heroBadge}
           </p>
-          <p className="salary-print-hide mx-auto mt-3 max-w-2xl text-sm text-emerald-50/90 sm:text-base">
-            {t.heroIntro}
-          </p>
-          <p className="mx-auto mt-1 max-w-2xl text-sm font-semibold text-emerald-50 sm:text-base">
-            <span className="whitespace-nowrap">{num('01-07-2026')}</span>
-            {', '}
-            <span className="whitespace-nowrap">{num('01-01-2027')}</span>
-            {`, ${t.then} `}
-            <span className="whitespace-nowrap">{num('01-07-2027')}</span>
-            {locale === 'bn' ? '।' : '.'}
-          </p>
           {shareNote ? <p className="mt-2 text-xs text-emerald-100 print:hidden">{shareNote}</p> : null}
-          <p className="mx-auto mt-3 inline-flex max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-full bg-white/10 px-3 py-1 text-xs text-emerald-50 ring-1 ring-white/20 print:hidden">
+          <p className="mx-auto mt-3 flex w-fit max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-full bg-white/10 px-3 py-1 text-xs text-emerald-50 ring-1 ring-white/20 print:hidden">
             <Building2 className="h-3.5 w-3.5 shrink-0" />
             <span className="font-semibold">{t.officeYour}:</span>
             <span className="min-w-0 truncate">{salaryOffice?.label ?? t.officeNotSet}</span>
@@ -1148,6 +1176,19 @@ export default function SalaryOn2026Page() {
           </CardContent>
         </Card>
 
+        {calcBlocked && !showArrears ? (
+          <div className="space-y-4">
+            <SalaryBillAccessPanel
+              locale={locale}
+              access={billAccess}
+              loadError={billAccessError}
+              onRetry={() => void loadBillAccess()}
+              onAccessChange={setBillAccess}
+            />
+            <SalaryBillContacts locale={locale} contacts={billAccess?.contacts ?? []} />
+          </div>
+        ) : null}
+
         {results && gross && grade ? (
           <div ref={resultsRef} className="scroll-mt-4 space-y-6">
             <SalarySummaryCard
@@ -1156,41 +1197,31 @@ export default function SalaryOn2026Page() {
               oldPay={oldPay}
               results={results}
               allowancesTotal={allowancesTotal}
-              showDetails={showDetails}
-              onToggleDetails={() => setShowDetails((v) => !v)}
               onPdf={() => setPrintDialog('salary')}
             />
 
-            {detailsVisible ? (
-              <>
-                <div className="salary-print-scale space-y-1 rounded-lg border border-dashed border-border bg-white p-3 text-xs text-muted">
-                  <p className="font-semibold text-slate-800">{t.scaleDetails}</p>
-                  <p>
-                    <span className="font-semibold text-slate-700">{t.nps2015}</span>{' '}
-                    {num(NPS_2015[grade].join('–'))}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-slate-700">{t.nps2026}</span>{' '}
-                    {num(NPS_2026[grade].join('–'))}
-                  </p>
-                </div>
+            <div className="salary-print-scale space-y-1 rounded-lg border border-dashed border-border bg-white p-3 text-xs text-muted">
+              <p className="font-semibold text-slate-800">{t.scaleDetails}</p>
+              <p>
+                <span className="font-semibold text-slate-700">{t.nps2015}</span> {num(NPS_2015[grade].join('–'))}
+              </p>
+              <p>
+                <span className="font-semibold text-slate-700">{t.nps2026}</span> {num(NPS_2026[grade].join('–'))}
+              </p>
+            </div>
 
-                <GrossResultCard ctx={ctx} gross={gross} />
+            <GrossResultCard ctx={ctx} gross={gross} />
 
-                {results.map((result, index) => (
-                  <PhaseResultCard
-                    key={result.phase}
-                    ctx={ctx}
-                    result={result}
-                    fixedAllowancesTotal={allowancesTotal}
-                    gpfDeduction={gpfDeduction}
-                    stageClass={
-                      index === 1 ? 'salary-print-stage-2' : index === 2 ? 'salary-print-stage-3' : undefined
-                    }
-                  />
-                ))}
-              </>
-            ) : null}
+            {results.map((result, index) => (
+              <PhaseResultCard
+                key={result.phase}
+                ctx={ctx}
+                result={result}
+                fixedAllowancesTotal={allowancesTotal}
+                gpfDeduction={gpfDeduction}
+                stageClass={index === 1 ? 'salary-print-stage-2' : index === 2 ? 'salary-print-stage-3' : undefined}
+              />
+            ))}
           </div>
         ) : null}
 
@@ -1287,6 +1318,7 @@ export default function SalaryOn2026Page() {
         <SalaryArrearsDialog
           locale={locale}
           initial={{ grade, oldPay, housingStatus, hraArea, substantiveGrade }}
+          calcNote={calcNote()}
           onCancel={() => setArrearsDialog(false)}
           onConfirm={applyArrearsInputs}
         />

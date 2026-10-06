@@ -3,6 +3,7 @@ import type { z } from 'zod';
 import {
   SALARY_ACCESS_STATUSES,
   consumeSalaryBillSchema,
+  recordArrearsCalcSchema,
   rejectSalaryBillRequestSchema,
   requestSalaryBillsSchema,
   saveSalaryOfficeSchema,
@@ -69,6 +70,11 @@ export async function requestBillsHandler(req: AuthRequest, res: Response): Prom
 export async function consumeBillHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = parseBody(consumeSalaryBillSchema, req.body);
   res.json({ data: await accessService.consumeBill(authUser(req), dto) });
+}
+
+export async function recordArrearsCalcHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = parseBody(recordArrearsCalcSchema, req.body);
+  res.json({ data: await accessService.recordArrearsCalc(authUser(req), dto) });
 }
 
 export async function listBillAccessHandler(req: AuthRequest, res: Response): Promise<void> {

@@ -374,16 +374,39 @@ export function SalaryArrearsBill({
             </section>
 
             <div className="rounded-xl border border-indigo-300 bg-indigo-100/70 px-4 py-3">
-              <p className="text-base font-bold text-indigo-950">
-                {t.arrTotalLine(
-                  `৳ ${signed(result.total_basic_difference)}`,
-                  tk(result.total_special_allowance),
-                  tk(result.total_excess_hra),
-                  `৳ ${signed(result.total_net_arrear)}`,
-                  result.total_hra_protection > 0 ? tk(result.total_hra_protection) : undefined,
-                )}
-              </p>
-              <p className="mt-1 text-sm font-semibold text-indigo-900">
+              <p className="text-xs font-semibold uppercase tracking-wide text-indigo-800">{t.arrMathTitle}</p>
+              <div className="mt-2 max-w-xl space-y-2 text-indigo-950">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="font-semibold">{t.arrMathTotal}</p>
+                    {result.total_hra_protection > 0 ? (
+                      <p className="text-xs text-indigo-900/80">
+                        {t.arrColDiff} ৳ {signed(result.total_basic_difference)} + {t.arrColHraProtection}{' '}
+                        {tk(result.total_hra_protection)}
+                      </p>
+                    ) : null}
+                  </div>
+                  <p className="whitespace-nowrap font-mono font-semibold">
+                    ৳ {signed(result.total_basic_difference + result.total_hra_protection)}
+                  </p>
+                </div>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="font-semibold">{t.arrMathDeductions}</p>
+                    <p className="text-xs text-indigo-900/80">
+                      {t.arrColSpecial} {tk(result.total_special_allowance)} + {t.arrColHra} {tk(result.total_excess_hra)}
+                    </p>
+                  </div>
+                  <p className="whitespace-nowrap font-mono font-semibold text-rose-700">− {tk(result.total_deduction)}</p>
+                </div>
+                <div className="flex items-center justify-between gap-4 border-t-2 border-indigo-300 pt-2">
+                  <p className="text-base font-bold">{t.arrMathNet}</p>
+                  <p className="whitespace-nowrap font-mono text-lg font-bold text-indigo-900">
+                    ৳ {signed(result.total_net_arrear)}
+                  </p>
+                </div>
+              </div>
+              <p className="mt-2 text-sm font-semibold text-indigo-900">
                 {t.inWords(takaInWords(locale, result.total_net_arrear))}
               </p>
               {result.total_net_arrear < 0 ? (

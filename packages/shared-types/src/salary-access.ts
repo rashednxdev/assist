@@ -2,8 +2,18 @@ import { z } from 'zod';
 import type { OfficeOption } from './org.js';
 
 /** Each T.R. Form download (or legacy arrears bill PDF) uses one approved bill. */
-export const SALARY_BILL_KINDS = ['arrears_pdf', 'tr_form_13', 'tr_form_15'] as const;
+export const SALARY_PRINT_KINDS = ['arrears_pdf', 'tr_form_13', 'tr_form_15'] as const;
+export type SalaryPrintKind = (typeof SALARY_PRINT_KINDS)[number];
+
+/** `arrears_calc` is one bill charged for a block of calculations that were not downloaded. */
+export const SALARY_BILL_KINDS = [...SALARY_PRINT_KINDS, 'arrears_calc'] as const;
 export type SalaryBillKind = (typeof SALARY_BILL_KINDS)[number];
+
+/** Arrears calculations every user gets without an approved bill. */
+export const SALARY_FREE_ARREARS_CALCS = 5;
+/** After the free ones, this many calculations without a download use one bill. */
+export const SALARY_CALCS_PER_BILL = 5;
+export const SALARY_CALC_LIMIT_CODE = 'SALARY_CALC_LIMIT';
 
 /** T.R. Form 13 for substantive grades 1–10, T.R. Form 15 for 11–20. */
 export function salaryTrFormNo(substantiveGrade: number): 13 | 15 {
@@ -96,14 +106,26 @@ export const rejectSalaryBillRequestSchema = z.object({
 });
 export type RejectSalaryBillRequestDto = z.infer<typeof rejectSalaryBillRequestSchema>;
 
-export const consumeSalaryBillSchema = z.object({
-  kind: z.enum(SALARY_BILL_KINDS),
+export const recordArrearsCalcSchema = z.object({
   grade: z.number().int().min(1).max(20),
   old_pay: z.number().int().min(1),
   months: z.array(z.string().regex(/^\d{4}-\d{2}$/)).min(1).max(60),
   net_total: z.number().finite(),
 });
+export type RecordArrearsCalcDto = z.infer<typeof recordArrearsCalcSchema>;
+
+export const consumeSalaryBillSchema = recordArrearsCalcSchema.extend({
+  kind: z.enum(SALARY_PRINT_KINDS),
+});
 export type ConsumeSalaryBillDto = z.infer<typeof consumeSalaryBillSchema>;
+
+export interface SalaryArrearsCalcInfo {
+  free_limit: number;
+  free_used: number;
+  per_bill: number;
+  /** Calculations counted toward the next bill (not downloaded). */
+  unprinted: number;
+}
 
 export interface SalaryBillRequestInfo {
   pending: boolean;
@@ -125,6 +147,9 @@ export interface SalaryBillAccessRecord {
   can_bill: boolean;
   /** Bills in one bulk. */
   bulk_size: number;
+  calc: SalaryArrearsCalcInfo;
+  /** Whether the next arrears calculation is allowed. */
+  can_calculate: boolean;
   request: SalaryBillRequestInfo;
   admin_note: string;
   contacts: SalaryContactNumber[];
@@ -138,6 +163,7 @@ export interface SalaryBillAccessAdminRow {
   bill_limit: number;
   bills_used: number;
   remaining: number;
+  calc: SalaryArrearsCalcInfo;
   request: SalaryBillRequestInfo;
   admin_note: string;
   approved_at: string | null;

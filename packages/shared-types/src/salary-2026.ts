@@ -848,6 +848,10 @@ export interface SalaryArrearInput {
   months: string[];
   /** Overrides the substantive-grade special allowance rate (fraction, e.g. 0.15). */
   special_rate?: number;
+  /** Excess Rest & Recreation allowance drawn: one NPS 2015 increment is deducted once. */
+  excess_rr?: boolean;
+  /** Excess Puja bonus drawn: two NPS 2015 increments are deducted once. */
+  excess_puja?: boolean;
 }
 
 export interface SalaryArrearMonthRow {
@@ -890,10 +894,17 @@ export interface SalaryArrearResult {
   excess_hra: number;
   monthly_deduction: number;
   rows: SalaryArrearMonthRow[];
+  /** NPS 2015 increment: basic on 01-07-2026 (next stage) − basic on 30-06-2026. */
+  increment: number;
+  /** One-time deduction for excess Rest & Recreation allowance (1 × increment), 0 when not chosen. */
+  excess_rr: number;
+  /** One-time deduction for excess Puja bonus (2 × increment), 0 when not chosen. */
+  excess_puja: number;
   total_basic_difference: number;
   total_special_allowance: number;
   total_excess_hra: number;
   total_hra_protection: number;
+  /** Monthly deductions plus the one-time Rest & Recreation and Puja deductions. */
   total_deduction: number;
   total_net_arrear: number;
 }
@@ -961,6 +972,10 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
   });
 
   const sum = (pick: (r: SalaryArrearMonthRow) => number) => toPaisa(rows.reduce((s, r) => s + pick(r), 0));
+  const increment = nextStep - oldPay;
+  const excessRr = input.excess_rr ? increment : 0;
+  const excessPuja = input.excess_puja ? increment * 2 : 0;
+  const oneTime = excessRr + excessPuja;
 
   return {
     grade,
@@ -980,18 +995,28 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
     excess_hra: excessHra,
     monthly_deduction: monthlyDeduction,
     rows,
+    increment,
+    excess_rr: excessRr,
+    excess_puja: excessPuja,
     total_basic_difference: sum((r) => r.basic_difference),
     total_special_allowance: sum((r) => r.special_allowance),
     total_excess_hra: sum((r) => r.excess_hra),
     total_hra_protection: sum((r) => r.hra_protection),
-    total_deduction: sum((r) => r.special_allowance + r.excess_hra),
-    total_net_arrear: sum((r) => r.net_arrear),
+    total_deduction: toPaisa(sum((r) => r.special_allowance + r.excess_hra) + oneTime),
+    total_net_arrear: toPaisa(sum((r) => r.net_arrear) - oneTime),
   };
 }
 
 /** Office staff arrear bill for one employee: no substantive grade, special allowance fixed at 15%. */
 export function calculateStaffArrears(
-  staff: { grade: number; old_pay: number; housing_status: HousingStatus; hra_area: HraArea },
+  staff: {
+    grade: number;
+    old_pay: number;
+    housing_status: HousingStatus;
+    hra_area: HraArea;
+    excess_rr?: boolean;
+    excess_puja?: boolean;
+  },
   months: string[],
 ): SalaryArrearResult {
   return calculateSalaryArrears({
@@ -1001,6 +1026,8 @@ export function calculateStaffArrears(
     hra_area: staff.hra_area,
     months,
     special_rate: STAFF_SPECIAL_RATE,
+    excess_rr: staff.excess_rr,
+    excess_puja: staff.excess_puja,
   });
 }
 

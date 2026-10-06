@@ -27,6 +27,7 @@ export function SalaryPrintDialog({
   title,
   confirmLabel,
   requireName = false,
+  lockedOffice = '',
 }: {
   t: SalaryCopy;
   initial: SalaryPrintInfo;
@@ -35,8 +36,10 @@ export function SalaryPrintDialog({
   title?: string;
   confirmLabel?: string;
   requireName?: boolean;
+  /** Office name fixed by the user's office (the Bangla name for "Others"); shown read-only. */
+  lockedOffice?: string;
 }) {
-  const [info, setInfo] = useState<SalaryPrintInfo>(initial);
+  const [info, setInfo] = useState<SalaryPrintInfo>(lockedOffice ? { ...initial, office: lockedOffice } : initial);
   const [nameError, setNameError] = useState(false);
   const [nidError, setNidError] = useState(false);
   const set = (key: keyof SalaryPrintInfo) => (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -55,7 +58,7 @@ export function SalaryPrintDialog({
     setNidError(badNid);
     if (badName || badNid) return;
     onConfirm({
-      office: info.office.trim(),
+      office: lockedOffice || info.office.trim(),
       employee: info.employee.trim(),
       designation: info.designation.trim(),
       nid,
@@ -85,7 +88,16 @@ export function SalaryPrintDialog({
           </p>
           <div className="space-y-1.5">
             <Label htmlFor="print-office">{t.officeName}</Label>
-            <Input id="print-office" value={info.office} onChange={set('office')} autoComplete="organization" autoFocus />
+            <Input
+              id="print-office"
+              value={info.office}
+              onChange={set('office')}
+              autoComplete="organization"
+              readOnly={Boolean(lockedOffice)}
+              autoFocus={!lockedOffice}
+              className={lockedOffice ? 'cursor-not-allowed bg-slate-100' : undefined}
+            />
+            {lockedOffice ? <p className="text-xs text-muted">{t.officeFixedOnBill}</p> : null}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="print-employee">

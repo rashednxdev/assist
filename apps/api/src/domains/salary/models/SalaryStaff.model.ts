@@ -11,6 +11,8 @@ export interface ISalaryStaff extends Document {
   old_pay: number;
   housing_status: HousingStatus;
   hra_area: HraArea;
+  excess_rr: boolean;
+  excess_puja: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -25,6 +27,8 @@ const schema = new Schema<ISalaryStaff>(
     old_pay: { type: Number, required: true, min: 1 },
     housing_status: { type: String, enum: ['hra_eligible', 'govt_accommodation'], required: true },
     hra_area: { type: String, enum: ['dhaka', 'major_city', 'other'], required: true },
+    excess_rr: { type: Boolean, default: false },
+    excess_puja: { type: Boolean, default: false },
     created_at: { type: Date, default: Date.now },
     updated_at: { type: Date, default: Date.now },
   },

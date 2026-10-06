@@ -164,6 +164,86 @@ export function MonthMath({ f, result, group }: { f: Fmt; result: SalaryArrearRe
   );
 }
 
+export interface ArrearExtras {
+  excess_rr: boolean;
+  excess_puja: boolean;
+}
+
+export const NO_ARREAR_EXTRAS: ArrearExtras = { excess_rr: false, excess_puja: false };
+
+/** One-time Rest & Recreation / Puja deductions chosen on the bill, with the working shown on the bill. */
+export function oneTimeDeductions(
+  t: SalaryCopy,
+  amt: (n: number) => string,
+  result: SalaryArrearResult,
+): Array<{ key: string; label: string; rule: string; amount: number }> {
+  const rows: Array<{ key: string; label: string; rule: string; amount: number }> = [];
+  if (result.excess_rr > 0) {
+    rows.push({ key: 'rr', label: t.arrExcessRrShort, rule: t.arrExcessRrRule(amt(result.increment)), amount: result.excess_rr });
+  }
+  if (result.excess_puja > 0) {
+    rows.push({
+      key: 'puja',
+      label: t.arrExcessPujaShort,
+      rule: t.arrExcessPujaRule(amt(result.increment), amt(result.excess_puja)),
+      amount: result.excess_puja,
+    });
+  }
+  return rows;
+}
+
+/** Tick boxes for the excess Rest & Recreation (1 increment) and Puja bonus (2 increments) deductions. */
+export function ArrearExtraDeductions({
+  locale,
+  oldPay,
+  nextStep,
+  value,
+  onChange,
+}: {
+  locale: SalaryLocale;
+  oldPay: number;
+  nextStep: number;
+  value: ArrearExtras;
+  onChange: (value: ArrearExtras) => void;
+}) {
+  const t = salaryCopy(locale);
+  const amt = (n: number) => localNum(locale, formatTaka(n));
+  const increment = nextStep - oldPay;
+  const options: Array<{ key: keyof ArrearExtras; label: string; rule: string }> = [
+    { key: 'excess_rr', label: t.arrExcessRr, rule: t.arrExcessRrRule(amt(increment)) },
+    { key: 'excess_puja', label: t.arrExcessPuja, rule: t.arrExcessPujaRule(amt(increment), amt(increment * 2)) },
+  ];
+  return (
+    <div className="space-y-2 rounded-xl border border-rose-200 bg-rose-50/60 px-3 py-2.5 print:hidden">
+      <p className="text-sm font-semibold text-rose-900">{t.arrExtraTitle}</p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {options.map((o) => (
+          <label
+            key={o.key}
+            className={`flex cursor-pointer items-start gap-2 rounded-lg border bg-white px-3 py-2 text-sm ${
+              value[o.key] ? 'border-rose-400 ring-1 ring-rose-300' : 'border-rose-100'
+            }`}
+          >
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 shrink-0 accent-rose-600"
+              checked={value[o.key]}
+              onChange={(e) => onChange({ ...value, [o.key]: e.target.checked })}
+            />
+            <span>
+              <span className="block font-medium text-slate-800">{o.label}</span>
+              <span className="block font-mono text-xs text-rose-800">− {o.rule}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+      <p className="text-xs text-slate-600">
+        {increment > 0 ? t.arrIncrementCalc(amt(nextStep), amt(oldPay), amt(increment)) : t.arrNoIncrement}
+      </p>
+    </div>
+  );
+}
+
 /** Arrear month chips with Past / All / Clear shortcuts. */
 export function ArrearMonthPicker({
   locale,
@@ -230,6 +310,8 @@ export function SalaryArrearsBill({
   hraArea,
   months,
   onMonthsChange,
+  extras,
+  onExtrasChange,
   onTrForm,
   accessReady,
   downloading,
@@ -244,6 +326,8 @@ export function SalaryArrearsBill({
   hraArea: HraArea;
   months: string[];
   onMonthsChange: (months: string[]) => void;
+  extras: ArrearExtras;
+  onExtrasChange: (extras: ArrearExtras) => void;
   onTrForm: () => void;
   accessReady: boolean;
   downloading: boolean;
@@ -268,13 +352,15 @@ export function SalaryArrearsBill({
           housing_status: housingStatus,
           hra_area: hraArea,
           months,
+          ...extras,
         }),
         error: '',
       };
     } catch (err) {
       return { result: null, error: err instanceof Error ? err.message : t.calcError };
     }
-  }, [grade, oldPay, substantiveGrade, housingStatus, hraArea, months, t]);
+  }, [grade, oldPay, substantiveGrade, housingStatus, hraArea, months, extras, t]);
+  const oneTime = result ? oneTimeDeductions(t, amt, result) : [];
 
   return (
     <Card className="overflow-hidden border border-indigo-200 shadow-sm">
@@ -288,6 +374,14 @@ export function SalaryArrearsBill({
 
         {result ? (
           <>
+            <ArrearExtraDeductions
+              locale={locale}
+              oldPay={result.old_pay}
+              nextStep={result.next_step}
+              value={extras}
+              onChange={onExtrasChange}
+            />
+
             <section className="space-y-1.5">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">{t.billBasis}</h3>
               <div className="overflow-hidden rounded-xl border border-border text-sm">
@@ -361,6 +455,17 @@ export function SalaryArrearsBill({
                         <td className="px-3 py-2 text-right font-mono font-semibold">{signed(row.net_arrear)}</td>
                       </tr>
                     ))}
+                    {oneTime.map((d) => (
+                      <tr key={d.key} className="border-t border-border bg-rose-50/50">
+                        <td className="px-3 py-2" colSpan={6}>
+                          <div className="font-medium text-slate-800">
+                            {d.label} ({t.arrOneTime})
+                          </div>
+                          <div className="font-mono text-xs text-muted">{d.rule}</div>
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono font-semibold text-rose-700">− {amt(d.amount)}</td>
+                      </tr>
+                    ))}
                     <tr className="border-t-2 border-indigo-200 bg-indigo-50">
                       <td className="px-3 py-2.5 font-bold text-indigo-950" colSpan={3}>
                         {t.arrTotalRow(num(result.rows.length), result.rows.length === 1)}
@@ -411,6 +516,7 @@ export function SalaryArrearsBill({
                     <p className="font-semibold">{t.arrMathDeductions}</p>
                     <p className="text-xs text-indigo-900/80">
                       {t.arrColSpecial} {tk(result.total_special_allowance)} + {t.arrColHra} {tk(result.total_excess_hra)}
+                      {oneTime.map((d) => ` + ${d.label} ${tk(d.amount)}`).join('')}
                     </p>
                   </div>
                   <p className="whitespace-nowrap font-mono font-semibold text-rose-700">− {tk(result.total_deduction)}</p>

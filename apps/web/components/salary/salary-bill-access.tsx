@@ -313,7 +313,9 @@ export function SalaryBillAccessPanel({
         <p className="text-xs font-semibold text-amber-800">
           {access.calc.free_used < access.calc.free_limit
             ? t.calcFreeLeft(num(access.calc.free_limit - access.calc.free_used), num(access.calc.free_limit))
-            : t.calcCounted(num(access.calc.unprinted), num(access.calc.per_bill))}
+            : access.calc.free_limit === 0 && access.remaining === 0
+              ? t.calcNoFree
+              : t.calcCounted(num(access.calc.unprinted), num(access.calc.per_bill))}
         </p>
       </div>
 

@@ -13,6 +13,8 @@ function toRecord(doc: ISalaryStaff): SalaryStaffRecord {
     old_pay: doc.old_pay,
     housing_status: doc.housing_status,
     hra_area: doc.hra_area,
+    excess_rr: Boolean(doc.excess_rr),
+    excess_puja: Boolean(doc.excess_puja),
     created_at: doc.created_at.toISOString(),
     updated_at: doc.updated_at.toISOString(),
   };

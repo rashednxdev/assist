@@ -21,7 +21,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrearMonthPicker } from '@/components/salary/salary-arrears-bill';
+import {
+  ArrearExtraDeductions,
+  ArrearMonthPicker,
+  NO_ARREAR_EXTRAS,
+  type ArrearExtras,
+} from '@/components/salary/salary-arrears-bill';
 import { SalaryBulkRequestDialog } from '@/components/salary/salary-bill-access';
 import { TrForm15Staff, type TrStaffEntry } from '@/components/salary/tr-form-15';
 import { STAMP_DUTY } from '@/components/salary/tr-form-parts';
@@ -43,6 +48,7 @@ interface StaffForm {
   oldPay: number;
   housingStatus: HousingStatus;
   hraArea: HraArea;
+  extras: ArrearExtras;
 }
 
 const EMPTY_FORM: StaffForm = {
@@ -53,7 +59,14 @@ const EMPTY_FORM: StaffForm = {
   oldPay: 0,
   housingStatus: 'hra_eligible',
   hraArea: 'dhaka',
+  extras: NO_ARREAR_EXTRAS,
 };
+
+function nextStage(grade: PayGrade, oldPay: number): number {
+  const scale = NPS_2015[grade];
+  const i = scale.indexOf(oldPay);
+  return i >= 0 && i < scale.length - 1 ? scale[i + 1]! : oldPay;
+}
 
 function toForm(s: SalaryStaffRecord): StaffForm {
   return {
@@ -64,6 +77,7 @@ function toForm(s: SalaryStaffRecord): StaffForm {
     oldPay: s.old_pay,
     housingStatus: s.housing_status,
     hraArea: s.hra_area,
+    extras: { excess_rr: Boolean(s.excess_rr), excess_puja: Boolean(s.excess_puja) },
   };
 }
 
@@ -107,6 +121,7 @@ function StaffDialog({
       old_pay: v.oldPay,
       housing_status: v.housingStatus,
       hra_area: v.hraArea,
+      ...v.extras,
     });
     setSaving(false);
     if (message) setError(message);
@@ -253,6 +268,15 @@ function StaffDialog({
           <p className="rounded-md border border-border bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700">
             {t.staffSpecialNote}
           </p>
+          {v.grade && v.oldPay > 0 ? (
+            <ArrearExtraDeductions
+              locale={locale}
+              oldPay={v.oldPay}
+              nextStep={nextStage(v.grade, v.oldPay)}
+              value={v.extras}
+              onChange={(extras) => setV((p) => ({ ...p, extras }))}
+            />
+          ) : null}
           {error ? <Alert variant="error">{error}</Alert> : null}
         </div>
 
@@ -272,11 +296,13 @@ function StaffDialog({
 function OfficeDialog({
   locale,
   initial,
+  locked,
   onCancel,
   onConfirm,
 }: {
   locale: SalaryLocale;
   initial: string;
+  locked: boolean;
   onCancel: () => void;
   onConfirm: (office: string) => void;
 }) {
@@ -306,7 +332,15 @@ function OfficeDialog({
         </div>
         <div className="space-y-1.5 p-5">
           <Label htmlFor="staff-office">{t.officeName}</Label>
-          <Input id="staff-office" value={office} onChange={(e) => setOffice(e.target.value)} autoFocus />
+          <Input
+            id="staff-office"
+            value={office}
+            onChange={(e) => setOffice(e.target.value)}
+            readOnly={locked}
+            autoFocus={!locked}
+            className={locked ? 'cursor-not-allowed bg-slate-100' : undefined}
+          />
+          {locked ? <p className="text-xs text-muted">{t.officeFixedOnBill}</p> : null}
         </div>
         <div className="flex justify-end gap-2 border-t border-border p-4">
           <Button type="button" variant="outline" onClick={onCancel}>
@@ -330,6 +364,7 @@ export function SalaryStaffBill({
   access,
   onAccessChange,
   officeLabel,
+  officeLocked,
   preparedOn,
   accessPanel,
   contactsPanel,
@@ -340,6 +375,8 @@ export function SalaryStaffBill({
   access: SalaryBillAccessRecord | null;
   onAccessChange: (access: SalaryBillAccessRecord) => void;
   officeLabel: string;
+  /** The office name comes from the user's "Others" office and cannot be edited on the form. */
+  officeLocked: boolean;
   /** Already in Bangla digits; printed on the form. */
   preparedOn: string;
   accessPanel: React.ReactNode;
@@ -572,6 +609,16 @@ export function SalaryStaffBill({
                           {s.post}
                           {s.nid ? ` · ${t.nid}: ${num(s.nid)}` : ''}
                         </div>
+                        {r && (r.excess_rr > 0 || r.excess_puja > 0) ? (
+                          <div className="mt-0.5 text-xs font-medium text-rose-700">
+                            {[
+                              r.excess_rr > 0 ? `${t.arrExcessRrShort} − ${amt(r.excess_rr)}` : '',
+                              r.excess_puja > 0 ? `${t.arrExcessPujaShort} − ${amt(r.excess_puja)}` : '',
+                            ]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </div>
+                        ) : null}
                       </td>
                       <td className="px-3 py-2">{num(s.grade)}</td>
                       <td className="px-3 py-2 text-right font-mono">{amt(s.old_pay)}</td>
@@ -680,8 +727,9 @@ export function SalaryStaffBill({
         <OfficeDialog
           locale={locale}
           initial={officeLabel}
+          locked={officeLocked}
           onCancel={() => setOfficeDialog(false)}
-          onConfirm={(office) => void confirmDownload(office)}
+          onConfirm={(office) => void confirmDownload(officeLocked ? officeLabel : office)}
         />
       ) : null}
 

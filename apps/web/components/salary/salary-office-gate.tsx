@@ -17,10 +17,19 @@ import { cn } from '@/lib/utils';
 
 interface SalaryOfficeContextValue {
   office: SalaryOfficeRecord | null;
+  /** Only admins change their own office here; for everyone else the admin changes it. */
+  canChange: boolean;
   changeOffice: () => void;
 }
 
-const SalaryOfficeContext = createContext<SalaryOfficeContextValue>({ office: null, changeOffice: () => undefined });
+const SalaryOfficeContext = createContext<SalaryOfficeContextValue>({
+  office: null,
+  canChange: false,
+  changeOffice: () => undefined,
+});
+
+const BANGLA_SCRIPT = /[\u0980-\u09FF]/;
+const LATIN_LETTER = /[A-Za-z]/;
 
 export function useSalaryOffice(): SalaryOfficeContextValue {
   return useContext(SalaryOfficeContext);
@@ -29,11 +38,14 @@ export function useSalaryOffice(): SalaryOfficeContextValue {
 function OfficeForm({
   initial,
   othersAllowed,
+  addBangla,
   onSaved,
   onCancel,
 }: {
   initial: SalaryOfficeRecord | null;
   othersAllowed: boolean;
+  /** An "Others" office saved without its Bangla name: only the names can be completed. */
+  addBangla: boolean;
   onSaved: (office: SalaryOfficeRecord) => void;
   onCancel?: () => void;
 }) {
@@ -41,14 +53,18 @@ function OfficeForm({
   const t = salaryCopy(locale);
   const [circle, setCircle] = useState<OfficeOption | null>(initial?.circle ?? null);
   const [office, setOffice] = useState<OfficeOption | null>(initial?.office ?? null);
-  const [others, setOthers] = useState(othersAllowed && Boolean(initial && !initial.office));
+  const [others, setOthers] = useState(addBangla || (othersAllowed && Boolean(initial && !initial.office)));
   const [otherName, setOtherName] = useState(initial?.other_office_name ?? '');
+  const [otherNameBn, setOtherNameBn] = useState(initial?.other_office_name_bn ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const showOthersOption = othersAllowed && !addBangla;
 
   async function save() {
     const name = otherName.trim();
-    if (others && name.length < 3) return setError(t.officeErrOther);
+    const nameBn = otherNameBn.trim();
+    if (others && (name.length < 3 || !LATIN_LETTER.test(name))) return setError(t.officeErrOther);
+    if (others && (nameBn.length < 3 || !BANGLA_SCRIPT.test(nameBn))) return setError(t.officeErrOtherBn);
     if (!others && !circle) return setError(t.officeErrCircle);
     if (!others && !office) return setError(t.officeErrOffice);
     setSaving(true);
@@ -60,6 +76,7 @@ function OfficeForm({
           circle_id: circle?.id ?? null,
           office_id: others ? null : (office?.id ?? null),
           other_office_name: others ? name : '',
+          other_office_name_bn: others ? nameBn : '',
         }),
       });
       onSaved(res.data);
@@ -80,7 +97,9 @@ function OfficeForm({
             </span>
             <div>
               <h1 className="text-lg font-bold">{t.officeGateTitle}</h1>
-              <p className="mt-0.5 text-xs text-emerald-100/90">{othersAllowed ? t.officeGateIntro : t.officeGateIntroListed}</p>
+              <p className="mt-0.5 text-xs text-emerald-100/90">
+                {addBangla ? t.officeAddBangla : showOthersOption ? t.officeGateIntro : t.officeGateIntroListed}
+              </p>
             </div>
           </div>
           <div className="inline-flex shrink-0 rounded-lg border border-white/30 bg-white/5 p-0.5 text-xs" role="group" aria-label="Language">
@@ -129,7 +148,7 @@ function OfficeForm({
             </div>
           )}
 
-          {othersAllowed ? (
+          {showOthersOption ? (
             <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-slate-50 px-3 py-2.5 text-sm font-medium">
               <input
                 type="checkbox"
@@ -145,17 +164,36 @@ function OfficeForm({
           ) : null}
 
           {others ? (
-            <div className="space-y-1.5">
-              <Label htmlFor="salary-office-other">{t.officeOtherName}</Label>
-              <Input
-                id="salary-office-other"
-                maxLength={200}
-                value={otherName}
-                placeholder={t.officeOtherPlaceholder}
-                onChange={(e) => setOtherName(e.target.value)}
-              />
+            <div className="space-y-3">
+              <p className="rounded-md border border-yellow-400 bg-gradient-to-r from-yellow-200 via-yellow-50 to-white px-3 py-2 text-xs font-semibold text-amber-950">
+                {t.officeOthersNotice}
+              </p>
+              <div className="space-y-1.5">
+                <Label htmlFor="salary-office-other-bn">{t.officeOtherNameBn}</Label>
+                <Input
+                  id="salary-office-other-bn"
+                  lang="bn"
+                  maxLength={200}
+                  value={otherNameBn}
+                  placeholder={t.officeOtherPlaceholderBn}
+                  onChange={(e) => setOtherNameBn(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="salary-office-other">{t.officeOtherName}</Label>
+                <Input
+                  id="salary-office-other"
+                  lang="en"
+                  maxLength={200}
+                  value={otherName}
+                  placeholder={t.officeOtherPlaceholder}
+                  onChange={(e) => setOtherName(e.target.value)}
+                />
+              </div>
             </div>
           ) : null}
+
+          {onCancel ? null : <p className="text-xs font-medium text-rose-700">{t.officeLockNote}</p>}
 
           {error ? <Alert variant="error">{error}</Alert> : null}
 
@@ -203,7 +241,9 @@ export function SalaryOfficeGate({ children }: { children: React.ReactNode }) {
     load();
   }, [load]);
 
-  const changeOffice = useCallback(() => setEditing(true), []);
+  const changeOffice = useCallback(() => {
+    if (exempt) setEditing(true);
+  }, [exempt]);
 
   if (loadError) {
     const t = salaryCopy('bn');
@@ -231,11 +271,14 @@ export function SalaryOfficeGate({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (editing || (!office && !exempt)) {
+  const addBangla = !exempt && office != null && !office.office && !office.other_office_name_bn;
+
+  if (editing || addBangla || (!office && !exempt)) {
     return (
       <OfficeForm
         initial={office}
         othersAllowed={othersAllowed}
+        addBangla={addBangla}
         onSaved={(saved) => {
           setOffice(saved);
           setEditing(false);
@@ -245,5 +288,7 @@ export function SalaryOfficeGate({ children }: { children: React.ReactNode }) {
     );
   }
 
-  return <SalaryOfficeContext.Provider value={{ office, changeOffice }}>{children}</SalaryOfficeContext.Provider>;
+  return (
+    <SalaryOfficeContext.Provider value={{ office, canChange: exempt, changeOffice }}>{children}</SalaryOfficeContext.Provider>
+  );
 }

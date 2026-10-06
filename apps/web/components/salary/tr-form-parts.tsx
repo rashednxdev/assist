@@ -4,7 +4,7 @@ import { formatTaka, type HraArea, type SalaryArrearResult } from '@ibas/shared-
 import { toBanglaDigits } from '@/lib/bangla-format';
 import { hraAreaText, monthText, salaryCopy } from '@/lib/salary-i18n';
 import type { SalaryPrintInfo } from '@/components/salary/salary-print-dialog';
-import { MonthMath, groupMonths, type Fmt } from '@/components/salary/salary-arrears-bill';
+import { MonthMath, groupMonths, oneTimeDeductions, type Fmt } from '@/components/salary/salary-arrears-bill';
 
 export interface FormRow {
   code: string;
@@ -135,6 +135,7 @@ export function TrAttachment({
     amt: (n) => toBanglaDigits(formatTaka(n)),
     signed: taka,
   };
+  const oneTime = oneTimeDeductions(t, fmt.amt, result);
   return (
     <section className="tr-page">
       <div className="tr-attach-kicker">সংযুক্তি — টি, আর, ফরম নং {toBanglaDigits(formNo)}</div>
@@ -200,6 +201,21 @@ export function TrAttachment({
             <td>{t.basisMonths}</td>
             <td>{result.rows.map((r) => monthText('bn', r.month)).join(', ')}</td>
           </tr>
+          {oneTime.length > 0 ? (
+            <tr>
+              <td>{t.arrExtraHead}</td>
+              <td>
+                {oneTime.map((d) => (
+                  <div key={d.key}>
+                    {d.label} ({t.arrOneTime}): {d.rule}
+                  </div>
+                ))}
+                <div className="tr-small">
+                  {t.arrIncrementCalc(fmt.amt(result.next_step), fmt.amt(result.old_pay), fmt.amt(result.increment))}
+                </div>
+              </td>
+            </tr>
+          ) : null}
         </tbody>
       </table>
 
@@ -237,6 +253,14 @@ export function TrAttachment({
               <td className="tr-num">{taka(row.net_arrear)}</td>
             </tr>
           ))}
+          {oneTime.map((d) => (
+            <tr key={d.key}>
+              <td colSpan={6}>
+                {d.label} ({t.arrOneTime}) — {d.rule}
+              </td>
+              <td className="tr-num">− {taka(d.amount)}</td>
+            </tr>
+          ))}
           <tr className="tr-total">
             <td colSpan={3}>{t.arrTotalRow(toBanglaDigits(result.rows.length), result.rows.length === 1)}</td>
             <td className="tr-num">{taka(result.total_basic_difference)}</td>
@@ -269,6 +293,7 @@ export function TrAttachment({
               {t.arrMathDeductions}
               <span className="tr-math-sub">
                 {t.arrColSpecial} ৳ {taka(result.total_special_allowance)} + {t.arrColHra} ৳ {taka(result.total_excess_hra)}
+                {oneTime.map((d) => ` + ${d.label} ৳ ${taka(d.amount)}`).join('')}
               </span>
             </td>
             <td className="tr-num">− ৳ {taka(result.total_deduction)}</td>

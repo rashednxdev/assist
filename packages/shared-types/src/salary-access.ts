@@ -13,8 +13,36 @@ export type SalaryPrintKind = (typeof SALARY_PRINT_KINDS)[number];
 export const SALARY_BILL_KINDS = [...SALARY_PRINT_KINDS, 'arrears_calc', 'staff_tr_form_15'] as const;
 export type SalaryBillKind = (typeof SALARY_BILL_KINDS)[number];
 
-/** Arrears calculations every user gets without an approved bill. */
+/** Free arrears calculations for the first user of a listed office. */
 export const SALARY_FREE_ARREARS_CALCS = 5;
+
+/**
+ * After an office's first user, this many more users of an office of that type (by type short name)
+ * may each calculate one single arrear bill without an approved bill. Later users need a bill.
+ */
+export const SALARY_OFFICE_TYPE_EXTRA_USERS: Readonly<Record<string, number>> = {
+  CGA: 5,
+  CAFO: 4,
+  DCA: 4,
+  DAFO: 3,
+  UAO: 2,
+};
+/** Free calculations for each of those extra users. */
+export const SALARY_EXTRA_USER_FREE_CALCS = 1;
+/** Free calculations for a user who typed an "Others" office. */
+export const SALARY_OTHERS_FREE_CALCS = 1;
+
+/**
+ * Free arrears calculations for a user, by their office and their order among that office's users
+ * (1 = the first user to choose the office).
+ */
+export function salaryFreeCalcsFor(office: { is_other: boolean; office_type: string | null; rank: number } | null): number {
+  if (!office) return 0;
+  if (office.is_other) return SALARY_OTHERS_FREE_CALCS;
+  if (office.rank <= 1) return SALARY_FREE_ARREARS_CALCS;
+  const extraUsers = SALARY_OFFICE_TYPE_EXTRA_USERS[(office.office_type ?? '').trim().toUpperCase()] ?? 0;
+  return office.rank - 1 <= extraUsers ? SALARY_EXTRA_USER_FREE_CALCS : 0;
+}
 /** After the free ones, this many calculations without a download use one bill. */
 export const SALARY_CALCS_PER_BILL = 5;
 export const SALARY_CALC_LIMIT_CODE = 'SALARY_CALC_LIMIT';
@@ -32,24 +60,61 @@ export const SALARY_OFFICE_REQUIRED_CODE = 'SALARY_OFFICE_REQUIRED';
 
 const officeId = z.string().regex(/^[a-f\d]{24}$/i, 'Invalid office');
 
-/** A listed office inside its circle, or "Others" with the office name typed in. */
+const BANGLA_SCRIPT = /[\u0980-\u09FF]/;
+const LATIN_LETTER = /[A-Za-z]/;
+
+const otherNameEn = z.string().trim().max(200, 'Office name is too long').default('');
+const otherNameBn = z.string().trim().max(200, 'Office name is too long').default('');
+
+function checkOtherNames(v: { other_office_name: string; other_office_name_bn: string }, ctx: z.RefinementCtx): void {
+  if (v.other_office_name.length < 3 || !LATIN_LETTER.test(v.other_office_name)) {
+    ctx.addIssue({ code: 'custom', path: ['other_office_name'], message: 'Type the full office name in English' });
+  }
+  if (v.other_office_name_bn.length < 3 || !BANGLA_SCRIPT.test(v.other_office_name_bn)) {
+    ctx.addIssue({ code: 'custom', path: ['other_office_name_bn'], message: 'Type the full office name in Bangla' });
+  }
+}
+
+/** A listed office inside its circle, or "Others" with the full office name typed in English and Bangla. */
 export const saveSalaryOfficeSchema = z
   .object({
     circle_id: officeId.nullable().default(null),
     office_id: officeId.nullable().default(null),
-    other_office_name: z.string().trim().max(200, 'Office name is too long').default(''),
+    other_office_name: otherNameEn,
+    other_office_name_bn: otherNameBn,
   })
   .superRefine((v, ctx) => {
     if (v.office_id) {
       if (!v.circle_id) ctx.addIssue({ code: 'custom', path: ['circle_id'], message: 'Select your circle' });
-      if (v.other_office_name) {
+      if (v.other_office_name || v.other_office_name_bn) {
         ctx.addIssue({ code: 'custom', path: ['other_office_name'], message: 'Choose a listed office or Others, not both' });
       }
-    } else if (v.other_office_name.length < 3) {
-      ctx.addIssue({ code: 'custom', path: ['other_office_name'], message: 'Type your office name (3+ characters)' });
+    } else {
+      checkOtherNames(v, ctx);
     }
   });
 export type SaveSalaryOfficeDto = z.infer<typeof saveSalaryOfficeSchema>;
+
+/** Admin correction of a user's "Others" office name. */
+export const adminSalaryOtherOfficeSchema = z
+  .object({ other_office_name: otherNameEn, other_office_name_bn: otherNameBn })
+  .superRefine(checkOtherNames);
+export type AdminSalaryOtherOfficeDto = z.infer<typeof adminSalaryOtherOfficeSchema>;
+
+/** One user's saved salary office, for the admin list. */
+export interface SalaryUserOfficeAdminRow {
+  user: { id: string; full_name_en: string; email: string; phone: string };
+  is_other: boolean;
+  /** Listed office display name, or the English "Others" name. */
+  label: string;
+  other_office_name: string;
+  other_office_name_bn: string;
+  office_type: string | null;
+  /** Order among the users of the same listed office (1 = first); null for Others. */
+  office_rank: number | null;
+  free_calcs: number;
+  updated_at: string;
+}
 
 export const updateSalaryOfficeSettingsSchema = z.object({
   others_allowed: z.boolean(),
@@ -67,8 +132,13 @@ export interface SalaryOfficeRecord {
   /** Null when the user chose Others. */
   office: OfficeOption | null;
   other_office_name: string;
-  /** Display name: the listed office or the typed name. */
+  other_office_name_bn: string;
+  /** Display name: the listed office or the typed English name. */
   label: string;
+  /** Office name printed on the bill forms and fixed there: the Bangla name for Others, otherwise empty. */
+  bill_office_name: string;
+  /** Short name of the listed office's type (CGA, CAFO, …); null for Others. */
+  office_type: string | null;
   updated_at: string;
 }
 
@@ -220,6 +290,8 @@ export const salaryStaffSchema = z
     old_pay: z.number().int().min(1),
     housing_status: z.enum(['hra_eligible', 'govt_accommodation']),
     hra_area: z.enum(['dhaka', 'major_city', 'other']),
+    excess_rr: z.boolean().default(false),
+    excess_puja: z.boolean().default(false),
   })
   .superRefine((v, ctx) => {
     if (!NPS_2015[v.grade as PayGrade]?.includes(v.old_pay)) {

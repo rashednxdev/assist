@@ -4,8 +4,11 @@ import { authenticate } from '../../middleware/auth.js';
 import { requireAdmin } from '../../middleware/requireAdmin.js';
 import { asyncHandler } from '../../shared/asyncHandler.js';
 import {
+  adminResetSalaryOfficeHandler,
+  adminUpdateOtherOfficeHandler,
   calculateAllPhasesHandler,
   consumeBillHandler,
+  listSalaryUserOfficesHandler,
   consumeStaffBillHandler,
   createMyStaffHandler,
   deleteMyStaffHandler,
@@ -71,3 +74,6 @@ salaryRouter.put('/admin/contacts', authenticate, requireAdmin, asyncHandler(upd
 salaryRouter.get('/admin/bulk-size', authenticate, requireAdmin, asyncHandler(getSalaryBulkSizeHandler));
 salaryRouter.put('/admin/bulk-size', authenticate, requireAdmin, asyncHandler(updateSalaryBulkSizeHandler));
 salaryRouter.put('/admin/office-settings', authenticate, requireAdmin, asyncHandler(updateSalaryOfficeSettingsHandler));
+salaryRouter.get('/admin/offices', authenticate, requireAdmin, asyncHandler(listSalaryUserOfficesHandler));
+salaryRouter.put('/admin/offices/:userId', authenticate, requireAdmin, asyncHandler(adminUpdateOtherOfficeHandler));
+salaryRouter.delete('/admin/offices/:userId', authenticate, requireAdmin, asyncHandler(adminResetSalaryOfficeHandler));

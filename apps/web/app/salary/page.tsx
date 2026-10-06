@@ -55,7 +55,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
-import { SalaryArrearsBill } from '@/components/salary/salary-arrears-bill';
+import { NO_ARREAR_EXTRAS, SalaryArrearsBill, type ArrearExtras } from '@/components/salary/salary-arrears-bill';
 import { SalaryStaffBill } from '@/components/salary/salary-staff-bill';
 import { TrForm13 } from '@/components/salary/tr-form-13';
 import {
@@ -502,7 +502,8 @@ function SalarySummaryCard({
 
 export default function SalaryOn2026Page() {
   const [locale, setLocale] = useState<SalaryLocale>('bn');
-  const { office: salaryOffice, changeOffice } = useSalaryOffice();
+  const { office: salaryOffice, canChange: canChangeOffice, changeOffice } = useSalaryOffice();
+  const billOfficeName = salaryOffice?.bill_office_name ?? '';
   const [grade, setGrade] = useState<PayGrade | null>(null);
   const [oldPay, setOldPay] = useState(0);
   const [housingStatus, setHousingStatus] = useState<HousingStatus>('hra_eligible');
@@ -519,6 +520,7 @@ export default function SalaryOn2026Page() {
   const [showArrears, setShowArrears] = useState(false);
   const [showStaff, setShowStaff] = useState(false);
   const [arrearMonths, setArrearMonths] = useState<string[]>(() => defaultArrearMonths());
+  const [arrearExtras, setArrearExtras] = useState<ArrearExtras>(NO_ARREAR_EXTRAS);
   const [printDialog, setPrintDialog] = useState<PrintTarget | null>(null);
   const [printMode, setPrintMode] = useState<PrintTarget | null>(null);
   const [printInfo, setPrintInfo] = useState<SalaryPrintInfo>(EMPTY_PRINT_INFO);
@@ -556,11 +558,12 @@ export default function SalaryOn2026Page() {
         housing_status: housingStatus,
         hra_area: hraArea,
         months: arrearMonths,
+        ...arrearExtras,
       });
     } catch {
       return null;
     }
-  }, [showArrears, grade, stepNo, oldPay, substantiveGrade, housingStatus, hraArea, arrearMonths]);
+  }, [showArrears, grade, stepNo, oldPay, substantiveGrade, housingStatus, hraArea, arrearMonths, arrearExtras]);
   const trFormNo = arrearResult ? salaryTrFormNo(arrearResult.substantive_grade) : 13;
 
   function resetResults() {
@@ -587,6 +590,8 @@ export default function SalaryOn2026Page() {
   function handleCalculate() {
     const g = requireGrade();
     if (!g) return;
+    setShowArrears(false);
+    setShowStaff(false);
     try {
       // Always compute on the client so Step 5–7 rules match the shipped web bundle.
       // Remote API images can lag after deploy; do not use their results for display.
@@ -632,6 +637,7 @@ export default function SalaryOn2026Page() {
     if (!billAccess || billAccess.unlimited) return undefined;
     const { free_limit, free_used, per_bill, unprinted } = billAccess.calc;
     if (free_used < free_limit) return t.calcFreeLeft(num(free_limit - free_used), num(free_limit));
+    if (free_limit === 0 && billAccess.remaining === 0) return t.calcNoFree;
     return t.calcCounted(num(unprinted), num(per_bill));
   }
 
@@ -661,7 +667,8 @@ export default function SalaryOn2026Page() {
         setArrearsDialog(false);
         setShowArrears(false);
         setCalcBlocked(true);
-        setError(t.calcLimit(num(SALARY_FREE_ARREARS_CALCS)));
+        const freeLimit = billAccess?.calc.free_limit ?? SALARY_FREE_ARREARS_CALCS;
+        setError(freeLimit > 0 ? t.calcLimit(num(freeLimit)) : t.calcNoFree);
         void loadBillAccess();
         return null;
       }
@@ -677,6 +684,7 @@ export default function SalaryOn2026Page() {
     if (changed) {
       setResults(null);
       setGross(null);
+      setArrearExtras(NO_ARREAR_EXTRAS);
     }
     setGrade(v.grade);
     setOldPay(v.oldPay);
@@ -901,9 +909,11 @@ export default function SalaryOn2026Page() {
             <Building2 className="h-3.5 w-3.5 shrink-0" />
             <span className="font-semibold">{t.officeYour}:</span>
             <span className="min-w-0 truncate">{salaryOffice?.label ?? t.officeNotSet}</span>
-            <button type="button" onClick={changeOffice} className="font-semibold underline underline-offset-2 hover:text-white">
-              {t.officeChange}
-            </button>
+            {canChangeOffice ? (
+              <button type="button" onClick={changeOffice} className="font-semibold underline underline-offset-2 hover:text-white">
+                {t.officeChange}
+              </button>
+            ) : null}
           </p>
         </div>
       </div>
@@ -1256,6 +1266,8 @@ export default function SalaryOn2026Page() {
               hraArea={hraArea}
               months={arrearMonths}
               onMonthsChange={setArrearMonths}
+              extras={arrearExtras}
+              onExtrasChange={setArrearExtras}
               onTrForm={() => (billAccess?.can_bill ? setPrintDialog('trform') : setBulkDialog(true))}
               accessReady={Boolean(billAccess)}
               downloading={downloading}
@@ -1288,7 +1300,8 @@ export default function SalaryOn2026Page() {
               onMonthsChange={setArrearMonths}
               access={billAccess}
               onAccessChange={setBillAccess}
-              officeLabel={salaryOffice?.label ?? ''}
+              officeLabel={billOfficeName || (salaryOffice?.label ?? '')}
+              officeLocked={Boolean(billOfficeName)}
               preparedOn={localNum('bn', preparedOn)}
               accessPanel={
                 <SalaryBillAccessPanel
@@ -1350,6 +1363,7 @@ export default function SalaryOn2026Page() {
         <SalaryPrintDialog
           t={t}
           initial={printInfo}
+          lockedOffice={billOfficeName}
           onCancel={() => setPrintDialog(null)}
           onConfirm={confirmPrint}
           {...(printDialog === 'trform'

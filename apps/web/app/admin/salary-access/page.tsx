@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { SalaryUserOfficesAdmin } from '@/components/salary/salary-user-offices-admin';
 
 type StatusFilter = 'pending' | 'approved' | 'rejected' | 'all';
 
@@ -689,6 +690,8 @@ export default function SalaryAccessAdminPage() {
       <BulkSizeEditor bulkSize={bulkSize} onSaved={setBulkSize} />
 
       <OfficeSettingsEditor />
+
+      <SalaryUserOfficesAdmin />
 
       <ContactsEditor />
 

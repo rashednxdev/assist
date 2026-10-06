@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import type { z } from 'zod';
 import {
   SALARY_ACCESS_STATUSES,
+  adminSalaryOtherOfficeSchema,
   consumeSalaryBillSchema,
   consumeSalaryStaffBillSchema,
   recordArrearsCalcSchema,
@@ -63,7 +64,26 @@ export async function getMySalaryOfficeHandler(req: AuthRequest, res: Response):
 
 export async function saveMySalaryOfficeHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = parseBody(saveSalaryOfficeSchema, req.body);
-  res.json({ data: await officeService.saveMySalaryOffice(authUser(req).id, dto) });
+  res.json({ data: await officeService.saveMySalaryOffice(authUser(req), dto) });
+}
+
+export async function listSalaryUserOfficesHandler(req: AuthRequest, res: Response): Promise<void> {
+  const { page, limit, skip } = parsePagination(req);
+  const q = typeof req.query.q === 'string' ? req.query.q : undefined;
+  const othersOnly = req.query.others === '1';
+  const { items, total } = await officeService.listSalaryUserOffices({ q, othersOnly, skip, limit });
+  res.json({ data: items, meta: { page, limit, total } });
+}
+
+export async function adminUpdateOtherOfficeHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = parseBody(adminSalaryOtherOfficeSchema, req.body);
+  await officeService.adminUpdateOtherOffice(String(req.params.userId), dto);
+  res.json({ data: { ok: true } });
+}
+
+export async function adminResetSalaryOfficeHandler(req: AuthRequest, res: Response): Promise<void> {
+  await officeService.adminResetSalaryOffice(String(req.params.userId));
+  res.json({ data: { ok: true } });
 }
 
 export async function getSalaryOfficeSettingsHandler(_req: AuthRequest, res: Response): Promise<void> {

@@ -164,6 +164,63 @@ export function MonthMath({ f, result, group }: { f: Fmt; result: SalaryArrearRe
   );
 }
 
+/** Arrear month chips with Past / All / Clear shortcuts. */
+export function ArrearMonthPicker({
+  locale,
+  months,
+  onMonthsChange,
+}: {
+  locale: SalaryLocale;
+  months: string[];
+  onMonthsChange: (months: string[]) => void;
+}) {
+  const t = salaryCopy(locale);
+  const monthOptions = useMemo(() => arrearMonthOptions(), []);
+
+  function toggle(key: string) {
+    onMonthsChange(months.includes(key) ? months.filter((k) => k !== key) : [...months, key].sort());
+  }
+
+  return (
+    <div className="space-y-2 print:hidden">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-medium text-slate-800">{t.arrMonths}</p>
+        <div className="flex gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={() => onMonthsChange(defaultArrearMonths())}>
+            {t.arrPast}
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => onMonthsChange(monthOptions)}>
+            {t.arrAll}
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => onMonthsChange([])}>
+            {t.arrClear}
+          </Button>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {monthOptions.map((key) => {
+          const on = months.includes(key);
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => toggle(key)}
+              aria-pressed={on}
+              className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                on
+                  ? 'border-indigo-600 bg-indigo-600 text-white'
+                  : 'border-border bg-white text-slate-700 hover:border-indigo-300 hover:bg-indigo-50'
+              }`}
+            >
+              {monthText(locale, key)}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function SalaryArrearsBill({
   locale,
   grade,
@@ -174,7 +231,7 @@ export function SalaryArrearsBill({
   months,
   onMonthsChange,
   onTrForm,
-  canBill,
+  accessReady,
   downloading,
   accessPanel,
   contactsPanel,
@@ -188,7 +245,7 @@ export function SalaryArrearsBill({
   months: string[];
   onMonthsChange: (months: string[]) => void;
   onTrForm: () => void;
-  canBill: boolean;
+  accessReady: boolean;
   downloading: boolean;
   accessPanel: React.ReactNode;
   contactsPanel: React.ReactNode;
@@ -199,8 +256,6 @@ export function SalaryArrearsBill({
   const signed = (n: number) => (n < 0 ? `− ${amt(-n)}` : amt(n));
   const tk = (n: number) => localTaka(locale, n);
   const f: Fmt = { t, locale, num, amt, signed };
-
-  const monthOptions = useMemo(() => arrearMonthOptions(), []);
 
   const { result, error } = useMemo(() => {
     if (months.length === 0) return { result: null, error: t.arrSelectMonth };
@@ -221,52 +276,13 @@ export function SalaryArrearsBill({
     }
   }, [grade, oldPay, substantiveGrade, housingStatus, hraArea, months, t]);
 
-  function toggle(key: string) {
-    onMonthsChange(months.includes(key) ? months.filter((k) => k !== key) : [...months, key].sort());
-  }
-
   return (
     <Card className="overflow-hidden border border-indigo-200 shadow-sm">
       <div className="bg-indigo-700 px-4 py-2.5 text-white sm:px-5">
         <div className="text-sm font-bold">{t.billTitle}</div>
       </div>
       <CardContent className="space-y-4 p-4 sm:p-5">
-        <div className="space-y-2 print:hidden">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-medium text-slate-800">{t.arrMonths}</p>
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => onMonthsChange(defaultArrearMonths())}>
-                {t.arrPast}
-              </Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => onMonthsChange(monthOptions)}>
-                {t.arrAll}
-              </Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => onMonthsChange([])}>
-                {t.arrClear}
-              </Button>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {monthOptions.map((key) => {
-              const on = months.includes(key);
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => toggle(key)}
-                  aria-pressed={on}
-                  className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
-                    on
-                      ? 'border-indigo-600 bg-indigo-600 text-white'
-                      : 'border-border bg-white text-slate-700 hover:border-indigo-300 hover:bg-indigo-50'
-                  }`}
-                >
-                  {monthText(locale, key)}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <ArrearMonthPicker locale={locale} months={months} onMonthsChange={onMonthsChange} />
 
         {error ? <Alert variant="error">{error}</Alert> : null}
 
@@ -419,7 +435,7 @@ export function SalaryArrearsBill({
                 type="button"
                 size="lg"
                 onClick={onTrForm}
-                disabled={!canBill || downloading}
+                disabled={!accessReady || downloading}
                 className="gap-2 bg-indigo-700 px-8 hover:bg-indigo-800"
               >
                 {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}

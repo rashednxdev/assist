@@ -6,7 +6,12 @@ import { asyncHandler } from '../../shared/asyncHandler.js';
 import {
   calculateAllPhasesHandler,
   consumeBillHandler,
+  consumeStaffBillHandler,
+  createMyStaffHandler,
+  deleteMyStaffHandler,
   getMyBillAccessHandler,
+  listMyStaffHandler,
+  updateMyStaffHandler,
   getMySalaryOfficeHandler,
   getSalaryBulkSizeHandler,
   getSalaryContactsHandler,
@@ -51,6 +56,11 @@ salaryRouter.get('/access', authenticate, asyncHandler(getMyBillAccessHandler));
 salaryRouter.post('/access/request', authenticate, publicLimit, asyncHandler(requestBillsHandler));
 salaryRouter.post('/bills', authenticate, publicLimit, asyncHandler(consumeBillHandler));
 salaryRouter.post('/arrears-calc', authenticate, publicLimit, asyncHandler(recordArrearsCalcHandler));
+salaryRouter.get('/staff', authenticate, asyncHandler(listMyStaffHandler));
+salaryRouter.post('/staff', authenticate, publicLimit, asyncHandler(createMyStaffHandler));
+salaryRouter.post('/staff/bill', authenticate, publicLimit, asyncHandler(consumeStaffBillHandler));
+salaryRouter.put('/staff/:staffId', authenticate, publicLimit, asyncHandler(updateMyStaffHandler));
+salaryRouter.delete('/staff/:staffId', authenticate, publicLimit, asyncHandler(deleteMyStaffHandler));
 
 salaryRouter.get('/admin/access', authenticate, requireAdmin, asyncHandler(listBillAccessHandler));
 salaryRouter.put('/admin/access/:userId', authenticate, requireAdmin, asyncHandler(updateBillAccessHandler));

@@ -5,6 +5,7 @@ import { FileDown, ShieldCheck, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { toEnglishDigits } from '@/lib/bangla-format';
 import type { SalaryCopy } from '@/lib/salary-i18n';
 
 export interface SalaryPrintInfo {
@@ -41,7 +42,7 @@ export function SalaryPrintDialog({
   const set = (key: keyof SalaryPrintInfo) => (e: React.ChangeEvent<HTMLInputElement>) => {
     if (key === 'employee') setNameError(false);
     if (key === 'nid') setNidError(false);
-    const value = key === 'nid' ? e.target.value.replace(/\D/g, '').slice(0, 17) : e.target.value;
+    const value = key === 'nid' ? toEnglishDigits(e.target.value).replace(/\D/g, '').slice(0, 17) : e.target.value;
     setInfo((prev) => ({ ...prev, [key]: value }));
   };
 

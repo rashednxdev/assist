@@ -3,9 +3,11 @@ import type { z } from 'zod';
 import {
   SALARY_ACCESS_STATUSES,
   consumeSalaryBillSchema,
+  consumeSalaryStaffBillSchema,
   recordArrearsCalcSchema,
   rejectSalaryBillRequestSchema,
   requestSalaryBillsSchema,
+  salaryStaffSchema,
   saveSalaryOfficeSchema,
   updateSalaryBillAccessSchema,
   updateSalaryBulkSizeSchema,
@@ -18,6 +20,7 @@ import { badRequest, unauthorized } from '../../shared/errors/AppError.js';
 import * as salaryService from './salary.service.js';
 import * as accessService from './salary-access.service.js';
 import * as officeService from './salary-office.service.js';
+import * as staffService from './salary-staff.service.js';
 
 function parseBody<S extends z.ZodTypeAny>(schema: S, body: unknown): z.output<S> {
   const parsed = schema.safeParse(body);
@@ -80,6 +83,30 @@ export async function requestBillsHandler(req: AuthRequest, res: Response): Prom
 export async function consumeBillHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = parseBody(consumeSalaryBillSchema, req.body);
   res.json({ data: await accessService.consumeBill(authUser(req), dto) });
+}
+
+export async function listMyStaffHandler(req: AuthRequest, res: Response): Promise<void> {
+  res.json({ data: await staffService.listMyStaff(authUser(req).id) });
+}
+
+export async function createMyStaffHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = parseBody(salaryStaffSchema, req.body);
+  res.status(201).json({ data: await staffService.createMyStaff(authUser(req).id, dto) });
+}
+
+export async function updateMyStaffHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = parseBody(salaryStaffSchema, req.body);
+  res.json({ data: await staffService.updateMyStaff(authUser(req).id, String(req.params.staffId), dto) });
+}
+
+export async function deleteMyStaffHandler(req: AuthRequest, res: Response): Promise<void> {
+  await staffService.deleteMyStaff(authUser(req).id, String(req.params.staffId));
+  res.json({ data: { ok: true } });
+}
+
+export async function consumeStaffBillHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = parseBody(consumeSalaryStaffBillSchema, req.body);
+  res.json({ data: await accessService.consumeStaffBill(authUser(req), dto) });
 }
 
 export async function recordArrearsCalcHandler(req: AuthRequest, res: Response): Promise<void> {

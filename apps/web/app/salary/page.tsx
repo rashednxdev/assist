@@ -13,6 +13,7 @@ import {
   LogOut,
   ReceiptText,
   Share2,
+  Users,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { logoutRequest } from '@/lib/auth';
@@ -48,13 +49,14 @@ import { downloadFormPdf, pdfFileName } from '@/lib/salary-pdf';
 import { SalaryArrearsDialog, type ArrearsInputs } from '@/components/salary/salary-arrears-dialog';
 import { TrForm15 } from '@/components/salary/tr-form-15';
 import { ApiError, apiFetch } from '@/lib/api-client';
-import { SalaryBillAccessPanel, SalaryBillContacts } from '@/components/salary/salary-bill-access';
+import { SalaryBillAccessPanel, SalaryBillContacts, SalaryBulkRequestDialog } from '@/components/salary/salary-bill-access';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
 import { SalaryArrearsBill } from '@/components/salary/salary-arrears-bill';
+import { SalaryStaffBill } from '@/components/salary/salary-staff-bill';
 import { TrForm13 } from '@/components/salary/tr-form-13';
 import {
   EMPTY_PRINT_INFO,
@@ -515,6 +517,7 @@ export default function SalaryOn2026Page() {
   const [results, setResults] = useState<Salary2026Result[] | null>(null);
   const [gross, setGross] = useState<EmployeeGrossResult | null>(null);
   const [showArrears, setShowArrears] = useState(false);
+  const [showStaff, setShowStaff] = useState(false);
   const [arrearMonths, setArrearMonths] = useState<string[]>(() => defaultArrearMonths());
   const [printDialog, setPrintDialog] = useState<PrintTarget | null>(null);
   const [printMode, setPrintMode] = useState<PrintTarget | null>(null);
@@ -523,11 +526,13 @@ export default function SalaryOn2026Page() {
   const [billAccess, setBillAccess] = useState<SalaryBillAccessRecord | null>(null);
   const [billAccessError, setBillAccessError] = useState(false);
   const [billError, setBillError] = useState('');
+  const [bulkDialog, setBulkDialog] = useState(false);
   const [arrearsDialog, setArrearsDialog] = useState(false);
   const [calcBlocked, setCalcBlocked] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const resultsRef = useRef<HTMLDivElement>(null);
   const arrearsRef = useRef<HTMLDivElement>(null);
+  const staffRef = useRef<HTMLDivElement>(null);
 
   const router = useRouter();
   const salaryOnly = isSalaryOnlyUser(useSalaryUser());
@@ -616,6 +621,13 @@ export default function SalaryOn2026Page() {
     setArrearsDialog(true);
   }
 
+  function openStaff() {
+    setError('');
+    setShowArrears(false);
+    setShowStaff(true);
+    scrollTo(staffRef);
+  }
+
   function calcNote(): string | undefined {
     if (!billAccess || billAccess.unlimited) return undefined;
     const { free_limit, free_used, per_bill, unprinted } = billAccess.calc;
@@ -673,6 +685,7 @@ export default function SalaryOn2026Page() {
     setSubstantiveGrade(v.substantiveGrade);
     setArrearsDialog(false);
     setError('');
+    setShowStaff(false);
     setShowArrears(true);
     scrollTo(arrearsRef);
     return null;
@@ -788,7 +801,10 @@ export default function SalaryOn2026Page() {
         setBillAccess(res.data);
       } catch (err) {
         setBillError(err instanceof Error ? err.message : t.calcError);
-        if (err instanceof ApiError && err.code === SALARY_BILL_LIMIT_CODE) void loadBillAccess();
+        if (err instanceof ApiError && err.code === SALARY_BILL_LIMIT_CODE) {
+          await loadBillAccess();
+          setBulkDialog(true);
+        }
         return;
       }
     }
@@ -1172,11 +1188,15 @@ export default function SalaryOn2026Page() {
                 <Calculator className="h-4 w-4" />
                 {t.calculate}
               </Button>
+              <Button type="button" onClick={openStaff} className="gap-2 bg-amber-600 hover:bg-amber-700">
+                <Users className="h-4 w-4" />
+                {t.staffBtn}
+              </Button>
             </div>
           </CardContent>
         </Card>
 
-        {calcBlocked && !showArrears ? (
+        {calcBlocked && !showArrears && !showStaff ? (
           <div className="space-y-4">
             <SalaryBillAccessPanel
               locale={locale}
@@ -1236,8 +1256,8 @@ export default function SalaryOn2026Page() {
               hraArea={hraArea}
               months={arrearMonths}
               onMonthsChange={setArrearMonths}
-              onTrForm={() => setPrintDialog('trform')}
-              canBill={Boolean(billAccess?.can_bill)}
+              onTrForm={() => (billAccess?.can_bill ? setPrintDialog('trform') : setBulkDialog(true))}
+              accessReady={Boolean(billAccess)}
               downloading={downloading}
               accessPanel={
                 <>
@@ -1254,6 +1274,30 @@ export default function SalaryOn2026Page() {
                     </Alert>
                   ) : null}
                 </>
+              }
+              contactsPanel={<SalaryBillContacts locale={locale} contacts={billAccess?.contacts ?? []} />}
+            />
+          </div>
+        ) : null}
+
+        {showStaff ? (
+          <div ref={staffRef} className="scroll-mt-4 print:hidden">
+            <SalaryStaffBill
+              locale={locale}
+              months={arrearMonths}
+              onMonthsChange={setArrearMonths}
+              access={billAccess}
+              onAccessChange={setBillAccess}
+              officeLabel={salaryOffice?.label ?? ''}
+              preparedOn={localNum('bn', preparedOn)}
+              accessPanel={
+                <SalaryBillAccessPanel
+                  locale={locale}
+                  access={billAccess}
+                  loadError={billAccessError}
+                  onRetry={() => void loadBillAccess()}
+                  onAccessChange={setBillAccess}
+                />
               }
               contactsPanel={<SalaryBillContacts locale={locale} contacts={billAccess?.contacts ?? []} />}
             />
@@ -1311,6 +1355,15 @@ export default function SalaryOn2026Page() {
           {...(printDialog === 'trform'
             ? { title: t.trFormDetails(num(trFormNo)), confirmLabel: t.downloadNow, requireName: true }
             : {})}
+        />
+      ) : null}
+
+      {bulkDialog && billAccess ? (
+        <SalaryBulkRequestDialog
+          locale={locale}
+          access={billAccess}
+          onAccessChange={setBillAccess}
+          onClose={() => setBulkDialog(false)}
         />
       ) : null}
 

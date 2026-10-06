@@ -778,6 +778,115 @@ body {
   font-weight: 400;
 }
 
+.salary-tr-form .tr-staff-summary {
+  margin-top: 3mm;
+  break-inside: auto;
+  page-break-inside: auto;
+}
+
+.salary-tr-form .tr-staff-summary th,
+.salary-tr-form .tr-staff-summary td {
+  font-size: 8pt;
+}
+
+.salary-tr-form .tr-staff-summary tr {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.salary-tr-form .tr-staff-summary .tr-center {
+  text-align: center;
+}
+
+.salary-tr-form .tr-staff-name {
+  font-weight: 600;
+}
+
+.salary-tr-form .tr-schedule {
+  font-size: 7pt;
+  line-height: 1.2;
+}
+
+.salary-tr-form .tr-schedule-title {
+  text-align: center;
+  font-size: 11pt;
+  font-weight: 700;
+}
+
+.salary-tr-form .tr-schedule-sub {
+  text-align: center;
+  font-size: 7.5pt;
+}
+
+.salary-tr-form .tr-schedule-head {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10mm;
+  margin: 2mm 0 2.5mm;
+  font-size: 8pt;
+}
+
+.salary-tr-form .tr-schedule-grid {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.salary-tr-form .tr-schedule-grid th,
+.salary-tr-form .tr-schedule-grid td {
+  height: auto;
+  padding: 0.6mm 0.5mm;
+  font-size: 6.5pt;
+  overflow-wrap: break-word;
+}
+
+.salary-tr-form .tr-schedule-grid th {
+  vertical-align: top;
+  font-weight: 500;
+  font-size: 6pt;
+}
+
+.salary-tr-form .tr-schedule-grid .tr-schedule-group {
+  font-size: 8pt;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.salary-tr-form .tr-schedule-code {
+  margin-top: 0.8mm;
+  white-space: nowrap;
+  font-size: 6pt;
+}
+
+.salary-tr-form .tr-schedule-nums th {
+  padding: 0.3mm;
+  vertical-align: middle;
+}
+
+.salary-tr-form .tr-schedule-grid tbody td {
+  height: 8mm;
+}
+
+.salary-tr-form .tr-schedule-grid td.tr-num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.salary-tr-form .tr-schedule-grid td.tr-center {
+  text-align: center;
+}
+
+.salary-tr-form .tr-schedule-name {
+  text-align: left;
+}
+
+.salary-tr-form .tr-schedule-foot {
+  margin-top: 2mm;
+  text-align: center;
+  font-size: 6.5pt;
+  font-style: italic;
+}
+
 .salary-tr-form .tr-math .tr-math-net td {
   border-top: 0.8pt solid #000;
   font-size: 11pt;
@@ -947,4 +1056,11 @@ body {
   min-height: 297mm;
   padding: 8mm;
   background: #fff;
+}
+
+/* Legal (8.5 × 14 in) landscape sheets, e.g. the office staff pay bill schedule */
+.salary-tr-form.tr-capture .tr-page.tr-legal-l {
+  width: 355.6mm;
+  min-height: 215.9mm;
+  padding: 6mm;
 }

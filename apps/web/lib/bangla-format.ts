@@ -4,6 +4,10 @@ export function toBanglaDigits(value: string | number): string {
   return String(value).replace(/[0-9]/g, (d) => BN_DIGITS[Number(d)] ?? d);
 }
 
+export function toEnglishDigits(value: string): string {
+  return value.replace(/[০-৯]/g, (d) => String(BN_DIGITS.indexOf(d as (typeof BN_DIGITS)[number])));
+}
+
 /** Prefer explicit Bangla text; otherwise convert Western digits in the value. */
 export function banglaText(value: string | number | undefined | null, fallback = ''): string {
   const raw = value !== undefined && value !== null && String(value).trim() !== '' ? String(value) : fallback;

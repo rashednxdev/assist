@@ -27,7 +27,7 @@ export function LoginNoticeDialog() {
             হিসাবরক্ষণ অফিসে প্রেরণের জন্য বকেয়া বিলের হিসাবসহ টিআর-১৩ বা টিআর-১৫ ফর্ম ডাউনলোড করুন।
           </p>
           <Button type="button" onClick={close} className="min-w-32 bg-red-600 shadow-sm hover:bg-red-700" autoFocus>
-            Close
+            OK
           </Button>
         </div>
       </div>

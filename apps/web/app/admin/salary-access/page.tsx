@@ -312,6 +312,7 @@ const USAGE_LABEL: Record<SalaryBillUsageRecord['kind'], string> = {
   tr_form_15: 'T.R. Form 15',
   arrears_pdf: 'Arrears PDF',
   arrears_calc: `${SALARY_CALCS_PER_BILL} calculations without download`,
+  staff_tr_form_15: 'Office staff T.R. Form 15 (1 employee)',
 };
 
 function UsageHistory({ userId }: { userId: string }) {

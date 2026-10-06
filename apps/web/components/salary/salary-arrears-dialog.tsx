@@ -80,7 +80,9 @@ export function SalaryArrearsDialog({
               <ReceiptText className="h-5 w-5 text-indigo-700" />
               {t.arrDialogTitle}
             </h2>
-            <p className="mt-1 text-sm text-muted">{t.arrDialogHint}</p>
+            <p className="mt-2 rounded-md border border-yellow-400 bg-gradient-to-r from-yellow-300 via-yellow-100 to-white px-2.5 py-1.5 text-sm font-semibold text-amber-950 shadow-sm">
+              {t.arrDialogHint}
+            </p>
           </div>
           <button type="button" onClick={onCancel} className="rounded-md p-1 text-muted hover:bg-slate-100" aria-label={t.cancel}>
             <X className="h-5 w-5" />

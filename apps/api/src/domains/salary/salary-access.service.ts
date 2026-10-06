@@ -5,7 +5,9 @@ import {
   SALARY_CALC_LIMIT_CODE,
   SALARY_DEFAULT_BULK_SIZE,
   SALARY_FREE_ARREARS_CALCS,
+  calculateStaffArrears,
   type ConsumeSalaryBillDto,
+  type ConsumeSalaryStaffBillDto,
   type RecordArrearsCalcDto,
   type SalaryArrearsCalcInfo,
   type RejectSalaryBillRequestDto,
@@ -28,6 +30,7 @@ import { SalaryBillAccess, type ISalaryBillAccess } from './models/SalaryBillAcc
 import { SalaryBillUsage } from './models/SalaryBillUsage.model.js';
 import { SalaryCalcUsage, type ISalaryCalcUsage } from './models/SalaryCalcUsage.model.js';
 import { SalarySettings } from './models/SalarySettings.model.js';
+import { SalaryStaff } from './models/SalaryStaff.model.js';
 import { assertSalaryOfficeChosen, salaryOfficeLabels } from './salary-office.service.js';
 
 const SETTINGS_KEY = 'global';
@@ -198,6 +201,50 @@ export async function consumeBill(user: AuthUser, dto: ConsumeSalaryBillDto): Pr
   if (!isPlatformAdmin(user)) {
     await SalaryCalcUsage.updateOne({ user_id: user.id, unprinted: { $gt: 0 } }, { $inc: { unprinted: -1 } });
   }
+  return getMyBillAccess(user);
+}
+
+/** Office staff T.R. Form 15: uses one approved bill per saved employee, all or nothing. */
+export async function consumeStaffBill(user: AuthUser, dto: ConsumeSalaryStaffBillDto): Promise<SalaryBillAccessRecord> {
+  if (user.status !== 'active') throw forbidden('Account is not active');
+  const staff = await SalaryStaff.find({ user_id: user.id }).sort({ created_at: 1, _id: 1 }).lean();
+  if (staff.length === 0) throw badRequest('Add at least one employee first.');
+  const results = staff.map((s) => {
+    try {
+      return calculateStaffArrears(s, dto.months);
+    } catch (err) {
+      throw badRequest(`${s.name}: ${err instanceof Error ? err.message : 'Invalid details'}`);
+    }
+  });
+
+  const now = new Date();
+  if (!isPlatformAdmin(user)) {
+    await assertSalaryOfficeChosen(user.id);
+    const updated = await SalaryBillAccess.findOneAndUpdate(
+      { user_id: user.id, $expr: { $lte: [{ $add: ['$bills_used', staff.length] }, '$bill_limit'] } },
+      { $inc: { bills_used: staff.length }, $set: { last_used_at: now, updated_at: now } },
+      { new: true },
+    );
+    if (!updated) {
+      const remaining = remainingOf(await SalaryBillAccess.findOne({ user_id: user.id }));
+      throw new AppError(
+        403,
+        SALARY_BILL_LIMIT_CODE,
+        `This bill has ${staff.length} employees and needs ${staff.length} approved bills; you have ${remaining}. Request more from the admin.`,
+      );
+    }
+  }
+  await SalaryBillUsage.insertMany(
+    staff.map((s, i) => ({
+      user_id: new mongoose.Types.ObjectId(user.id),
+      kind: 'staff_tr_form_15',
+      grade: s.grade,
+      old_pay: s.old_pay,
+      months: results[i]!.rows.map((r) => r.month),
+      net_total: results[i]!.total_net_arrear,
+      created_at: now,
+    })),
+  );
   return getMyBillAccess(user);
 }
 

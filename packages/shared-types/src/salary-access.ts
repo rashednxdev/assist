@@ -1,12 +1,16 @@
 import { z } from 'zod';
 import type { OfficeOption } from './org.js';
+import { NPS_2015, type PayGrade } from './salary-2026.js';
 
 /** Each T.R. Form download (or legacy arrears bill PDF) uses one approved bill. */
 export const SALARY_PRINT_KINDS = ['arrears_pdf', 'tr_form_13', 'tr_form_15'] as const;
 export type SalaryPrintKind = (typeof SALARY_PRINT_KINDS)[number];
 
-/** `arrears_calc` is one bill charged for a block of calculations that were not downloaded. */
-export const SALARY_BILL_KINDS = [...SALARY_PRINT_KINDS, 'arrears_calc'] as const;
+/**
+ * `arrears_calc` is one bill charged for a block of calculations that were not downloaded.
+ * `staff_tr_form_15` is one bill per employee in an office staff T.R. Form 15.
+ */
+export const SALARY_BILL_KINDS = [...SALARY_PRINT_KINDS, 'arrears_calc', 'staff_tr_form_15'] as const;
 export type SalaryBillKind = (typeof SALARY_BILL_KINDS)[number];
 
 /** Arrears calculations every user gets without an approved bill. */
@@ -196,3 +200,41 @@ export interface SalaryContactsRecord {
   contacts: SalaryContactNumber[];
   updated_at: string | null;
 }
+
+/** Employees one user can keep in the office staff arrear bill. */
+export const SALARY_MAX_STAFF = 200;
+
+const arrearMonth = z.string().regex(/^\d{4}-\d{2}$/);
+
+/** One office staff employee; only these details are stored, the arrears are always recalculated. */
+export const salaryStaffSchema = z
+  .object({
+    name: z.string().trim().min(2, 'Enter the employee name').max(120, 'Name is too long'),
+    post: z.string().trim().min(2, 'Enter the post').max(120, 'Post is too long'),
+    nid: z
+      .string()
+      .trim()
+      .regex(/^(\d{10}|\d{13}|\d{17})?$/, 'NID must be 10, 13 or 17 digits')
+      .default(''),
+    grade: z.number().int().min(1).max(20),
+    old_pay: z.number().int().min(1),
+    housing_status: z.enum(['hra_eligible', 'govt_accommodation']),
+    hra_area: z.enum(['dhaka', 'major_city', 'other']),
+  })
+  .superRefine((v, ctx) => {
+    if (!NPS_2015[v.grade as PayGrade]?.includes(v.old_pay)) {
+      ctx.addIssue({ code: 'custom', path: ['old_pay'], message: 'Choose a basic from the grade scale' });
+    }
+  });
+export type SalaryStaffDto = z.infer<typeof salaryStaffSchema>;
+
+export interface SalaryStaffRecord extends SalaryStaffDto {
+  id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export const consumeSalaryStaffBillSchema = z.object({
+  months: z.array(arrearMonth).min(1).max(60),
+});
+export type ConsumeSalaryStaffBillDto = z.infer<typeof consumeSalaryStaffBillSchema>;

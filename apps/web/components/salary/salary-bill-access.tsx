@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { MessageCircle, Phone, Plus } from 'lucide-react';
+import { MessageCircle, Phone, Plus, X } from 'lucide-react';
 import { SALARY_MAX_BULKS_PER_REQUEST, type SalaryBillAccessRecord, type SalaryContactNumber } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -38,6 +38,174 @@ function SectionFrame({ title, badge, children }: { title: string; badge?: strin
   );
 }
 
+function BulkRequestForm({
+  locale,
+  access,
+  onSent,
+  onCancel,
+}: {
+  locale: SalaryLocale;
+  access: SalaryBillAccessRecord;
+  onSent: (access: SalaryBillAccessRecord) => void;
+  onCancel: () => void;
+}) {
+  const t = salaryCopy(locale);
+  const num = (v: string | number) => localNum(locale, v);
+  const [count, setCount] = useState<string | null>(null);
+  const [note, setNote] = useState('');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
+
+  const countText = count ?? String(access.request.requested_bulks ?? 1);
+  const requested = Number(countText);
+  const validCount = Number.isInteger(requested) && requested >= 1 && requested <= SALARY_MAX_BULKS_PER_REQUEST;
+
+  async function submit() {
+    if (!validCount) {
+      setError(`${t.requestBulks}: ${num(1)} – ${num(SALARY_MAX_BULKS_PER_REQUEST)}`);
+      return;
+    }
+    setSending(true);
+    setError('');
+    try {
+      const res = await apiFetch<{ data: SalaryBillAccessRecord }>('/salary/access/request', {
+        method: 'POST',
+        body: JSON.stringify({ requested_bulks: requested, note: note.trim() }),
+      });
+      onSent(res.data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Request failed');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="grid gap-3 rounded-xl border border-red-100 bg-white p-3 sm:grid-cols-[12rem_minmax(0,1fr)]">
+        <div className="space-y-1">
+          <Label htmlFor="salary-request-count" className="text-xs">
+            {t.requestBulks}
+          </Label>
+          <Input
+            id="salary-request-count"
+            type="number"
+            min={1}
+            max={SALARY_MAX_BULKS_PER_REQUEST}
+            inputMode="numeric"
+            value={countText}
+            onChange={(e) => setCount(e.target.value)}
+          />
+          <p className="rounded-md bg-amber-100 px-2 py-1 text-xs font-bold text-amber-900 ring-1 ring-amber-300">
+            {t.requestBulkInfo(num(access.bulk_size), validCount ? num(requested * access.bulk_size) : '—')}
+          </p>
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="salary-request-note" className="text-xs">
+            {t.requestNote}
+          </Label>
+          <Input
+            id="salary-request-note"
+            maxLength={500}
+            value={note}
+            placeholder={t.requestNotePlaceholder}
+            onChange={(e) => setNote(e.target.value)}
+          />
+        </div>
+        <div className="flex flex-wrap gap-2 sm:col-span-2">
+          <Button type="button" onClick={() => void submit()} disabled={sending} className="bg-red-600 shadow-sm hover:bg-red-700">
+            {sending ? t.requestSending : t.requestBtn}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={sending}
+            className="border-red-200 bg-white text-red-700 hover:bg-rose-50"
+          >
+            {t.cancel}
+          </Button>
+        </div>
+      </div>
+      {error ? <Alert variant="error">{error}</Alert> : null}
+    </>
+  );
+}
+
+/** Opened when a T.R. Form download is pressed with no approved bills left. */
+export function SalaryBulkRequestDialog({
+  locale,
+  access,
+  message,
+  onAccessChange,
+  onClose,
+}: {
+  locale: SalaryLocale;
+  access: SalaryBillAccessRecord;
+  message?: string;
+  onAccessChange: (access: SalaryBillAccessRecord) => void;
+  onClose: () => void;
+}) {
+  const t = salaryCopy(locale);
+  const [sent, setSent] = useState(false);
+  const pending = access.request.pending;
+  const reason =
+    message ??
+    (pending
+      ? undefined
+      : access.status === 'rejected'
+        ? t.accessRejected
+        : access.bill_limit > 0
+          ? t.accessUsedUp(localNum(locale, access.bill_limit))
+          : t.accessNone);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 print:hidden" role="dialog" aria-modal="true">
+      <button type="button" aria-label={t.cancel} className="absolute inset-0 bg-slate-900/50" onClick={onClose} />
+      <div className="relative max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-surface shadow-xl">
+        <div className="flex items-start justify-between gap-3 bg-gradient-to-br from-red-600 via-rose-600 to-red-900 px-5 py-3 text-white">
+          <h2 className="flex items-center gap-2 text-base font-bold">
+            <Plus className="h-5 w-5" />
+            {sent ? t.requestSent : pending ? t.requestUpdateBtn : access.remaining > 0 ? t.newBulkBtn : t.requestDialogTitle}
+          </h2>
+          <button type="button" onClick={onClose} className="rounded-md p-1 hover:bg-white/15" aria-label={t.cancel}>
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="space-y-3 p-5 text-sm text-slate-700">
+          {sent ? (
+            <>
+              <Alert variant="success">
+                <span className="block font-semibold">{t.requestSent}</span>
+                <span className="block text-xs">{access.contacts.length > 0 ? t.contactAdminHint : t.contactAdminNoNumbers}</span>
+              </Alert>
+              <div className="flex justify-end">
+                <Button type="button" onClick={onClose} className="min-w-24 bg-red-600 shadow-sm hover:bg-red-700" autoFocus>
+                  {t.ok}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              {reason ? <p className="font-semibold text-red-700">{reason}</p> : null}
+              <p>{pending ? t.requestDialogPending : t.requestDialogHint}</p>
+              <BulkRequestForm
+                locale={locale}
+                access={access}
+                onSent={(next) => {
+                  onAccessChange(next);
+                  setSent(true);
+                }}
+                onCancel={onClose}
+              />
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function SalaryBillAccessPanel({
   locale,
   access,
@@ -54,11 +222,7 @@ export function SalaryBillAccessPanel({
   const t = salaryCopy(locale);
   const num = (v: string | number) => localNum(locale, v);
   const [formOpen, setFormOpen] = useState(false);
-  const [count, setCount] = useState<string | null>(null);
-  const [note, setNote] = useState('');
-  const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
-  const [error, setError] = useState('');
 
   if (loadError || !access) {
     return (
@@ -85,33 +249,7 @@ export function SalaryBillAccessPanel({
 
   const pending = access.request.pending;
   const openLabel = pending ? t.requestUpdateBtn : t.newBulkBtn;
-  const countText = count ?? String(access.request.requested_bulks ?? 1);
-  const requested = Number(countText);
-  const validCount = Number.isInteger(requested) && requested >= 1 && requested <= SALARY_MAX_BULKS_PER_REQUEST;
   const contactHint = access.contacts.length > 0 ? t.contactAdminHint : t.contactAdminNoNumbers;
-
-  async function submit() {
-    if (!validCount) {
-      setError(`${t.requestBulks}: ${num(1)} – ${num(SALARY_MAX_BULKS_PER_REQUEST)}`);
-      return;
-    }
-    setSending(true);
-    setError('');
-    setSent(false);
-    try {
-      const res = await apiFetch<{ data: SalaryBillAccessRecord }>('/salary/access/request', {
-        method: 'POST',
-        body: JSON.stringify({ requested_bulks: requested, note: note.trim() }),
-      });
-      onAccessChange(res.data);
-      setSent(true);
-      setFormOpen(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Request failed');
-    } finally {
-      setSending(false);
-    }
-  }
 
   return (
     <SectionFrame title={t.accessTitle} badge={statusLabel(t, access)}>
@@ -192,54 +330,16 @@ export function SalaryBillAccessPanel({
       ) : null}
 
       {formOpen ? (
-        <div className="grid gap-3 rounded-xl border border-red-100 bg-white p-3 sm:grid-cols-[12rem_minmax(0,1fr)]">
-          <div className="space-y-1">
-            <Label htmlFor="salary-request-count" className="text-xs">
-              {t.requestBulks}
-            </Label>
-            <Input
-              id="salary-request-count"
-              type="number"
-              min={1}
-              max={SALARY_MAX_BULKS_PER_REQUEST}
-              inputMode="numeric"
-              value={countText}
-              onChange={(e) => setCount(e.target.value)}
-            />
-            <p className="rounded-md bg-amber-100 px-2 py-1 text-xs font-bold text-amber-900 ring-1 ring-amber-300">
-              {t.requestBulkInfo(num(access.bulk_size), validCount ? num(requested * access.bulk_size) : '—')}
-            </p>
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="salary-request-note" className="text-xs">
-              {t.requestNote}
-            </Label>
-            <Input
-              id="salary-request-note"
-              maxLength={500}
-              value={note}
-              placeholder={t.requestNotePlaceholder}
-              onChange={(e) => setNote(e.target.value)}
-            />
-          </div>
-          <div className="flex flex-wrap gap-2 sm:col-span-2">
-            <Button type="button" onClick={() => void submit()} disabled={sending} className="bg-red-600 shadow-sm hover:bg-red-700">
-              {sending ? t.requestSending : t.requestBtn}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setFormOpen(false);
-                setError('');
-              }}
-              disabled={sending}
-              className="border-red-200 bg-white text-red-700 hover:bg-rose-50"
-            >
-              {t.cancel}
-            </Button>
-          </div>
-        </div>
+        <BulkRequestForm
+          locale={locale}
+          access={access}
+          onSent={(next) => {
+            onAccessChange(next);
+            setSent(true);
+            setFormOpen(false);
+          }}
+          onCancel={() => setFormOpen(false)}
+        />
       ) : (
         <Button
           type="button"
@@ -254,8 +354,6 @@ export function SalaryBillAccessPanel({
           {openLabel}
         </Button>
       )}
-
-      {error ? <Alert variant="error">{error}</Alert> : null}
     </SectionFrame>
   );
 }

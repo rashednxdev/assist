@@ -1,5 +1,6 @@
 'use client';
 
+import { forwardRef } from 'react';
 import type { HraArea, SalaryArrearResult } from '@ibas/shared-types';
 import { takaInWords } from '@/lib/amount-words';
 import { toBanglaDigits } from '@/lib/bangla-format';
@@ -13,8 +14,10 @@ import {
   TotalRow,
   TrAttachment,
   periodText,
+  taka,
   type FormRow,
 } from '@/components/salary/tr-form-parts';
+import { monthText } from '@/lib/salary-i18n';
 
 const PAY_ROWS: FormRow[] = [
   { code: '৩১১১২০১', label: 'মূল বেতন (কর্মচারী) (বেতনস্কেল ২০২৬ এর বকেয়া)' },
@@ -75,49 +78,44 @@ const CERTIFICATES = [
   'প্রত্যয়ন করা যাচ্ছে যে, অবসর গ্রহণ করেছেন এমন কোন কর্মচারীর নাম এই বিলে অন্তর্ভুক্ত করা হয়নি।',
 ];
 
-/** T.R. Form No. 15 (establishment pay bill, substantive grades 11–20) filled with the arrears totals, plus a summary attachment. */
-export function TrForm15({
-  result,
-  hraArea,
-  info,
-  preparedOn,
+/** The two printed pages of T.R. Form No. 15 with the pay total, stamp duty and payable filled in. */
+function TrForm15Pages({
+  months,
+  office,
+  netTotal,
+  stamp,
+  payable,
+  payableWords,
+  headBox,
 }: {
-  result: SalaryArrearResult;
-  hraArea: HraArea;
-  info: SalaryPrintInfo;
-  preparedOn: string;
+  months: string[];
+  office: string;
+  netTotal: number;
+  stamp: number;
+  payable: number;
+  payableWords: string;
+  headBox: React.ReactNode;
 }) {
-  const period = periodText(result.rows.map((r) => r.month));
-  const payRows = PAY_ROWS.map((row, i) => (i === 0 ? { ...row, amount: result.total_net_arrear } : row));
-  const deductionRows = DEDUCTION_ROWS.map((row) => (row.code === STAMP_DUTY_CODE ? { ...row, amount: STAMP_DUTY } : row));
-  const payable = result.total_net_arrear - STAMP_DUTY;
-  const payableWords = takaInWords('bn', payable);
+  const period = periodText(months);
+  const payRows = PAY_ROWS.map((row, i) => (i === 0 ? { ...row, amount: netTotal } : row));
+  const deductionRows = DEDUCTION_ROWS.map((row) => (row.code === STAMP_DUTY_CODE ? { ...row, amount: stamp } : row));
 
   return (
-    <div className="salary-tr-form tr15 hidden" lang="bn">
+    <>
       <section className="tr-page">
         <div className="tr-head">
           <div className="tr-head-ref">
             <div>টি, আর, ফরম নং ১৫</div>
             <div>[এস. আর. ১৫০ (১) দ্রষ্টব্য]</div>
           </div>
-          <div className="tr15-person">
-            <div>
-              নামঃ <Dots value={info.employee} width="38mm" />
-            </div>
-            {info.nid ? (
-              <div>
-                এনআইডি নংঃ <Dots value={toBanglaDigits(info.nid)} width="30mm" />
-              </div>
-            ) : null}
-          </div>
+          <div className="tr15-person">{headBox}</div>
           <div className="tr-head-main">
             <div className="tr-title">সংস্থাপন কর্মচারীগণের বেতনের বিল</div>
             <div className="tr-head-line">
               <Dots value={period.month} width="44mm" /> মাসের <Dots value={period.year} width="34mm" />
             </div>
             <div className="tr-head-line">
-              দপ্তরের নাম : <Dots value={info.office} width="80mm" />
+              দপ্তরের নাম : <Dots value={office} width="80mm" />
             </div>
             <div className="tr-head-line">
               প্রাতিষ্ঠানিক/ অপারেশন কোড *{' '}
@@ -173,7 +171,7 @@ export function TrForm15({
               {payRows.map((row, i) => (
                 <CodeRow key={`p${i}`} row={row} rate={false} />
               ))}
-              <TotalRow label="মোট বেতন ও ভাতা (ক)" amount={result.total_net_arrear} rate={false} />
+              <TotalRow label="মোট বেতন ও ভাতা (ক)" amount={netTotal} rate={false} />
               <tr>
                 <td colSpan={5} className="tr-section">
                   কর্তন ও পরিশোধ
@@ -182,7 +180,7 @@ export function TrForm15({
               {deductionRows.map((row, i) => (
                 <CodeRow key={`d${i}`} row={row} rate={false} />
               ))}
-              <TotalRow label="কর্তন ও পরিশোধ বাবদ মোট আদায় (খ)" amount={STAMP_DUTY} rate={false} />
+              <TotalRow label="কর্তন ও পরিশোধ বাবদ মোট আদায় (খ)" amount={stamp} rate={false} />
               <CodeRow row={{ code: '৮১৭২১০৮', label: 'প্রদেয় বিল (ক-খ)', amount: payable }} rate={false} />
               <tr>
                 <td colSpan={5} className="tr-words">
@@ -298,6 +296,47 @@ export function TrForm15({
           </div>
         </div>
       </section>
+    </>
+  );
+}
+
+/** T.R. Form No. 15 (establishment pay bill, substantive grades 11–20) filled with the arrears totals, plus a summary attachment. */
+export function TrForm15({
+  result,
+  hraArea,
+  info,
+  preparedOn,
+}: {
+  result: SalaryArrearResult;
+  hraArea: HraArea;
+  info: SalaryPrintInfo;
+  preparedOn: string;
+}) {
+  const payable = result.total_net_arrear - STAMP_DUTY;
+  const payableWords = takaInWords('bn', payable);
+
+  return (
+    <div className="salary-tr-form tr15 hidden" lang="bn">
+      <TrForm15Pages
+        months={result.rows.map((r) => r.month)}
+        office={info.office}
+        netTotal={result.total_net_arrear}
+        stamp={STAMP_DUTY}
+        payable={payable}
+        payableWords={payableWords}
+        headBox={
+          <>
+            <div>
+              নামঃ <Dots value={info.employee} width="38mm" />
+            </div>
+            {info.nid ? (
+              <div>
+                এনআইডি নংঃ <Dots value={toBanglaDigits(info.nid)} width="30mm" />
+              </div>
+            ) : null}
+          </>
+        }
+      />
 
       <TrAttachment
         formNo={15}
@@ -311,3 +350,314 @@ export function TrForm15({
     </div>
   );
 }
+
+export interface TrStaffEntry {
+  id: string;
+  name: string;
+  post: string;
+  nid: string;
+  hraArea: HraArea;
+  result: SalaryArrearResult;
+}
+
+const SCHEDULE_PAY_COLS: Array<[string, string]> = [
+  ['মূল বেতন (কর্মচারী)', '৩১১১২০১'],
+  ['ব্যক্তিগত বেতন', '৩১১১২০২'],
+  ['শিক্ষা ভাতা', '৩১১১৩০৬'],
+  ['পাহাড়ি ভাতা', '৩১১১৩০৭'],
+  ['বাড়িভাড়া ভাতা', '৩১১১৩১০'],
+  ['চিকিৎসা ভাতা', '৩১১১৩১১'],
+  ['যাতায়াত ভাতা', '৩১১১৩০২'],
+  ['টিফিন ভাতা', '৩১১১৩১৪'],
+  ['ঝুঁকি ভাতা', '৩১১১৩০৮'],
+  ['পোশাক ভাতা', '৩১১১৩১৫'],
+  ['ধোলাই ভাতা', '৩১১১৩১৬'],
+  ['বেতন ও ভাতার মোট দাবি (ক)', ''],
+];
+
+const SCHEDULE_DEDUCTION_COLS: Array<[string, string]> = [
+  ['সাধারণ ভবিষ্য তহবিল (সিভিল)', '৮১১২২০১'],
+  ['ভবিষ্য তহবিলের অগ্রিম ও সুদ আদায়', '৮১১২২০১'],
+  ['কর্মচারী কল্যাণ তহবিল', '৮১৭২৫০৩'],
+  ['ভাড়া - আবাসিক', '১৪২১৩০২'],
+  ['স্ট্যাম্প ডিউটি', STAMP_DUTY_CODE],
+  ['পানি ও পয়ঃনিষ্কাশন ব্যবস্থা চার্জ', '১৪২২৪০৪'],
+  ['গৃহনির্মাণ ঋণ', '৭২১৫১০১'],
+  ['মোটর সাইকেল ঋণ', '৭২১৫১০৫'],
+  ['কম্পিউটার ঋণ', '৭২১৫১০২'],
+  ['সরকারি কর্মচারীকে প্রদত্ত ঋণের সুদ', '১৪১১২০২'],
+  ['স্থানীয় তহবিল জমা', '৮১১৩১১০'],
+  ['মোট কর্তন ও আদায় (খ)', ''],
+];
+
+const SCHEDULE_COLS = 29;
+/** Employee rows per Legal sheet; the header repeats on every sheet. */
+const SCHEDULE_ROWS_PER_SHEET = 15;
+
+/** Columns 1, 2, 3, 19, 26 and 27 of the establishment pay bill schedule (0-based indexes). */
+function scheduleCells(serial: number, s: TrStaffEntry): React.ReactNode[] {
+  const cells: React.ReactNode[] = Array.from({ length: SCHEDULE_COLS }, () => null);
+  const net = s.result.total_net_arrear;
+  cells[0] = toBanglaDigits(serial);
+  cells[1] = (
+    <>
+      <div className="tr-staff-name">{s.name}</div>
+      <div>{s.post}</div>
+      {s.nid ? <div>এনআইডি: {toBanglaDigits(s.nid)}</div> : null}
+    </>
+  );
+  cells[2] = taka(net);
+  cells[18] = taka(STAMP_DUTY);
+  cells[25] = taka(STAMP_DUTY);
+  cells[26] = taka(net - STAMP_DUTY);
+  return cells;
+}
+
+/** Establishment pay bill schedule (Legal, landscape): one row per employee, totals on the last sheet. */
+function TrStaffSchedule({ staff, months, office }: { staff: TrStaffEntry[]; months: string[]; office: string }) {
+  const period = periodText(months);
+  const netTotal = staff.reduce((sum, s) => sum + s.result.total_net_arrear, 0);
+  const stamp = STAMP_DUTY * staff.length;
+  const payable = netTotal - stamp;
+  const sheets: TrStaffEntry[][] = [];
+  for (let i = 0; i < staff.length; i += SCHEDULE_ROWS_PER_SHEET) sheets.push(staff.slice(i, i + SCHEDULE_ROWS_PER_SHEET));
+
+  return (
+    <>
+      {sheets.map((rows, sheetIndex) => {
+        const last = sheetIndex === sheets.length - 1;
+        const offset = sheetIndex * SCHEDULE_ROWS_PER_SHEET;
+        return (
+          <section key={sheetIndex} className="tr-page tr-legal-l tr-schedule">
+            <div className="tr-schedule-title">সংস্থাপন কর্মচারীদের বেতন বিল</div>
+            <div className="tr-schedule-sub">
+              বকেয়া বেতন (বেতন স্কেল ২০২৬) — {period.month} {period.year}
+              {sheets.length > 1 ? ` · পৃষ্ঠা ${toBanglaDigits(sheetIndex + 1)}/${toBanglaDigits(sheets.length)}` : ''}
+            </div>
+            <div className="tr-schedule-head">
+              <span>
+                অফিসের নাম <Dots value={office} width="120mm" />
+              </span>
+              <span>
+                প্রাতিষ্ঠানিক/ অপারেশন কোড *{' '}
+                <span className="tr-code-boxes">
+                  {Array.from({ length: 7 }, (_, i) => (
+                    <span key={i} />
+                  ))}
+                </span>
+              </span>
+            </div>
+
+            <table className="tr-grid tr-schedule-grid">
+              <colgroup>
+                <col style={{ width: '7mm' }} />
+                <col style={{ width: '38mm' }} />
+                <col style={{ width: '17mm' }} />
+                {Array.from({ length: 23 }, (_, i) => (
+                  <col key={i} />
+                ))}
+                <col style={{ width: '17mm' }} />
+                <col style={{ width: '10mm' }} />
+                <col style={{ width: '10mm' }} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th rowSpan={2}>পদের ক্রমিক নং</th>
+                  <th rowSpan={2}>
+                    সেরেস্তার শাখা ও পদসহ কর্মচারীদের নাম (এনআইডি নং, জি. পি. এফ নং ও ডাক জীবনবিমা নং)
+                  </th>
+                  <th colSpan={12} className="tr-schedule-group">
+                    বেতন ও ভাতা
+                  </th>
+                  <th colSpan={12} className="tr-schedule-group">
+                    কর্তন ও পরিশোধ
+                  </th>
+                  <th rowSpan={2}>
+                    প্রদেয় বিল (ক-খ)
+                    <div className="tr-schedule-code">৮১৭২১০৮</div>
+                  </th>
+                  <th rowSpan={2}>মন্তব্য</th>
+                  <th rowSpan={2}>প্রাপ্তি রশিদ</th>
+                </tr>
+                <tr>
+                  {[...SCHEDULE_PAY_COLS, ...SCHEDULE_DEDUCTION_COLS].map(([label, code], i) => (
+                    <th key={i}>
+                      {label}
+                      {code ? <div className="tr-schedule-code">{code}</div> : null}
+                    </th>
+                  ))}
+                </tr>
+                <tr className="tr-schedule-nums">
+                  {Array.from({ length: SCHEDULE_COLS }, (_, i) => (
+                    <th key={i}>{toBanglaDigits(i + 1)}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((s, i) => (
+                  <tr key={s.id}>
+                    {scheduleCells(offset + i + 1, s).map((cell, c) => (
+                      <td key={c} className={c === 1 ? 'tr-schedule-name' : c === 0 ? 'tr-center' : 'tr-num'}>
+                        {cell}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+                {last ? (
+                  <tr className="tr-total">
+                    <td colSpan={2}>মোট ({toBanglaDigits(staff.length)} জন)</td>
+                    <td className="tr-num">{taka(netTotal)}</td>
+                    {Array.from({ length: 15 }, (_, i) => (
+                      <td key={`a${i}`} />
+                    ))}
+                    <td className="tr-num">{taka(stamp)}</td>
+                    {Array.from({ length: 6 }, (_, i) => (
+                      <td key={`b${i}`} />
+                    ))}
+                    <td className="tr-num">{taka(stamp)}</td>
+                    <td className="tr-num">{taka(payable)}</td>
+                    <td />
+                    <td />
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+
+            <p className="tr-schedule-foot">
+              * প্রতিষ্ঠানের ক্ষেত্রে ০৬ ডিজিট এবং বিশেষ কার্যক্রম/ প্রজেক্ট/ স্কিম -এর ক্ষেত্রে সাত (০৭) ডিজিটের কোড ব্যবহার করতে হবে।
+            </p>
+          </section>
+        );
+      })}
+    </>
+  );
+}
+
+/** One T.R. Form 15 for all office staff: totals on the form, a staff summary sheet, then one attachment per employee. */
+export const TrForm15Staff = forwardRef<
+  HTMLDivElement,
+  { staff: TrStaffEntry[]; months: string[]; office: string; preparedOn: string }
+>(function TrForm15Staff({ staff, months, office, preparedOn }, ref) {
+  const sum = (pick: (r: SalaryArrearResult) => number) => staff.reduce((total, s) => total + pick(s.result), 0);
+  const netTotal = sum((r) => r.total_net_arrear);
+  const stamp = STAMP_DUTY * staff.length;
+  const payable = netTotal - stamp;
+  const payableWords = takaInWords('bn', payable);
+
+  return (
+    <div ref={ref} className="salary-tr-form tr15 hidden" lang="bn">
+      <TrForm15Pages
+        months={months}
+        office={office}
+        netTotal={netTotal}
+        stamp={stamp}
+        payable={payable}
+        payableWords={payableWords}
+        headBox={
+          <>
+            <div>
+              কর্মচারীর সংখ্যাঃ <Dots value={`${toBanglaDigits(staff.length)} জন`} width="16mm" />
+            </div>
+            <div>
+              স্ট্যাম্প ডিউটিঃ <Dots value={`৳ ${taka(stamp)}`} width="20mm" />
+            </div>
+          </>
+        }
+      />
+
+      <TrStaffSchedule staff={staff} months={months} office={office} />
+
+      <section className="tr-page">
+        <div className="tr-attach-kicker">সংযুক্তি — টি, আর, ফরম নং ১৫</div>
+        <div className="tr-attach-title">অফিস স্টাফের বকেয়া বিলের সারসংক্ষেপ</div>
+        <table className="tr-info">
+          <tbody>
+            {office ? (
+              <tr>
+                <td>দপ্তরের নাম</td>
+                <td>{office}</td>
+              </tr>
+            ) : null}
+            <tr>
+              <td>বকেয়ার মাস</td>
+              <td>{[...months].sort().map((m) => monthText('bn', m)).join(', ')}</td>
+            </tr>
+            <tr>
+              <td>বিশেষ সুবিধা</td>
+              <td>পরবর্তী ধাপের মূল বেতনের ১৫% (সকল কর্মচারী)</td>
+            </tr>
+          </tbody>
+        </table>
+        <table className="tr-grid tr-summary tr-staff-summary">
+          <thead>
+            <tr>
+              <th>ক্রমিক</th>
+              <th>নাম ও পদবি</th>
+              <th>গ্রেড</th>
+              <th>মূল বেতন (৩০-০৬-২০২৬)</th>
+              <th>মোট বকেয়া</th>
+              <th>মোট কর্তন</th>
+              <th>নিট বকেয়া</th>
+              <th>স্ট্যাম্প</th>
+              <th>প্রদেয়</th>
+            </tr>
+          </thead>
+          <tbody>
+            {staff.map((s, i) => {
+              const r = s.result;
+              return (
+                <tr key={s.id}>
+                  <td className="tr-center">{toBanglaDigits(i + 1)}</td>
+                  <td>
+                    <div className="tr-staff-name">{s.name}</div>
+                    <div className="tr-math-sub">
+                      {s.post}
+                      {s.nid ? ` · এনআইডি ${toBanglaDigits(s.nid)}` : ''}
+                    </div>
+                  </td>
+                  <td className="tr-center">{toBanglaDigits(r.grade)}</td>
+                  <td className="tr-num">{taka(r.old_pay)}</td>
+                  <td className="tr-num">{taka(r.total_basic_difference + r.total_hra_protection)}</td>
+                  <td className="tr-num">{taka(r.total_deduction)}</td>
+                  <td className="tr-num">{taka(r.total_net_arrear)}</td>
+                  <td className="tr-num">{taka(STAMP_DUTY)}</td>
+                  <td className="tr-num">{taka(r.total_net_arrear - STAMP_DUTY)}</td>
+                </tr>
+              );
+            })}
+            <tr className="tr-total">
+              <td colSpan={4}>মোট ({toBanglaDigits(staff.length)} জন)</td>
+              <td className="tr-num">{taka(sum((r) => r.total_basic_difference + r.total_hra_protection))}</td>
+              <td className="tr-num">{taka(sum((r) => r.total_deduction))}</td>
+              <td className="tr-num">{taka(netTotal)}</td>
+              <td className="tr-num">{taka(stamp)}</td>
+              <td className="tr-num">{taka(payable)}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p className="tr-attach-total">
+          স্ট্যাম্প ডিউটি বাদে প্রদেয়: (৳ {taka(netTotal)} − ৳ {taka(STAMP_DUTY)} × {toBanglaDigits(staff.length)}) = ৳{' '}
+          {taka(payable)}
+        </p>
+        <p className="tr-attach-words">টাকা (কথায়) : {payableWords}</p>
+        <p className="tr-small">প্রস্তুতের তারিখ: {preparedOn}</p>
+      </section>
+
+      {staff.map((s) => {
+        const each = s.result.total_net_arrear - STAMP_DUTY;
+        return (
+          <TrAttachment
+            key={s.id}
+            formNo={15}
+            result={s.result}
+            hraArea={s.hraArea}
+            info={{ office, employee: s.name, designation: s.post, nid: s.nid }}
+            preparedOn={preparedOn}
+            payable={each}
+            payableWords={takaInWords('bn', each)}
+          />
+        );
+      })}
+    </div>
+  );
+});

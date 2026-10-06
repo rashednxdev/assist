@@ -833,6 +833,9 @@ export function specialAllowanceRate(substantiveGrade: PayGrade): number {
   return substantiveGrade >= 10 ? 0.15 : 0.1;
 }
 
+/** Office staff arrear bills always deduct special allowance at 15%, whatever the grade. */
+export const STAFF_SPECIAL_RATE = 0.15;
+
 export interface SalaryArrearInput {
   grade: PayGrade;
   /** Basic on 30 June 2026 (NPS 2015 stage). */
@@ -843,6 +846,8 @@ export interface SalaryArrearInput {
   hra_area: HraArea;
   /** Month keys (YYYY-MM), July 2026 or later. */
   months: string[];
+  /** Overrides the substantive-grade special allowance rate (fraction, e.g. 0.15). */
+  special_rate?: number;
 }
 
 export interface SalaryArrearMonthRow {
@@ -871,6 +876,8 @@ export interface SalaryArrearResult {
   next_step: number;
   next_step_is_last: boolean;
   special_rate_percent: number;
+  /** True when the rate was fixed by `special_rate` (office staff bill) rather than the substantive grade. */
+  special_rate_fixed: boolean;
   special_allowance: number;
   hra_eligible: boolean;
   /** July 2026 house rent on the next stage. */
@@ -916,7 +923,8 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
 
   const substantive: PayGrade =
     resolveTiffinConveyanceGrade({ grade, substantive_grade: input.substantive_grade }) ?? grade;
-  const specialRate = specialAllowanceRate(substantive);
+  const specialRateFixed = input.special_rate != null;
+  const specialRate = input.special_rate ?? specialAllowanceRate(substantive);
   const specialAllowance = Math.round(nextStep * specialRate);
 
   const hraEligible = input.housing_status !== 'govt_accommodation';
@@ -961,6 +969,7 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
     next_step: nextStep,
     next_step_is_last: nextIsLast,
     special_rate_percent: Math.round(specialRate * 100),
+    special_rate_fixed: specialRateFixed,
     special_allowance: specialAllowance,
     hra_eligible: hraEligible,
     hra_on_next_step: hraNext?.amount ?? 0,
@@ -978,6 +987,21 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
     total_deduction: sum((r) => r.special_allowance + r.excess_hra),
     total_net_arrear: sum((r) => r.net_arrear),
   };
+}
+
+/** Office staff arrear bill for one employee: no substantive grade, special allowance fixed at 15%. */
+export function calculateStaffArrears(
+  staff: { grade: number; old_pay: number; housing_status: HousingStatus; hra_area: HraArea },
+  months: string[],
+): SalaryArrearResult {
+  return calculateSalaryArrears({
+    grade: staff.grade as PayGrade,
+    old_pay: staff.old_pay,
+    housing_status: staff.housing_status,
+    hra_area: staff.hra_area,
+    months,
+    special_rate: STAFF_SPECIAL_RATE,
+  });
 }
 
 /** Monthly + annual/periodic benefits on Basic (30 June 2026) and Grade. */

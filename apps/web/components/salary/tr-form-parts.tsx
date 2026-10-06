@@ -182,7 +182,8 @@ export function TrAttachment({
           <tr>
             <td>{t.basisSpecial}</td>
             <td>
-              {toBanglaDigits(result.special_rate_percent)}% ({result.substantive_grade >= 10 ? t.arrBandHigh : t.arrBandLow})
+              {toBanglaDigits(result.special_rate_percent)}% (
+              {result.special_rate_fixed ? t.arrBandStaff : result.substantive_grade >= 10 ? t.arrBandHigh : t.arrBandLow})
             </td>
           </tr>
           <tr>

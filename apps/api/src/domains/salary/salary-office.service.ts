@@ -3,11 +3,37 @@ import {
   SALARY_OFFICE_REQUIRED_CODE,
   type OfficeOption,
   type SalaryOfficeRecord,
+  type SalaryOfficeSettingsRecord,
   type SaveSalaryOfficeDto,
+  type UpdateSalaryOfficeSettingsDto,
 } from '@ibas/shared-types';
 import { AppError, badRequest } from '../../shared/errors/AppError.js';
 import { departmentOf, officeIndex, parentPath, type IndexedOffice } from '../org/org.service.js';
+import { SalarySettings } from './models/SalarySettings.model.js';
 import { SalaryUserOffice, type ISalaryUserOffice } from './models/SalaryUserOffice.model.js';
+
+const SETTINGS_KEY = 'global';
+
+export async function getSalaryOfficeSettings(): Promise<SalaryOfficeSettingsRecord> {
+  const doc = await SalarySettings.findOne({ key: SETTINGS_KEY }).select('others_allowed updated_at').lean();
+  return { others_allowed: doc?.others_allowed ?? true, updated_at: doc?.updated_at?.toISOString() ?? null };
+}
+
+export async function updateSalaryOfficeSettings(
+  dto: UpdateSalaryOfficeSettingsDto,
+  updatedBy: string,
+): Promise<SalaryOfficeSettingsRecord> {
+  await SalarySettings.findOneAndUpdate(
+    { key: SETTINGS_KEY },
+    {
+      others_allowed: dto.others_allowed,
+      updated_by: new mongoose.Types.ObjectId(updatedBy),
+      updated_at: new Date(),
+    },
+    { upsert: true, setDefaultsOnInsert: true },
+  );
+  return getSalaryOfficeSettings();
+}
 
 function toOption(map: Map<string, IndexedOffice>, o: IndexedOffice): OfficeOption {
   return {
@@ -59,6 +85,8 @@ export async function saveMySalaryOffice(userId: string, dto: SaveSalaryOfficeDt
     const office = map.get(dto.office_id);
     if (!office?.is_active) throw badRequest('Select an office from the list');
     if (departmentOf(map, office.id)?.id !== dto.circle_id) throw badRequest('This office is not in the selected circle');
+  } else if (!(await getSalaryOfficeSettings()).others_allowed) {
+    throw badRequest('Choose your office from the list.');
   }
   const doc = await SalaryUserOffice.findOneAndUpdate(
     { user_id: userId },

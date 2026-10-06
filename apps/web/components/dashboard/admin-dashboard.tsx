@@ -112,6 +112,7 @@ const QUICK_GROUPS: Array<{ title: string; links: QuickLink[] }> = [
       { href: '/admin/schedule', label: 'Official schedule', desc: 'Meetings, bill dates, R&R rules, PDFs', icon: CalendarClock },
       { href: '/admin/unpaid-message', label: 'Unpaid message', desc: 'Text shown on locked modules', icon: MessageCircle },
       { href: '/admin/salary-access', label: 'Salary bill access', desc: 'Approve arrears bills, contact numbers', icon: Wallet },
+      { href: '/salary', label: 'Salary page', desc: 'Open the salary & arrears bill page', icon: Calculator },
       { href: '/admin/contact-verifications', label: 'Contact verifications', desc: 'Who verified whom for Contacts', icon: ShieldCheck },
     ],
   },

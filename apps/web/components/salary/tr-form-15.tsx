@@ -101,6 +101,16 @@ export function TrForm15({
             <div>টি, আর, ফরম নং ১৫</div>
             <div>[এস. আর. ১৫০ (১) দ্রষ্টব্য]</div>
           </div>
+          <div className="tr15-person">
+            <div>
+              নামঃ <Dots value={info.employee} width="38mm" />
+            </div>
+            {info.nid ? (
+              <div>
+                এনআইডি নংঃ <Dots value={toBanglaDigits(info.nid)} width="30mm" />
+              </div>
+            ) : null}
+          </div>
           <div className="tr-head-main">
             <div className="tr-title">সংস্থাপন কর্মচারীগণের বেতনের বিল</div>
             <div className="tr-head-line">

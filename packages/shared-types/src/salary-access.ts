@@ -47,6 +47,17 @@ export const saveSalaryOfficeSchema = z
   });
 export type SaveSalaryOfficeDto = z.infer<typeof saveSalaryOfficeSchema>;
 
+export const updateSalaryOfficeSettingsSchema = z.object({
+  others_allowed: z.boolean(),
+});
+export type UpdateSalaryOfficeSettingsDto = z.infer<typeof updateSalaryOfficeSettingsSchema>;
+
+/** Whether users may choose "Others" and type an office name instead of a listed office. */
+export interface SalaryOfficeSettingsRecord {
+  others_allowed: boolean;
+  updated_at: string | null;
+}
+
 export interface SalaryOfficeRecord {
   circle: OfficeOption | null;
   /** Null when the user chose Others. */

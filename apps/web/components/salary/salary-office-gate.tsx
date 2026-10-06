@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { Building2 } from 'lucide-react';
-import type { OfficeOption, SalaryOfficeRecord } from '@ibas/shared-types';
+import type { OfficeOption, SalaryOfficeRecord, SalaryOfficeSettingsRecord } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { isPlatformAdmin } from '@/lib/capabilities';
 import { salaryCopy, type SalaryLocale } from '@/lib/salary-i18n';
@@ -28,10 +28,12 @@ export function useSalaryOffice(): SalaryOfficeContextValue {
 
 function OfficeForm({
   initial,
+  othersAllowed,
   onSaved,
   onCancel,
 }: {
   initial: SalaryOfficeRecord | null;
+  othersAllowed: boolean;
   onSaved: (office: SalaryOfficeRecord) => void;
   onCancel?: () => void;
 }) {
@@ -39,7 +41,7 @@ function OfficeForm({
   const t = salaryCopy(locale);
   const [circle, setCircle] = useState<OfficeOption | null>(initial?.circle ?? null);
   const [office, setOffice] = useState<OfficeOption | null>(initial?.office ?? null);
-  const [others, setOthers] = useState(Boolean(initial && !initial.office));
+  const [others, setOthers] = useState(othersAllowed && Boolean(initial && !initial.office));
   const [otherName, setOtherName] = useState(initial?.other_office_name ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -78,7 +80,7 @@ function OfficeForm({
             </span>
             <div>
               <h1 className="text-lg font-bold">{t.officeGateTitle}</h1>
-              <p className="mt-0.5 text-xs text-emerald-100/90">{t.officeGateIntro}</p>
+              <p className="mt-0.5 text-xs text-emerald-100/90">{othersAllowed ? t.officeGateIntro : t.officeGateIntroListed}</p>
             </div>
           </div>
           <div className="inline-flex shrink-0 rounded-lg border border-white/30 bg-white/5 p-0.5 text-xs" role="group" aria-label="Language">
@@ -127,18 +129,20 @@ function OfficeForm({
             </div>
           )}
 
-          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-slate-50 px-3 py-2.5 text-sm font-medium">
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded"
-              checked={others}
-              onChange={(e) => {
-                setOthers(e.target.checked);
-                setError('');
-              }}
-            />
-            {t.officeOthers}
-          </label>
+          {othersAllowed ? (
+            <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-slate-50 px-3 py-2.5 text-sm font-medium">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded"
+                checked={others}
+                onChange={(e) => {
+                  setOthers(e.target.checked);
+                  setError('');
+                }}
+              />
+              {t.officeOthers}
+            </label>
+          ) : null}
 
           {others ? (
             <div className="space-y-1.5">
@@ -176,15 +180,20 @@ export function SalaryOfficeGate({ children }: { children: React.ReactNode }) {
   const me = useSalaryUser();
   const exempt = isPlatformAdmin(me);
   const [office, setOffice] = useState<SalaryOfficeRecord | null>(null);
+  const [othersAllowed, setOthersAllowed] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [editing, setEditing] = useState(false);
 
   const load = useCallback(() => {
     setLoadError(false);
-    apiFetch<{ data: SalaryOfficeRecord | null }>('/salary/office')
-      .then((res) => {
-        setOffice(res.data);
+    Promise.all([
+      apiFetch<{ data: SalaryOfficeRecord | null }>('/salary/office'),
+      apiFetch<{ data: SalaryOfficeSettingsRecord }>('/salary/office/settings'),
+    ])
+      .then(([officeRes, settingsRes]) => {
+        setOffice(officeRes.data);
+        setOthersAllowed(settingsRes.data.others_allowed);
         setLoaded(true);
       })
       .catch(() => setLoadError(true));
@@ -226,6 +235,7 @@ export function SalaryOfficeGate({ children }: { children: React.ReactNode }) {
     return (
       <OfficeForm
         initial={office}
+        othersAllowed={othersAllowed}
         onSaved={(saved) => {
           setOffice(saved);
           setEditing(false);

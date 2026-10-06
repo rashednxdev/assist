@@ -25,7 +25,8 @@ const SLUGS = {
   8: '08-syllabus',
   9: '09-papers',
   10: '10-workflow',
-  11: '11-audit',
+  11: '11-pdf-to-word-ocr',
+  12: '12-audit',
 };
 
 function slugifyTitle(title) {

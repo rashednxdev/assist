@@ -50,7 +50,7 @@ export function Dots({ value, width }: { value?: string; width: string }) {
 function takaPaisa(amount: number): { taka: string; paisa: string } {
   const totalPaisa = Math.round(Math.abs(amount) * 100);
   const whole = Math.floor(totalPaisa / 100);
-  const text = toBanglaDigits(formatTaka(whole));
+  const text = toBanglaDigits(new Intl.NumberFormat('en-BD').format(whole));
   return {
     taka: amount < 0 ? `− ${text}` : text,
     paisa: toBanglaDigits(String(totalPaisa % 100).padStart(2, '0')),
@@ -151,6 +151,12 @@ export function TrAttachment({
             <tr>
               <td>{t.designation}</td>
               <td>{info.designation}</td>
+            </tr>
+          ) : null}
+          {info.nid ? (
+            <tr>
+              <td>{t.nid}</td>
+              <td>{toBanglaDigits(info.nid)}</td>
             </tr>
           ) : null}
           {info.office ? (

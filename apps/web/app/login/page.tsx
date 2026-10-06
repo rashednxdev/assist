@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { FormField } from '@/components/shared/form-field';
 import { Alert } from '@/components/ui/alert';
 import { LoginShowcasePanel } from '@/components/auth/login-showcase-panel';
+import { LoginNoticeDialog } from '@/components/auth/login-notice-dialog';
 import { clearAccessToken, fetchMe, loginRequest, setAccessToken, SET_PASSWORD_PATH } from '@/lib/auth';
 import { homePathFor } from '@/lib/salary-only';
 import { WEB_REGISTRATION_OPEN } from '@/lib/registration';
@@ -61,6 +62,7 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen flex-col lg:flex-row">
+      <LoginNoticeDialog />
       <LoginShowcasePanel />
       <div className="flex flex-1 flex-col items-center justify-center gap-4 bg-background p-4 sm:p-8">
         <div className="w-full max-w-md rounded-xl bg-gradient-to-r from-[#0b3d2e] to-teal-700 px-4 py-3 text-white shadow-md lg:hidden">

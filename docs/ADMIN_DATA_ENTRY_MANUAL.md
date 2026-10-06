@@ -31,6 +31,8 @@ When building the system from empty to usable, run modules in this sequence:
 | 8 | Workflow | Needs users with workflow roles |
 | 9 | Audit | Review after go-live |
 
+Tools (**PDF to Word**) can be used anytime for drafting content offline.
+
 ---
 
 # Module 1 — Sign-in & dashboard
@@ -417,11 +419,30 @@ When building the system from empty to usable, run modules in this sequence:
 
 ---
 
-# Module 11 — Audit
+# Module 11 — PDF to Word (OCR tool)
+
+**Menu:** Tools → **PDF to Word**
+
+## Process 11.1 — Convert a scanned PDF to editable Word for data entry
+
+**Start:** Source material is PDF (scan or digital).  
+**End:** `.docx` file on your machine for copy-paste into books/questions.
+
+1. Open **PDF to Word**.
+2. Choose the PDF file.
+3. Click **Convert & download Word**.
+4. Wait — first run may take several minutes (language packs download once).
+5. Open the downloaded Word file locally.
+6. Copy cleaned text into **Book admin** or **New question** as part of **Module 4** or **Module 6**.
+7. Always proofread OCR output before publishing.
+
+---
+
+# Module 12 — Audit
 
 **Menu:** Administration → **Audit log**
 
-## Process 11.1 — Review system activity after go-live
+## Process 12.1 — Review system activity after go-live
 
 **Start:** Users have been working in workflow and admin modules.  
 **End:** You have verified actions for compliance or troubleshooting.
@@ -448,7 +469,8 @@ When building the system from empty to usable, run modules in this sequence:
 | Syllabus (from subject) | Module 8 |
 | New paper / Practice papers | Module 9 |
 | Workflow admin / Guided processes | Module 10 |
-| Audit log | Module 11 |
+| PDF to Word | Module 11 |
+| Audit log | Module 12 |
 
 ---
 

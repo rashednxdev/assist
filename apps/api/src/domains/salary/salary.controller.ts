@@ -10,6 +10,7 @@ import {
   updateSalaryBillAccessSchema,
   updateSalaryBulkSizeSchema,
   updateSalaryContactsSchema,
+  updateSalaryOfficeSettingsSchema,
 } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
 import { parsePagination } from '../../shared/pagination.js';
@@ -60,6 +61,15 @@ export async function getMySalaryOfficeHandler(req: AuthRequest, res: Response):
 export async function saveMySalaryOfficeHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = parseBody(saveSalaryOfficeSchema, req.body);
   res.json({ data: await officeService.saveMySalaryOffice(authUser(req).id, dto) });
+}
+
+export async function getSalaryOfficeSettingsHandler(_req: AuthRequest, res: Response): Promise<void> {
+  res.json({ data: await officeService.getSalaryOfficeSettings() });
+}
+
+export async function updateSalaryOfficeSettingsHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = parseBody(updateSalaryOfficeSettingsSchema, req.body);
+  res.json({ data: await officeService.updateSalaryOfficeSettings(dto, authUser(req).id) });
 }
 
 export async function requestBillsHandler(req: AuthRequest, res: Response): Promise<void> {

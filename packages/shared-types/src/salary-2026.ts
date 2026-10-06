@@ -214,10 +214,9 @@ export function salaryPhaseRateNote(grade: PayGrade, phase: SalaryPhase): string
   return grade >= 10 ? 'Rate 75% (grades 10–20)' : 'Rate 70% (grades 1–9)';
 }
 
-/** Whole taka as-is; amounts with paisa (e.g. house rent) keep two decimals. */
+/** Always two decimals (e.g. 8,250.00) so taka and paisa read the same everywhere. */
 export function formatTaka(amount: number): string {
   const paisa = Math.round(amount * 100);
-  if (paisa % 100 === 0) return new Intl.NumberFormat('en-BD').format(paisa / 100);
   return new Intl.NumberFormat('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(paisa / 100);
 }
 

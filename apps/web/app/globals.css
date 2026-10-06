@@ -814,6 +814,26 @@ body {
   white-space: nowrap;
 }
 
+.salary-tr-form .tr15-person {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 52mm;
+  border: 0.6pt solid #000;
+  padding: 1mm 1.5mm;
+  text-align: left;
+  font-size: 8pt;
+}
+
+.salary-tr-form .tr15-person .tr-dots {
+  max-width: 100%;
+  text-align: left;
+}
+
+.salary-tr-form .tr15-person > div + div {
+  margin-top: 1mm;
+}
+
 .salary-tr-form .tr15-body {
   display: grid;
   grid-template-columns: 58mm minmax(0, 1fr);

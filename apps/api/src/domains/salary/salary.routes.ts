@@ -10,6 +10,7 @@ import {
   getMySalaryOfficeHandler,
   getSalaryBulkSizeHandler,
   getSalaryContactsHandler,
+  getSalaryOfficeSettingsHandler,
   getSalaryStatsHandler,
   listBillAccessHandler,
   listBillUsageHandler,
@@ -21,6 +22,7 @@ import {
   updateBillAccessHandler,
   updateSalaryBulkSizeHandler,
   updateSalaryContactsHandler,
+  updateSalaryOfficeSettingsHandler,
 } from './salary.controller.js';
 
 export const salaryRouter = Router();
@@ -43,6 +45,7 @@ salaryRouter.post('/pdf', publicLimit, asyncHandler(trackSalaryPdfHandler));
 salaryRouter.get('/admin/stats', authenticate, requireAdmin, asyncHandler(getSalaryStatsHandler));
 
 salaryRouter.get('/office', authenticate, asyncHandler(getMySalaryOfficeHandler));
+salaryRouter.get('/office/settings', authenticate, asyncHandler(getSalaryOfficeSettingsHandler));
 salaryRouter.put('/office', authenticate, publicLimit, asyncHandler(saveMySalaryOfficeHandler));
 salaryRouter.get('/access', authenticate, asyncHandler(getMyBillAccessHandler));
 salaryRouter.post('/access/request', authenticate, publicLimit, asyncHandler(requestBillsHandler));
@@ -57,3 +60,4 @@ salaryRouter.get('/admin/contacts', authenticate, requireAdmin, asyncHandler(get
 salaryRouter.put('/admin/contacts', authenticate, requireAdmin, asyncHandler(updateSalaryContactsHandler));
 salaryRouter.get('/admin/bulk-size', authenticate, requireAdmin, asyncHandler(getSalaryBulkSizeHandler));
 salaryRouter.put('/admin/bulk-size', authenticate, requireAdmin, asyncHandler(updateSalaryBulkSizeHandler));
+salaryRouter.put('/admin/office-settings', authenticate, requireAdmin, asyncHandler(updateSalaryOfficeSettingsHandler));

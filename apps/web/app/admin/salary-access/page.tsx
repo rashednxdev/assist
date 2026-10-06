@@ -1,13 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Plus, Search, Trash2 } from 'lucide-react';
+import Link from 'next/link';
+import { Calculator, Plus, Search, Trash2 } from 'lucide-react';
 import type {
   SalaryBillAccessAdminRow,
   SalaryBillUsageRecord,
   SalaryBulkSizeRecord,
   SalaryContactNumber,
   SalaryContactsRecord,
+  SalaryOfficeSettingsRecord,
 } from '@ibas/shared-types';
 import { SALARY_CALCS_PER_BILL, SALARY_DEFAULT_BULK_SIZE, formatTaka } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
@@ -119,6 +121,70 @@ function BulkSizeEditor({ bulkSize, onSaved }: { bulkSize: number; onSaved: (siz
             {saving ? 'Saving…' : 'Save bulk size'}
           </Button>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function OfficeSettingsEditor() {
+  const [allowed, setAllowed] = useState<boolean | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    apiFetch<{ data: SalaryOfficeSettingsRecord }>('/salary/office/settings')
+      .then((res) => setAllowed(res.data.others_allowed))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'));
+  }, []);
+
+  async function save(next: boolean) {
+    setSaving(true);
+    setStatus('');
+    setError('');
+    try {
+      const res = await apiFetch<{ data: SalaryOfficeSettingsRecord }>('/salary/admin/office-settings', {
+        method: 'PUT',
+        body: JSON.stringify({ others_allowed: next }),
+      });
+      setAllowed(res.data.others_allowed);
+      setStatus(
+        res.data.others_allowed
+          ? 'Others is shown. Users can type an office name that is not in the list.'
+          : 'Others is hidden. Users must pick a listed office.',
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Office choice on the salary page</CardTitle>
+        <CardDescription>
+          Show or hide &quot;My office is not in the list (Others)&quot; on the office screen. Users who already chose
+          Others keep their office.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {status ? <Alert variant="success">{status}</Alert> : null}
+        {error ? <Alert variant="error">{error}</Alert> : null}
+        {allowed === null ? (
+          error ? null : <p className="text-sm text-muted">Loading…</p>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="font-medium">Others option:</span>
+              {allowed ? <Badge variant="success">Shown</Badge> : <Badge variant="secondary">Hidden</Badge>}
+            </div>
+            <Button type="button" variant={allowed ? 'outline' : 'default'} disabled={saving} onClick={() => void save(!allowed)}>
+              {saving ? 'Saving…' : allowed ? 'Hide Others' : 'Show Others'}
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -609,9 +675,19 @@ export default function SalaryAccessAdminPage() {
       <PageHeader
         title="Salary arrears bill access"
         description="The salary page is for signed-in users only. Users request bills in bulks; each T.R. Form 13 / 15 download uses one approved bill."
+        action={
+          <Button asChild className="gap-1.5">
+            <Link href="/salary">
+              <Calculator className="h-4 w-4" />
+              Open salary page
+            </Link>
+          </Button>
+        }
       />
 
       <BulkSizeEditor bulkSize={bulkSize} onSaved={setBulkSize} />
+
+      <OfficeSettingsEditor />
 
       <ContactsEditor />
 

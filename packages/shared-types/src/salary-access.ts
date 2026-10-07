@@ -95,6 +95,14 @@ export const saveSalaryOfficeSchema = z
   });
 export type SaveSalaryOfficeDto = z.infer<typeof saveSalaryOfficeSchema>;
 
+/** An "Others" office already added by another user, offered so the same office is not typed twice. */
+export interface SalaryOtherOfficeSuggestion {
+  other_office_name: string;
+  other_office_name_bn: string;
+  /** Users who joined with this office name. */
+  users: number;
+}
+
 /** Admin correction of a user's "Others" office name. */
 export const adminSalaryOtherOfficeSchema = z
   .object({ other_office_name: otherNameEn, other_office_name_bn: otherNameBn })
@@ -113,6 +121,7 @@ export interface SalaryUserOfficeAdminRow {
   /** Order among the users of the same listed office (1 = first); null for Others. */
   office_rank: number | null;
   free_calcs: number;
+  free_tr_form: SalaryFreeTrFormState;
   updated_at: string;
 }
 
@@ -126,6 +135,22 @@ export interface SalaryOfficeSettingsRecord {
   others_allowed: boolean;
   updated_at: string | null;
 }
+
+export const updateSalaryFreeTrFormSchema = z.object({
+  enabled: z.boolean(),
+});
+export type UpdateSalaryFreeTrFormDto = z.infer<typeof updateSalaryFreeTrFormSchema>;
+
+/** While enabled, each user who registers gets one free single T.R. Form 13/15 download. */
+export interface SalaryFreeTrFormSettingsRecord {
+  enabled: boolean;
+  /** When it was last turned on; null if never. */
+  enabled_since: string | null;
+  updated_at: string | null;
+}
+
+/** A user's free single T.R. Form: `none` when they registered while it was off. */
+export type SalaryFreeTrFormState = 'none' | 'available' | 'used';
 
 export interface SalaryOfficeRecord {
   circle: OfficeOption | null;
@@ -229,7 +254,9 @@ export interface SalaryBillAccessRecord {
   bill_limit: number;
   bills_used: number;
   remaining: number;
+  /** True when a bill is left or the free single T.R. Form is still available. */
   can_bill: boolean;
+  free_tr_form: SalaryFreeTrFormState;
   /** Bills in one bulk. */
   bulk_size: number;
   calc: SalaryArrearsCalcInfo;
@@ -249,6 +276,7 @@ export interface SalaryBillAccessAdminRow {
   bills_used: number;
   remaining: number;
   calc: SalaryArrearsCalcInfo;
+  free_tr_form: SalaryFreeTrFormState;
   request: SalaryBillRequestInfo;
   admin_note: string;
   approved_at: string | null;
@@ -292,6 +320,8 @@ export const salaryStaffSchema = z
     hra_area: z.enum(['dhaka', 'major_city', 'other']),
     excess_rr: z.boolean().default(false),
     excess_puja: z.boolean().default(false),
+    /** Office added only for the staff arrear bill; null = the user's own office. */
+    staff_office_id: officeId.nullable().default(null),
   })
   .superRefine((v, ctx) => {
     if (!NPS_2015[v.grade as PayGrade]?.includes(v.old_pay)) {
@@ -308,5 +338,21 @@ export interface SalaryStaffRecord extends SalaryStaffDto {
 
 export const consumeSalaryStaffBillSchema = z.object({
   months: z.array(arrearMonth).min(1).max(60),
+  staff_office_id: officeId.nullable().default(null),
 });
 export type ConsumeSalaryStaffBillDto = z.infer<typeof consumeSalaryStaffBillSchema>;
+
+/** Offices a user prepares staff arrear bills for besides their own; not their registered office. */
+export const SALARY_MAX_STAFF_OFFICES = 20;
+
+export const salaryStaffOfficeSchema = z.object({
+  name: z.string().trim().min(3, 'Enter the full office name').max(200, 'Office name is too long'),
+});
+export type SalaryStaffOfficeDto = z.infer<typeof salaryStaffOfficeSchema>;
+
+export interface SalaryStaffOfficeRecord {
+  id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+}

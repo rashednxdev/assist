@@ -6,6 +6,7 @@ import {
   type OfficeOption,
   type SalaryOfficeRecord,
   type SalaryOfficeSettingsRecord,
+  type SalaryOtherOfficeSuggestion,
   type SalaryUserOfficeAdminRow,
   type SaveSalaryOfficeDto,
   type UpdateSalaryOfficeSettingsDto,
@@ -17,6 +18,7 @@ import { departmentOf, officeIndex, parentPath, type IndexedOffice } from '../or
 import { User } from '../users/models/User.model.js';
 import { SalarySettings } from './models/SalarySettings.model.js';
 import { SalaryUserOffice, type ISalaryUserOffice } from './models/SalaryUserOffice.model.js';
+import { salaryFreeTrStates } from './salary-free-tr.service.js';
 
 const SETTINGS_KEY = 'global';
 
@@ -205,6 +207,32 @@ export async function salaryOfficeLabels(userIds: string[]): Promise<Map<string,
   return out;
 }
 
+/** "Others" offices with a Bangla name matching the typed text, most joined first. */
+export async function searchOtherOffices(q: string): Promise<SalaryOtherOfficeSuggestion[]> {
+  const text = q.trim().replace(/\s+/g, ' ');
+  if (text.length < 2) return [];
+  const pattern = new RegExp(escapeRegex(text).replace(/ /g, '\\s+'), 'i');
+  const rows = await SalaryUserOffice.aggregate<{ _id: { en: string; bn: string }; users: number; last: Date }>([
+    {
+      $match: {
+        office_id: null,
+        other_office_name_bn: { $nin: [null, ''] },
+        $or: [{ other_office_name: pattern }, { other_office_name_bn: pattern }],
+      },
+    },
+    {
+      $group: {
+        _id: { en: { $trim: { input: '$other_office_name' } }, bn: { $trim: { input: '$other_office_name_bn' } } },
+        users: { $sum: 1 },
+        last: { $max: '$updated_at' },
+      },
+    },
+    { $sort: { users: -1, last: -1 } },
+    { $limit: 8 },
+  ]);
+  return rows.map((r) => ({ other_office_name: r._id.en, other_office_name_bn: r._id.bn, users: r.users }));
+}
+
 /* ------------------------------- admin ------------------------------- */
 
 export async function listSalaryUserOffices(filters: {
@@ -235,7 +263,10 @@ export async function listSalaryUserOffices(filters: {
     officeIndex(),
     officeTypeShorts(),
   ]);
-  const users = await User.find({ _id: { $in: docs.map((d) => d.user_id) } }).select('full_name_en email phone');
+  const [users, freeTr] = await Promise.all([
+    User.find({ _id: { $in: docs.map((d) => d.user_id) } }).select('full_name_en email phone'),
+    salaryFreeTrStates(docs.map((d) => String(d.user_id))),
+  ]);
   const byId = new Map(users.map((u) => [String(u._id), u]));
   const items = await Promise.all(docs.map(async (doc): Promise<SalaryUserOfficeAdminRow> => {
     const u = byId.get(String(doc.user_id));
@@ -255,6 +286,7 @@ export async function listSalaryUserOffices(filters: {
       office_type: rec?.office_type ?? null,
       office_rank: rank,
       free_calcs: free,
+      free_tr_form: freeTr.get(String(doc.user_id)) ?? 'none',
       updated_at: doc.updated_at.toISOString(),
     };
   }));

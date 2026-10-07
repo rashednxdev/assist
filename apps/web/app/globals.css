@@ -903,6 +903,32 @@ body {
   font-weight: 600;
 }
 
+.salary-tr-form .tr-attest {
+  margin-top: 16mm;
+  display: flex;
+  justify-content: flex-end;
+  break-inside: avoid;
+}
+
+.salary-tr-form .tr-attest-box {
+  min-width: 64mm;
+  max-width: 90mm;
+  text-align: center;
+  font-size: 9pt;
+  line-height: 1.35;
+}
+
+.salary-tr-form .tr-attest-line {
+  border-top: 0.6pt solid #000;
+  padding-top: 1mm;
+  margin-bottom: 1mm;
+  font-weight: 700;
+}
+
+.salary-tr-form .tr-attest-name {
+  font-weight: 600;
+}
+
 .salary-tr-form .tr-attach-footer {
   margin-top: 8mm;
   border-top: 0.6pt solid #cbd5e1;

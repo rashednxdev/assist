@@ -2,7 +2,12 @@
 
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { Building2 } from 'lucide-react';
-import type { OfficeOption, SalaryOfficeRecord, SalaryOfficeSettingsRecord } from '@ibas/shared-types';
+import type {
+  OfficeOption,
+  SalaryOfficeRecord,
+  SalaryOfficeSettingsRecord,
+  SalaryOtherOfficeSuggestion,
+} from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { isPlatformAdmin } from '@/lib/capabilities';
 import { salaryCopy, type SalaryLocale } from '@/lib/salary-i18n';
@@ -58,7 +63,38 @@ function OfficeForm({
   const [otherNameBn, setOtherNameBn] = useState(initial?.other_office_name_bn ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [query, setQuery] = useState('');
+  const [suggestions, setSuggestions] = useState<SalaryOtherOfficeSuggestion[]>([]);
   const showOthersOption = othersAllowed && !addBangla;
+  const picked = suggestions.some(
+    (s) => s.other_office_name === otherName.trim() && s.other_office_name_bn === otherNameBn.trim(),
+  );
+
+  useEffect(() => {
+    const q = query.trim();
+    if (!others || q.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      apiFetch<{ data: SalaryOtherOfficeSuggestion[] }>(`/salary/office/others?q=${encodeURIComponent(q)}`)
+        .then((res) => {
+          if (!cancelled) setSuggestions(res.data);
+        })
+        .catch(() => undefined);
+    }, 350);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [query, others]);
+
+  function pick(s: SalaryOtherOfficeSuggestion) {
+    setOtherName(s.other_office_name);
+    setOtherNameBn(s.other_office_name_bn);
+    setError('');
+  }
 
   async function save() {
     const name = otherName.trim();
@@ -176,7 +212,10 @@ function OfficeForm({
                   maxLength={200}
                   value={otherNameBn}
                   placeholder={t.officeOtherPlaceholderBn}
-                  onChange={(e) => setOtherNameBn(e.target.value)}
+                  onChange={(e) => {
+                    setOtherNameBn(e.target.value);
+                    setQuery(e.target.value);
+                  }}
                 />
               </div>
               <div className="space-y-1.5">
@@ -187,9 +226,47 @@ function OfficeForm({
                   maxLength={200}
                   value={otherName}
                   placeholder={t.officeOtherPlaceholder}
-                  onChange={(e) => setOtherName(e.target.value)}
+                  onChange={(e) => {
+                    setOtherName(e.target.value);
+                    setQuery(e.target.value);
+                  }}
                 />
               </div>
+              {suggestions.length > 0 ? (
+                <div className="space-y-2 rounded-lg border border-sky-300 bg-sky-50 p-3">
+                  <p className="text-xs font-semibold text-sky-950">{t.officeExistingTitle}</p>
+                  <ul className="space-y-1.5">
+                    {suggestions.map((s) => {
+                      const selected = s.other_office_name === otherName.trim() && s.other_office_name_bn === otherNameBn.trim();
+                      return (
+                        <li
+                          key={`${s.other_office_name_bn}|${s.other_office_name}`}
+                          className={cn(
+                            'flex items-center justify-between gap-2 rounded-md border bg-white px-2.5 py-2',
+                            selected ? 'border-emerald-500 ring-2 ring-emerald-200' : 'border-sky-200',
+                          )}
+                        >
+                          <div className="min-w-0 text-sm">
+                            <div className="font-semibold text-slate-900">{s.other_office_name_bn}</div>
+                            <div className="text-xs text-slate-600">{s.other_office_name}</div>
+                            <div className="text-[11px] text-sky-800">{t.officeExistingUsers(String(s.users))}</div>
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={selected ? 'default' : 'outline'}
+                            className={selected ? 'bg-emerald-700 hover:bg-emerald-800' : undefined}
+                            onClick={() => pick(s)}
+                          >
+                            {selected ? t.officeExistingSelected : t.officeExistingSelect}
+                          </Button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {picked ? <p className="text-xs font-semibold text-emerald-800">{t.officeExistingPicked}</p> : null}
+                </div>
+              ) : null}
             </div>
           ) : null}
 

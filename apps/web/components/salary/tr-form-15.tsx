@@ -11,11 +11,13 @@ import {
   STAMP_DUTY,
   STAMP_DUTY_CODE,
   Signature,
+  SignatureBlock,
   TotalRow,
   TrAttachment,
   periodText,
   taka,
   type FormRow,
+  type TrSignatory,
 } from '@/components/salary/tr-form-parts';
 import { monthText } from '@/lib/salary-i18n';
 
@@ -346,6 +348,7 @@ export function TrForm15({
         preparedOn={preparedOn}
         payable={payable}
         payableWords={payableWords}
+        signatory={info.signature ? { name: info.employee, post: info.designation, office: info.office } : null}
       />
     </div>
   );
@@ -536,8 +539,8 @@ function TrStaffSchedule({ staff, months, office }: { staff: TrStaffEntry[]; mon
 /** One T.R. Form 15 for all office staff: totals on the form, a staff summary sheet, then one attachment per employee. */
 export const TrForm15Staff = forwardRef<
   HTMLDivElement,
-  { staff: TrStaffEntry[]; months: string[]; office: string; preparedOn: string }
->(function TrForm15Staff({ staff, months, office, preparedOn }, ref) {
+  { staff: TrStaffEntry[]; months: string[]; office: string; preparedOn: string; signatory: TrSignatory | null }
+>(function TrForm15Staff({ staff, months, office, preparedOn, signatory }, ref) {
   const sum = (pick: (r: SalaryArrearResult) => number) => staff.reduce((total, s) => total + pick(s.result), 0);
   const netTotal = sum((r) => r.total_net_arrear);
   const stamp = STAMP_DUTY * staff.length;
@@ -641,6 +644,7 @@ export const TrForm15Staff = forwardRef<
         </p>
         <p className="tr-attach-words">টাকা (কথায়) : {payableWords}</p>
         <p className="tr-small">প্রস্তুতের তারিখ: {preparedOn}</p>
+        {signatory ? <SignatureBlock signatory={signatory} /> : null}
       </section>
 
       {staff.map((s) => {
@@ -651,10 +655,11 @@ export const TrForm15Staff = forwardRef<
             formNo={15}
             result={s.result}
             hraArea={s.hraArea}
-            info={{ office, employee: s.name, designation: s.post, nid: s.nid }}
+            info={{ office, employee: s.name, designation: s.post, nid: s.nid, signature: false }}
             preparedOn={preparedOn}
             payable={each}
             payableWords={takaInWords('bn', each)}
+            signatory={signatory}
           />
         );
       })}

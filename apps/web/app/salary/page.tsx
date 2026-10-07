@@ -1367,7 +1367,7 @@ export default function SalaryOn2026Page() {
           onCancel={() => setPrintDialog(null)}
           onConfirm={confirmPrint}
           {...(printDialog === 'trform'
-            ? { title: t.trFormDetails(num(trFormNo)), confirmLabel: t.downloadNow, requireName: true }
+            ? { title: t.trFormDetails(num(trFormNo)), confirmLabel: t.downloadNow, requireName: true, signatureOption: true }
             : {})}
         />
       ) : null}

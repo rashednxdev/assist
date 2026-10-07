@@ -7,6 +7,8 @@ export interface ISalarySettings extends Document {
   bulk_size: number | null;
   /** Null means "Others" is allowed. */
   others_allowed: boolean | null;
+  /** Periods the free single T.R. Form was on; users registered inside one get it. `to` null = still on. */
+  free_tr_periods: Array<{ from: Date; to: Date | null }>;
   updated_by: Types.ObjectId | null;
   updated_at: Date | null;
 }
@@ -27,6 +29,10 @@ const schema = new Schema<ISalarySettings>(
     },
     bulk_size: { type: Number, default: null, min: 1 },
     others_allowed: { type: Boolean, default: null },
+    free_tr_periods: {
+      type: [{ _id: false, from: { type: Date, required: true }, to: { type: Date, default: null } }],
+      default: [],
+    },
     updated_by: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     updated_at: { type: Date, default: null },
   },

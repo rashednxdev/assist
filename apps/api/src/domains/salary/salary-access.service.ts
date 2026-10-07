@@ -38,6 +38,7 @@ import {
   salaryFreeCalcLimits,
   salaryOfficeLabels,
 } from './salary-office.service.js';
+import { claimSalaryFreeTrForm, salaryFreeTrState, salaryFreeTrStates } from './salary-free-tr.service.js';
 
 const SETTINGS_KEY = 'global';
 
@@ -124,12 +125,13 @@ export async function updateSalaryBulkSize(dto: UpdateSalaryBulkSizeDto, updated
 }
 
 export async function getMyBillAccess(user: AuthUser): Promise<SalaryBillAccessRecord> {
-  const [doc, { contacts }, { bulk_size }, calcDoc, freeLimit] = await Promise.all([
+  const [doc, { contacts }, { bulk_size }, calcDoc, freeLimit, freeTr] = await Promise.all([
     SalaryBillAccess.findOne({ user_id: user.id }),
     getSalaryContacts(),
     getSalaryBulkSize(),
     SalaryCalcUsage.findOne({ user_id: user.id }).select('free_used unprinted').lean(),
     salaryFreeCalcLimit(user.id),
+    salaryFreeTrState(user.id),
   ]);
   const unlimited = isPlatformAdmin(user);
   const remaining = remainingOf(doc);
@@ -141,7 +143,8 @@ export async function getMyBillAccess(user: AuthUser): Promise<SalaryBillAccessR
     bill_limit: doc?.bill_limit ?? 0,
     bills_used: doc?.bills_used ?? 0,
     remaining,
-    can_bill: user.status === 'active' && (unlimited || remaining > 0),
+    can_bill: user.status === 'active' && (unlimited || remaining > 0 || freeTr === 'available'),
+    free_tr_form: freeTr,
     bulk_size,
     calc,
     can_calculate: user.status === 'active' && (unlimited || calc.free_used < calc.free_limit || remaining > 0),
@@ -175,17 +178,24 @@ export async function requestBills(user: AuthUser, dto: RequestSalaryBillsDto): 
   return getMyBillAccess(user);
 }
 
-/** Uses one approved bill; admins are unlimited but still logged. */
+/**
+ * Uses one approved bill, or first the free single T.R. Form for a T.R. Form download;
+ * admins are unlimited but still logged.
+ */
 export async function consumeBill(user: AuthUser, dto: ConsumeSalaryBillDto): Promise<SalaryBillAccessRecord> {
   if (user.status !== 'active') throw forbidden('Account is not active');
   const now = new Date();
   if (!isPlatformAdmin(user)) {
     await assertSalaryOfficeChosen(user.id);
-    const updated = await SalaryBillAccess.findOneAndUpdate(
-      { user_id: user.id, $expr: { $lt: ['$bills_used', '$bill_limit'] } },
-      { $inc: { bills_used: 1 }, $set: { last_used_at: now, updated_at: now } },
-      { new: true },
-    );
+    const isTrForm = dto.kind === 'tr_form_13' || dto.kind === 'tr_form_15';
+    const free = isTrForm && (await claimSalaryFreeTrForm(user.id));
+    const updated =
+      free ||
+      (await SalaryBillAccess.findOneAndUpdate(
+        { user_id: user.id, $expr: { $lt: ['$bills_used', '$bill_limit'] } },
+        { $inc: { bills_used: 1 }, $set: { last_used_at: now, updated_at: now } },
+        { new: true },
+      ));
     if (!updated) {
       throw new AppError(
         403,
@@ -209,10 +219,12 @@ export async function consumeBill(user: AuthUser, dto: ConsumeSalaryBillDto): Pr
   return getMyBillAccess(user);
 }
 
-/** Office staff T.R. Form 15: uses one approved bill per saved employee, all or nothing. */
+/** Office staff T.R. Form 15 for one office: uses one approved bill per employee of that office, all or nothing. */
 export async function consumeStaffBill(user: AuthUser, dto: ConsumeSalaryStaffBillDto): Promise<SalaryBillAccessRecord> {
   if (user.status !== 'active') throw forbidden('Account is not active');
-  const staff = await SalaryStaff.find({ user_id: user.id }).sort({ created_at: 1, _id: 1 }).lean();
+  const staff = await SalaryStaff.find({ user_id: user.id, staff_office_id: dto.staff_office_id ?? null })
+    .sort({ created_at: 1, _id: 1 })
+    .lean();
   if (staff.length === 0) throw badRequest('Add at least one employee first.');
   const results = staff.map((s) => {
     try {
@@ -308,11 +320,12 @@ export async function recordArrearsCalc(user: AuthUser, dto: RecordArrearsCalcDt
 
 async function toAdminRows(docs: ISalaryBillAccess[]): Promise<SalaryBillAccessAdminRow[]> {
   const userIds = docs.map((d) => String(d.user_id));
-  const [users, offices, calcs, freeLimits] = await Promise.all([
+  const [users, offices, calcs, freeLimits, freeTr] = await Promise.all([
     User.find({ _id: { $in: userIds } }).select('full_name_en email phone'),
     salaryOfficeLabels(userIds),
     SalaryCalcUsage.find({ user_id: { $in: userIds } }).select('user_id free_used unprinted').lean(),
     salaryFreeCalcLimits(userIds),
+    salaryFreeTrStates(userIds),
   ]);
   const byId = new Map(users.map((u) => [String(u._id), u]));
   const calcById = new Map(calcs.map((c) => [String(c.user_id), c]));
@@ -331,6 +344,7 @@ async function toAdminRows(docs: ISalaryBillAccess[]): Promise<SalaryBillAccessA
       bills_used: doc.bills_used,
       remaining: remainingOf(doc),
       calc: calcInfo(calcById.get(String(doc.user_id)) ?? null, freeLimits.get(String(doc.user_id)) ?? SALARY_FREE_ARREARS_CALCS),
+      free_tr_form: freeTr.get(String(doc.user_id)) ?? 'none',
       request: requestInfo(doc),
       admin_note: doc.admin_note ?? '',
       approved_at: doc.approved_at?.toISOString() ?? null,

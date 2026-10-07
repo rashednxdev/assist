@@ -13,9 +13,11 @@ export interface SalaryPrintInfo {
   employee: string;
   designation: string;
   nid: string;
+  /** Print "স্বাক্ষর ও তারিখ" with the name, designation and office on the attachment. */
+  signature: boolean;
 }
 
-export const EMPTY_PRINT_INFO: SalaryPrintInfo = { office: '', employee: '', designation: '', nid: '' };
+export const EMPTY_PRINT_INFO: SalaryPrintInfo = { office: '', employee: '', designation: '', nid: '', signature: true };
 
 const NID_LENGTHS = [10, 13, 17];
 
@@ -28,6 +30,7 @@ export function SalaryPrintDialog({
   confirmLabel,
   requireName = false,
   lockedOffice = '',
+  signatureOption = false,
 }: {
   t: SalaryCopy;
   initial: SalaryPrintInfo;
@@ -38,11 +41,13 @@ export function SalaryPrintDialog({
   requireName?: boolean;
   /** Office name fixed by the user's office (the Bangla name for "Others"); shown read-only. */
   lockedOffice?: string;
+  /** Show the "signature and date" checkbox (T.R. Form attachment). */
+  signatureOption?: boolean;
 }) {
   const [info, setInfo] = useState<SalaryPrintInfo>(lockedOffice ? { ...initial, office: lockedOffice } : initial);
   const [nameError, setNameError] = useState(false);
   const [nidError, setNidError] = useState(false);
-  const set = (key: keyof SalaryPrintInfo) => (e: React.ChangeEvent<HTMLInputElement>) => {
+  const set = (key: 'office' | 'employee' | 'designation' | 'nid') => (e: React.ChangeEvent<HTMLInputElement>) => {
     if (key === 'employee') setNameError(false);
     if (key === 'nid') setNidError(false);
     const value = key === 'nid' ? toEnglishDigits(e.target.value).replace(/\D/g, '').slice(0, 17) : e.target.value;
@@ -62,6 +67,7 @@ export function SalaryPrintDialog({
       employee: info.employee.trim(),
       designation: info.designation.trim(),
       nid,
+      signature: info.signature,
     });
   }
 
@@ -133,6 +139,20 @@ export function SalaryPrintDialog({
             />
             {nidError ? <p className="text-xs font-medium text-destructive">{t.nidInvalid}</p> : null}
           </div>
+          {signatureOption ? (
+            <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border bg-slate-50 px-3 py-2.5 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 rounded"
+                checked={info.signature}
+                onChange={(e) => setInfo((prev) => ({ ...prev, signature: e.target.checked }))}
+              />
+              <span>
+                <span className="block font-medium">{t.signAdd}</span>
+                <span className="block text-xs text-muted">{t.signAddHint}</span>
+              </span>
+            </label>
+          ) : null}
         </div>
         <div className="flex justify-end gap-2 border-t border-border p-4">
           <Button type="button" variant="outline" onClick={onCancel}>

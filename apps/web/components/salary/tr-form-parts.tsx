@@ -109,6 +109,27 @@ export function Signature({ title, lines }: { title: string; lines: string[] }) 
   );
 }
 
+/** Who signs the attachment and summary sheet; blank parts are left out. */
+export interface TrSignatory {
+  name: string;
+  post: string;
+  office: string;
+}
+
+/** "স্বাক্ষর ও তারিখ" with the signer's name, post and office, at the foot of a sheet. */
+export function SignatureBlock({ signatory }: { signatory: TrSignatory }) {
+  return (
+    <div className="tr-attest">
+      <div className="tr-attest-box">
+        <div className="tr-attest-line">স্বাক্ষর ও তারিখ</div>
+        {signatory.name ? <div className="tr-attest-name">{signatory.name}</div> : null}
+        {signatory.post ? <div>{signatory.post}</div> : null}
+        {signatory.office ? <div>{signatory.office}</div> : null}
+      </div>
+    </div>
+  );
+}
+
 /** Summary page attached after the T.R. form: employee details, month-wise working and totals. */
 export function TrAttachment({
   formNo,
@@ -118,6 +139,7 @@ export function TrAttachment({
   preparedOn,
   payable,
   payableWords,
+  signatory,
 }: {
   formNo: 13 | 15;
   result: SalaryArrearResult;
@@ -126,6 +148,7 @@ export function TrAttachment({
   preparedOn: string;
   payable: number;
   payableWords: string;
+  signatory: TrSignatory | null;
 }) {
   const t = salaryCopy('bn');
   const fmt: Fmt = {
@@ -311,6 +334,7 @@ export function TrAttachment({
       <p className="tr-small">
         {t.preparedOn}: {preparedOn}
       </p>
+      {signatory ? <SignatureBlock signatory={signatory} /> : null}
     </section>
   );
 }

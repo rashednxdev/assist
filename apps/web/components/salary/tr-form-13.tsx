@@ -250,6 +250,7 @@ export function TrForm13({
         preparedOn={preparedOn}
         payable={payable}
         payableWords={payableWords}
+        signatory={info.signature ? { name: info.employee, post: info.designation, office: info.office } : null}
       />
     </div>
   );

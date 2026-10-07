@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, Loader2, Pencil, Plus, ShieldCheck, Trash2, Users, X } from 'lucide-react';
+import { Building2, Download, Loader2, Pencil, Plus, ShieldCheck, Trash2, Users, X } from 'lucide-react';
 import {
   NPS_2015,
   PAY_GRADES,
@@ -14,6 +14,7 @@ import {
   type SalaryArrearResult,
   type SalaryBillAccessRecord,
   type SalaryStaffDto,
+  type SalaryStaffOfficeRecord,
   type SalaryStaffRecord,
 } from '@ibas/shared-types';
 import { Alert } from '@/components/ui/alert';
@@ -29,7 +30,7 @@ import {
 } from '@/components/salary/salary-arrears-bill';
 import { SalaryBulkRequestDialog } from '@/components/salary/salary-bill-access';
 import { TrForm15Staff, type TrStaffEntry } from '@/components/salary/tr-form-15';
-import { STAMP_DUTY } from '@/components/salary/tr-form-parts';
+import { STAMP_DUTY, type TrSignatory } from '@/components/salary/tr-form-parts';
 import { ApiError, apiFetch } from '@/lib/api-client';
 import { toEnglishDigits } from '@/lib/bangla-format';
 import { downloadFormPdf, pdfFileName } from '@/lib/salary-pdf';
@@ -39,6 +40,8 @@ const NID_LENGTHS = [10, 13, 17];
 
 const selectClass =
   'flex h-10 w-full rounded-md border border-amber-300 bg-white px-3 text-sm font-medium focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200 disabled:cursor-not-allowed disabled:bg-slate-100';
+
+type StaffDetails = Omit<SalaryStaffDto, 'staff_office_id'>;
 
 interface StaffForm {
   name: string;
@@ -93,7 +96,7 @@ function StaffDialog({
   editing: boolean;
   onCancel: () => void;
   /** Resolves to an error message to keep the dialog open, or null when saved. */
-  onSave: (dto: SalaryStaffDto) => Promise<string | null>;
+  onSave: (dto: StaffDetails) => Promise<string | null>;
 }) {
   const t = salaryCopy(locale);
   const num = (v: string | number) => localNum(locale, v);
@@ -293,30 +296,39 @@ function StaffDialog({
   );
 }
 
+interface StaffSignInput {
+  enabled: boolean;
+  name: string;
+  post: string;
+}
+
 function OfficeDialog({
   locale,
   initial,
   locked,
+  sign,
   onCancel,
   onConfirm,
 }: {
   locale: SalaryLocale;
   initial: string;
   locked: boolean;
+  sign: StaffSignInput;
   onCancel: () => void;
-  onConfirm: (office: string) => void;
+  onConfirm: (office: string, sign: StaffSignInput) => void;
 }) {
   const t = salaryCopy(locale);
   const [office, setOffice] = useState(initial);
+  const [s, setS] = useState<StaffSignInput>(sign);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 print:hidden" role="dialog" aria-modal="true">
       <button type="button" aria-label={t.cancel} className="absolute inset-0 bg-slate-900/50" onClick={onCancel} />
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          onConfirm(office.trim());
+          onConfirm(office.trim(), { enabled: s.enabled, name: s.name.trim(), post: s.post.trim() });
         }}
-        className="relative w-full max-w-md rounded-2xl bg-surface shadow-xl"
+        className="relative max-h-[92vh] w-full max-w-md overflow-y-auto rounded-2xl bg-surface shadow-xl"
       >
         <div className="flex items-start justify-between gap-3 border-b border-border p-5">
           <div>
@@ -342,6 +354,44 @@ function OfficeDialog({
           />
           {locked ? <p className="text-xs text-muted">{t.officeFixedOnBill}</p> : null}
         </div>
+        <div className="space-y-3 px-5 pb-5">
+          <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border bg-slate-50 px-3 py-2.5 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 rounded"
+              checked={s.enabled}
+              onChange={(e) => setS((p) => ({ ...p, enabled: e.target.checked }))}
+            />
+            <span>
+              <span className="block font-medium">{t.signAdd}</span>
+              <span className="block text-xs text-muted">{t.signStaffHint}</span>
+            </span>
+          </label>
+          {s.enabled ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="staff-sign-name">{t.signName}</Label>
+                <Input
+                  id="staff-sign-name"
+                  value={s.name}
+                  maxLength={120}
+                  autoComplete="name"
+                  onChange={(e) => setS((p) => ({ ...p, name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="staff-sign-post">{t.signPost}</Label>
+                <Input
+                  id="staff-sign-post"
+                  value={s.post}
+                  maxLength={120}
+                  autoComplete="organization-title"
+                  onChange={(e) => setS((p) => ({ ...p, post: e.target.value }))}
+                />
+              </div>
+            </div>
+          ) : null}
+        </div>
         <div className="flex justify-end gap-2 border-t border-border p-4">
           <Button type="button" variant="outline" onClick={onCancel}>
             {t.cancel}
@@ -349,6 +399,75 @@ function OfficeDialog({
           <Button type="submit" className="gap-2 bg-amber-600 hover:bg-amber-700">
             <Download className="h-4 w-4" />
             {t.downloadNow}
+          </Button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function StaffOfficeDialog({
+  locale,
+  initial,
+  onCancel,
+  onSave,
+}: {
+  locale: SalaryLocale;
+  initial: SalaryStaffOfficeRecord | null;
+  onCancel: () => void;
+  /** Resolves to an error message to keep the dialog open, or null when saved. */
+  onSave: (name: string) => Promise<string | null>;
+}) {
+  const t = salaryCopy(locale);
+  const [name, setName] = useState(initial?.name ?? '');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const value = name.trim();
+    if (value.length < 3) return setError(t.staffOfficeNameRequired);
+    setSaving(true);
+    setError('');
+    const message = await onSave(value);
+    setSaving(false);
+    if (message) setError(message);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 print:hidden" role="dialog" aria-modal="true">
+      <button type="button" aria-label={t.cancel} className="absolute inset-0 bg-slate-900/50" onClick={onCancel} />
+      <form onSubmit={submit} className="relative w-full max-w-md rounded-2xl bg-surface shadow-xl">
+        <div className="flex items-start justify-between gap-3 border-b border-border p-5">
+          <div>
+            <h2 className="flex items-center gap-2 text-lg font-bold">
+              <Building2 className="h-5 w-5 text-amber-700" />
+              {initial ? t.staffOfficeRenameTitle : t.staffAddOffice}
+            </h2>
+            <p className="mt-1 text-sm text-muted">{t.staffOfficeAddHint}</p>
+          </div>
+          <button type="button" onClick={onCancel} className="rounded-md p-1 text-muted hover:bg-slate-100" aria-label={t.cancel}>
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="space-y-1.5 p-5">
+          <Label htmlFor="staff-office-name">{t.officeName}</Label>
+          <Input
+            id="staff-office-name"
+            value={name}
+            maxLength={200}
+            autoFocus
+            placeholder={t.officeOtherPlaceholderBn}
+            onChange={(e) => setName(e.target.value)}
+          />
+          {error ? <Alert variant="error">{error}</Alert> : null}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-border p-4">
+          <Button type="button" variant="outline" onClick={onCancel} disabled={saving}>
+            {t.cancel}
+          </Button>
+          <Button type="submit" className="gap-2 bg-amber-600 hover:bg-amber-700" disabled={saving}>
+            {saving ? t.staffSaving : initial ? t.staffUpdate : t.staffSave}
           </Button>
         </div>
       </form>
@@ -387,22 +506,35 @@ export function SalaryStaffBill({
   const amt = (n: number) => num(formatTaka(n));
   const signed = (n: number) => (n < 0 ? `− ${amt(-n)}` : amt(n));
 
-  const [staff, setStaff] = useState<SalaryStaffRecord[] | null>(null);
+  const [allStaff, setAllStaff] = useState<SalaryStaffRecord[] | null>(null);
+  const [offices, setOffices] = useState<SalaryStaffOfficeRecord[]>([]);
+  const [activeOffice, setActiveOffice] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [dialog, setDialog] = useState<{ editing: SalaryStaffRecord | null } | null>(null);
+  const [officeEdit, setOfficeEdit] = useState<{ editing: SalaryStaffOfficeRecord | null } | null>(null);
   const [officeDialog, setOfficeDialog] = useState(false);
   const [bulkDialog, setBulkDialog] = useState(false);
   const [error, setError] = useState('');
   const [downloading, setDownloading] = useState(false);
-  const [capture, setCapture] = useState<{ office: string; entries: TrStaffEntry[] } | null>(null);
+  const [sign, setSign] = useState<StaffSignInput>({ enabled: true, name: '', post: '' });
+  const [capture, setCapture] = useState<{
+    office: string;
+    entries: TrStaffEntry[];
+    signatory: TrSignatory | null;
+  } | null>(null);
   const paidFor = useRef<string | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
 
   async function load() {
     setLoadError(false);
     try {
-      const res = await apiFetch<{ data: SalaryStaffRecord[] }>('/salary/staff');
-      setStaff(res.data);
+      const [staffRes, officesRes] = await Promise.all([
+        apiFetch<{ data: SalaryStaffRecord[] }>('/salary/staff'),
+        apiFetch<{ data: SalaryStaffOfficeRecord[] }>('/salary/staff/offices'),
+      ]);
+      setAllStaff(staffRes.data);
+      setOffices(officesRes.data);
+      setActiveOffice((prev) => (prev && officesRes.data.some((o) => o.id === prev) ? prev : null));
     } catch {
       setLoadError(true);
     }
@@ -411,6 +543,13 @@ export function SalaryStaffBill({
   useEffect(() => {
     void load();
   }, []);
+
+  const activeOfficeRec = offices.find((o) => o.id === activeOffice) ?? null;
+  const staff = useMemo(
+    () => allStaff?.filter((s) => (s.staff_office_id ?? null) === activeOffice) ?? null,
+    [allStaff, activeOffice],
+  );
+  const staffIn = (officeId: string | null) => allStaff?.filter((s) => (s.staff_office_id ?? null) === officeId).length ?? 0;
 
   const rows = useMemo(() => {
     if (!staff || months.length === 0) return null;
@@ -435,21 +574,22 @@ export function SalaryStaffBill({
   const unlimited = Boolean(access?.unlimited);
   const enoughBills = unlimited || remaining >= count;
 
-  async function save(dto: SalaryStaffDto): Promise<string | null> {
+  async function save(details: StaffDetails): Promise<string | null> {
     const editing = dialog?.editing;
+    const dto: SalaryStaffDto = { ...details, staff_office_id: editing ? (editing.staff_office_id ?? null) : activeOffice };
     try {
       if (editing) {
         const res = await apiFetch<{ data: SalaryStaffRecord }>(`/salary/staff/${editing.id}`, {
           method: 'PUT',
           body: JSON.stringify(dto),
         });
-        setStaff((prev) => (prev ?? []).map((s) => (s.id === editing.id ? res.data : s)));
+        setAllStaff((prev) => (prev ?? []).map((s) => (s.id === editing.id ? res.data : s)));
       } else {
         const res = await apiFetch<{ data: SalaryStaffRecord }>('/salary/staff', {
           method: 'POST',
           body: JSON.stringify(dto),
         });
-        setStaff((prev) => [...(prev ?? []), res.data]);
+        setAllStaff((prev) => [...(prev ?? []), res.data]);
       }
     } catch (err) {
       return err instanceof Error ? err.message : t.calcError;
@@ -463,14 +603,51 @@ export function SalaryStaffBill({
     setError('');
     try {
       await apiFetch(`/salary/staff/${s.id}`, { method: 'DELETE' });
-      setStaff((prev) => (prev ?? []).filter((x) => x.id !== s.id));
+      setAllStaff((prev) => (prev ?? []).filter((x) => x.id !== s.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t.calcError);
+    }
+  }
+
+  async function saveOffice(name: string): Promise<string | null> {
+    const editing = officeEdit?.editing;
+    try {
+      if (editing) {
+        const res = await apiFetch<{ data: SalaryStaffOfficeRecord }>(`/salary/staff/offices/${editing.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ name }),
+        });
+        setOffices((prev) => prev.map((o) => (o.id === editing.id ? res.data : o)));
+      } else {
+        const res = await apiFetch<{ data: SalaryStaffOfficeRecord }>('/salary/staff/offices', {
+          method: 'POST',
+          body: JSON.stringify({ name }),
+        });
+        setOffices((prev) => [...prev, res.data]);
+        setActiveOffice(res.data.id);
+      }
+    } catch (err) {
+      return err instanceof Error ? err.message : t.calcError;
+    }
+    setOfficeEdit(null);
+    return null;
+  }
+
+  async function removeOffice(o: SalaryStaffOfficeRecord) {
+    if (!window.confirm(t.staffOfficeDeleteConfirm(o.name, num(staffIn(o.id))))) return;
+    setError('');
+    try {
+      await apiFetch(`/salary/staff/offices/${o.id}`, { method: 'DELETE' });
+      setOffices((prev) => prev.filter((x) => x.id !== o.id));
+      setAllStaff((prev) => (prev ?? []).filter((s) => s.staff_office_id !== o.id));
+      setActiveOffice(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : t.calcError);
     }
   }
 
   const billKey = (list: SalaryStaffRecord[]) =>
-    JSON.stringify({ months: [...months].sort(), staff: list.map((s) => [s.id, s.updated_at]) });
+    JSON.stringify({ office: activeOffice, months: [...months].sort(), staff: list.map((s) => [s.id, s.updated_at]) });
 
   function startDownload() {
     setError('');
@@ -479,8 +656,9 @@ export function SalaryStaffBill({
     setOfficeDialog(true);
   }
 
-  async function confirmDownload(office: string) {
+  async function confirmDownload(office: string, nextSign: StaffSignInput) {
     setOfficeDialog(false);
+    setSign(nextSign);
     if (!staff || valid.length !== staff.length) return;
     const key = billKey(staff);
     setDownloading(true);
@@ -489,7 +667,7 @@ export function SalaryStaffBill({
       try {
         const res = await apiFetch<{ data: SalaryBillAccessRecord }>('/salary/staff/bill', {
           method: 'POST',
-          body: JSON.stringify({ months }),
+          body: JSON.stringify({ months, staff_office_id: activeOffice }),
         });
         onAccessChange(res.data);
         paidFor.current = key;
@@ -509,6 +687,7 @@ export function SalaryStaffBill({
     }
     setCapture({
       office,
+      signatory: nextSign.enabled ? { name: nextSign.name, post: nextSign.post, office } : null,
       entries: valid.map((r) => ({
         id: r.staff.id,
         name: r.staff.name,
@@ -528,7 +707,10 @@ export function SalaryStaffBill({
       const root = formRef.current;
       try {
         if (!root) throw new Error('Form not ready');
-        await downloadFormPdf(root, pdfFileName('TR Form 15', 'Office Staff Arrears', `${capture.entries.length} staff`));
+        await downloadFormPdf(
+          root,
+          pdfFileName('TR Form 15', 'Office Staff Arrears', capture.office, `${capture.entries.length} staff`),
+        );
       } catch {
         if (!cancelled) setError(t.staffPdfFailed);
       } finally {
@@ -555,6 +737,74 @@ export function SalaryStaffBill({
       <CardContent className="space-y-4 p-4 sm:p-5">
         <ArrearMonthPicker locale={locale} months={months} onMonthsChange={onMonthsChange} />
         {months.length === 0 ? <Alert variant="error">{t.arrSelectMonth}</Alert> : null}
+
+        <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="flex items-center gap-1.5 text-sm font-semibold text-amber-950">
+              <Building2 className="h-4 w-4" />
+              {t.staffOfficesLabel}
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setOfficeEdit({ editing: null })}
+              className="gap-1.5 border-amber-400 bg-white text-amber-900 hover:bg-amber-100"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {t.staffAddOffice}
+            </Button>
+          </div>
+          {offices.length > 0 ? (
+            <div className="flex flex-wrap gap-2" role="tablist">
+              {[{ id: null as string | null, name: officeLabel || t.staffOwnOffice, own: true }, ...offices.map((o) => ({ id: o.id as string | null, name: o.name, own: false }))].map(
+                (o) => {
+                  const active = o.id === activeOffice;
+                  return (
+                    <button
+                      key={o.id ?? 'own'}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => {
+                        setActiveOffice(o.id);
+                        setError('');
+                      }}
+                      className={`max-w-full rounded-lg border px-3 py-1.5 text-left text-xs font-semibold ${
+                        active ? 'border-amber-600 bg-amber-600 text-white' : 'border-amber-300 bg-white text-amber-950 hover:bg-amber-100'
+                      }`}
+                    >
+                      <span className="block truncate">{o.name}</span>
+                      <span className={`block text-[11px] font-medium ${active ? 'text-amber-50' : 'text-amber-800'}`}>
+                        {o.own ? `${t.staffOwnOfficeTag} · ` : ''}
+                        {t.staffOfficeCount(num(staffIn(o.id)))}
+                      </span>
+                    </button>
+                  );
+                },
+              )}
+            </div>
+          ) : null}
+          {activeOfficeRec ? (
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" size="sm" variant="outline" className="gap-1" onClick={() => setOfficeEdit({ editing: activeOfficeRec })}>
+                <Pencil className="h-3.5 w-3.5" />
+                {t.staffOfficeRename}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="gap-1 border-rose-200 text-rose-700 hover:bg-rose-50"
+                onClick={() => void removeOffice(activeOfficeRec)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {t.staffOfficeDelete}
+              </Button>
+            </div>
+          ) : null}
+          <p className="text-xs text-amber-900">{t.staffOfficesHint}</p>
+        </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm font-semibold text-slate-800">
@@ -726,10 +976,22 @@ export function SalaryStaffBill({
       {officeDialog ? (
         <OfficeDialog
           locale={locale}
-          initial={officeLabel}
-          locked={officeLocked}
+          initial={activeOfficeRec ? activeOfficeRec.name : officeLabel}
+          locked={!activeOfficeRec && officeLocked}
+          sign={sign}
           onCancel={() => setOfficeDialog(false)}
-          onConfirm={(office) => void confirmDownload(officeLocked ? officeLabel : office)}
+          onConfirm={(office, nextSign) =>
+            void confirmDownload(!activeOfficeRec && officeLocked ? officeLabel : office, nextSign)
+          }
+        />
+      ) : null}
+
+      {officeEdit ? (
+        <StaffOfficeDialog
+          locale={locale}
+          initial={officeEdit.editing}
+          onCancel={() => setOfficeEdit(null)}
+          onSave={saveOffice}
         />
       ) : null}
 
@@ -744,7 +1006,14 @@ export function SalaryStaffBill({
       ) : null}
 
       {capture ? (
-        <TrForm15Staff ref={formRef} staff={capture.entries} months={months} office={capture.office} preparedOn={preparedOn} />
+        <TrForm15Staff
+          ref={formRef}
+          staff={capture.entries}
+          months={months}
+          office={capture.office}
+          preparedOn={preparedOn}
+          signatory={capture.signatory}
+        />
       ) : null}
     </Card>
   );

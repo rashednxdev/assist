@@ -13,6 +13,8 @@ export interface ISalaryStaff extends Document {
   hra_area: HraArea;
   excess_rr: boolean;
   excess_puja: boolean;
+  /** Null = the user's own office. */
+  staff_office_id: Types.ObjectId | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -29,6 +31,7 @@ const schema = new Schema<ISalaryStaff>(
     hra_area: { type: String, enum: ['dhaka', 'major_city', 'other'], required: true },
     excess_rr: { type: Boolean, default: false },
     excess_puja: { type: Boolean, default: false },
+    staff_office_id: { type: Schema.Types.ObjectId, ref: 'SalaryStaffOffice', default: null },
     created_at: { type: Date, default: Date.now },
     updated_at: { type: Date, default: Date.now },
   },

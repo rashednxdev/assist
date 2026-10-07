@@ -317,6 +317,11 @@ export function SalaryBillAccessPanel({
               ? t.calcNoFree
               : t.calcCounted(num(access.calc.unprinted), num(access.calc.per_bill))}
         </p>
+        {access.free_tr_form === 'available' ? (
+          <p className="text-xs font-semibold text-emerald-700">{t.freeTrAvailable}</p>
+        ) : access.free_tr_form === 'used' ? (
+          <p className="text-xs text-slate-500">{t.freeTrUsed}</p>
+        ) : null}
       </div>
 
       {sent ? (

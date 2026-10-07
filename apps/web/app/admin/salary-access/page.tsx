@@ -9,6 +9,7 @@ import type {
   SalaryBulkSizeRecord,
   SalaryContactNumber,
   SalaryContactsRecord,
+  SalaryFreeTrFormSettingsRecord,
   SalaryOfficeSettingsRecord,
 } from '@ibas/shared-types';
 import { SALARY_CALCS_PER_BILL, SALARY_DEFAULT_BULK_SIZE, formatTaka } from '@ibas/shared-types';
@@ -183,6 +184,83 @@ function OfficeSettingsEditor() {
             </div>
             <Button type="button" variant={allowed ? 'outline' : 'default'} disabled={saving} onClick={() => void save(!allowed)}>
               {saving ? 'Saving…' : allowed ? 'Hide Others' : 'Show Others'}
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function FreeTrFormEditor() {
+  const [settings, setSettings] = useState<SalaryFreeTrFormSettingsRecord | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    apiFetch<{ data: SalaryFreeTrFormSettingsRecord }>('/salary/admin/free-tr-form')
+      .then((res) => setSettings(res.data))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'));
+  }, []);
+
+  async function save(next: boolean) {
+    setSaving(true);
+    setStatus('');
+    setError('');
+    try {
+      const res = await apiFetch<{ data: SalaryFreeTrFormSettingsRecord }>('/salary/admin/free-tr-form', {
+        method: 'PUT',
+        body: JSON.stringify({ enabled: next }),
+      });
+      setSettings(res.data);
+      setStatus(
+        res.data.enabled
+          ? 'Allowed. Each user who registers from now gets one free single T.R. Form download.'
+          : 'Disabled. New users get no free T.R. Form; users who already got one keep it.',
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Free single T.R. Form for new registrations</CardTitle>
+        <CardDescription>
+          While allowed, each user who registers gets one free T.R. Form 13 or 15 download for a single arrear bill,
+          without using Bill Print Access. Users who registered earlier are not affected. The office staff bill is not
+          included.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {status ? <Alert variant="success">{status}</Alert> : null}
+        {error ? <Alert variant="error">{error}</Alert> : null}
+        {settings === null ? (
+          error ? null : <p className="text-sm text-muted">Loading…</p>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="font-medium">New registrations:</span>
+              {settings.enabled ? (
+                <Badge variant="success">Allowed</Badge>
+              ) : (
+                <Badge variant="secondary">Disabled</Badge>
+              )}
+              {settings.enabled && settings.enabled_since ? (
+                <span className="text-xs text-muted">since {formatWhen(settings.enabled_since)}</span>
+              ) : null}
+            </div>
+            <Button
+              type="button"
+              variant={settings.enabled ? 'outline' : 'default'}
+              disabled={saving}
+              onClick={() => void save(!settings.enabled)}
+            >
+              {saving ? 'Saving…' : settings.enabled ? 'Disable' : 'Allow'}
             </Button>
           </div>
         )}
@@ -690,6 +768,8 @@ export default function SalaryAccessAdminPage() {
       <BulkSizeEditor bulkSize={bulkSize} onSaved={setBulkSize} />
 
       <OfficeSettingsEditor />
+
+      <FreeTrFormEditor />
 
       <SalaryUserOfficesAdmin />
 

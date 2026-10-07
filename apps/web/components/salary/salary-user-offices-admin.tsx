@@ -78,6 +78,8 @@ function OfficeRow({ row, onChanged }: { row: SalaryUserOfficeAdminRow; onChange
           <Badge variant={row.free_calcs > 0 ? 'success' : 'destructive'}>
             {row.free_calcs > 0 ? `${row.free_calcs} free calculation${row.free_calcs === 1 ? '' : 's'}` : 'No free calculations'}
           </Badge>
+          {row.free_tr_form === 'available' ? <Badge variant="success">Free T.R. Form available</Badge> : null}
+          {row.free_tr_form === 'used' ? <Badge variant="secondary">Free T.R. Form used</Badge> : null}
         </div>
       </div>
 

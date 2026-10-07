@@ -7,6 +7,7 @@ export interface ISalaryCalcUsage extends Document {
   /** Paid-phase calculations not yet downloaded; one bill is charged when it reaches SALARY_CALCS_PER_BILL. */
   unprinted: number;
   total: number;
+  free_tr_used: boolean;
   updated_at: Date;
 }
 
@@ -16,6 +17,7 @@ const schema = new Schema<ISalaryCalcUsage>(
     free_used: { type: Number, default: 0, min: 0 },
     unprinted: { type: Number, default: 0, min: 0 },
     total: { type: Number, default: 0, min: 0 },
+    free_tr_used: { type: Boolean, default: false },
     updated_at: { type: Date, default: Date.now },
   },
   { timestamps: false },

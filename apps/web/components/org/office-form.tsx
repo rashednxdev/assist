@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Loader2, X } from 'lucide-react';
 import type { OfficeOption, OfficeRecord, OfficeTypeRecord } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
@@ -47,13 +47,42 @@ function Field({ label, htmlFor, children, className, hint }: { label: string; h
   );
 }
 
-/** One form for every office: leave "Parent office" empty for a top-level office, or pick one to make a sub-office. */
+/** A blank new office that keeps the chosen parent and type; location starts from the parent's. */
+function blankForm(officeTypeId: string, parent: OfficeOption | null, parentRec: OfficeRecord | undefined): Form {
+  return {
+    name: '',
+    name_bn: '',
+    short_name: '',
+    office_code: '',
+    office_type_id: officeTypeId,
+    parent,
+    email: '',
+    mobile: '',
+    telephone: '',
+    pabx: '',
+    fax: '',
+    web_address: '',
+    address: '',
+    division_id: parentRec?.division_id ?? '',
+    district_id: parentRec?.district_id ?? '',
+    thana_id: '',
+    description: '',
+    serial_no: 0,
+    is_active: true,
+  };
+}
+
+/**
+ * One form for every office: leave "Parent office" empty for a top-level office, or pick one to make a sub-office.
+ * When adding, the form stays open after each save so several offices of the same type can go under one parent.
+ */
 export function OfficeForm({
   office,
   parent,
   offices,
   types,
   onSaved,
+  onCreated,
   onClose,
 }: {
   office: OfficeRecord | null;
@@ -61,35 +90,44 @@ export function OfficeForm({
   parent: OfficeRecord | null;
   offices: OfficeRecord[];
   types: OfficeTypeRecord[];
+  /** After an edit is saved; the form closes. */
   onSaved: () => void;
+  /** After a new office is created; the form stays open for the next one. */
+  onCreated: () => void;
   onClose: () => void;
 }) {
   const byId = useMemo(() => new Map(offices.map((o) => [o.id, o])), [offices]);
   const initialParent = office?.parent_id ? byId.get(office.parent_id) : parent;
-  const [form, setForm] = useState<Form>({
-    name: office?.name ?? '',
-    name_bn: office?.name_bn ?? '',
-    short_name: office?.short_name ?? '',
-    office_code: office?.office_code ?? '',
-    office_type_id: office?.office_type?.id ?? types.find((t) => t.is_active)?.id ?? '',
-    parent: initialParent ? toOption(initialParent) : null,
-    email: office?.email ?? '',
-    mobile: office?.mobile ?? '',
-    telephone: office?.telephone ?? '',
-    pabx: office?.pabx ?? '',
-    fax: office?.fax ?? '',
-    web_address: office?.web_address ?? '',
-    address: office?.address ?? '',
-    ...(office
-      ? { division_id: office.division_id ?? '', district_id: office.district_id ?? '', thana_id: office.thana_id ?? '' }
-      : { division_id: initialParent?.division_id ?? '', district_id: initialParent?.district_id ?? '', thana_id: '' }),
-    description: office?.description ?? '',
-    serial_no: office?.serial_no ?? 0,
-    is_active: office?.is_active ?? true,
-  });
+  const [form, setForm] = useState<Form>(() =>
+    office
+      ? {
+          name: office.name,
+          name_bn: office.name_bn ?? '',
+          short_name: office.short_name ?? '',
+          office_code: office.office_code ?? '',
+          office_type_id: office.office_type?.id ?? types.find((t) => t.is_active)?.id ?? '',
+          parent: initialParent ? toOption(initialParent) : null,
+          email: office.email ?? '',
+          mobile: office.mobile ?? '',
+          telephone: office.telephone ?? '',
+          pabx: office.pabx ?? '',
+          fax: office.fax ?? '',
+          web_address: office.web_address ?? '',
+          address: office.address ?? '',
+          division_id: office.division_id ?? '',
+          district_id: office.district_id ?? '',
+          thana_id: office.thana_id ?? '',
+          description: office.description ?? '',
+          serial_no: office.serial_no ?? 0,
+          is_active: office.is_active,
+        }
+      : blankForm(types.find((t) => t.is_active)?.id ?? '', initialParent ? toOption(initialParent) : null, initialParent ?? undefined),
+  );
   const geo = useGeoTree();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [added, setAdded] = useState<string[]>([]);
+  const nameRef = useRef<HTMLInputElement>(null);
 
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -111,7 +149,14 @@ export function OfficeForm({
           thana_id: rest.thana_id || null,
         }),
       });
-      onSaved();
+      if (office) {
+        onSaved();
+        return;
+      }
+      setAdded((list) => [...list, form.name.trim()]);
+      setForm(blankForm(form.office_type_id, p, p ? byId.get(p.id) : undefined));
+      onCreated();
+      nameRef.current?.focus();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save');
     } finally {
@@ -126,7 +171,10 @@ export function OfficeForm({
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">{office ? 'Edit office' : form.parent ? 'Add sub-office' : 'Add office'}</h2>
-            <p className="text-sm text-muted">Leave “Parent office” empty for a top-level office.</p>
+            <p className="text-sm text-muted">
+              Leave “Parent office” empty for a top-level office.
+              {office ? '' : ' After each save the form stays open with the same parent office and type.'}
+            </p>
           </div>
           <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-muted hover:bg-slate-100" aria-label="Close">
             <X className="h-5 w-5" />
@@ -137,7 +185,7 @@ export function OfficeForm({
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Office</h3>
           <div className="grid gap-3 sm:grid-cols-6">
             <Field label="Office name" htmlFor="of-name" className="sm:col-span-4">
-              <Input id="of-name" autoFocus value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="e.g. District Accounts Office, Gazipur" />
+              <Input id="of-name" ref={nameRef} autoFocus value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="e.g. District Accounts Office, Gazipur" />
             </Field>
             <Field label="Short name" htmlFor="of-short" className="sm:col-span-2">
               <Input id="of-short" value={form.short_name} onChange={(e) => set('short_name', e.target.value)} placeholder="e.g. DAO Gazipur" />
@@ -221,15 +269,20 @@ export function OfficeForm({
           </label>
         </section>
 
+        {added.length > 0 && (
+          <Alert variant="success">
+            Added {added.length} office{added.length === 1 ? '' : 's'}: {added.join(', ')}. Enter the next office, or press Close when done.
+          </Alert>
+        )}
         {error && <Alert variant="error">{error}</Alert>}
 
         <div className="flex justify-end gap-2 border-t border-border pt-4">
           <Button type="button" variant="ghost" onClick={onClose}>
-            Cancel
+            {added.length > 0 ? 'Close' : 'Cancel'}
           </Button>
           <Button type="submit" disabled={busy}>
             {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-            {office ? 'Save changes' : 'Create office'}
+            {office ? 'Save changes' : added.length > 0 ? 'Create next office' : 'Create office'}
           </Button>
         </div>
       </form>

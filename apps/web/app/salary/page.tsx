@@ -27,9 +27,11 @@ import {
   calculateEmployeeGross,
   calculateSalaryArrears,
   defaultArrearMonths,
+  effectiveSubstantiveGrade,
   formatTaka,
   PAY_GRADES,
   isFixedPayGrade,
+  substantiveGradeOptions,
   type EducationChildren,
   type EmployeeGrossResult,
   type HousingStatus,
@@ -940,6 +942,7 @@ export default function SalaryOn2026Page() {
                       const g = e.target.value === '' ? null : (Number(e.target.value) as PayGrade);
                       setGrade(g);
                       setOldPay((prev) => (g && NPS_2015[g].includes(prev) ? prev : 0));
+                      setSubstantiveGrade(g);
                       resetResults();
                     }}
                   >
@@ -1040,7 +1043,7 @@ export default function SalaryOn2026Page() {
                 </div>
               ) : null}
 
-              {grade != null && grade >= 7 && grade <= 10 ? (
+              {grade != null ? (
                 <div className="space-y-1.5">
                   <Label htmlFor="substantiveGrade" className="text-sm font-medium">
                     {t.substantive}
@@ -1048,17 +1051,15 @@ export default function SalaryOn2026Page() {
                   <select
                     id="substantiveGrade"
                     className="flex h-10 w-full rounded-md border border-teal-300 bg-white px-3 text-sm font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-200"
-                    value={substantiveGrade ?? ''}
+                    value={effectiveSubstantiveGrade(grade, substantiveGrade)}
                     onChange={(e) => {
-                      const v = e.target.value;
-                      setSubstantiveGrade(v === '' ? null : (Number(v) as SubstantiveGrade));
+                      setSubstantiveGrade(Number(e.target.value) as SubstantiveGrade);
                       resetResults();
                     }}
                   >
-                    <option value="">{t.substantiveNA}</option>
-                    {([11, 12, 13, 14, 15] as const).map((g) => (
+                    {substantiveGradeOptions(grade).map((g) => (
                       <option key={g} value={g}>
-                        {t.grade} {num(g)}
+                        {g === grade ? t.substantiveSame(num(g)) : `${t.grade} ${num(g)}`}
                       </option>
                     ))}
                   </select>

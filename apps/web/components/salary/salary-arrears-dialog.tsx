@@ -5,8 +5,10 @@ import { ReceiptText, X } from 'lucide-react';
 import {
   NPS_2015,
   PAY_GRADES,
+  effectiveSubstantiveGrade,
   formatTaka,
   salaryTrFormNo,
+  substantiveGradeOptions,
   type HousingStatus,
   type HraArea,
   type PayGrade,
@@ -23,12 +25,6 @@ export interface ArrearsInputs {
   housingStatus: HousingStatus;
   hraArea: HraArea;
   substantiveGrade: SubstantiveGrade | null;
-}
-
-const SUBSTANTIVE_OPTIONS = [11, 12, 13, 14, 15] as const;
-
-function hasSubstantiveChoice(grade: PayGrade | null): boolean {
-  return grade != null && grade >= 7 && grade <= 10;
 }
 
 const selectClass =
@@ -56,7 +52,7 @@ export function SalaryArrearsDialog({
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const stepNo = v.grade && v.oldPay > 0 ? NPS_2015[v.grade].indexOf(v.oldPay) + 1 : 0;
-  const effectiveSubstantive = v.grade ? (hasSubstantiveChoice(v.grade) && v.substantiveGrade ? v.substantiveGrade : v.grade) : null;
+  const effectiveSubstantive = v.grade ? effectiveSubstantiveGrade(v.grade, v.substantiveGrade) : null;
   const formNo = effectiveSubstantive ? salaryTrFormNo(effectiveSubstantive) : null;
 
   async function submit(e: React.FormEvent) {
@@ -65,7 +61,7 @@ export function SalaryArrearsDialog({
     if (stepNo <= 0) return setError(t.basicRequired);
     setSubmitting(true);
     setError('');
-    const message = await onConfirm({ ...v, substantiveGrade: hasSubstantiveChoice(v.grade) ? v.substantiveGrade : null });
+    const message = await onConfirm({ ...v, substantiveGrade: effectiveSubstantive });
     setSubmitting(false);
     if (message) setError(message);
   }
@@ -104,7 +100,7 @@ export function SalaryArrearsDialog({
                     ...prev,
                     grade: g,
                     oldPay: g && NPS_2015[g].includes(prev.oldPay) ? prev.oldPay : 0,
-                    substantiveGrade: hasSubstantiveChoice(g) ? prev.substantiveGrade : null,
+                    substantiveGrade: g,
                   }));
                 }}
               >
@@ -184,23 +180,19 @@ export function SalaryArrearsDialog({
 
           <div className="space-y-1.5">
             <Label htmlFor="arr-substantive">{t.substantive}</Label>
-            {hasSubstantiveChoice(v.grade) ? (
+            {v.grade ? (
               <>
                 <select
                   id="arr-substantive"
                   className={selectClass}
-                  value={v.substantiveGrade ?? ''}
+                  value={effectiveSubstantiveGrade(v.grade, v.substantiveGrade)}
                   onChange={(e) =>
-                    setV((prev) => ({
-                      ...prev,
-                      substantiveGrade: e.target.value === '' ? null : (Number(e.target.value) as SubstantiveGrade),
-                    }))
+                    setV((prev) => ({ ...prev, substantiveGrade: Number(e.target.value) as SubstantiveGrade }))
                   }
                 >
-                  <option value="">{t.substantiveNA}</option>
-                  {SUBSTANTIVE_OPTIONS.map((g) => (
+                  {substantiveGradeOptions(v.grade).map((g) => (
                     <option key={g} value={g}>
-                      {t.grade} {num(g)}
+                      {g === v.grade ? t.substantiveSame(num(g)) : `${t.grade} ${num(g)}`}
                     </option>
                   ))}
                 </select>
@@ -208,7 +200,7 @@ export function SalaryArrearsDialog({
               </>
             ) : (
               <p id="arr-substantive" className="rounded-md border border-border bg-slate-50 px-3 py-2 text-sm font-medium">
-                {v.grade ? t.substantiveSame(num(v.grade)) : t.gradeFirst}
+                {t.gradeFirst}
               </p>
             )}
           </div>

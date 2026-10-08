@@ -275,6 +275,7 @@ export function OfficesAdmin() {
             setEditing(null);
             load();
           }}
+          onCreated={load}
         />
       )}
     </div>

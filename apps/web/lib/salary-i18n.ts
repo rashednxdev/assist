@@ -55,9 +55,8 @@ const salaryEn = {
   regular: 'Regular (default)',
   currentCharge: 'Current charge — extra ৳ 1,500 / month',
   substantive: 'Substantive grade (for tiffin, conveyance & arrears)',
-  substantiveNA: 'Not applicable / not Grade 11–15',
   substantiveHint:
-    'Grades 7–10: if substantive grade is 11–15, tiffin ৳ 200 and conveyance ৳ 300 apply, and the arrears special allowance is taken at 15%.',
+    'Set to your grade by default; choose the same or a lower grade if your substantive post is lower (e.g. Grade 9 → 9, 10, 11 … 20). Special allowance on arrears: 15% for substantive Grade 10–20, 10% for 1–9. Substantive Grade 11–20 also gets tiffin ৳ 200 and conveyance ৳ 300.',
   housing: 'Housing',
   hraEligible: 'Eligible for House Rent Allowance (select posting area)',
   govtAccommodation: 'Government-provided accommodation (HRA not payable; house-rent deduction may apply)',
@@ -72,7 +71,7 @@ const salaryEn = {
   gpfHint: (amount: string | null) =>
     `Applied on each of the 3 stages only (Basic + Total Allowance − GPF → Net payable)${amount ? ` (GPF ${amount})` : ''}.`,
   grossNote:
-    'Medical ৳ 1,500 is included for all. Tiffin ৳ 200 and Conveyance ৳ 300 apply for Grades 11–15 (or substantive Grade 11–15 when pay grade is 7–10). Grades 2–10 may add Current charge ৳ 1,500. Festival (2× basic / year), Pahela Baishakh (20%), and Rest & Recreation (1× basic every 3 years) are shown separately after calculation.',
+    'Medical ৳ 1,500 is included for all. Tiffin ৳ 200 and Conveyance ৳ 300 apply for substantive Grade 11–20. Grades 2–10 may add Current charge ৳ 1,500. Festival (2× basic / year), Pahela Baishakh (20%), and Rest & Recreation (1× basic every 3 years) are shown separately after calculation.',
   calculate: 'Calculate Salary on 2026',
   calcError: 'Could not calculate',
   pdf: 'Give me a PDF',
@@ -413,9 +412,8 @@ const salaryBn: SalaryCopy = {
   regular: 'নিয়মিত (ডিফল্ট)',
   currentCharge: 'চলতি দায়িত্ব — অতিরিক্ত ৳ ১,৫০০ / মাস',
   substantive: 'মূল গ্রেড (টিফিন, যাতায়াত ভাতা ও বকেয়ার জন্য)',
-  substantiveNA: 'প্রযোজ্য নয় / গ্রেড ১১–১৫ নয়',
   substantiveHint:
-    'গ্রেড ৭–১০: মূল গ্রেড ১১–১৫ হলে টিফিন ৳ ২০০ ও যাতায়াত ৳ ৩০০ প্রযোজ্য, এবং বকেয়ার বিশেষ ভাতা ১৫% হারে ধরা হয়।',
+    'ডিফল্টভাবে আপনার গ্রেডই মূল গ্রেড; মূল পদ নিচের হলে একই বা নিচের গ্রেড নির্বাচন করুন (যেমন: গ্রেড ৯ → ৯, ১০, ১১ … ২০)। বকেয়ার বিশেষ ভাতা: মূল গ্রেড ১০–২০ হলে ১৫%, ১–৯ হলে ১০%। মূল গ্রেড ১১–২০ হলে টিফিন ৳ ২০০ ও যাতায়াত ৳ ৩০০-ও প্রযোজ্য।',
   housing: 'আবাসন',
   hraEligible: 'বাড়ি ভাড়া ভাতা প্রাপ্য (কর্মস্থলের এলাকা নির্বাচন করুন)',
   govtAccommodation: 'সরকারি বাসা বরাদ্দপ্রাপ্ত (বাড়ি ভাড়া ভাতা প্রদেয় নয়; বাড়ি ভাড়া কর্তন প্রযোজ্য হতে পারে)',
@@ -430,7 +428,7 @@ const salaryBn: SalaryCopy = {
   gpfHint: (amount) =>
     `শুধু ৩টি পর্যায়ের প্রতিটিতে প্রযোজ্য (মূল বেতন + মোট ভাতা − জিপিএফ → নিট প্রদেয়)${amount ? ` (জিপিএফ ${amount})` : ''}।`,
   grossNote:
-    'চিকিৎসা ভাতা ৳ ১,৫০০ সবার জন্য অন্তর্ভুক্ত। টিফিন ৳ ২০০ ও যাতায়াত ৳ ৩০০ গ্রেড ১১–১৫-এর জন্য প্রযোজ্য (অথবা বেতন গ্রেড ৭–১০ হলে মূল গ্রেড ১১–১৫)। গ্রেড ২–১০-এ চলতি দায়িত্ব ভাতা ৳ ১,৫০০ যোগ হতে পারে। উৎসব ভাতা (বছরে ২× মূল বেতন), পহেলা বৈশাখ (২০%) এবং শ্রান্তি ও বিনোদন ভাতা (প্রতি ৩ বছরে ১× মূল বেতন) হিসাবের পর আলাদাভাবে দেখানো হয়।',
+    'চিকিৎসা ভাতা ৳ ১,৫০০ সবার জন্য অন্তর্ভুক্ত। টিফিন ৳ ২০০ ও যাতায়াত ৳ ৩০০ মূল গ্রেড ১১–২০-এর জন্য প্রযোজ্য। গ্রেড ২–১০-এ চলতি দায়িত্ব ভাতা ৳ ১,৫০০ যোগ হতে পারে। উৎসব ভাতা (বছরে ২× মূল বেতন), পহেলা বৈশাখ (২০%) এবং শ্রান্তি ও বিনোদন ভাতা (প্রতি ৩ বছরে ১× মূল বেতন) হিসাবের পর আলাদাভাবে দেখানো হয়।',
   calculate: salaryEn.calculate,
   calcError: 'হিসাব করা যায়নি',
   pdf: salaryEn.pdf,
@@ -831,8 +829,8 @@ export function allowanceText(locale: SalaryLocale, row: AllowanceLine, gross: E
   const eligibleGrade = row.note?.match(/Grade (\d+)/)?.[1];
   const gradeNote =
     row.amount > 0 && eligibleGrade
-      ? `প্রাপ্য — মূল/বেতন গ্রেড ${bn(eligibleGrade)} (১১–১৫)`
-      : 'প্রযোজ্য নয় (গ্রেড ১১–১৫ প্রয়োজন)';
+      ? `প্রাপ্য — মূল গ্রেড ${bn(eligibleGrade)} (১১–২০)`
+      : 'প্রযোজ্য নয় (মূল গ্রেড ১১–২০ প্রয়োজন)';
 
   switch (row.code) {
     case 'hra':

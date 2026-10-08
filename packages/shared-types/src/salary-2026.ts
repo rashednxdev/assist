@@ -541,8 +541,18 @@ export type EducationChildren = 0 | 1 | 2;
 /** Grades 2–10: regular post vs additional current charge. */
 export type ChargeType = 'regular' | 'current_charge';
 
-/** Substantive grade for tiffin/conveyance when pay grade is 1–10. */
-export type SubstantiveGrade = 11 | 12 | 13 | 14 | 15;
+/** Substantive grade: the pay grade itself or a lower grade (higher number, up to 20). */
+export type SubstantiveGrade = PayGrade;
+
+/** Substantive grades allowed for a pay grade: the same grade or any lower one (e.g. Grade 9 → 9–20). */
+export function substantiveGradeOptions(grade: PayGrade): PayGrade[] {
+  return PAY_GRADES.filter((g) => g >= grade);
+}
+
+/** The chosen substantive grade when it is the same or lower than the pay grade; otherwise the pay grade. */
+export function effectiveSubstantiveGrade(grade: PayGrade, substantive: number | null | undefined): PayGrade {
+  return substantive != null && isPayGrade(substantive) && substantive >= grade ? substantive : grade;
+}
 
 export interface EmployeeGrossInput {
   grade: PayGrade;
@@ -558,10 +568,7 @@ export interface EmployeeGrossInput {
    * Current charge adds ৳ 1,500 / month.
    */
   charge_type?: ChargeType;
-  /**
-   * When pay grade is 7–10: substantive grade 11–15 unlocks
-   * tiffin + conveyance. Ignored when pay grade is already 11–15.
-   */
+  /** Same as the pay grade by default; substantive grade 11–20 gets tiffin + conveyance. */
   substantive_grade?: SubstantiveGrade | null;
 }
 
@@ -729,8 +736,8 @@ export function calculateAllowancesExcludingBasic(input: EmployeeGrossInput): {
     label: 'Tiffin Allowance',
     amount: tiffinEligible ? 200 : 0,
     note: tiffinEligible
-      ? `Eligible — substantive/pay Grade ${tiffinGrade} (11–15)`
-      : 'Not applicable (requires Grade 11–15)',
+      ? `Eligible — substantive Grade ${tiffinGrade} (11–20)`
+      : 'Not applicable (requires substantive Grade 11–20)',
   });
 
   const washing = input.washing_allowance ? 100 : 0;
@@ -748,8 +755,8 @@ export function calculateAllowancesExcludingBasic(input: EmployeeGrossInput): {
     label: 'Conveyance Allowance',
     amount: tiffinEligible ? 300 : 0,
     note: tiffinEligible
-      ? `Eligible — substantive/pay Grade ${tiffinGrade} (11–15)`
-      : 'Not applicable (requires Grade 11–15)',
+      ? `Eligible — substantive Grade ${tiffinGrade} (11–20)`
+      : 'Not applicable (requires substantive Grade 11–20)',
   });
 
   return {
@@ -758,17 +765,12 @@ export function calculateAllowancesExcludingBasic(input: EmployeeGrossInput): {
   };
 }
 
-/** Pay grade 11–15, or substantive 11–15 when pay grade is 7–10. */
+/** Substantive grade 11–20 (the pay grade unless a lower substantive grade is chosen). */
 export function resolveTiffinConveyanceGrade(
   input: Pick<EmployeeGrossInput, 'grade' | 'substantive_grade'>,
-): SubstantiveGrade | null {
-  const grade = input.grade;
-  if (grade >= 11 && grade <= 15) return grade as SubstantiveGrade;
-  if (grade >= 7 && grade <= 10) {
-    const s = input.substantive_grade;
-    if (s === 11 || s === 12 || s === 13 || s === 14 || s === 15) return s;
-  }
-  return null;
+): PayGrade | null {
+  const substantive = effectiveSubstantiveGrade(input.grade, input.substantive_grade);
+  return substantive >= 11 ? substantive : null;
 }
 
 /** First month with arrears — the 2026 basic takes effect on 01-07-2026. */
@@ -840,7 +842,7 @@ export interface SalaryArrearInput {
   grade: PayGrade;
   /** Basic on 30 June 2026 (NPS 2015 stage). */
   old_pay: number;
-  /** Grades 7–10 only: substantive grade 11–15 when it differs from the pay grade. */
+  /** Same as the pay grade or lower; sets the special allowance rate (15% for 10–20) and the T.R. Form. */
   substantive_grade?: SubstantiveGrade | null;
   housing_status: HousingStatus;
   hra_area: HraArea;
@@ -932,8 +934,7 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
   const nextIsLast = oldIndex >= oldScale.length - 1;
   const nextStep = nextIsLast ? oldPay : oldScale[oldIndex + 1]!;
 
-  const substantive: PayGrade =
-    resolveTiffinConveyanceGrade({ grade, substantive_grade: input.substantive_grade }) ?? grade;
+  const substantive = effectiveSubstantiveGrade(grade, input.substantive_grade);
   const specialRateFixed = input.special_rate != null;
   const specialRate = input.special_rate ?? specialAllowanceRate(substantive);
   const specialAllowance = Math.round(nextStep * specialRate);

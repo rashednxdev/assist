@@ -233,11 +233,26 @@ function stageOrNextHigher(scale: readonly number[], target: number): { amount: 
   return { amount: scale[last]!, index: last };
 }
 
+/** Joined on or after this date (YYYY-MM-DD): no 01-07-2026 increment for the initial basic of Grade 7–20. */
+export const SALARY_INCREMENT_CUTOFF_DATE = '2026-01-02';
+
+/** Grades 7–20 on the initial NPS 2015 basic (step 1): the joining date of service is asked. */
+export function asksJoiningDate(grade: number, oldPay: number): boolean {
+  return isPayGrade(grade) && grade >= 7 && NPS_2015[grade][0] === Math.round(Number(oldPay));
+}
+
+/** True when the 01-07-2026 increment is withheld: initial basic of Grade 7–20, joined on or after 02-01-2026. */
+export function isIncrementWithheld(grade: number, oldPay: number, joiningDate?: string | null): boolean {
+  return asksJoiningDate(grade, oldPay) && isIsoDate(joiningDate) && joiningDate >= SALARY_INCREMENT_CUTOFF_DATE;
+}
+
 export interface Salary2026Input {
   grade: PayGrade;
   /** Current basic on NPS 2015 for this grade (must match a published stage). */
   old_pay: number;
   phase?: SalaryPhase;
+  /** Joining date of service (YYYY-MM-DD); only read for the initial basic of Grade 7–20. */
+  joining_date?: string | null;
 }
 
 export interface Salary2026StepRow {
@@ -264,6 +279,8 @@ export interface Salary2026Result {
   matched_new_stage: number | null;
   increment: number;
   increment_skipped: boolean;
+  /** No 01-07-2026 increment because of the joining date (initial basic, Grade 7–20). */
+  increment_withheld: boolean;
   /** Stage-3 only: next stage after matched Step 4 was used for 01-07-2026 basic. */
   used_next_stage_for_step5: boolean;
   /** Stage-3 only: basic as on 01-07-2026 = next stage after matched Step 4. */
@@ -285,6 +302,7 @@ function buildPercentageScaleResult(opts: {
   step4: number;
   matchedIndex: number;
   rate: number;
+  withheld: boolean;
 }): Salary2026Result {
   const {
     grade,
@@ -298,10 +316,12 @@ function buildPercentageScaleResult(opts: {
     step4,
     matchedIndex,
     rate,
+    withheld,
   } = opts;
   const ratePercent = Math.round(rate * 100);
   const isLast = matchedIndex >= newScale.length - 1;
-  const nextStageAmount = isLast ? step4 : newScale[matchedIndex + 1]!;
+  const noIncrement = isLast || withheld;
+  const nextStageAmount = noIncrement ? step4 : newScale[matchedIndex + 1]!;
   /** Step 5 = (Step 4 − old pay) × rate. */
   const step5 = (step4 - oldPay) * rate;
   /** Step 6 = next stage amount − Step 4 (fact increment; 0 if last stage). */
@@ -325,7 +345,8 @@ function buildPercentageScaleResult(opts: {
     new_pay: Math.round(newPay),
     matched_new_stage: step4,
     increment: step6,
-    increment_skipped: isLast,
+    increment_skipped: noIncrement,
+    increment_withheld: withheld,
     used_next_stage_for_step5: !isLast,
     steps: [
       {
@@ -362,13 +383,13 @@ function buildPercentageScaleResult(opts: {
       {
         step: 6,
         label: `Next stage − Step 4 (Fact Increment ${effective})`,
-        calculation: isLast
-          ? `${formatTaka(step4)} − ${formatTaka(step4)}`
-          : `${formatTaka(nextStageAmount)} − ${formatTaka(step4)}`,
+        calculation: `${formatTaka(nextStageAmount)} − ${formatTaka(step4)}`,
         value: step6,
-        note: isLast
-          ? 'Last stage — no next stage (Step 6 = 0)'
-          : `Next stage ${formatTaka(nextStageAmount)} − Step 4`,
+        note: withheld
+          ? 'Joined on or after 02-01-2026 — no increment (Step 6 = 0)'
+          : isLast
+            ? 'Last stage — no next stage (Step 6 = 0)'
+            : `Next stage ${formatTaka(nextStageAmount)} − Step 4`,
       },
       {
         step: 7,
@@ -419,6 +440,7 @@ export function calculateSalary2026(input: Salary2026Input): Salary2026Result {
         matched_new_stage: newFixed,
         increment: 0,
         increment_skipped: true,
+        increment_withheld: false,
         used_next_stage_for_step5: false,
         basic_on_2026_07: newFixed,
         basic_on_2027_07: newFixed,
@@ -442,6 +464,7 @@ export function calculateSalary2026(input: Salary2026Input): Salary2026Result {
       matched_new_stage: newFixed,
       increment: 0,
       increment_skipped: true,
+      increment_withheld: false,
       used_next_stage_for_step5: false,
       steps: [
         {
@@ -466,8 +489,10 @@ export function calculateSalary2026(input: Salary2026Input): Salary2026Result {
   const matched = stageOrNextHigher(newScale, step3);
   const step4 = matched.amount;
   const isLast = matched.index >= newScale.length - 1;
-  const nextAfterMatched = isLast ? step4 : newScale[matched.index + 1]!;
-  const nextAfterMatchedIndex = isLast ? matched.index : matched.index + 1;
+  const withheld = isIncrementWithheld(grade, oldPay, input.joining_date);
+  const noIncrement = isLast || withheld;
+  const nextAfterMatched = noIncrement ? step4 : newScale[matched.index + 1]!;
+  const nextAfterMatchedIndex = noIncrement ? matched.index : matched.index + 1;
   const nextIsLast = nextAfterMatchedIndex >= newScale.length - 1;
   const nextAfter2026Basic = nextIsLast
     ? nextAfterMatched
@@ -490,6 +515,7 @@ export function calculateSalary2026(input: Salary2026Input): Salary2026Result {
       matched_new_stage: step4,
       increment: nextIsLast ? 0 : nextAfter2026Basic - nextAfterMatched,
       increment_skipped: nextIsLast,
+      increment_withheld: withheld,
       used_next_stage_for_step5: !isLast,
       basic_on_2026_07: nextAfterMatched,
       basic_on_2027_07: nextAfter2026Basic,
@@ -509,6 +535,7 @@ export function calculateSalary2026(input: Salary2026Input): Salary2026Result {
     step4,
     matchedIndex: matched.index,
     rate,
+    withheld,
   });
 }
 
@@ -799,6 +826,32 @@ function monthKeyOf(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
+function daysInMonth(key: string): number {
+  const [y, m] = key.split('-').map(Number);
+  return new Date(Date.UTC(y!, m!, 0)).getUTCDate();
+}
+
+const ISO_DATE_RE = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+
+export function isIsoDate(value: string | null | undefined): value is string {
+  const m = value ? ISO_DATE_RE.exec(value) : null;
+  return !!m && Number(m[3]) <= daysInMonth(`${m[1]}-${m[2]}`);
+}
+
+/**
+ * Arrears start from the joining date when the 01-07-2026 increment is withheld and the
+ * employee joined after 01-07-2026; null when arrears run from July 2026 as usual.
+ */
+export function arrearJoinStart(
+  grade: number,
+  oldPay: number,
+  joiningDate: string | null | undefined,
+): { date: string; month: string; day: number } | null {
+  if (!isIncrementWithheld(grade, oldPay, joiningDate) || !isIsoDate(joiningDate)) return null;
+  if (joiningDate <= `${ARREAR_START_MONTH}-01`) return null;
+  return { date: joiningDate, month: joiningDate.slice(0, 7), day: Number(joiningDate.slice(8, 10)) };
+}
+
 /** Month keys (YYYY-MM) from July 2026 up to and including the month of `today`. */
 export function arrearMonthOptions(today: Date = new Date()): string[] {
   const end = monthKeyOf(today);
@@ -854,6 +907,11 @@ export interface SalaryArrearInput {
   excess_rr?: boolean;
   /** Excess Puja bonus drawn: two NPS 2015 increments are deducted once. */
   excess_puja?: boolean;
+  /**
+   * Joining date of service (YYYY-MM-DD); only read for the initial basic of Grade 7–20.
+   * On or after 02-01-2026 there is no 01-07-2026 increment; after 01-07-2026 arrears start from it.
+   */
+  joining_date?: string | null;
 }
 
 export interface SalaryArrearMonthRow {
@@ -872,6 +930,11 @@ export interface SalaryArrearMonthRow {
   hra_protection: number;
   /** basic_difference − special_allowance − excess_hra + hra_protection. */
   net_arrear: number;
+  /** Days paid in the month: fewer than `month_days` only in the joining month. */
+  days: number;
+  month_days: number;
+  /** Net arrear for the whole month; `net_arrear` = this ÷ month_days × days. */
+  full_net_arrear: number;
 }
 
 export interface SalaryArrearResult {
@@ -881,6 +944,10 @@ export interface SalaryArrearResult {
   /** NPS 2015 stage after the 30 June 2026 basic (the basic itself when it is the last stage). */
   next_step: number;
   next_step_is_last: boolean;
+  /** No 01-07-2026 increment because of the joining date; the 30-06-2026 basic is drawn. */
+  increment_withheld: boolean;
+  /** Joining date after 01-07-2026 that the arrears start from, or null. */
+  arrear_from_date: string | null;
   special_rate_percent: number;
   /** True when the rate was fixed by `special_rate` (office staff bill) rather than the substantive grade. */
   special_rate_fixed: boolean;
@@ -927,12 +994,22 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
     throw new Error(`Basic ${oldPay} is not a stage on Grade ${grade} of NPS 2015`);
   }
 
-  const months = [...new Set(input.months)].filter(isArrearMonthKey).sort();
-  if (months.length === 0) throw new Error('Select at least one month from July 2026');
+  const join = arrearJoinStart(grade, oldPay, input.joining_date);
+  const months = [...new Set(input.months)]
+    .filter((k) => isArrearMonthKey(k) && (!join || k >= join.month))
+    .sort();
+  if (months.length === 0) {
+    throw new Error(
+      join
+        ? `Select at least one month from ${arrearMonthLabel(join.month)} (month of joining)`
+        : 'Select at least one month from July 2026',
+    );
+  }
 
   const oldIndex = oldScale.indexOf(oldPay);
   const nextIsLast = oldIndex >= oldScale.length - 1;
-  const nextStep = nextIsLast ? oldPay : oldScale[oldIndex + 1]!;
+  const withheld = isIncrementWithheld(grade, oldPay, input.joining_date);
+  const nextStep = nextIsLast || withheld ? oldPay : oldScale[oldIndex + 1]!;
 
   const substantive = effectiveSubstantiveGrade(grade, input.substantive_grade);
   const specialRateFixed = input.special_rate != null;
@@ -953,22 +1030,53 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
     const phase = arrearPhaseForMonth(month);
     let newBasic = basicByPhase.get(phase);
     if (newBasic == null) {
-      newBasic = calculateSalary2026({ grade, old_pay: oldPay, phase }).new_pay;
+      newBasic = calculateSalary2026({
+        grade,
+        old_pay: oldPay,
+        phase,
+        joining_date: input.joining_date,
+      }).new_pay;
       basicByPhase.set(phase, newBasic);
     }
     const basicDifference = newBasic - nextStep;
-    return {
+    const fullNet = toPaisa(basicDifference - monthlyDeduction + hraProtection);
+    const monthDays = daysInMonth(month);
+    const days = join && month === join.month ? monthDays - join.day + 1 : monthDays;
+    const row = {
       month,
       label: arrearMonthLabel(month),
       phase,
       phase_title: salaryPhaseTitle(phase),
       new_basic: newBasic,
       drawn_basic: nextStep,
-      basic_difference: basicDifference,
-      special_allowance: specialAllowance,
-      excess_hra: excessHra,
-      hra_protection: hraProtection,
-      net_arrear: toPaisa(basicDifference - monthlyDeduction + hraProtection),
+      days,
+      month_days: monthDays,
+      full_net_arrear: fullNet,
+    };
+    if (days === monthDays) {
+      return {
+        ...row,
+        basic_difference: basicDifference,
+        special_allowance: specialAllowance,
+        excess_hra: excessHra,
+        hra_protection: hraProtection,
+        net_arrear: fullNet,
+      };
+    }
+    // Joining month: the month's net arrear ÷ days in the month × days served; the basic
+    // difference absorbs rounding so the columns still add up to the net.
+    const part = (amount: number) => toPaisa((amount * days) / monthDays);
+    const net = part(fullNet);
+    const special = part(specialAllowance);
+    const excess = part(excessHra);
+    const protection = part(hraProtection);
+    return {
+      ...row,
+      basic_difference: toPaisa(net + special + excess - protection),
+      special_allowance: special,
+      excess_hra: excess,
+      hra_protection: protection,
+      net_arrear: net,
     };
   });
 
@@ -984,6 +1092,8 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
     old_pay: oldPay,
     next_step: nextStep,
     next_step_is_last: nextIsLast,
+    increment_withheld: withheld,
+    arrear_from_date: join?.date ?? null,
     special_rate_percent: Math.round(specialRate * 100),
     special_rate_fixed: specialRateFixed,
     special_allowance: specialAllowance,
@@ -1017,6 +1127,7 @@ export function calculateStaffArrears(
     hra_area: HraArea;
     excess_rr?: boolean;
     excess_puja?: boolean;
+    joining_date?: string | null;
   },
   months: string[],
 ): SalaryArrearResult {
@@ -1029,6 +1140,7 @@ export function calculateStaffArrears(
     special_rate: STAFF_SPECIAL_RATE,
     excess_rr: staff.excess_rr,
     excess_puja: staff.excess_puja,
+    joining_date: staff.joining_date,
   });
 }
 

@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 import { Download, Loader2 } from 'lucide-react';
 import {
+  arrearJoinStart,
   arrearMonthOptions,
   calculateSalaryArrears,
   defaultArrearMonths,
@@ -39,6 +40,11 @@ export interface Fmt {
   signed: (n: number) => string;
 }
 
+/** YYYY-MM-DD → DD-MM-YYYY. */
+export function isoToDmy(iso: string): string {
+  return iso.split('-').reverse().join('-');
+}
+
 function BasisRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-start justify-between gap-3 border-t border-border px-3 py-1.5 first:border-t-0">
@@ -59,8 +65,15 @@ function sameMath(a: SalaryArrearMonthRow, b: SalaryArrearMonthRow): boolean {
     a.drawn_basic === b.drawn_basic &&
     a.special_allowance === b.special_allowance &&
     a.excess_hra === b.excess_hra &&
-    a.hra_protection === b.hra_protection
+    a.hra_protection === b.hra_protection &&
+    a.days === a.month_days &&
+    b.days === b.month_days
   );
+}
+
+/** "(26 of 30 days)" for the joining month, '' for a full month. */
+export function daysNote(t: SalaryCopy, num: (v: string | number) => string, row: SalaryArrearMonthRow): string {
+  return row.days < row.month_days ? ` (${t.arrDaysNote(num(row.days), num(row.month_days))})` : '';
 }
 
 export function groupMonths(rows: SalaryArrearMonthRow[]): MonthGroup[] {
@@ -78,20 +91,26 @@ export function MonthMath({ f, result, group }: { f: Fmt; result: SalaryArrearRe
   const row = group.lead;
   const leadMonth = monthText(locale, row.month);
   const specialCalc = `${amt(result.next_step)} × ${num(result.special_rate_percent)}%`;
-  const protection = row.hra_protection > 0;
+  const prorated = row.days < row.month_days;
+  // Lines 1–6 show the whole month; a joining month then adds line 7 for the days served.
+  const fullDiff = row.new_basic - row.drawn_basic;
+  const fullSpecial = result.special_allowance;
+  const fullHra = result.excess_hra;
+  const fullProtection = result.hra_protection;
+  const protection = fullProtection > 0;
   const hraLine = protection
     ? {
         no: 5,
         label: t.lineHraProtection,
         calc: `${amt(result.hra_on_old_pay)} − ${amt(result.hra_on_next_step)}`,
-        value: `+ ${amt(row.hra_protection)}`,
+        value: `+ ${amt(fullProtection)}`,
         tone: 'plus' as const,
       }
     : {
         no: 5,
         label: t.lineHra,
         calc: result.hra_eligible ? `${amt(result.hra_on_next_step)} − ${amt(result.hra_on_old_pay)}` : t.arrHraNone,
-        value: `− ${amt(row.excess_hra)}`,
+        value: `− ${amt(fullHra)}`,
         tone: 'minus' as const,
       };
 
@@ -108,26 +127,38 @@ export function MonthMath({ f, result, group }: { f: Fmt; result: SalaryArrearRe
       no: 3,
       label: t.lineDiff,
       calc: `${amt(row.new_basic)} − ${amt(row.drawn_basic)}`,
-      value: signed(row.basic_difference),
+      value: signed(fullDiff),
       tone: 'sum',
     },
-    { no: 4, label: t.lineSpecial, calc: specialCalc, value: `− ${amt(row.special_allowance)}`, tone: 'minus' },
+    { no: 4, label: t.lineSpecial, calc: specialCalc, value: `− ${amt(fullSpecial)}`, tone: 'minus' },
     hraLine,
     {
       no: 6,
       label: protection ? t.lineNetProtection : t.lineNet,
       calc: protection
-        ? `${signed(row.basic_difference)} − ${amt(row.special_allowance)} + ${amt(row.hra_protection)}`
-        : `${signed(row.basic_difference)} − ${amt(row.special_allowance)} − ${amt(row.excess_hra)}`,
-      value: signed(row.net_arrear),
-      tone: 'net',
+        ? `${signed(fullDiff)} − ${amt(fullSpecial)} + ${amt(fullProtection)}`
+        : `${signed(fullDiff)} − ${amt(fullSpecial)} − ${amt(fullHra)}`,
+      value: signed(row.full_net_arrear),
+      tone: prorated ? 'sum' : 'net',
     },
   ];
+  if (prorated) {
+    lines.push({
+      no: 7,
+      label: t.lineProrated(num(row.days), num(row.month_days)),
+      calc: `${signed(row.full_net_arrear)} ÷ ${num(row.month_days)} × ${num(row.days)}`,
+      value: signed(row.net_arrear),
+      tone: 'net',
+    });
+  }
 
   return (
     <div className="salary-bill-month overflow-hidden rounded-xl border border-border">
       <div className="flex items-center justify-between gap-2 bg-slate-50 px-3 py-1.5 text-sm font-bold text-slate-800">
-        <span>{leadMonth}</span>
+        <span>
+          {leadMonth}
+          {daysNote(t, num, row)}
+        </span>
         <span className="text-xs font-semibold text-muted">{t.amountHead}</span>
       </div>
       <table className="w-full text-sm">
@@ -249,13 +280,23 @@ export function ArrearMonthPicker({
   locale,
   months,
   onMonthsChange,
+  fromMonth,
 }: {
   locale: SalaryLocale;
   months: string[];
   onMonthsChange: (months: string[]) => void;
+  /** Month of joining when the arrears start after July 2026; earlier months are hidden. */
+  fromMonth?: string;
 }) {
   const t = salaryCopy(locale);
-  const monthOptions = useMemo(() => arrearMonthOptions(), []);
+  const monthOptions = useMemo(
+    () => arrearMonthOptions().filter((m) => !fromMonth || m >= fromMonth),
+    [fromMonth],
+  );
+  const pastMonths = () => {
+    const past = defaultArrearMonths().filter((m) => !fromMonth || m >= fromMonth);
+    return past.length > 0 ? past : monthOptions;
+  };
 
   function toggle(key: string) {
     onMonthsChange(months.includes(key) ? months.filter((k) => k !== key) : [...months, key].sort());
@@ -266,7 +307,7 @@ export function ArrearMonthPicker({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-medium text-slate-800">{t.arrMonths}</p>
         <div className="flex gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={() => onMonthsChange(defaultArrearMonths())}>
+          <Button type="button" variant="outline" size="sm" onClick={() => onMonthsChange(pastMonths())}>
             {t.arrPast}
           </Button>
           <Button type="button" variant="outline" size="sm" onClick={() => onMonthsChange(monthOptions)}>
@@ -306,6 +347,7 @@ export function SalaryArrearsBill({
   grade,
   oldPay,
   substantiveGrade,
+  joiningDate,
   housingStatus,
   hraArea,
   months,
@@ -322,6 +364,7 @@ export function SalaryArrearsBill({
   grade: PayGrade;
   oldPay: number;
   substantiveGrade: SubstantiveGrade | null;
+  joiningDate: string;
   housingStatus: HousingStatus;
   hraArea: HraArea;
   months: string[];
@@ -352,6 +395,7 @@ export function SalaryArrearsBill({
           housing_status: housingStatus,
           hra_area: hraArea,
           months,
+          joining_date: joiningDate,
           ...extras,
         }),
         error: '',
@@ -359,8 +403,9 @@ export function SalaryArrearsBill({
     } catch (err) {
       return { result: null, error: err instanceof Error ? err.message : t.calcError };
     }
-  }, [grade, oldPay, substantiveGrade, housingStatus, hraArea, months, extras, t]);
+  }, [grade, oldPay, substantiveGrade, joiningDate, housingStatus, hraArea, months, extras, t]);
   const oneTime = result ? oneTimeDeductions(t, amt, result) : [];
+  const fromMonth = arrearJoinStart(grade, oldPay, joiningDate)?.month;
 
   return (
     <Card className="overflow-hidden border border-indigo-200 shadow-sm">
@@ -368,7 +413,7 @@ export function SalaryArrearsBill({
         <div className="text-sm font-bold">{t.billTitle}</div>
       </div>
       <CardContent className="space-y-4 p-4 sm:p-5">
-        <ArrearMonthPicker locale={locale} months={months} onMonthsChange={onMonthsChange} />
+        <ArrearMonthPicker locale={locale} months={months} onMonthsChange={onMonthsChange} fromMonth={fromMonth} />
 
         {error ? <Alert variant="error">{error}</Alert> : null}
 
@@ -388,6 +433,12 @@ export function SalaryArrearsBill({
                 <BasisRow label={t.basisGrade} value={num(result.grade)} />
                 {result.substantive_grade !== result.grade ? (
                   <BasisRow label={t.basisSubstantive} value={num(result.substantive_grade)} />
+                ) : null}
+                {result.increment_withheld ? (
+                  <BasisRow label={t.basisIncrement} value={t.basisNoIncrement} />
+                ) : null}
+                {result.arrear_from_date ? (
+                  <BasisRow label={t.basisJoining} value={num(isoToDmy(result.arrear_from_date))} />
                 ) : null}
                 <BasisRow label={t.basisDrawn} value={tk(result.next_step)} />
                 <BasisRow
@@ -440,7 +491,10 @@ export function SalaryArrearsBill({
                     {result.rows.map((row) => (
                       <tr key={row.month} className="border-t border-border">
                         <td className="px-3 py-2">
-                          <div className="font-medium text-slate-800">{monthText(locale, row.month)}</div>
+                          <div className="font-medium text-slate-800">
+                            {monthText(locale, row.month)}
+                            {daysNote(t, num, row)}
+                          </div>
                           <div className="text-xs text-muted">{t.stageName(STAGE_NUMBER[row.phase])}</div>
                         </td>
                         <td className="px-3 py-2 text-right font-mono">{amt(row.new_basic)}</td>

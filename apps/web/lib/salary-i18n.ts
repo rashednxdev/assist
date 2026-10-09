@@ -97,6 +97,23 @@ const salaryEn = {
   nextStage: (amount: string) => `+ ${amount} (next stage)`,
   lastStage: 'Last stage — no change',
   lastStageWarn: 'Matched stage is the last stage on the 2026 scale — Step 6 = 0 (no next stage).',
+  withheldWarn: 'Joined on or after 02-01-2026 — no increment on 01-07-2026, so Step 6 = 0 and is not added to the basic.',
+  initialBasic: 'Initial basic',
+  joiningDate: 'Initial basic: joining date of service',
+  joiningDateHint:
+    'Before 02-01-2026: calculated as usual with the 01-07-2026 increment. On or after it: no increment. After 01-07-2026: the arrear bill starts from the joining date.',
+  joiningBeforeNote: 'Joined before 02-01-2026 — calculated as usual, with the 01-07-2026 increment (Step 6).',
+  joiningNoIncrementNote:
+    'Joined on or after 02-01-2026 — no 01-07-2026 increment: Step 6 = 0, and the basic drawn stays the 30-06-2026 basic.',
+  joiningAfterJulyNote:
+    'Joined after 01-07-2026 — no increment, and the arrear bill starts from the joining date: the joining month is paid as the month’s net arrear ÷ days in the month × days served.',
+  joiningDateRequired: 'Enter your joining date of service.',
+  joiningFuture: 'The joining date is after the current month — there is no arrear month yet.',
+  basisJoining: 'Joining date of service (arrears from)',
+  lineProrated: (days: string, monthDays: string) => `Arrear for ${days} of ${monthDays} days (from joining date)`,
+  arrDaysNote: (days: string, monthDays: string) => `${days} of ${monthDays} days`,
+  basisIncrement: 'Increment (01-07-2026)',
+  basisNoIncrement: 'Not given — joined on or after 02-01-2026',
   basic: 'Basic',
   basicNote: 'This stage — not included in Total Allowance',
   fixedOnBasic: 'Fixed on Basic 30 June 2026',
@@ -454,6 +471,23 @@ const salaryBn: SalaryCopy = {
   nextStage: (amount) => `+ ${amount} (পরবর্তী ধাপ)`,
   lastStage: 'শেষ ধাপ — কোনো পরিবর্তন নেই',
   lastStageWarn: 'মিলে যাওয়া ধাপটি ২০২৬ স্কেলের শেষ ধাপ — স্টেপ ৬ = ০ (পরবর্তী ধাপ নেই)।',
+  withheldWarn: '০২-০১-২০২৬ বা পরে যোগদান — ০১-০৭-২০২৬-এ ইনক্রিমেন্ট নেই, তাই স্টেপ ৬ = ০ এবং মূল বেতনে যোগ হয়নি।',
+  initialBasic: 'প্রারম্ভিক মূল বেতন',
+  joiningDate: 'প্রারম্ভিক মূল বেতন: চাকরিতে যোগদানের তারিখ',
+  joiningDateHint:
+    '০২-০১-২০২৬-এর আগে: ০১-০৭-২০২৬-এর ইনক্রিমেন্টসহ স্বাভাবিক হিসাব। ০২-০১-২০২৬ বা পরে: ইনক্রিমেন্ট নেই। ০১-০৭-২০২৬-এর পরে: যোগদানের তারিখ থেকে বকেয়া বিল।',
+  joiningBeforeNote: '০২-০১-২০২৬-এর আগে যোগদান — স্বাভাবিকভাবে ০১-০৭-২০২৬-এর ইনক্রিমেন্টসহ (স্টেপ ৬) হিসাব হবে।',
+  joiningNoIncrementNote:
+    '০২-০১-২০২৬ বা পরে যোগদান — ০১-০৭-২০২৬-এর ইনক্রিমেন্ট নেই: স্টেপ ৬ = ০, এবং উত্তোলিত মূল বেতন ৩০-০৬-২০২৬-এর মূল বেতনই থাকবে।',
+  joiningAfterJulyNote:
+    '০১-০৭-২০২৬-এর পরে যোগদান — ইনক্রিমেন্ট নেই, এবং যোগদানের তারিখ থেকে বকেয়া বিল: যোগদানের মাসে মাসের নিট বকেয়া ÷ মাসের দিন × কর্মরত দিন।',
+  joiningDateRequired: 'চাকরিতে যোগদানের তারিখ দিন।',
+  joiningFuture: 'যোগদানের তারিখ চলতি মাসের পরে — এখনো কোনো বকেয়া মাস নেই।',
+  basisJoining: 'চাকরিতে যোগদানের তারিখ (বকেয়া শুরু)',
+  lineProrated: (days, monthDays) => `${monthDays} দিনের মধ্যে ${days} দিনের বকেয়া (যোগদানের তারিখ থেকে)`,
+  arrDaysNote: (days, monthDays) => `${monthDays} দিনের ${days} দিন`,
+  basisIncrement: 'ইনক্রিমেন্ট (০১-০৭-২০২৬)',
+  basisNoIncrement: 'প্রাপ্য নয় — ০২-০১-২০২৬ বা পরে যোগদান',
   basic: 'মূল বেতন',
   basicNote: 'এই পর্যায়ের — মোট ভাতায় অন্তর্ভুক্ত নয়',
   fixedOnBasic: '৩০ জুন ২০২৬-এর মূল বেতনের ভিত্তিতে নির্ধারিত',
@@ -810,7 +844,9 @@ export function stepText(locale: SalaryLocale, result: Salary2026Result, row: Sa
     case 6:
       return {
         label: `পরবর্তী ধাপ − স্টেপ ৪ (ফ্যাক্ট ইনক্রিমেন্ট ${date})`,
-        note: result.increment_skipped
+        note: result.increment_withheld
+          ? '০২-০১-২০২৬ বা পরে যোগদান — ইনক্রিমেন্ট নেই (স্টেপ ৬ = ০)'
+          : result.increment_skipped
           ? 'শেষ ধাপ — পরবর্তী ধাপ নেই (স্টেপ ৬ = ০)'
           : `পরবর্তী ধাপ ${bn(formatTaka((result.matched_new_stage ?? 0) + row.value))} − স্টেপ ৪`,
         calculation,

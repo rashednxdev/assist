@@ -5,8 +5,10 @@ import { ReceiptText, X } from 'lucide-react';
 import {
   NPS_2015,
   PAY_GRADES,
+  isIsoDate,
   effectiveSubstantiveGrade,
   formatTaka,
+  asksJoiningDate,
   salaryTrFormNo,
   substantiveGradeOptions,
   type HousingStatus,
@@ -18,6 +20,7 @@ import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { HRA_AREAS, hraAreaText, localNum, salaryCopy, type SalaryLocale } from '@/lib/salary-i18n';
+import { SalaryJoiningDateField } from '@/components/salary/salary-joining-date';
 
 export interface ArrearsInputs {
   grade: PayGrade | null;
@@ -25,6 +28,8 @@ export interface ArrearsInputs {
   housingStatus: HousingStatus;
   hraArea: HraArea;
   substantiveGrade: SubstantiveGrade | null;
+  /** YYYY-MM-DD for the initial basic of Grade 7–20, otherwise ''. */
+  joiningDate: string;
 }
 
 const selectClass =
@@ -54,14 +59,20 @@ export function SalaryArrearsDialog({
   const stepNo = v.grade && v.oldPay > 0 ? NPS_2015[v.grade].indexOf(v.oldPay) + 1 : 0;
   const effectiveSubstantive = v.grade ? effectiveSubstantiveGrade(v.grade, v.substantiveGrade) : null;
   const formNo = effectiveSubstantive ? salaryTrFormNo(effectiveSubstantive) : null;
+  const askJoining = v.grade != null && asksJoiningDate(v.grade, v.oldPay);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!v.grade) return setError(t.gradeRequired);
     if (stepNo <= 0) return setError(t.basicRequired);
+    if (askJoining && !isIsoDate(v.joiningDate)) return setError(t.joiningDateRequired);
     setSubmitting(true);
     setError('');
-    const message = await onConfirm({ ...v, substantiveGrade: effectiveSubstantive });
+    const message = await onConfirm({
+      ...v,
+      substantiveGrade: effectiveSubstantive,
+      joiningDate: askJoining ? v.joiningDate : '',
+    });
     setSubmitting(false);
     if (message) setError(message);
   }
@@ -128,13 +139,25 @@ export function SalaryArrearsDialog({
                 {v.grade
                   ? NPS_2015[v.grade].map((amount, i) => (
                       <option key={amount} value={amount}>
-                        {`${num(formatTaka(amount))} — ${t.stepOption(num(i + 1))}`}
+                        {`${num(formatTaka(amount))} — ${t.stepOption(num(i + 1))}${i === 0 ? ` (${t.initialBasic})` : ''}`}
                       </option>
                     ))
                   : null}
               </select>
             </div>
           </div>
+
+          {askJoining ? (
+            <SalaryJoiningDateField
+              locale={locale}
+              id="arr-joining-date"
+              value={v.joiningDate}
+              onChange={(joiningDate) => {
+                setError('');
+                setV((prev) => ({ ...prev, joiningDate }));
+              }}
+            />
+          ) : null}
 
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium text-slate-800">{t.housing}</legend>

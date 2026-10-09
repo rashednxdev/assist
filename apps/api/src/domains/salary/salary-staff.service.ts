@@ -24,6 +24,7 @@ function toRecord(doc: ISalaryStaff): SalaryStaffRecord {
     excess_rr: Boolean(doc.excess_rr),
     excess_puja: Boolean(doc.excess_puja),
     staff_office_id: doc.staff_office_id ? String(doc.staff_office_id) : null,
+    joining_date: doc.joining_date ?? null,
     created_at: doc.created_at.toISOString(),
     updated_at: doc.updated_at.toISOString(),
   };

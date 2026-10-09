@@ -4,7 +4,14 @@ import { formatTaka, type HraArea, type SalaryArrearResult } from '@ibas/shared-
 import { toBanglaDigits } from '@/lib/bangla-format';
 import { hraAreaText, monthText, salaryCopy } from '@/lib/salary-i18n';
 import type { SalaryPrintInfo } from '@/components/salary/salary-print-dialog';
-import { MonthMath, groupMonths, oneTimeDeductions, type Fmt } from '@/components/salary/salary-arrears-bill';
+import {
+  MonthMath,
+  daysNote,
+  groupMonths,
+  isoToDmy,
+  oneTimeDeductions,
+  type Fmt,
+} from '@/components/salary/salary-arrears-bill';
 
 export interface FormRow {
   code: string;
@@ -199,6 +206,18 @@ export function TrAttachment({
               <td>{toBanglaDigits(result.substantive_grade)}</td>
             </tr>
           ) : null}
+          {result.increment_withheld ? (
+            <tr>
+              <td>{t.basisIncrement}</td>
+              <td>{t.basisNoIncrement}</td>
+            </tr>
+          ) : null}
+          {result.arrear_from_date ? (
+            <tr>
+              <td>{t.basisJoining}</td>
+              <td>{toBanglaDigits(isoToDmy(result.arrear_from_date))}</td>
+            </tr>
+          ) : null}
           <tr>
             <td>{t.basisDrawn}</td>
             <td>৳ {taka(result.next_step)}</td>
@@ -265,7 +284,10 @@ export function TrAttachment({
         <tbody>
           {result.rows.map((row) => (
             <tr key={row.month}>
-              <td>{monthText('bn', row.month)}</td>
+              <td>
+                {monthText('bn', row.month)}
+                {daysNote(t, toBanglaDigits, row)}
+              </td>
               <td className="tr-num">{taka(row.new_basic)}</td>
               <td className="tr-num">{taka(row.drawn_basic)}</td>
               <td className="tr-num">{taka(row.basic_difference)}</td>

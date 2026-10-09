@@ -15,6 +15,8 @@ export interface ISalaryStaff extends Document {
   excess_puja: boolean;
   /** Null = the user's own office. */
   staff_office_id: Types.ObjectId | null;
+  /** YYYY-MM-DD; set for the initial basic of Grade 7–20. */
+  joining_date: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -32,6 +34,7 @@ const schema = new Schema<ISalaryStaff>(
     excess_rr: { type: Boolean, default: false },
     excess_puja: { type: Boolean, default: false },
     staff_office_id: { type: Schema.Types.ObjectId, ref: 'SalaryStaffOffice', default: null },
+    joining_date: { type: String, default: null },
     created_at: { type: Date, default: Date.now },
     updated_at: { type: Date, default: Date.now },
   },

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { OfficeOption } from './org.js';
-import { NPS_2015, type PayGrade } from './salary-2026.js';
+import { NPS_2015, asksJoiningDate, isIsoDate, type PayGrade } from './salary-2026.js';
 
 /** Each T.R. Form download (or legacy arrears bill PDF) uses one approved bill. */
 export const SALARY_PRINT_KINDS = ['arrears_pdf', 'tr_form_13', 'tr_form_15'] as const;
@@ -322,10 +322,18 @@ export const salaryStaffSchema = z
     excess_puja: z.boolean().default(false),
     /** Office added only for the staff arrear bill; null = the user's own office. */
     staff_office_id: officeId.nullable().default(null),
+    /**
+     * YYYY-MM-DD; required for the initial basic of Grade 7–20. On or after 02-01-2026 there is no
+     * 01-07-2026 increment; after 01-07-2026 the arrears start from it.
+     */
+    joining_date: z.string().nullable().default(null),
   })
   .superRefine((v, ctx) => {
     if (!NPS_2015[v.grade as PayGrade]?.includes(v.old_pay)) {
       ctx.addIssue({ code: 'custom', path: ['old_pay'], message: 'Choose a basic from the grade scale' });
+    }
+    if (asksJoiningDate(v.grade, v.old_pay) && !isIsoDate(v.joining_date)) {
+      ctx.addIssue({ code: 'custom', path: ['joining_date'], message: 'Enter the joining date of service' });
     }
   });
 export type SalaryStaffDto = z.infer<typeof salaryStaffSchema>;

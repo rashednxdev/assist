@@ -31,6 +31,10 @@ import {
   formatTaka,
   PAY_GRADES,
   isFixedPayGrade,
+  arrearJoinStart,
+  arrearMonthOptions,
+  asksJoiningDate,
+  isIsoDate,
   substantiveGradeOptions,
   type EducationChildren,
   type EmployeeGrossResult,
@@ -49,6 +53,7 @@ import {
 } from '@ibas/shared-types';
 import { downloadFormPdf, pdfFileName } from '@/lib/salary-pdf';
 import { SalaryArrearsDialog, type ArrearsInputs } from '@/components/salary/salary-arrears-dialog';
+import { SalaryJoiningDateField } from '@/components/salary/salary-joining-date';
 import { TrForm15 } from '@/components/salary/tr-form-15';
 import { ApiError, apiFetch } from '@/lib/api-client';
 import { SalaryBillAccessPanel, SalaryBillContacts, SalaryBulkRequestDialog } from '@/components/salary/salary-bill-access';
@@ -360,7 +365,7 @@ function PhaseResultCard({
         />
 
         {result.increment_skipped && !result.fixed ? (
-          <p className="text-xs text-amber-800">{t.lastStageWarn}</p>
+          <p className="text-xs text-amber-800">{result.increment_withheld ? t.withheldWarn : t.lastStageWarn}</p>
         ) : null}
       </CardContent>
     </Card>
@@ -514,6 +519,7 @@ export default function SalaryOn2026Page() {
   const [washingAllowance, setWashingAllowance] = useState(false);
   const [chargeType, setChargeType] = useState<ChargeType>('regular');
   const [substantiveGrade, setSubstantiveGrade] = useState<SubstantiveGrade | null>(null);
+  const [joiningDateInput, setJoiningDateInput] = useState('');
   const [gpfDeductionInput, setGpfDeductionInput] = useState('');
   const [moreOpen, setMoreOpen] = useState(false);
   const [error, setError] = useState('');
@@ -547,6 +553,8 @@ export default function SalaryOn2026Page() {
 
   const gpfDeduction = useMemo(() => parseAmountInput(gpfDeductionInput), [gpfDeductionInput]);
   const stepNo = grade && oldPay > 0 ? NPS_2015[grade].indexOf(oldPay) + 1 : 0;
+  const askJoining = grade != null && asksJoiningDate(grade, oldPay);
+  const joiningDate = askJoining ? joiningDateInput : '';
   const allowancesTotal = gross
     ? gross.monthly_lines.filter((row) => row.code !== 'basic').reduce((sum, row) => sum + row.amount, 0)
     : 0;
@@ -560,12 +568,24 @@ export default function SalaryOn2026Page() {
         housing_status: housingStatus,
         hra_area: hraArea,
         months: arrearMonths,
+        joining_date: joiningDate,
         ...arrearExtras,
       });
     } catch {
       return null;
     }
-  }, [showArrears, grade, stepNo, oldPay, substantiveGrade, housingStatus, hraArea, arrearMonths, arrearExtras]);
+  }, [
+    showArrears,
+    grade,
+    stepNo,
+    oldPay,
+    substantiveGrade,
+    housingStatus,
+    hraArea,
+    arrearMonths,
+    joiningDate,
+    arrearExtras,
+  ]);
   const trFormNo = arrearResult ? salaryTrFormNo(arrearResult.substantive_grade) : 13;
 
   function resetResults() {
@@ -578,6 +598,7 @@ export default function SalaryOn2026Page() {
   function requireGrade(): PayGrade | null {
     if (!grade) setError(t.gradeRequired);
     else if (stepNo <= 0) setError(t.basicRequired);
+    else if (askJoining && !isIsoDate(joiningDate)) setError(t.joiningDateRequired);
     else {
       setError('');
       return grade;
@@ -597,7 +618,7 @@ export default function SalaryOn2026Page() {
     try {
       // Always compute on the client so Step 5–7 rules match the shipped web bundle.
       // Remote API images can lag after deploy; do not use their results for display.
-      setResults(calculateSalary2026AllPhases({ grade: g, old_pay: oldPay }));
+      setResults(calculateSalary2026AllPhases({ grade: g, old_pay: oldPay, joining_date: joiningDate }));
       setGross(
         calculateEmployeeGross({
           grade: g,
@@ -645,6 +666,13 @@ export default function SalaryOn2026Page() {
 
   async function applyArrearsInputs(v: ArrearsInputs): Promise<string | null> {
     if (!v.grade) return t.gradeRequired;
+    const join = arrearJoinStart(v.grade, v.oldPay, v.joiningDate);
+    let months = arrearMonths;
+    if (join) {
+      months = arrearMonths.filter((m) => m >= join.month);
+      if (months.length === 0) months = arrearMonthOptions().filter((m) => m >= join.month);
+      if (months.length === 0) return t.joiningFuture;
+    }
     let netTotal: number;
     try {
       netTotal = calculateSalaryArrears({
@@ -653,7 +681,8 @@ export default function SalaryOn2026Page() {
         substantive_grade: v.substantiveGrade,
         housing_status: v.housingStatus,
         hra_area: v.hraArea,
-        months: arrearMonths,
+        months,
+        joining_date: v.joiningDate,
       }).total_net_arrear;
     } catch (err) {
       return err instanceof Error ? err.message : t.calcError;
@@ -661,7 +690,7 @@ export default function SalaryOn2026Page() {
     try {
       const res = await apiFetch<{ data: SalaryBillAccessRecord }>('/salary/arrears-calc', {
         method: 'POST',
-        body: JSON.stringify({ grade: v.grade, old_pay: v.oldPay, months: arrearMonths, net_total: netTotal }),
+        body: JSON.stringify({ grade: v.grade, old_pay: v.oldPay, months, net_total: netTotal }),
       });
       setBillAccess(res.data);
     } catch (err) {
@@ -682,7 +711,8 @@ export default function SalaryOn2026Page() {
       v.oldPay !== oldPay ||
       v.housingStatus !== housingStatus ||
       v.hraArea !== hraArea ||
-      v.substantiveGrade !== substantiveGrade;
+      v.substantiveGrade !== substantiveGrade ||
+      v.joiningDate !== joiningDate;
     if (changed) {
       setResults(null);
       setGross(null);
@@ -693,6 +723,8 @@ export default function SalaryOn2026Page() {
     setHousingStatus(v.housingStatus);
     setHraArea(v.hraArea);
     setSubstantiveGrade(v.substantiveGrade);
+    if (v.joiningDate) setJoiningDateInput(v.joiningDate);
+    setArrearMonths(months);
     setArrearsDialog(false);
     setError('');
     setShowStaff(false);
@@ -972,7 +1004,7 @@ export default function SalaryOn2026Page() {
                     {grade
                       ? NPS_2015[grade].map((amount, i) => (
                           <option key={amount} value={amount}>
-                            {`${num(formatTaka(amount))} — ${t.stepOption(num(i + 1))}`}
+                            {`${num(formatTaka(amount))} — ${t.stepOption(num(i + 1))}${i === 0 ? ` (${t.initialBasic})` : ''}`}
                           </option>
                         ))
                       : null}
@@ -987,6 +1019,19 @@ export default function SalaryOn2026Page() {
               ) : (
                 <p className="text-xs text-muted">{t.basicHint}</p>
               )}
+              {askJoining ? (
+                <div className="pt-2">
+                  <SalaryJoiningDateField
+                    locale={locale}
+                    id="joining-date"
+                    value={joiningDateInput}
+                    onChange={(value) => {
+                      setJoiningDateInput(value);
+                      resetResults();
+                    }}
+                  />
+                </div>
+              ) : null}
             </div>
 
             <div className="space-y-4 rounded-xl border border-teal-200 bg-teal-50/40 p-4">
@@ -1263,6 +1308,7 @@ export default function SalaryOn2026Page() {
               grade={grade}
               oldPay={oldPay}
               substantiveGrade={substantiveGrade}
+              joiningDate={joiningDate}
               housingStatus={housingStatus}
               hraArea={hraArea}
               months={arrearMonths}
@@ -1385,7 +1431,7 @@ export default function SalaryOn2026Page() {
       {arrearsDialog ? (
         <SalaryArrearsDialog
           locale={locale}
-          initial={{ grade, oldPay, housingStatus, hraArea, substantiveGrade }}
+          initial={{ grade, oldPay, housingStatus, hraArea, substantiveGrade, joiningDate: joiningDateInput }}
           calcNote={calcNote()}
           onCancel={() => setArrearsDialog(false)}
           onConfirm={applyArrearsInputs}

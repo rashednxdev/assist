@@ -5,9 +5,12 @@ import { Building2, Download, Loader2, Pencil, Plus, ShieldCheck, Trash2, Users,
 import {
   NPS_2015,
   PAY_GRADES,
+  isIsoDate,
   SALARY_BILL_LIMIT_CODE,
   calculateStaffArrears,
   formatTaka,
+  isIncrementWithheld,
+  asksJoiningDate,
   type HousingStatus,
   type HraArea,
   type PayGrade,
@@ -31,6 +34,7 @@ import {
 import { SalaryBulkRequestDialog } from '@/components/salary/salary-bill-access';
 import { TrForm15Staff, type TrStaffEntry } from '@/components/salary/tr-form-15';
 import { STAMP_DUTY, type TrSignatory } from '@/components/salary/tr-form-parts';
+import { SalaryJoiningDateField } from '@/components/salary/salary-joining-date';
 import { ApiError, apiFetch } from '@/lib/api-client';
 import { toEnglishDigits } from '@/lib/bangla-format';
 import { downloadFormPdf, pdfFileName } from '@/lib/salary-pdf';
@@ -52,6 +56,7 @@ interface StaffForm {
   housingStatus: HousingStatus;
   hraArea: HraArea;
   extras: ArrearExtras;
+  joiningDate: string;
 }
 
 const EMPTY_FORM: StaffForm = {
@@ -63,9 +68,11 @@ const EMPTY_FORM: StaffForm = {
   housingStatus: 'hra_eligible',
   hraArea: 'dhaka',
   extras: NO_ARREAR_EXTRAS,
+  joiningDate: '',
 };
 
-function nextStage(grade: PayGrade, oldPay: number): number {
+function nextStage(grade: PayGrade, oldPay: number, joiningDate: string | null): number {
+  if (isIncrementWithheld(grade, oldPay, joiningDate)) return oldPay;
   const scale = NPS_2015[grade];
   const i = scale.indexOf(oldPay);
   return i >= 0 && i < scale.length - 1 ? scale[i + 1]! : oldPay;
@@ -81,6 +88,7 @@ function toForm(s: SalaryStaffRecord): StaffForm {
     housingStatus: s.housing_status,
     hraArea: s.hra_area,
     extras: { excess_rr: Boolean(s.excess_rr), excess_puja: Boolean(s.excess_puja) },
+    joiningDate: s.joining_date ?? '',
   };
 }
 
@@ -103,6 +111,7 @@ function StaffDialog({
   const [v, setV] = useState<StaffForm>(initial);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const askJoining = v.grade != null && asksJoiningDate(v.grade, v.oldPay);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -114,6 +123,7 @@ function StaffDialog({
     if (nid && !NID_LENGTHS.includes(nid.length)) return setError(t.nidInvalid);
     if (!v.grade) return setError(t.gradeRequired);
     if (!NPS_2015[v.grade].includes(v.oldPay)) return setError(t.basicRequired);
+    if (askJoining && !isIsoDate(v.joiningDate)) return setError(t.joiningDateRequired);
     setSaving(true);
     setError('');
     const message = await onSave({
@@ -125,6 +135,7 @@ function StaffDialog({
       housing_status: v.housingStatus,
       hra_area: v.hraArea,
       ...v.extras,
+      joining_date: askJoining ? v.joiningDate : null,
     });
     setSaving(false);
     if (message) setError(message);
@@ -221,13 +232,21 @@ function StaffDialog({
                 {v.grade
                   ? NPS_2015[v.grade].map((amount, i) => (
                       <option key={amount} value={amount}>
-                        {`${num(formatTaka(amount))} — ${t.stepOption(num(i + 1))}`}
+                        {`${num(formatTaka(amount))} — ${t.stepOption(num(i + 1))}${i === 0 ? ` (${t.initialBasic})` : ''}`}
                       </option>
                     ))
                   : null}
               </select>
             </div>
           </div>
+          {askJoining ? (
+            <SalaryJoiningDateField
+              locale={locale}
+              id="staff-joining-date"
+              value={v.joiningDate}
+              onChange={(joiningDate) => setV((p) => ({ ...p, joiningDate }))}
+            />
+          ) : null}
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium text-slate-800">{t.housing}</legend>
             <label className="flex cursor-pointer items-start gap-2 text-sm">
@@ -275,7 +294,7 @@ function StaffDialog({
             <ArrearExtraDeductions
               locale={locale}
               oldPay={v.oldPay}
-              nextStep={nextStage(v.grade, v.oldPay)}
+              nextStep={nextStage(v.grade, v.oldPay, askJoining ? v.joiningDate : null)}
               value={v.extras}
               onChange={(extras) => setV((p) => ({ ...p, extras }))}
             />

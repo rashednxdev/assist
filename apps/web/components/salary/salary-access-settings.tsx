@@ -9,7 +9,7 @@ import type {
   SalaryFreeTrFormSettingsRecord,
   SalaryOfficeSettingsRecord,
 } from '@ibas/shared-types';
-import { SALARY_DEFAULT_BULK_SIZE } from '@ibas/shared-types';
+import { SALARY_DEFAULT_BULK_SIZE, SALARY_FREE_TR_NID, SALARY_MAX_FREE_TR_COUNT } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -171,10 +171,14 @@ function FreeTrFormEditor() {
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
+  const [count, setCount] = useState('');
 
   useEffect(() => {
     apiFetch<{ data: SalaryFreeTrFormSettingsRecord }>('/salary/admin/free-tr-form')
-      .then((res) => setSettings(res.data))
+      .then((res) => {
+        setSettings(res.data);
+        setCount(String(res.data.free_count));
+      })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'));
   }, []);
 
@@ -190,9 +194,33 @@ function FreeTrFormEditor() {
       setSettings(res.data);
       setStatus(
         res.data.enabled
-          ? 'Allowed. Each user who registers from now gets one free single T.R. Form download.'
-          : 'Disabled. New users get no free T.R. Form; users who already got one keep it.',
+          ? `Allowed. Every user gets ${plural(res.data.free_count, 'free single T.R. Form download')}.`
+          : 'Disabled. Only users who registered while it was allowed keep their free downloads.',
       );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveCount() {
+    const n = Number(count);
+    if (!Number.isInteger(n) || n < 1 || n > SALARY_MAX_FREE_TR_COUNT) {
+      setError(`Enter a whole number of downloads from 1 to ${SALARY_MAX_FREE_TR_COUNT}.`);
+      return;
+    }
+    setSaving(true);
+    setStatus('');
+    setError('');
+    try {
+      const res = await apiFetch<{ data: SalaryFreeTrFormSettingsRecord }>('/salary/admin/free-tr-form', {
+        method: 'PUT',
+        body: JSON.stringify({ free_count: n }),
+      });
+      setSettings(res.data);
+      setCount(String(res.data.free_count));
+      setStatus(`Saved. Each eligible user gets ${plural(res.data.free_count, 'free single T.R. Form download')}.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');
     } finally {
@@ -203,10 +231,11 @@ function FreeTrFormEditor() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Free single T.R. Form for new registrations</CardTitle>
+        <CardTitle className="text-base">Free single T.R. Form downloads</CardTitle>
         <CardDescription>
-          While allowed, each user who registers gets one free T.R. Form 13 or 15 download for a single arrear bill,
-          without using Bill Print Access. Users who registered earlier are not affected. The office staff bill is not
+          While allowed, every user gets the set number of free T.R. Form 13 or 15 downloads for a single arrear bill. A
+          free download is used only when the user has no approved bill left, and prints the NID as {SALARY_FREE_TR_NID}.
+          When disabled, only users who registered while it was allowed keep theirs. The office staff bill is not
           included.
         </CardDescription>
       </CardHeader>
@@ -218,7 +247,7 @@ function FreeTrFormEditor() {
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
             <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="font-medium">New registrations:</span>
+              <span className="font-medium">Free downloads:</span>
               {settings.enabled ? (
                 <Badge variant="success">Allowed</Badge>
               ) : (
@@ -235,6 +264,27 @@ function FreeTrFormEditor() {
               onClick={() => void save(!settings.enabled)}
             >
               {saving ? 'Saving…' : settings.enabled ? 'Disable' : 'Allow'}
+            </Button>
+          </div>
+        )}
+        {settings === null ? null : (
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="w-48 space-y-1">
+              <Label htmlFor="free-tr-count" className="text-xs">
+                Free downloads per user
+              </Label>
+              <Input
+                id="free-tr-count"
+                type="number"
+                min={1}
+                max={SALARY_MAX_FREE_TR_COUNT}
+                inputMode="numeric"
+                value={count}
+                onChange={(e) => setCount(e.target.value)}
+              />
+            </div>
+            <Button type="button" onClick={() => void saveCount()} disabled={saving}>
+              {saving ? 'Saving…' : 'Save free downloads'}
             </Button>
           </div>
         )}

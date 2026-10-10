@@ -38,7 +38,7 @@ import {
   salaryFreeCalcLimits,
   salaryOfficeLabels,
 } from './salary-office.service.js';
-import { claimSalaryFreeTrForm, salaryFreeTrState, salaryFreeTrStates } from './salary-free-tr.service.js';
+import { claimSalaryFreeTrForm, salaryFreeTrStates, salaryFreeTrUsage } from './salary-free-tr.service.js';
 
 const SETTINGS_KEY = 'global';
 
@@ -131,7 +131,7 @@ export async function getMyBillAccess(user: AuthUser): Promise<SalaryBillAccessR
     getSalaryBulkSize(),
     SalaryCalcUsage.findOne({ user_id: user.id }).select('free_used unprinted').lean(),
     salaryFreeCalcLimit(user.id),
-    salaryFreeTrState(user.id),
+    salaryFreeTrUsage(user.id),
   ]);
   const unlimited = isPlatformAdmin(user);
   const remaining = remainingOf(doc);
@@ -143,11 +143,14 @@ export async function getMyBillAccess(user: AuthUser): Promise<SalaryBillAccessR
     bill_limit: doc?.bill_limit ?? 0,
     bills_used: doc?.bills_used ?? 0,
     remaining,
-    can_bill: user.status === 'active' && (unlimited || remaining > 0 || freeTr === 'available'),
-    free_tr_form: freeTr,
+    can_bill: user.status === 'active' && (unlimited || remaining > 0 || freeTr.state === 'available'),
+    free_tr_form: freeTr.state,
+    free_tr_left: freeTr.left,
     bulk_size,
     calc,
-    can_calculate: user.status === 'active' && (unlimited || calc.free_used < calc.free_limit || remaining > 0),
+    can_calculate:
+      user.status === 'active' &&
+      (unlimited || calc.free_used < calc.free_limit || remaining > 0 || freeTr.state === 'available'),
     request: requestInfo(doc),
     admin_note: doc?.admin_note ?? '',
     contacts,
@@ -179,8 +182,8 @@ export async function requestBills(user: AuthUser, dto: RequestSalaryBillsDto): 
 }
 
 /**
- * Uses one approved bill, or first the free single T.R. Form for a T.R. Form download;
- * admins are unlimited but still logged.
+ * Uses one approved bill, or a free single T.R. Form for a T.R. Form download when no
+ * approved bill is left; admins are unlimited but still logged.
  */
 export async function consumeBill(user: AuthUser, dto: ConsumeSalaryBillDto): Promise<SalaryBillAccessRecord> {
   if (user.status !== 'active') throw forbidden('Account is not active');
@@ -188,14 +191,12 @@ export async function consumeBill(user: AuthUser, dto: ConsumeSalaryBillDto): Pr
   if (!isPlatformAdmin(user)) {
     await assertSalaryOfficeChosen(user.id);
     const isTrForm = dto.kind === 'tr_form_13' || dto.kind === 'tr_form_15';
-    const free = isTrForm && (await claimSalaryFreeTrForm(user.id));
-    const updated =
-      free ||
-      (await SalaryBillAccess.findOneAndUpdate(
-        { user_id: user.id, $expr: { $lt: ['$bills_used', '$bill_limit'] } },
-        { $inc: { bills_used: 1 }, $set: { last_used_at: now, updated_at: now } },
-        { new: true },
-      ));
+    const approved = await SalaryBillAccess.findOneAndUpdate(
+      { user_id: user.id, $expr: { $lt: ['$bills_used', '$bill_limit'] } },
+      { $inc: { bills_used: 1 }, $set: { last_used_at: now, updated_at: now } },
+      { new: true },
+    );
+    const updated = approved || (isTrForm && (await claimSalaryFreeTrForm(user.id)));
     if (!updated) {
       throw new AppError(
         403,
@@ -287,7 +288,8 @@ export async function recordArrearsCalc(user: AuthUser, dto: RecordArrearsCalcDt
   if (free) return getMyBillAccess(user);
 
   const access = await SalaryBillAccess.findOne({ user_id: userId });
-  if (remainingOf(access) <= 0) throw calcLimitError(freeLimit);
+  const hasBills = remainingOf(access) > 0;
+  if (!hasBills && (await salaryFreeTrUsage(user.id)).state !== 'available') throw calcLimitError(freeLimit);
 
   await SalaryCalcUsage.updateOne({ user_id: userId }, { $inc: { unprinted: 1, total: 1 }, $set: { updated_at: now } });
   const claimed = await SalaryCalcUsage.findOneAndUpdate(
@@ -296,15 +298,18 @@ export async function recordArrearsCalc(user: AuthUser, dto: RecordArrearsCalcDt
     { new: true },
   );
   if (claimed) {
-    const charged = await SalaryBillAccess.findOneAndUpdate(
-      { user_id: userId, $expr: { $lt: ['$bills_used', '$bill_limit'] } },
-      { $inc: { bills_used: 1 }, $set: { last_used_at: now, updated_at: now } },
-      { new: true },
-    );
+    const charged = hasBills
+      ? await SalaryBillAccess.findOneAndUpdate(
+          { user_id: userId, $expr: { $lt: ['$bills_used', '$bill_limit'] } },
+          { $inc: { bills_used: 1 }, $set: { last_used_at: now, updated_at: now } },
+          { new: true },
+        )
+      : await claimSalaryFreeTrForm(user.id);
     if (!charged) {
       await SalaryCalcUsage.updateOne({ user_id: userId }, { $inc: { unprinted: SALARY_CALCS_PER_BILL - 1, total: -1 } });
       throw calcLimitError(freeLimit);
     }
+    if (!hasBills) return getMyBillAccess(user);
     await SalaryBillUsage.create({
       user_id: userId,
       kind: 'arrears_calc',

@@ -136,20 +136,38 @@ export interface SalaryOfficeSettingsRecord {
   updated_at: string | null;
 }
 
-export const updateSalaryFreeTrFormSchema = z.object({
-  enabled: z.boolean(),
-});
+export const SALARY_DEFAULT_FREE_TR_COUNT = 1;
+export const SALARY_MAX_FREE_TR_COUNT = 100;
+/** NID printed on a free T.R. Form download; users cannot change it. */
+export const SALARY_FREE_TR_NID = '00011223344XXYYRR';
+
+export const updateSalaryFreeTrFormSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    free_count: z
+      .number()
+      .int()
+      .min(1, 'Allow at least 1 free download')
+      .max(SALARY_MAX_FREE_TR_COUNT, `At most ${SALARY_MAX_FREE_TR_COUNT} free downloads`)
+      .optional(),
+  })
+  .refine((v) => v.enabled !== undefined || v.free_count !== undefined, 'Nothing to update');
 export type UpdateSalaryFreeTrFormDto = z.infer<typeof updateSalaryFreeTrFormSchema>;
 
-/** While enabled, each user who registers gets one free single T.R. Form 13/15 download. */
+/**
+ * While enabled, every user gets `free_count` free single T.R. Form 13/15 downloads; while disabled,
+ * only users who registered while it was enabled keep them.
+ */
 export interface SalaryFreeTrFormSettingsRecord {
   enabled: boolean;
+  /** Free downloads per eligible user. */
+  free_count: number;
   /** When it was last turned on; null if never. */
   enabled_since: string | null;
   updated_at: string | null;
 }
 
-/** A user's free single T.R. Form: `none` when they registered while it was off. */
+/** A user's free single T.R. Forms: `none` when not eligible. */
 export type SalaryFreeTrFormState = 'none' | 'available' | 'used';
 
 export interface SalaryOfficeRecord {
@@ -254,9 +272,11 @@ export interface SalaryBillAccessRecord {
   bill_limit: number;
   bills_used: number;
   remaining: number;
-  /** True when a bill is left or the free single T.R. Form is still available. */
+  /** True when a bill is left or a free single T.R. Form is still available. */
   can_bill: boolean;
   free_tr_form: SalaryFreeTrFormState;
+  /** Free single T.R. Form downloads left; used only when no approved bill is left. */
+  free_tr_left: number;
   /** Bills in one bulk. */
   bulk_size: number;
   calc: SalaryArrearsCalcInfo;

@@ -47,6 +47,7 @@ import {
   type SalaryBillAccessRecord,
   type SalaryBillKind,
   SALARY_BILL_LIMIT_CODE,
+  SALARY_FREE_TR_NID,
   SALARY_CALC_LIMIT_CODE,
   SALARY_FREE_ARREARS_CALCS,
   salaryTrFormNo,
@@ -543,6 +544,7 @@ export default function SalaryOn2026Page() {
   const resultsRef = useRef<HTMLDivElement>(null);
   const arrearsRef = useRef<HTMLDivElement>(null);
   const staffRef = useRef<HTMLDivElement>(null);
+  const [scrollRequest, setScrollRequest] = useState<{ ref: React.RefObject<HTMLDivElement | null> } | null>(null);
 
   const router = useRouter();
   const salaryOnly = isSalaryOnlyUser(useSalaryUser());
@@ -607,8 +609,18 @@ export default function SalaryOn2026Page() {
   }
 
   function scrollTo(ref: React.RefObject<HTMLDivElement | null>) {
-    requestAnimationFrame(() => ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    setScrollRequest({ ref });
   }
+
+  useEffect(() => {
+    if (!scrollRequest) return;
+    const frame = requestAnimationFrame(() => {
+      const el = scrollRequest.ref.current;
+      if (!el) return;
+      window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 8, behavior: 'smooth' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [scrollRequest]);
 
   function handleCalculate() {
     const g = requireGrade();
@@ -660,7 +672,7 @@ export default function SalaryOn2026Page() {
     if (!billAccess || billAccess.unlimited) return undefined;
     const { free_limit, free_used, per_bill, unprinted } = billAccess.calc;
     if (free_used < free_limit) return t.calcFreeLeft(num(free_limit - free_used), num(free_limit));
-    if (free_limit === 0 && billAccess.remaining === 0) return t.calcNoFree;
+    if (free_limit === 0 && billAccess.remaining === 0 && billAccess.free_tr_form !== 'available') return t.calcNoFree;
     return t.calcCounted(num(unprinted), num(per_bill));
   }
 
@@ -1326,6 +1338,7 @@ export default function SalaryOn2026Page() {
                     loadError={billAccessError}
                     onRetry={() => void loadBillAccess()}
                     onAccessChange={setBillAccess}
+                    onFreeTrForm={() => setPrintDialog('trform')}
                   />
                   {billError ? (
                     <Alert variant="error" className="print:hidden">
@@ -1411,6 +1424,15 @@ export default function SalaryOn2026Page() {
           t={t}
           initial={printInfo}
           lockedOffice={billOfficeName}
+          fixedNid={
+            printDialog === 'trform' &&
+            billAccess &&
+            !billAccess.unlimited &&
+            billAccess.remaining <= 0 &&
+            billAccess.free_tr_form === 'available'
+              ? SALARY_FREE_TR_NID
+              : ''
+          }
           onCancel={() => setPrintDialog(null)}
           onConfirm={confirmPrint}
           {...(printDialog === 'trform'

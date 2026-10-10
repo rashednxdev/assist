@@ -7,7 +7,10 @@ export interface ISalaryCalcUsage extends Document {
   /** Paid-phase calculations not yet downloaded; one bill is charged when it reaches SALARY_CALCS_PER_BILL. */
   unprinted: number;
   total: number;
+  /** Set by the first free T.R. Form download, before free_tr_count existed. */
   free_tr_used: boolean;
+  /** Free single T.R. Form downloads used; missing on older records. */
+  free_tr_count: number;
   updated_at: Date;
 }
 
@@ -18,6 +21,7 @@ const schema = new Schema<ISalaryCalcUsage>(
     unprinted: { type: Number, default: 0, min: 0 },
     total: { type: Number, default: 0, min: 0 },
     free_tr_used: { type: Boolean, default: false },
+    free_tr_count: { type: Number, default: 0, min: 0 },
     updated_at: { type: Date, default: Date.now },
   },
   { timestamps: false },

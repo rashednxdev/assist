@@ -9,6 +9,8 @@ export interface ISalarySettings extends Document {
   others_allowed: boolean | null;
   /** Periods the free single T.R. Form was on; users registered inside one get it. `to` null = still on. */
   free_tr_periods: Array<{ from: Date; to: Date | null }>;
+  /** Null means SALARY_DEFAULT_FREE_TR_COUNT. */
+  free_tr_count: number | null;
   updated_by: Types.ObjectId | null;
   updated_at: Date | null;
 }
@@ -33,6 +35,7 @@ const schema = new Schema<ISalarySettings>(
       type: [{ _id: false, from: { type: Date, required: true }, to: { type: Date, default: null } }],
       default: [],
     },
+    free_tr_count: { type: Number, default: null, min: 1 },
     updated_by: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     updated_at: { type: Date, default: null },
   },

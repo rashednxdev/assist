@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { FileDown, ShieldCheck, X } from 'lucide-react';
+import { SALARY_FREE_TR_NID } from '@ibas/shared-types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -30,6 +31,7 @@ export function SalaryPrintDialog({
   confirmLabel,
   requireName = false,
   lockedOffice = '',
+  fixedNid = '',
   signatureOption = false,
 }: {
   t: SalaryCopy;
@@ -41,10 +43,16 @@ export function SalaryPrintDialog({
   requireName?: boolean;
   /** Office name fixed by the user's office (the Bangla name for "Others"); shown read-only. */
   lockedOffice?: string;
+  /** NID printed on a free T.R. Form download; shown read-only. */
+  fixedNid?: string;
   /** Show the "signature and date" checkbox (T.R. Form attachment). */
   signatureOption?: boolean;
 }) {
-  const [info, setInfo] = useState<SalaryPrintInfo>(lockedOffice ? { ...initial, office: lockedOffice } : initial);
+  const [info, setInfo] = useState<SalaryPrintInfo>(() => ({
+    ...initial,
+    office: lockedOffice || initial.office,
+    nid: fixedNid || (initial.nid === SALARY_FREE_TR_NID ? '' : initial.nid),
+  }));
   const [nameError, setNameError] = useState(false);
   const [nidError, setNidError] = useState(false);
   const set = (key: 'office' | 'employee' | 'designation' | 'nid') => (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -56,9 +64,9 @@ export function SalaryPrintDialog({
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    const nid = info.nid.trim();
+    const nid = fixedNid || info.nid.trim();
     const badName = requireName && !info.employee.trim();
-    const badNid = nid !== '' && !NID_LENGTHS.includes(nid.length);
+    const badNid = !fixedNid && nid !== '' && !NID_LENGTHS.includes(nid.length);
     setNameError(badName);
     setNidError(badNid);
     if (badName || badNid) return;
@@ -129,13 +137,16 @@ export function SalaryPrintDialog({
             <Label htmlFor="print-nid">{t.nid}</Label>
             <Input
               id="print-nid"
-              value={info.nid}
+              value={fixedNid || info.nid}
               onChange={set('nid')}
+              disabled={Boolean(fixedNid)}
               inputMode="numeric"
               autoComplete="off"
               placeholder={t.nidPlaceholder}
               aria-invalid={nidError || undefined}
-              className={`tabular-nums ${nidError ? 'border-destructive focus-visible:ring-destructive/30' : ''}`}
+              className={`tabular-nums ${fixedNid ? 'cursor-not-allowed bg-slate-100' : ''} ${
+                nidError ? 'border-destructive focus-visible:ring-destructive/30' : ''
+              }`}
             />
             {nidError ? <p className="text-xs font-medium text-destructive">{t.nidInvalid}</p> : null}
           </div>

@@ -1,4 +1,5 @@
 import {
+  SALARY_FREE_TR_NID,
   formatTaka,
   hraAreaLabel,
   type AllowanceLine,
@@ -185,8 +186,13 @@ const salaryEn = {
   allowanceInputNote: 'Note: Allowances are calculated on your input.',
   calcFreeLeft: (left: string, total: string) => `Free arrears calculations left: ${left} of ${total}.`,
   calcNoFree: 'Your office has no free arrears calculations left. Request a bulk from the admin to calculate.',
-  freeTrAvailable: 'You have 1 free single T.R. Form 13 / 15 download. It is used before your approved bills.',
-  freeTrUsed: 'Your free single T.R. Form download has been used.',
+  freeTrAvailable: (left: string) =>
+    `Free single T.R. Form 13 / 15 downloads left: ${left}. They are used only when no approved bill is left, and print the NID as ${SALARY_FREE_TR_NID}.`,
+  freeTrUsed: 'Your free single T.R. Form downloads have been used.',
+  freeTrOfferTitle: (left: string) => `Free T.R. Form download available: ${left} left`,
+  freeTrOfferHint: `Download T.R. Form 13 / 15 for this arrear bill without a bulk. The NID prints as ${SALARY_FREE_TR_NID}. When the free downloads are used up, request a bulk.`,
+  freeTrBtn: 'Download free T.R. Form',
+  accessStatusFree: 'Free T.R. Form',
   calcCounted: (n: string, per: string) =>
     `Every ${per} calculations without a T.R. Form download use 1 bill (${n} of ${per} counted).`,
   calcLimit: (free: string) =>
@@ -558,8 +564,13 @@ const salaryBn: SalaryCopy = {
   allowanceInputNote: 'নোট: ভাতাসমূহ আপনার দেওয়া তথ্যের ভিত্তিতে হিসাব করা হয়েছে।',
   calcFreeLeft: (left, total) => `বিনামূল্যে বকেয়া হিসাব বাকি: ${total}টির মধ্যে ${left}টি।`,
   calcNoFree: 'আপনার অফিসের জন্য বিনামূল্যের কোনো বকেয়া হিসাব বাকি নেই। হিসাব করতে অ্যাডমিনের কাছে বাল্কের আবেদন করুন।',
-  freeTrAvailable: 'আপনি ১টি একক টি.আর. ফরম-১৩ / ১৫ বিনামূল্যে ডাউনলোড করতে পারবেন। এটি অনুমোদিত বিলের আগে ব্যবহৃত হবে।',
+  freeTrAvailable: (left: string) =>
+    `বিনামূল্যে একক টি.আর. ফরম-১৩ / ১৫ ডাউনলোড বাকি: ${left}টি। অনুমোদিত বিল না থাকলেই এটি ব্যবহৃত হবে এবং এনআইডি ${SALARY_FREE_TR_NID} ছাপা হবে।`,
   freeTrUsed: 'আপনার বিনামূল্যের একক টি.আর. ফরম ডাউনলোড ব্যবহৃত হয়েছে।',
+  freeTrOfferTitle: (left: string) => `বিনামূল্যে টি.আর. ফরম ডাউনলোড: ${left}টি বাকি`,
+  freeTrOfferHint: `বাল্ক ছাড়াই এই বকেয়া বিলের টি.আর. ফরম-১৩ / ১৫ ডাউনলোড করুন। এনআইডি ${SALARY_FREE_TR_NID} ছাপা হবে। বিনামূল্যের ডাউনলোড শেষ হলে বাল্কের আবেদন করুন।`,
+  freeTrBtn: salaryEn.freeTrBtn,
+  accessStatusFree: 'বিনামূল্যে টি.আর. ফরম',
   calcCounted: (n, per) => `টি.আর. ফরম ডাউনলোড ছাড়া প্রতি ${per}টি হিসাবে ১টি বিল ব্যবহৃত হবে (${per}টির মধ্যে ${n}টি গণনা হয়েছে)।`,
   calcLimit: (free) => `আপনার ${free}টি বিনামূল্যের বকেয়া হিসাব শেষ হয়েছে। চালিয়ে যেতে নিচ থেকে বাল্কের আবেদন করুন।`,
   calcChecking: salaryEn.calcChecking,

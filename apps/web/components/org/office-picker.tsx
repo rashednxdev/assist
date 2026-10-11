@@ -21,6 +21,7 @@ export function OfficePicker({
   disabled,
   departmentId,
   topLevel,
+  shortLabel,
 }: {
   value: OfficeOption | null;
   onChange: (o: OfficeOption | null) => void;
@@ -34,7 +35,10 @@ export function OfficePicker({
   departmentId?: string;
   /** Only top-level offices (departments). */
   topLevel?: boolean;
+  /** Show the office short name (the full name when it has none) instead of "Name (Short)". */
+  shortLabel?: boolean;
 }) {
+  const label = (o: OfficeOption) => (shortLabel ? o.short_name || o.name : officeLabel(o));
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [options, setOptions] = useState<OfficeOption[]>([]);
@@ -110,7 +114,7 @@ export function OfficePicker({
         <Building2 className="h-4 w-4 shrink-0 text-muted" />
         {value ? (
           <span className="min-w-0 flex-1">
-            <span className="block truncate font-medium">{officeLabel(value)}</span>
+            <span className="block truncate font-medium">{label(value)}</span>
             {value.parent_path && <span className="block truncate text-xs text-muted">{value.parent_path}</span>}
           </span>
         ) : (
@@ -168,7 +172,7 @@ export function OfficePicker({
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-medium">
-                      {officeLabel(o)}
+                      {label(o)}
                       {o.type_short && <span className="ml-1.5 rounded bg-slate-100 px-1 py-0.5 text-[10px] font-semibold text-slate-600">{o.type_short}</span>}
                     </span>
                     <span className="block truncate text-xs text-muted">

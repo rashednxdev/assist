@@ -175,6 +175,7 @@ function OfficeForm({
               <Label htmlFor="salary-office-office">{t.officeOffice}</Label>
               <OfficePicker
                 id="salary-office-office"
+                shortLabel
                 departmentId={circle?.id}
                 disabled={!circle}
                 value={office}

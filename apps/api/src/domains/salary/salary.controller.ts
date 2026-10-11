@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import type { z } from 'zod';
 import {
-  SALARY_ACCESS_STATUSES,
+  SALARY_ACCESS_LIST_FILTERS,
   adminSalaryOtherOfficeSchema,
   consumeSalaryBillSchema,
   consumeSalaryStaffBillSchema,
@@ -11,6 +11,7 @@ import {
   salaryStaffOfficeSchema,
   salaryStaffSchema,
   saveSalaryOfficeSchema,
+  updateSalaryAdminNoteSchema,
   updateSalaryBillAccessSchema,
   updateSalaryBulkSizeSchema,
   updateSalaryContactsSchema,
@@ -55,6 +56,11 @@ export async function trackSalaryPdfHandler(_req: Request, res: Response): Promi
 export async function getSalaryStatsHandler(_req: AuthRequest, res: Response): Promise<void> {
   const data = await salaryService.getSalaryUsageStats();
   res.json({ data });
+}
+
+export async function salaryJoinedOfficesHandler(_req: Request, res: Response): Promise<void> {
+  res.set('Cache-Control', 'public, max-age=60');
+  res.json({ data: await officeService.salaryJoinedOffices() });
 }
 
 export async function getMyBillAccessHandler(req: AuthRequest, res: Response): Promise<void> {
@@ -173,7 +179,7 @@ export async function recordArrearsCalcHandler(req: AuthRequest, res: Response):
 export async function listBillAccessHandler(req: AuthRequest, res: Response): Promise<void> {
   const { page, limit, skip } = parsePagination(req);
   const statusRaw = typeof req.query.status === 'string' ? req.query.status : undefined;
-  const status = (SALARY_ACCESS_STATUSES as readonly string[]).includes(statusRaw ?? '') ? statusRaw : undefined;
+  const status = (SALARY_ACCESS_LIST_FILTERS as readonly string[]).includes(statusRaw ?? '') ? statusRaw : undefined;
   const q = typeof req.query.q === 'string' ? req.query.q : undefined;
   const { items, total } = await accessService.listBillAccess({ status, q, skip, limit });
   res.json({ data: items, meta: { page, limit, total } });
@@ -189,6 +195,15 @@ export async function rejectBillRequestHandler(req: AuthRequest, res: Response):
   const dto = parseBody(rejectSalaryBillRequestSchema, req.body);
   const data = await accessService.rejectBillRequest(String(req.params.userId), dto, authUser(req).id);
   res.json({ data });
+}
+
+export async function updateBillAccessNoteHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = parseBody(updateSalaryAdminNoteSchema, req.body);
+  res.json({ data: await accessService.updateBillAccessNote(String(req.params.userId), dto) });
+}
+
+export async function getBillAccessStatsHandler(_req: AuthRequest, res: Response): Promise<void> {
+  res.json({ data: await accessService.getBillAccessStats() });
 }
 
 export async function listBillUsageHandler(req: AuthRequest, res: Response): Promise<void> {

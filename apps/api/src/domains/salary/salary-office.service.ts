@@ -4,6 +4,7 @@ import {
   salaryFreeCalcsFor,
   type AdminSalaryOtherOfficeDto,
   type OfficeOption,
+  type SalaryJoinedOfficesRecord,
   type SalaryOfficeRecord,
   type SalaryOfficeSettingsRecord,
   type SalaryOtherOfficeSuggestion,
@@ -24,6 +25,10 @@ const SETTINGS_KEY = 'global';
 
 export function isPlatformAdmin(user: AuthUser): boolean {
   return user.is_super_admin || user.user_type === 'system_admin' || user.user_type === 'admin';
+}
+
+export async function salaryJoinedOffices(): Promise<SalaryJoinedOfficesRecord> {
+  return { joined_offices: await SalaryUserOffice.countDocuments({}) };
 }
 
 function escapeRegex(text: string): string {
@@ -202,7 +207,7 @@ export async function salaryOfficeLabels(userIds: string[]): Promise<Map<string,
   const out = new Map<string, string>();
   for (const doc of docs) {
     const rec = toRecord(map, types, doc);
-    if (rec) out.set(String(doc.user_id), rec.office ? rec.label : `${rec.label} (Others)`);
+    if (rec) out.set(String(doc.user_id), rec.office ? rec.office.short_name || rec.office.name : `${rec.label} (Others)`);
   }
   return out;
 }

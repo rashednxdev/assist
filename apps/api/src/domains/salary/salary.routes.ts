@@ -28,12 +28,15 @@ import {
   listBillAccessHandler,
   listBillUsageHandler,
   recordArrearsCalcHandler,
+  salaryJoinedOfficesHandler,
   rejectBillRequestHandler,
   requestBillsHandler,
   saveMySalaryOfficeHandler,
   searchOtherOfficesHandler,
   trackSalaryPdfHandler,
   updateBillAccessHandler,
+  updateBillAccessNoteHandler,
+  getBillAccessStatsHandler,
   updateSalaryBulkSizeHandler,
   updateSalaryContactsHandler,
   updateSalaryFreeTrFormHandler,
@@ -56,6 +59,7 @@ const publicLimit = rateLimit({
 
 salaryRouter.post('/calculate-all-phases', publicLimit, asyncHandler(calculateAllPhasesHandler));
 salaryRouter.post('/pdf', publicLimit, asyncHandler(trackSalaryPdfHandler));
+salaryRouter.get('/public/joined-offices', publicLimit, asyncHandler(salaryJoinedOfficesHandler));
 
 salaryRouter.get('/admin/stats', authenticate, requireAdmin, asyncHandler(getSalaryStatsHandler));
 
@@ -78,7 +82,9 @@ salaryRouter.put('/staff/:staffId', authenticate, publicLimit, asyncHandler(upda
 salaryRouter.delete('/staff/:staffId', authenticate, publicLimit, asyncHandler(deleteMyStaffHandler));
 
 salaryRouter.get('/admin/access', authenticate, requireAdmin, asyncHandler(listBillAccessHandler));
+salaryRouter.get('/admin/access-stats', authenticate, requireAdmin, asyncHandler(getBillAccessStatsHandler));
 salaryRouter.put('/admin/access/:userId', authenticate, requireAdmin, asyncHandler(updateBillAccessHandler));
+salaryRouter.put('/admin/access/:userId/note', authenticate, requireAdmin, asyncHandler(updateBillAccessNoteHandler));
 salaryRouter.post('/admin/access/:userId/reject', authenticate, requireAdmin, asyncHandler(rejectBillRequestHandler));
 salaryRouter.get('/admin/access/:userId/usage', authenticate, requireAdmin, asyncHandler(listBillUsageHandler));
 salaryRouter.get('/admin/contacts', authenticate, requireAdmin, asyncHandler(getSalaryContactsHandler));

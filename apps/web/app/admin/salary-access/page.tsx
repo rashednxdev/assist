@@ -1,8 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Search } from 'lucide-react';
-import type { SalaryBillAccessAdminRow, SalaryBillUsageRecord, SalaryBulkSizeRecord } from '@ibas/shared-types';
+import { ChevronRight, Search, X } from 'lucide-react';
+import type {
+  SalaryAccessListFilter,
+  SalaryBillAccessAdminRow,
+  SalaryBillAccessStats,
+  SalaryBillUsageRecord,
+  SalaryBulkSizeRecord,
+  SalaryPrintStats,
+} from '@ibas/shared-types';
 import { SALARY_CALCS_PER_BILL, SALARY_DEFAULT_BULK_SIZE, formatTaka } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,10 +18,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
-type StatusFilter = 'pending' | 'approved' | 'rejected' | 'all';
+type StatusFilter = SalaryAccessListFilter | 'all';
 
 const FILTERS: Array<{ id: StatusFilter; label: string }> = [
+  { id: 'active', label: 'Requests & approved' },
   { id: 'pending', label: 'Pending requests' },
   { id: 'approved', label: 'Approved' },
   { id: 'rejected', label: 'Rejected' },
@@ -36,7 +45,9 @@ function formatWhen(iso: string | null): string {
 }
 
 function StatusBadge({ row }: { row: SalaryBillAccessAdminRow }) {
-  if (row.request.pending) return <Badge variant="warning">Pending</Badge>;
+  if (row.request.pending) {
+    return row.bill_limit > 0 ? <Badge variant="warning">New bulk</Badge> : <Badge variant="warning">New request</Badge>;
+  }
   if (row.status === 'approved') return <Badge variant="success">Approved</Badge>;
   if (row.status === 'rejected') return <Badge variant="destructive">Rejected</Badge>;
   return <Badge variant="secondary">—</Badge>;
@@ -58,6 +69,48 @@ const USAGE_LABEL: Record<SalaryBillUsageRecord['kind'], string> = {
   arrears_calc: `${SALARY_CALCS_PER_BILL} calculations without download`,
   staff_tr_form_15: 'Office staff T.R. Form 15 (1 employee)',
 };
+
+function StatCard({ title, stats }: { title: string; stats: SalaryPrintStats }) {
+  return (
+    <div className="rounded-xl border border-border bg-surface p-3 shadow-sm">
+      <p className="text-xs font-medium text-muted">{title}</p>
+      <p className="text-2xl font-bold tabular-nums text-slate-900">{stats.total}</p>
+      <p className="text-xs text-slate-600">
+        Free <span className="font-semibold tabular-nums text-emerald-700">{stats.free}</span> · Approved{' '}
+        <span className="font-semibold tabular-nums text-primary-dark">{stats.approved}</span>
+      </p>
+    </div>
+  );
+}
+
+function CountCard({ title, value, tone }: { title: string; value: number; tone: 'amber' | 'emerald' }) {
+  return (
+    <div className="rounded-xl border border-border bg-surface p-3 shadow-sm">
+      <p className="text-xs font-medium text-muted">{title}</p>
+      <p className={cn('text-2xl font-bold tabular-nums', tone === 'amber' ? 'text-amber-700' : 'text-emerald-700')}>{value}</p>
+    </div>
+  );
+}
+
+function StatsBar({ reloadKey }: { reloadKey: number }) {
+  const [stats, setStats] = useState<SalaryBillAccessStats | null>(null);
+
+  useEffect(() => {
+    apiFetch<{ data: SalaryBillAccessStats }>('/salary/admin/access-stats')
+      .then((res) => setStats(res.data))
+      .catch(() => undefined);
+  }, [reloadKey]);
+
+  if (!stats) return null;
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <StatCard title="Total prints" stats={stats.all_time} />
+      <StatCard title="Today's prints" stats={stats.today} />
+      <CountCard title="Pending requests" value={stats.pending_requests} tone="amber" />
+      <CountCard title="Approved users" value={stats.approved_users} tone="emerald" />
+    </div>
+  );
+}
 
 function UsageHistory({ userId }: { userId: string }) {
   const [items, setItems] = useState<SalaryBillUsageRecord[] | null>(null);
@@ -84,12 +137,72 @@ function UsageHistory({ userId }: { userId: string }) {
   );
 }
 
-function AccessRow({ row, bulkSize, onSaved }: { row: SalaryBillAccessAdminRow; bulkSize: number; onSaved: () => void }) {
-  const suggested = row.request.pending
-    ? row.bills_used + (row.request.requested_bills ?? 0)
-    : row.bill_limit;
-  const [limit, setLimit] = useState(String(suggested));
+function AdminNote({ row, onSaved }: { row: SalaryBillAccessAdminRow; onSaved: (row: SalaryBillAccessAdminRow) => void }) {
   const [note, setNote] = useState(row.admin_note);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState('');
+  const [error, setError] = useState('');
+
+  async function save() {
+    setBusy(true);
+    setStatus('');
+    setError('');
+    try {
+      const res = await apiFetch<{ data: SalaryBillAccessAdminRow }>(`/salary/admin/access/${row.user.id}/note`, {
+        method: 'PUT',
+        body: JSON.stringify({ admin_note: note.trim() }),
+      });
+      onSaved(res.data);
+      setStatus('Note saved.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save note');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <Label htmlFor={`note-${row.user.id}`} className="text-xs">
+        Admin note <span className="font-normal text-muted">(only admins see this; not shown to the user)</span>
+      </Label>
+      <textarea
+        id={`note-${row.user.id}`}
+        rows={3}
+        maxLength={500}
+        value={note}
+        onChange={(e) => {
+          setNote(e.target.value);
+          setStatus('');
+        }}
+        className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+      />
+      <div className="flex items-center gap-2">
+        <Button type="button" size="sm" variant="outline" onClick={() => void save()} disabled={busy || note.trim() === row.admin_note}>
+          {busy ? 'Saving…' : 'Save note'}
+        </Button>
+        {status ? <span className="text-xs text-emerald-700">{status}</span> : null}
+      </div>
+      {error ? <Alert variant="error">{error}</Alert> : null}
+    </div>
+  );
+}
+
+function AccessDialog({
+  row,
+  bulkSize,
+  onClose,
+  onSaved,
+  onNoteSaved,
+}: {
+  row: SalaryBillAccessAdminRow;
+  bulkSize: number;
+  onClose: () => void;
+  onSaved: () => void;
+  onNoteSaved: (row: SalaryBillAccessAdminRow) => void;
+}) {
+  const suggested = row.request.pending ? row.bills_used + (row.request.requested_bills ?? 0) : row.bill_limit;
+  const [limit, setLimit] = useState(String(suggested));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [showHistory, setShowHistory] = useState(false);
@@ -105,7 +218,7 @@ function AccessRow({ row, bulkSize, onSaved }: { row: SalaryBillAccessAdminRow; 
     try {
       await apiFetch(`/salary/admin/access/${row.user.id}`, {
         method: 'PUT',
-        body: JSON.stringify({ bill_limit: value, admin_note: note.trim() }),
+        body: JSON.stringify({ bill_limit: value }),
       });
       onSaved();
     } catch (err) {
@@ -120,10 +233,7 @@ function AccessRow({ row, bulkSize, onSaved }: { row: SalaryBillAccessAdminRow; 
     setBusy(true);
     setError('');
     try {
-      await apiFetch(`/salary/admin/access/${row.user.id}/reject`, {
-        method: 'POST',
-        body: JSON.stringify({ admin_note: note.trim() }),
-      });
+      await apiFetch(`/salary/admin/access/${row.user.id}/reject`, { method: 'POST', body: JSON.stringify({}) });
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to reject');
@@ -133,112 +243,194 @@ function AccessRow({ row, bulkSize, onSaved }: { row: SalaryBillAccessAdminRow; 
   }
 
   return (
-    <div className="space-y-3 rounded-xl border border-border p-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <p className="font-semibold text-slate-900">{row.user.full_name_en}</p>
-          <p className="text-xs text-muted">
-            {row.user.phone}
-            {row.user.email ? ` · ${row.user.email}` : ''}
-          </p>
-          <p className="text-xs text-slate-600">
-            <span className="font-medium">Office:</span> {row.office_label || 'Not selected yet'}
-          </p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+      <button type="button" aria-label="Close" className="absolute inset-0 bg-slate-900/50" onClick={onClose} />
+      <div className="relative max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-surface shadow-xl">
+        <div className="flex items-start justify-between gap-3 border-b border-border p-5">
+          <div>
+            <h2 className="flex flex-wrap items-center gap-2 text-lg font-bold">
+              {row.user.full_name_en}
+              <StatusBadge row={row} />
+            </h2>
+            <p className="text-xs text-muted">
+              {row.user.phone}
+              {row.user.email ? ` · ${row.user.email}` : ''}
+            </p>
+            <p className="text-xs text-slate-600">
+              <span className="font-medium">Office:</span> {row.office_label || 'Not selected yet'}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-md p-1 text-muted hover:bg-slate-100" aria-label="Close">
+            <X className="h-5 w-5" />
+          </button>
         </div>
-        <StatusBadge row={row} />
-      </div>
 
-      <div className="grid gap-2 text-sm sm:grid-cols-4">
-        <div>
-          <p className="text-xs text-muted">Allowed</p>
-          <p className="font-semibold tabular-nums">{row.bill_limit}</p>
-        </div>
-        <div>
-          <p className="text-xs text-muted">Used</p>
-          <p className="font-semibold tabular-nums">{row.bills_used}</p>
-        </div>
-        <div>
-          <p className="text-xs text-muted">Remaining</p>
-          <p className="font-semibold tabular-nums">{row.remaining}</p>
-        </div>
-        <div>
-          <p className="text-xs text-muted">Last used</p>
-          <p className="text-xs">{formatWhen(row.last_used_at)}</p>
-        </div>
-      </div>
-      <p className="text-xs text-slate-600">
-        Free calculations used: {row.calc.free_used} of {row.calc.free_limit} · Calculations toward next bill:{' '}
-        {row.calc.unprinted} of {row.calc.per_bill}
-      </p>
+        <div className="space-y-4 p-5">
+          <div className="grid gap-2 text-sm sm:grid-cols-4">
+            <div>
+              <p className="text-xs text-muted">Allowed</p>
+              <p className="font-semibold tabular-nums">{row.bill_limit}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted">Used</p>
+              <p className="font-semibold tabular-nums">{row.bills_used}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted">Remaining</p>
+              <p className="font-semibold tabular-nums">{row.remaining}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted">Last used</p>
+              <p className="text-xs">{formatWhen(row.last_used_at)}</p>
+            </div>
+          </div>
+          <div className="space-y-0.5 text-xs text-slate-600">
+            <p>
+              Free calculations used: {row.calc.free_used} of {row.calc.free_limit} · Calculations toward next bill:{' '}
+              {row.calc.unprinted} of {row.calc.per_bill}
+            </p>
+            <p>
+              Free T.R. Form:{' '}
+              {row.free_tr_form === 'available' ? 'available' : row.free_tr_form === 'used' ? 'used' : 'not eligible'} ·
+              Approved on {formatWhen(row.approved_at)}
+            </p>
+          </div>
 
-      {row.request.pending ? (
-        <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-950">
-          Requested{' '}
-          {row.request.requested_bulks ? (
-            <>
-              <strong>{plural(row.request.requested_bulks, 'bulk')}</strong> ({plural(row.request.requested_bills ?? 0, 'bill')})
-            </>
-          ) : (
-            <strong>{plural(row.request.requested_bills ?? 0, 'bill')}</strong>
-          )}{' '}
-          on {formatWhen(row.request.requested_at)}
-          {row.request.note ? <span className="block text-xs">Note: {row.request.note}</span> : null}
-        </div>
-      ) : null}
+          {row.request.pending ? (
+            <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-950">
+              {row.bill_limit > 0 ? 'New bulk requested: ' : 'Requested '}
+              {row.request.requested_bulks ? (
+                <>
+                  <strong>{plural(row.request.requested_bulks, 'bulk')}</strong> ({plural(row.request.requested_bills ?? 0, 'bill')})
+                </>
+              ) : (
+                <strong>{plural(row.request.requested_bills ?? 0, 'bill')}</strong>
+              )}{' '}
+              on {formatWhen(row.request.requested_at)}
+              {row.request.note ? <span className="block text-xs">User note: {row.request.note}</span> : null}
+            </div>
+          ) : null}
 
-      <div className="grid items-end gap-2 sm:grid-cols-[14rem_minmax(0,1fr)_auto]">
-        <div className="space-y-1">
-          <Label htmlFor={`limit-${row.user.id}`} className="text-xs">
-            Total bills allowed
-          </Label>
-          <div className="flex gap-1.5">
-            <Input
-              id={`limit-${row.user.id}`}
-              type="number"
-              min={0}
-              inputMode="numeric"
-              value={limit}
-              onChange={(e) => setLimit(e.target.value)}
-            />
-            <Button
+          <div className="space-y-2 rounded-lg border border-border p-3">
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="w-56 space-y-1">
+                <Label htmlFor={`limit-${row.user.id}`} className="text-xs">
+                  Total bills allowed
+                </Label>
+                <div className="flex gap-1.5">
+                  <Input
+                    id={`limit-${row.user.id}`}
+                    type="number"
+                    min={0}
+                    inputMode="numeric"
+                    value={limit}
+                    onChange={(e) => setLimit(e.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-10 shrink-0"
+                    title={`Add 1 bulk (${bulkSize} bills)`}
+                    onClick={() => setLimit((l) => addBulk(l, bulkSize, row.bills_used))}
+                  >
+                    +1 bulk
+                  </Button>
+                </div>
+              </div>
+              <Button type="button" onClick={() => void saveLimit()} disabled={busy}>
+                {row.request.pending ? 'Approve' : 'Save'}
+              </Button>
+              {row.request.pending ? (
+                <Button type="button" variant="outline" onClick={() => void reject()} disabled={busy}>
+                  Reject
+                </Button>
+              ) : null}
+            </div>
+            <p className="text-xs text-muted">
+              1 bulk = {plural(bulkSize, 'bill')}. Total includes bills already used ({row.bills_used}). Set it to{' '}
+              {row.bills_used} to stop further bills.
+            </p>
+            {error ? <Alert variant="error">{error}</Alert> : null}
+          </div>
+
+          <AdminNote row={row} onSaved={onNoteSaved} />
+
+          <div>
+            <button
               type="button"
-              variant="outline"
-              size="sm"
-              className="h-10 shrink-0"
-              title={`Add 1 bulk (${bulkSize} bills)`}
-              onClick={() => setLimit((l) => addBulk(l, bulkSize, row.bills_used))}
+              className="text-xs font-medium text-primary hover:underline"
+              onClick={() => setShowHistory((v) => !v)}
             >
-              +1 bulk
-            </Button>
+              {showHistory ? 'Hide bill history' : 'Show bill history'}
+            </button>
+            {showHistory ? (
+              <div className="mt-2">
+                <UsageHistory userId={row.user.id} />
+              </div>
+            ) : null}
           </div>
         </div>
-        <div className="space-y-1">
-          <Label htmlFor={`note-${row.user.id}`} className="text-xs">
-            Note to user (optional)
-          </Label>
-          <Input id={`note-${row.user.id}`} value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} />
-        </div>
-        <div className="flex gap-2">
-          <Button type="button" onClick={() => void saveLimit()} disabled={busy}>
-            {row.request.pending ? 'Approve' : 'Save'}
-          </Button>
-          {row.request.pending ? (
-            <Button type="button" variant="outline" onClick={() => void reject()} disabled={busy}>
-              Reject
-            </Button>
-          ) : null}
-        </div>
       </div>
-      <p className="text-xs text-muted">
-        1 bulk = {plural(bulkSize, 'bill')}. Total includes bills already used ({row.bills_used}). Set it to {row.bills_used} to stop
-        further bills.
-      </p>
-      {error ? <Alert variant="error">{error}</Alert> : null}
+    </div>
+  );
+}
 
-      <button type="button" className="text-xs font-medium text-primary hover:underline" onClick={() => setShowHistory((v) => !v)}>
-        {showHistory ? 'Hide bill history' : 'Show bill history'}
-      </button>
-      {showHistory ? <UsageHistory userId={row.user.id} /> : null}
+function AccessTable({ rows, onOpen }: { rows: SalaryBillAccessAdminRow[]; onOpen: (row: SalaryBillAccessAdminRow) => void }) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-border">
+      <table className="w-full min-w-[36rem] text-sm">
+        <thead className="bg-slate-50 text-left text-xs font-semibold text-slate-600">
+          <tr>
+            <th className="px-3 py-2">Name</th>
+            <th className="px-3 py-2 text-right">Allowed</th>
+            <th className="px-3 py-2 text-right">Used</th>
+            <th className="px-3 py-2 text-right">Remaining</th>
+            <th className="px-3 py-2">Status</th>
+            <th className="w-8 px-2 py-2" />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr
+              key={row.user.id}
+              onClick={() => onOpen(row)}
+              className={cn(
+                'cursor-pointer border-t border-border align-top hover:bg-slate-50',
+                row.request.pending && 'bg-amber-50/60 hover:bg-amber-50',
+              )}
+            >
+              <td className="px-3 py-2">
+                <span className="block font-semibold text-slate-900">{row.user.full_name_en}</span>
+                <span className="block text-xs text-muted">{row.user.phone}</span>
+                <span className="block text-[10px] leading-tight text-slate-500">{row.office_label || 'Office not selected'}</span>
+                {row.admin_note ? <span className="block text-[11px] text-slate-500">Note: {row.admin_note}</span> : null}
+              </td>
+              <td className="px-3 py-2 text-right font-semibold tabular-nums">{row.bill_limit}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{row.bills_used}</td>
+              <td
+                className={cn(
+                  'px-3 py-2 text-right font-semibold tabular-nums',
+                  row.remaining > 0 ? 'text-emerald-700' : 'text-red-700',
+                )}
+              >
+                {row.remaining}
+              </td>
+              <td className="px-3 py-2">
+                <StatusBadge row={row} />
+                {row.request.pending ? (
+                  <span className="mt-0.5 block text-[11px] text-amber-900">
+                    +{plural(row.request.requested_bills ?? 0, 'bill')}
+                  </span>
+                ) : null}
+              </td>
+              <td className="px-2 py-2 text-muted">
+                <ChevronRight className="h-4 w-4" />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -372,7 +564,7 @@ function GrantUser({ bulkSize, onSaved }: { bulkSize: number; onSaved: () => voi
 }
 
 export default function SalaryAccessAdminPage() {
-  const [filter, setFilter] = useState<StatusFilter>('pending');
+  const [filter, setFilter] = useState<StatusFilter>('active');
   const [q, setQ] = useState('');
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
@@ -382,6 +574,7 @@ export default function SalaryAccessAdminPage() {
   const [error, setError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
   const [bulkSize, setBulkSize] = useState(SALARY_DEFAULT_BULK_SIZE);
+  const [openRow, setOpenRow] = useState<SalaryBillAccessAdminRow | null>(null);
 
   useEffect(() => {
     apiFetch<{ data: SalaryBulkSizeRecord }>('/salary/admin/bulk-size')
@@ -415,12 +608,22 @@ export default function SalaryAccessAdminPage() {
   const reload = () => setReloadKey((k) => k + 1);
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  function noteSaved(row: SalaryBillAccessAdminRow) {
+    setRows((list) => list.map((r) => (r.user.id === row.user.id ? row : r)));
+    setOpenRow(row);
+  }
+
   return (
     <div className="space-y-6">
+      <StatsBar reloadKey={reloadKey} />
+
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Requests & approvals</CardTitle>
-          <CardDescription>Approve requests, change how many bills a user may use, or stop further bills.</CardDescription>
+          <CardDescription>
+            Pending requests are marked &quot;New request&quot; or &quot;New bulk&quot;. Open a row to approve, change the bills
+            allowed, or add an admin note.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
@@ -460,11 +663,7 @@ export default function SalaryAccessAdminPage() {
           ) : rows.length === 0 ? (
             <p className="text-sm text-muted">Nothing here.</p>
           ) : (
-            <div className="space-y-3">
-              {rows.map((row) => (
-                <AccessRow key={`${row.user.id}-${row.updated_at}`} row={row} bulkSize={bulkSize} onSaved={reload} />
-              ))}
-            </div>
+            <AccessTable rows={rows} onOpen={setOpenRow} />
           )}
 
           {pages > 1 ? (
@@ -473,7 +672,7 @@ export default function SalaryAccessAdminPage() {
                 Previous
               </Button>
               <span className="text-muted">
-                Page {page} of {pages}
+                Page {page} of {pages} · {total} users
               </span>
               <Button type="button" size="sm" variant="outline" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
                 Next
@@ -484,6 +683,20 @@ export default function SalaryAccessAdminPage() {
       </Card>
 
       <GrantUser bulkSize={bulkSize} onSaved={reload} />
+
+      {openRow ? (
+        <AccessDialog
+          key={`${openRow.user.id}-${openRow.updated_at}`}
+          row={openRow}
+          bulkSize={bulkSize}
+          onClose={() => setOpenRow(null)}
+          onSaved={() => {
+            setOpenRow(null);
+            reload();
+          }}
+          onNoteSaved={noteSaved}
+        />
+      ) : null}
     </div>
   );
 }

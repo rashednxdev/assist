@@ -309,11 +309,6 @@ export function SalaryBillAccessPanel({
           <p className="font-semibold text-red-700">{t.accessUsedUp(num(access.bill_limit))}</p>
         ) : null}
         {access.status === 'rejected' && !pending ? <p className="font-semibold text-red-700">{t.accessRejected}</p> : null}
-        {access.admin_note && !pending ? (
-          <p className="text-xs">
-            <span className="font-semibold">{t.accessAdminNote}:</span> {access.admin_note}
-          </p>
-        ) : null}
         <p className="text-xs text-slate-500">{t.accessUseNote(num(access.bulk_size))}</p>
         <p className="text-xs font-semibold text-amber-800">
           {access.calc.free_used < access.calc.free_limit

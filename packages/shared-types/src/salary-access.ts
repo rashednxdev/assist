@@ -55,6 +55,10 @@ export function salaryTrFormNo(substantiveGrade: number): 13 | 15 {
 export const SALARY_ACCESS_STATUSES = ['none', 'pending', 'approved', 'rejected'] as const;
 export type SalaryAccessStatus = (typeof SALARY_ACCESS_STATUSES)[number];
 
+/** Admin list filters; `active` = pending requests and approved users. */
+export const SALARY_ACCESS_LIST_FILTERS = ['active', 'pending', 'approved', 'rejected'] as const;
+export type SalaryAccessListFilter = (typeof SALARY_ACCESS_LIST_FILTERS)[number];
+
 export const SALARY_BILL_LIMIT_CODE = 'SALARY_BILL_LIMIT';
 export const SALARY_OFFICE_REQUIRED_CODE = 'SALARY_OFFICE_REQUIRED';
 
@@ -101,6 +105,11 @@ export interface SalaryOtherOfficeSuggestion {
   other_office_name_bn: string;
   /** Users who joined with this office name. */
   users: number;
+}
+
+/** Shown on the sign-in screen; every user who saved a salary office counts as one office. */
+export interface SalaryJoinedOfficesRecord {
+  joined_offices: number;
 }
 
 /** Admin correction of a user's "Others" office name. */
@@ -230,9 +239,30 @@ export const updateSalaryBillAccessSchema = z.object({
 export type UpdateSalaryBillAccessDto = z.infer<typeof updateSalaryBillAccessSchema>;
 
 export const rejectSalaryBillRequestSchema = z.object({
-  admin_note: z.string().trim().max(500).default(''),
+  admin_note: z.string().trim().max(500).optional(),
 });
 export type RejectSalaryBillRequestDto = z.infer<typeof rejectSalaryBillRequestSchema>;
+
+/** Note seen only by admins; never sent to the user. */
+export const updateSalaryAdminNoteSchema = z.object({
+  admin_note: z.string().trim().max(500),
+});
+export type UpdateSalaryAdminNoteDto = z.infer<typeof updateSalaryAdminNoteSchema>;
+
+/** T.R. Form 13 / 15, arrears PDF and office staff T.R. Form 15 downloads (one per employee). */
+export interface SalaryPrintStats {
+  total: number;
+  free: number;
+  approved: number;
+}
+
+export interface SalaryBillAccessStats {
+  all_time: SalaryPrintStats;
+  /** Since midnight, Bangladesh time. */
+  today: SalaryPrintStats;
+  pending_requests: number;
+  approved_users: number;
+}
 
 export const recordArrearsCalcSchema = z.object({
   grade: z.number().int().min(1).max(20),
@@ -283,7 +313,6 @@ export interface SalaryBillAccessRecord {
   /** Whether the next arrears calculation is allowed. */
   can_calculate: boolean;
   request: SalaryBillRequestInfo;
-  admin_note: string;
   contacts: SalaryContactNumber[];
 }
 
@@ -298,6 +327,7 @@ export interface SalaryBillAccessAdminRow {
   calc: SalaryArrearsCalcInfo;
   free_tr_form: SalaryFreeTrFormState;
   request: SalaryBillRequestInfo;
+  /** Seen only by admins. */
   admin_note: string;
   approved_at: string | null;
   last_used_at: string | null;

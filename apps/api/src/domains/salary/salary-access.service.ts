@@ -15,7 +15,11 @@ import {
   type SalaryAccessStatus,
   type SalaryBillAccessAdminRow,
   type SalaryBillAccessRecord,
+  type SalaryBillAccessStats,
+  type SalaryBillKind,
   type SalaryBillRequestInfo,
+  type SalaryPrintStats,
+  type UpdateSalaryAdminNoteDto,
   type SalaryBillUsageRecord,
   type SalaryBulkSizeRecord,
   type SalaryContactsRecord,
@@ -152,7 +156,6 @@ export async function getMyBillAccess(user: AuthUser): Promise<SalaryBillAccessR
       user.status === 'active' &&
       (unlimited || calc.free_used < calc.free_limit || remaining > 0 || freeTr.state === 'available'),
     request: requestInfo(doc),
-    admin_note: doc?.admin_note ?? '',
     contacts,
   };
 }
@@ -188,6 +191,7 @@ export async function requestBills(user: AuthUser, dto: RequestSalaryBillsDto): 
 export async function consumeBill(user: AuthUser, dto: ConsumeSalaryBillDto): Promise<SalaryBillAccessRecord> {
   if (user.status !== 'active') throw forbidden('Account is not active');
   const now = new Date();
+  let free = false;
   if (!isPlatformAdmin(user)) {
     await assertSalaryOfficeChosen(user.id);
     const isTrForm = dto.kind === 'tr_form_13' || dto.kind === 'tr_form_15';
@@ -196,8 +200,8 @@ export async function consumeBill(user: AuthUser, dto: ConsumeSalaryBillDto): Pr
       { $inc: { bills_used: 1 }, $set: { last_used_at: now, updated_at: now } },
       { new: true },
     );
-    const updated = approved || (isTrForm && (await claimSalaryFreeTrForm(user.id)));
-    if (!updated) {
+    free = !approved && isTrForm && (await claimSalaryFreeTrForm(user.id));
+    if (!approved && !free) {
       throw new AppError(
         403,
         SALARY_BILL_LIMIT_CODE,
@@ -212,6 +216,7 @@ export async function consumeBill(user: AuthUser, dto: ConsumeSalaryBillDto): Pr
     old_pay: dto.old_pay,
     months: dto.months,
     net_total: dto.net_total,
+    free,
     created_at: now,
   });
   if (!isPlatformAdmin(user)) {
@@ -366,7 +371,8 @@ export async function listBillAccess(filters: {
   limit: number;
 }): Promise<{ items: SalaryBillAccessAdminRow[]; total: number }> {
   const query: Record<string, unknown> = {};
-  if (filters.status === 'pending') query.request_pending = true;
+  if (filters.status === 'active') query.$or = [{ request_pending: true }, { status: 'approved' }];
+  else if (filters.status === 'pending') query.request_pending = true;
   else if (filters.status === 'approved' || filters.status === 'rejected') query.status = filters.status;
 
   const q = filters.q?.trim();
@@ -430,12 +436,98 @@ export async function rejectBillRequest(
   if (!doc || !doc.request_pending) throw notFound('No pending request for this user');
   doc.request_pending = false;
   doc.status = remainingOf(doc) > 0 ? 'approved' : 'rejected';
-  doc.admin_note = dto.admin_note;
+  if (dto.admin_note !== undefined) doc.admin_note = dto.admin_note;
   doc.approved_by = new mongoose.Types.ObjectId(adminId);
   doc.updated_at = new Date();
   await doc.save();
   const [row] = await toAdminRows([doc]);
   return row!;
+}
+
+export async function updateBillAccessNote(userId: string, dto: UpdateSalaryAdminNoteDto): Promise<SalaryBillAccessAdminRow> {
+  if (!mongoose.isValidObjectId(userId)) throw notFound('User not found');
+  const doc = await SalaryBillAccess.findOneAndUpdate(
+    { user_id: userId },
+    { $set: { admin_note: dto.admin_note } },
+    { new: true },
+  );
+  if (!doc) throw notFound('No bill access record for this user');
+  const [row] = await toAdminRows([doc]);
+  return row!;
+}
+
+const PRINT_KINDS: SalaryBillKind[] = ['tr_form_13', 'tr_form_15', 'arrears_pdf', 'staff_tr_form_15'];
+const DHAKA_OFFSET_MS = 6 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function dhakaDayStart(now: Date): Date {
+  return new Date(Math.floor((now.getTime() + DHAKA_OFFSET_MS) / DAY_MS) * DAY_MS - DHAKA_OFFSET_MS);
+}
+
+function printStats(total: number, free: number): SalaryPrintStats {
+  return { total, free, approved: Math.max(0, total - free) };
+}
+
+/**
+ * Print counts split into free and approved. Records made before `free` was stored are matched to
+ * each user's free downloads used: the earliest T.R. Form downloads of that user count as free.
+ */
+export async function getBillAccessStats(): Promise<SalaryBillAccessStats> {
+  const today = dhakaDayStart(new Date());
+  const [counts, flaggedFree, freeUsers, pending, approvedUsers] = await Promise.all([
+    SalaryBillUsage.aggregate<{ total: number; today: number }>([
+      { $match: { kind: { $in: PRINT_KINDS } } },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          today: { $sum: { $cond: [{ $gte: ['$created_at', today] }, 1, 0] } },
+        },
+      },
+    ]),
+    SalaryBillUsage.find({ free: true }).select('user_id created_at').lean(),
+    SalaryCalcUsage.find({ $or: [{ free_tr_used: true }, { free_tr_count: { $gt: 0 } }] })
+      .select('user_id free_tr_used free_tr_count')
+      .lean(),
+    SalaryBillAccess.countDocuments({ request_pending: true }),
+    SalaryBillAccess.countDocuments({ status: 'approved' }),
+  ]);
+
+  let freeTotal = flaggedFree.length;
+  let freeToday = flaggedFree.filter((d) => d.created_at >= today).length;
+  const flaggedBy = new Map<string, number>();
+  for (const d of flaggedFree) flaggedBy.set(String(d.user_id), (flaggedBy.get(String(d.user_id)) ?? 0) + 1);
+  const legacyLeft = new Map<string, number>();
+  for (const u of freeUsers) {
+    const used = Math.max(u.free_tr_count ?? 0, u.free_tr_used ? 1 : 0) - (flaggedBy.get(String(u.user_id)) ?? 0);
+    if (used > 0) legacyLeft.set(String(u.user_id), used);
+  }
+  if (legacyLeft.size > 0) {
+    const legacy = await SalaryBillUsage.find({
+      user_id: { $in: [...legacyLeft.keys()].map((id) => new mongoose.Types.ObjectId(id)) },
+      kind: { $in: ['tr_form_13', 'tr_form_15'] },
+      free: { $exists: false },
+    })
+      .sort({ created_at: 1 })
+      .select('user_id created_at')
+      .lean();
+    for (const d of legacy) {
+      const id = String(d.user_id);
+      const left = legacyLeft.get(id) ?? 0;
+      if (left <= 0) continue;
+      legacyLeft.set(id, left - 1);
+      freeTotal += 1;
+      if (d.created_at >= today) freeToday += 1;
+    }
+  }
+
+  const c = counts[0] ?? { total: 0, today: 0 };
+  return {
+    all_time: printStats(c.total, freeTotal),
+    today: printStats(c.today, freeToday),
+    pending_requests: pending,
+    approved_users: approvedUsers,
+  };
 }
 
 export async function listBillUsage(userId: string, limit = 30): Promise<SalaryBillUsageRecord[]> {

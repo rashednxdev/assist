@@ -204,23 +204,20 @@ export function SalaryArrearsDialog({
           <div className="space-y-1.5">
             <Label htmlFor="arr-substantive">{t.substantive}</Label>
             {v.grade ? (
-              <>
-                <select
-                  id="arr-substantive"
-                  className={selectClass}
-                  value={effectiveSubstantiveGrade(v.grade, v.substantiveGrade)}
-                  onChange={(e) =>
-                    setV((prev) => ({ ...prev, substantiveGrade: Number(e.target.value) as SubstantiveGrade }))
-                  }
-                >
-                  {substantiveGradeOptions(v.grade).map((g) => (
-                    <option key={g} value={g}>
-                      {g === v.grade ? t.substantiveSame(num(g)) : `${t.grade} ${num(g)}`}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-muted">{t.substantiveHint}</p>
-              </>
+              <select
+                id="arr-substantive"
+                className="flex h-10 w-full rounded-md border-2 border-[#b71c1c] bg-red-50 px-3 text-sm font-semibold text-[#b71c1c] focus:border-[#b71c1c] focus:outline-none focus:ring-2 focus:ring-red-200"
+                value={effectiveSubstantiveGrade(v.grade, v.substantiveGrade)}
+                onChange={(e) =>
+                  setV((prev) => ({ ...prev, substantiveGrade: Number(e.target.value) as SubstantiveGrade }))
+                }
+              >
+                {substantiveGradeOptions(v.grade).map((g) => (
+                  <option key={g} value={g}>
+                    {g === v.grade ? t.substantiveSame(num(g)) : `${t.grade} ${num(g)}`}
+                  </option>
+                ))}
+              </select>
             ) : (
               <p id="arr-substantive" className="rounded-md border border-border bg-slate-50 px-3 py-2 text-sm font-medium">
                 {t.gradeFirst}

@@ -88,6 +88,8 @@ import {
 
 type PrintTarget = 'salary' | 'arrears' | 'trform';
 
+const SHOW_ALLOWANCES = false;
+
 /** Accept ASCII + Bangla digits from any keyboard; strip other characters. */
 function parseAmountInput(raw: string): number {
   const bangla: Record<string, string> = {
@@ -295,12 +297,14 @@ function PhaseResultCard({
             </div>
           </div>
 
-          <StageTotalAllowanceSummary
-            ctx={ctx}
-            stageBasic={basic2027}
-            fixedAllowancesTotal={fixedAllowancesTotal}
-            gpfDeduction={gpfDeduction}
-          />
+          {SHOW_ALLOWANCES ? (
+            <StageTotalAllowanceSummary
+              ctx={ctx}
+              stageBasic={basic2027}
+              fixedAllowancesTotal={fixedAllowancesTotal}
+              gpfDeduction={gpfDeduction}
+            />
+          ) : null}
         </CardContent>
       </Card>
     );
@@ -358,12 +362,14 @@ function PhaseResultCard({
           </table>
         </div>
 
-        <StageTotalAllowanceSummary
-          ctx={ctx}
-          stageBasic={result.new_pay}
-          fixedAllowancesTotal={fixedAllowancesTotal}
-          gpfDeduction={gpfDeduction}
-        />
+        {SHOW_ALLOWANCES ? (
+          <StageTotalAllowanceSummary
+            ctx={ctx}
+            stageBasic={result.new_pay}
+            fixedAllowancesTotal={fixedAllowancesTotal}
+            gpfDeduction={gpfDeduction}
+          />
+        ) : null}
 
         {result.increment_skipped && !result.fixed ? (
           <p className="text-xs text-amber-800">{result.increment_withheld ? t.withheldWarn : t.lastStageWarn}</p>
@@ -490,13 +496,15 @@ function SalarySummaryCard({
             />
           ))}
         </div>
-        <div className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-sm font-semibold text-teal-900">{t.summaryAllowance}</span>
-            <span className="font-mono text-lg font-bold text-teal-950">{tk(allowancesTotal)}</span>
+        {SHOW_ALLOWANCES ? (
+          <div className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-sm font-semibold text-teal-900">{t.summaryAllowance}</span>
+              <span className="font-mono text-lg font-bold text-teal-950">{tk(allowancesTotal)}</span>
+            </div>
+            <p className="mt-1 text-xs font-medium text-amber-800">{t.allowanceInputNote}</p>
           </div>
-          <p className="mt-1 text-xs font-medium text-amber-800">{t.allowanceInputNote}</p>
-        </div>
+        ) : null}
         <div className="flex flex-wrap gap-2 print:hidden">
           <Button type="button" onClick={onPdf} className="gap-2">
             <Download className="h-4 w-4" />
@@ -1107,7 +1115,7 @@ export default function SalaryOn2026Page() {
                   </Label>
                   <select
                     id="substantiveGrade"
-                    className="flex h-10 w-full rounded-md border border-teal-300 bg-white px-3 text-sm font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-200"
+                    className="flex h-10 w-full rounded-md border-2 border-[#b71c1c] bg-red-50 px-3 text-sm font-semibold text-[#b71c1c] focus:border-[#b71c1c] focus:outline-none focus:ring-2 focus:ring-red-200"
                     value={effectiveSubstantiveGrade(grade, substantiveGrade)}
                     onChange={(e) => {
                       setSubstantiveGrade(Number(e.target.value) as SubstantiveGrade);
@@ -1120,12 +1128,11 @@ export default function SalaryOn2026Page() {
                       </option>
                     ))}
                   </select>
-                  <p className="text-xs text-muted">{t.substantiveHint}</p>
                 </div>
               ) : null}
             </div>
 
-            <div className="rounded-xl border border-border">
+            <div className="rounded-xl border border-border" hidden={!SHOW_ALLOWANCES}>
               <button
                 type="button"
                 onClick={() => setMoreOpen((v) => !v)}
@@ -1298,7 +1305,7 @@ export default function SalaryOn2026Page() {
               </p>
             </div>
 
-            <GrossResultCard ctx={ctx} gross={gross} />
+            {SHOW_ALLOWANCES ? <GrossResultCard ctx={ctx} gross={gross} /> : null}
 
             {results.map((result, index) => (
               <PhaseResultCard

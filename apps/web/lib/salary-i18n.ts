@@ -55,7 +55,7 @@ const salaryEn = {
   postType: 'Post type (Grades 2–10)',
   regular: 'Regular (default)',
   currentCharge: 'Current charge — extra ৳ 1,500 / month',
-  substantive: 'Substantive grade (for tiffin, conveyance & arrears)',
+  substantive: 'Substantive grade of working post (for arrears)',
   substantiveHint:
     'Set to your grade by default; choose the same or a lower grade if your substantive post is lower (e.g. Grade 9 → 9, 10, 11 … 20). Special allowance on arrears: 15% for substantive Grade 10–20, 10% for 1–9. Substantive Grade 11–20 also gets tiffin ৳ 200 and conveyance ৳ 300.',
   housing: 'Housing',
@@ -433,7 +433,7 @@ const salaryBn: SalaryCopy = {
   postType: 'পদের ধরন (গ্রেড ২–১০)',
   regular: 'নিয়মিত (ডিফল্ট)',
   currentCharge: 'চলতি দায়িত্ব — অতিরিক্ত ৳ ১,৫০০ / মাস',
-  substantive: 'মূল গ্রেড (টিফিন, যাতায়াত ভাতা ও বকেয়ার জন্য)',
+  substantive: 'কর্মরত পদের মূল গ্রেড (বকেয়ার জন্য)',
   substantiveHint:
     'ডিফল্টভাবে আপনার গ্রেডই মূল গ্রেড; মূল পদ নিচের হলে একই বা নিচের গ্রেড নির্বাচন করুন (যেমন: গ্রেড ৯ → ৯, ১০, ১১ … ২০)। বকেয়ার বিশেষ ভাতা: মূল গ্রেড ১০–২০ হলে ১৫%, ১–৯ হলে ১০%। মূল গ্রেড ১১–২০ হলে টিফিন ৳ ২০০ ও যাতায়াত ৳ ৩০০-ও প্রযোজ্য।',
   housing: 'আবাসন',

@@ -8,6 +8,8 @@ export interface ISalaryUserOffice extends Document {
   office_id: Types.ObjectId | null;
   other_office_name: string;
   other_office_name_bn: string;
+  /** Admin lets this user edit the office name printed on the bill forms. */
+  office_name_editable: boolean;
   updated_at: Date;
 }
 
@@ -18,6 +20,7 @@ const schema = new Schema<ISalaryUserOffice>(
     office_id: { type: Schema.Types.ObjectId, ref: 'Office', default: null },
     other_office_name: { type: String, default: '' },
     other_office_name_bn: { type: String, default: '' },
+    office_name_editable: { type: Boolean, default: false },
     updated_at: { type: Date, default: Date.now },
   },
   { timestamps: false },

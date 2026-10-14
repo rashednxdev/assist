@@ -43,6 +43,25 @@ export function salaryFreeCalcsFor(office: { is_other: boolean; office_type: str
   const extraUsers = SALARY_OFFICE_TYPE_EXTRA_USERS[(office.office_type ?? '').trim().toUpperCase()] ?? 0;
   return office.rank - 1 <= extraUsers ? SALARY_EXTRA_USER_FREE_CALCS : 0;
 }
+export const SALARY_MAX_FREE_CALCS = 1000;
+
+/** `free_calcs` null means the office rules above; a number gives every user with an office that many. */
+export const updateSalaryFreeCalcsSchema = z.object({
+  free_calcs: z
+    .number()
+    .int()
+    .min(0, 'Enter 0 or more')
+    .max(SALARY_MAX_FREE_CALCS, `At most ${SALARY_MAX_FREE_CALCS} free calculations`)
+    .nullable(),
+});
+export type UpdateSalaryFreeCalcsDto = z.infer<typeof updateSalaryFreeCalcsSchema>;
+
+/** Free arrears calculations for users without an approved bill; staff bill employees count too. */
+export interface SalaryFreeCalcsSettingsRecord {
+  free_calcs: number | null;
+  updated_at: string | null;
+}
+
 /** After the free ones, this many calculations without a download use one bill. */
 export const SALARY_CALCS_PER_BILL = 5;
 export const SALARY_CALC_LIMIT_CODE = 'SALARY_CALC_LIMIT';
@@ -118,6 +137,9 @@ export const adminSalaryOtherOfficeSchema = z
   .superRefine(checkOtherNames);
 export type AdminSalaryOtherOfficeDto = z.infer<typeof adminSalaryOtherOfficeSchema>;
 
+export const adminSalaryOfficeEditableSchema = z.object({ editable: z.boolean() });
+export type AdminSalaryOfficeEditableDto = z.infer<typeof adminSalaryOfficeEditableSchema>;
+
 /** One user's saved salary office, for the admin list. */
 export interface SalaryUserOfficeAdminRow {
   user: { id: string; full_name_en: string; email: string; phone: string };
@@ -131,6 +153,10 @@ export interface SalaryUserOfficeAdminRow {
   office_rank: number | null;
   free_calcs: number;
   free_tr_form: SalaryFreeTrFormState;
+  /** The user may edit the office name printed on the bill forms. */
+  office_name_editable: boolean;
+  /** Offices the user added to their staff arrear bill; only the admin can rename them. */
+  staff_offices: Array<{ id: string; name: string }>;
   updated_at: string;
 }
 
@@ -187,8 +213,10 @@ export interface SalaryOfficeRecord {
   other_office_name_bn: string;
   /** Display name: the listed office or the typed English name. */
   label: string;
-  /** Office name printed on the bill forms and fixed there: the Bangla name for Others, otherwise empty. */
+  /** Default office name on the bill forms: the Bangla name for Others, otherwise empty. */
   bill_office_name: string;
+  /** False while `bill_office_name` is fixed on the forms; the admin can allow the user to edit it. */
+  bill_office_editable: boolean;
   /** Short name of the listed office's type (CGA, CAFO, …); null for Others. */
   office_type: string | null;
   updated_at: string;

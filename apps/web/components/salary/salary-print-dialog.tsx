@@ -41,7 +41,7 @@ export function SalaryPrintDialog({
   title?: string;
   confirmLabel?: string;
   requireName?: boolean;
-  /** Office name fixed by the user's office (the Bangla name for "Others"); shown read-only. */
+  /** Office name fixed by the user's office (the Bangla name for "Others") unless the admin allows editing; shown read-only. */
   lockedOffice?: string;
   /** NID printed on a free T.R. Form download; shown read-only. */
   fixedNid?: string;

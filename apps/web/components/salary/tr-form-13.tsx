@@ -110,9 +110,13 @@ export function TrForm13({
         </div>
 
         <div className="tr-fields">
-          <div>
-            নামঃ <Dots value={info.employee} width="58mm" /> পদবিঃ <Dots value={info.designation} width="48mm" /> এনআইডি নংঃ{' '}
-            <Dots value={info.nid ? toBanglaDigits(info.nid) : undefined} width="38mm" />
+          <div className="tr-fields-row">
+            <span>নামঃ</span>
+            <Dots value={info.employee} width="0" />
+            <span>পদবিঃ</span>
+            <Dots value={info.designation} width="0" />
+            <span>এনআইডি:</span>
+            <Dots value={info.nid ? toBanglaDigits(info.nid) : undefined} width="0" />
           </div>
           <div>
             ভবিষ্য তহবিল হিসাব নংঃ <Dots width="26mm" /> ডাক জীবনবিমা নংঃ <Dots width="30mm" /> টি আই এন/ই টি আই এনঃ{' '}

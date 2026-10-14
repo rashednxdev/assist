@@ -123,13 +123,13 @@ export interface TrSignatory {
   office: string;
 }
 
-/** "স্বাক্ষর ও তারিখ" with the signer's name, post and office, at the foot of a sheet. */
+/** Signature line with the signer's name, post and office below it, at the foot of a sheet. */
 export function SignatureBlock({ signatory }: { signatory: TrSignatory }) {
   return (
     <div className="tr-attest">
       <div className="tr-attest-box">
-        <div className="tr-attest-line">স্বাক্ষর ও তারিখ</div>
-        {signatory.name ? <div className="tr-attest-name">{signatory.name}</div> : null}
+        <div className="tr-attest-line" />
+        {signatory.name ? <div className="tr-attest-name">({signatory.name})</div> : null}
         {signatory.post ? <div>{signatory.post}</div> : null}
         {signatory.office ? <div>{signatory.office}</div> : null}
       </div>

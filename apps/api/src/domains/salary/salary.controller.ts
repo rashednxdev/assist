@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import type { z } from 'zod';
 import {
   SALARY_ACCESS_LIST_FILTERS,
+  adminSalaryOfficeEditableSchema,
   adminSalaryOtherOfficeSchema,
   consumeSalaryBillSchema,
   consumeSalaryStaffBillSchema,
@@ -15,6 +16,7 @@ import {
   updateSalaryBillAccessSchema,
   updateSalaryBulkSizeSchema,
   updateSalaryContactsSchema,
+  updateSalaryFreeCalcsSchema,
   updateSalaryFreeTrFormSchema,
   updateSalaryOfficeSettingsSchema,
 } from '@ibas/shared-types';
@@ -95,6 +97,27 @@ export async function adminUpdateOtherOfficeHandler(req: AuthRequest, res: Respo
   res.json({ data: { ok: true } });
 }
 
+export async function adminSetOfficeNameEditableHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = parseBody(adminSalaryOfficeEditableSchema, req.body);
+  await officeService.adminSetOfficeNameEditable(String(req.params.userId), dto);
+  res.json({ data: { ok: true } });
+}
+
+export async function adminRenameStaffOfficeHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = parseBody(salaryStaffOfficeSchema, req.body);
+  await officeService.adminRenameStaffOffice(String(req.params.officeId), dto);
+  res.json({ data: { ok: true } });
+}
+
+export async function getSalaryFreeCalcsHandler(_req: AuthRequest, res: Response): Promise<void> {
+  res.json({ data: await officeService.getSalaryFreeCalcs() });
+}
+
+export async function updateSalaryFreeCalcsHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = parseBody(updateSalaryFreeCalcsSchema, req.body);
+  res.json({ data: await officeService.updateSalaryFreeCalcs(dto, authUser(req).id) });
+}
+
 export async function adminResetSalaryOfficeHandler(req: AuthRequest, res: Response): Promise<void> {
   await officeService.adminResetSalaryOffice(String(req.params.userId));
   res.json({ data: { ok: true } });
@@ -134,12 +157,12 @@ export async function listMyStaffHandler(req: AuthRequest, res: Response): Promi
 
 export async function createMyStaffHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = parseBody(salaryStaffSchema, req.body);
-  res.status(201).json({ data: await staffService.createMyStaff(authUser(req).id, dto) });
+  res.status(201).json({ data: await staffService.createMyStaff(authUser(req), dto) });
 }
 
 export async function updateMyStaffHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = parseBody(salaryStaffSchema, req.body);
-  res.json({ data: await staffService.updateMyStaff(authUser(req).id, String(req.params.staffId), dto) });
+  res.json({ data: await staffService.updateMyStaff(authUser(req), String(req.params.staffId), dto) });
 }
 
 export async function deleteMyStaffHandler(req: AuthRequest, res: Response): Promise<void> {
@@ -158,7 +181,7 @@ export async function createMyStaffOfficeHandler(req: AuthRequest, res: Response
 
 export async function updateMyStaffOfficeHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = parseBody(salaryStaffOfficeSchema, req.body);
-  res.json({ data: await staffService.updateMyStaffOffice(authUser(req).id, String(req.params.officeId), dto) });
+  res.json({ data: await staffService.updateMyStaffOffice(authUser(req), String(req.params.officeId), dto) });
 }
 
 export async function deleteMyStaffOfficeHandler(req: AuthRequest, res: Response): Promise<void> {

@@ -520,6 +520,7 @@ export default function SalaryOn2026Page() {
   const [locale, setLocale] = useState<SalaryLocale>('bn');
   const { office: salaryOffice, canChange: canChangeOffice, changeOffice } = useSalaryOffice();
   const billOfficeName = salaryOffice?.bill_office_name ?? '';
+  const lockedOfficeName = salaryOffice?.bill_office_editable ? '' : billOfficeName;
   const [grade, setGrade] = useState<PayGrade | null>(null);
   const [oldPay, setOldPay] = useState(0);
   const [housingStatus, setHousingStatus] = useState<HousingStatus>('hra_eligible');
@@ -1368,7 +1369,7 @@ export default function SalaryOn2026Page() {
               access={billAccess}
               onAccessChange={setBillAccess}
               officeLabel={billOfficeName || (salaryOffice?.label ?? '')}
-              officeLocked={Boolean(billOfficeName)}
+              officeLocked={Boolean(lockedOfficeName)}
               preparedOn={localNum('bn', preparedOn)}
               accessPanel={
                 <SalaryBillAccessPanel
@@ -1429,8 +1430,8 @@ export default function SalaryOn2026Page() {
       {printDialog ? (
         <SalaryPrintDialog
           t={t}
-          initial={printInfo}
-          lockedOffice={billOfficeName}
+          initial={{ ...printInfo, office: printInfo.office || billOfficeName }}
+          lockedOffice={lockedOfficeName}
           fixedNid={
             printDialog === 'trform' &&
             billAccess &&

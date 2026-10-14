@@ -380,6 +380,13 @@ const salaryEn = {
   staffOfficeNameRequired: 'Enter the full office name.',
   staffOfficeDeleteConfirm: (name: string, n: string) =>
     `Remove "${name}" from the staff bill? Its ${n} saved employee(s) will also be deleted.`,
+  staffOfficeAdminOnly: 'An office name cannot be changed after it is added. To change it, contact the admin.',
+  staffConfirmTitle: 'Is every employee’s information correct?',
+  staffConfirmHint:
+    'Check each name, post, NID, grade, basic pay, housing and joining date. If anything is wrong, edit it before printing.',
+  staffConfirmEdit: 'No, edit details',
+  staffConfirmOk: 'Yes, correct — continue to print',
+  staffColJoining: 'Joining date',
   signAdd: 'Add signature & date (স্বাক্ষর ও তারিখ)',
   signAddHint: 'Printed at the foot of the attachment with the office name, name and designation above.',
   signStaffHint: 'Printed at the foot of the summary sheet and every attachment, with the office name and the name and post below.',
@@ -752,6 +759,13 @@ const salaryBn: SalaryCopy = {
   staffOfficeAddHint: 'টি.আর. ফরম ১৫ ও সংযুক্তিতে যেভাবে ছাপা হবে সেভাবে অফিসের পূর্ণ নাম লিখুন।',
   staffOfficeNameRequired: 'অফিসের পূর্ণ নাম লিখুন।',
   staffOfficeDeleteConfirm: (name, n) => `"${name}" স্টাফ বিল থেকে সরাবেন? এর সংরক্ষিত ${n} জন কর্মচারীও মুছে যাবে।`,
+  staffOfficeAdminOnly: 'অফিস যোগ করার পর এর নাম পরিবর্তন করা যাবে না। পরিবর্তনের জন্য অ্যাডমিনের সাথে যোগাযোগ করুন।',
+  staffConfirmTitle: 'সকল কর্মচারীর তথ্য সঠিক আছে কি?',
+  staffConfirmHint:
+    'প্রত্যেকের নাম, পদবি, এনআইডি, গ্রেড, মূল বেতন, বাসস্থান ও যোগদানের তারিখ মিলিয়ে নিন। কোনো ভুল থাকলে প্রিন্টের আগে সংশোধন করুন।',
+  staffConfirmEdit: salaryEn.staffConfirmEdit,
+  staffConfirmOk: salaryEn.staffConfirmOk,
+  staffColJoining: 'যোগদানের তারিখ',
   signAdd: 'স্বাক্ষর ও তারিখ যুক্ত করুন',
   signAddHint: 'উপরের অফিসের নাম, নাম ও পদবিসহ সংযুক্তির নিচে ছাপা হবে।',
   signStaffHint: 'অফিসের নাম এবং নিচের নাম ও পদবিসহ সারসংক্ষেপ শিট ও প্রতিটি সংযুক্তির নিচে ছাপা হবে।',

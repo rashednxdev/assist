@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Pencil, RotateCcw, Search } from 'lucide-react';
+import { Lock, LockOpen, Pencil, RotateCcw, Search } from 'lucide-react';
 import {
   SALARY_EXTRA_USER_FREE_CALCS,
   SALARY_FREE_ARREARS_CALCS,
@@ -28,6 +28,68 @@ function ordinal(n: number): string {
   return `${n}${s}`;
 }
 
+function StaffOfficeItem({ office, onChanged }: { office: { id: string; name: string }; onChanged: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(office.name);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function save() {
+    setBusy(true);
+    setError('');
+    try {
+      await apiFetch(`/salary/admin/staff-offices/${office.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      setEditing(false);
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <li className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-slate-50 px-2 py-1.5">
+        <span lang="bn" className="min-w-0 text-slate-800">
+          {office.name}
+        </span>
+        <Button type="button" size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" onClick={() => setEditing(true)}>
+          <Pencil className="h-3 w-3" />
+          Rename
+        </Button>
+      </li>
+    );
+  }
+  return (
+    <li className="space-y-1.5 rounded-md bg-slate-50 px-2 py-1.5">
+      <Input lang="bn" value={name} maxLength={200} onChange={(e) => setName(e.target.value)} aria-label="Staff bill office name" />
+      {error ? <Alert variant="error">{error}</Alert> : null}
+      <div className="flex gap-2">
+        <Button type="button" size="sm" onClick={() => void save()} disabled={busy || name.trim().length < 3}>
+          {busy ? 'Saving…' : 'Save name'}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={busy}
+          onClick={() => {
+            setEditing(false);
+            setName(office.name);
+            setError('');
+          }}
+        >
+          Cancel
+        </Button>
+      </div>
+    </li>
+  );
+}
+
 function OfficeRow({ row, onChanged }: { row: SalaryUserOfficeAdminRow; onChanged: () => void }) {
   const [editing, setEditing] = useState(false);
   const [nameEn, setNameEn] = useState(row.other_office_name);
@@ -44,6 +106,22 @@ function OfficeRow({ row, onChanged }: { row: SalaryUserOfficeAdminRow; onChange
         body: JSON.stringify({ other_office_name: nameEn.trim(), other_office_name_bn: nameBn.trim() }),
       });
       setEditing(false);
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function setNameEditable(editable: boolean) {
+    setBusy(true);
+    setError('');
+    try {
+      await apiFetch(`/salary/admin/offices/${row.user.id}/office-name-editable`, {
+        method: 'PUT',
+        body: JSON.stringify({ editable }),
+      });
       onChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');
@@ -80,6 +158,11 @@ function OfficeRow({ row, onChanged }: { row: SalaryUserOfficeAdminRow; onChange
           </Badge>
           {row.free_tr_form === 'available' ? <Badge variant="success">Free T.R. Form available</Badge> : null}
           {row.free_tr_form === 'used' ? <Badge variant="secondary">Free T.R. Form used</Badge> : null}
+          {row.is_other ? (
+            <Badge variant={row.office_name_editable ? 'success' : 'secondary'}>
+              {row.office_name_editable ? 'Office name editable on forms' : 'Office name fixed on forms'}
+            </Badge>
+          ) : null}
         </div>
       </div>
 
@@ -128,6 +211,17 @@ function OfficeRow({ row, onChanged }: { row: SalaryUserOfficeAdminRow; onChange
         </div>
       )}
 
+      {row.staff_offices.length > 0 ? (
+        <div className="space-y-1">
+          <p className="text-xs font-semibold text-slate-600">Staff arrear bill offices ({row.staff_offices.length})</p>
+          <ul className="space-y-1 text-sm">
+            {row.staff_offices.map((o) => (
+              <StaffOfficeItem key={`${o.id}-${o.name}`} office={o} onChanged={onChanged} />
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       {error ? <Alert variant="error">{error}</Alert> : null}
 
       {editing ? null : (
@@ -136,6 +230,19 @@ function OfficeRow({ row, onChanged }: { row: SalaryUserOfficeAdminRow; onChange
             <Button type="button" size="sm" variant="outline" className="gap-1.5" disabled={busy} onClick={() => setEditing(true)}>
               <Pencil className="h-3.5 w-3.5" />
               Edit names
+            </Button>
+          ) : null}
+          {row.is_other ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="gap-1.5"
+              disabled={busy}
+              onClick={() => void setNameEditable(!row.office_name_editable)}
+            >
+              {row.office_name_editable ? <Lock className="h-3.5 w-3.5" /> : <LockOpen className="h-3.5 w-3.5" />}
+              {row.office_name_editable ? 'Fix office name on forms' : 'Allow editing office name on forms'}
             </Button>
           ) : null}
           <Button type="button" size="sm" variant="outline" className="gap-1.5" disabled={busy} onClick={() => void reset()}>
@@ -191,10 +298,11 @@ export function SalaryUserOfficesAdmin() {
         <CardTitle className="text-base">User offices</CardTitle>
         <CardDescription>
           Users cannot change their office after saving it. Edit an Others office name (the Bangla name is printed on
-          the bill forms), or reset the office so the user chooses again (they then count as the office&apos;s newest user).
-          Free calculations per office: the first user gets {SALARY_FREE_ARREARS_CALCS}; the next users by office type (
-          {EXTRA_RULE}) get {SALARY_EXTRA_USER_FREE_CALCS} each; later users need approved bills. Each Others user gets{' '}
-          {SALARY_OTHERS_FREE_CALCS}.
+          the bill forms and fixed there unless you allow the user to edit it), or reset the office so the user chooses again (they then count as the office&apos;s newest user).
+          Offices a user added to their staff arrear bill can only be renamed here. Unless a number is set under
+          Settings, free calculations follow the office rules: the first user gets {SALARY_FREE_ARREARS_CALCS}; the next
+          users by office type ({EXTRA_RULE}) get {SALARY_EXTRA_USER_FREE_CALCS} each; later users need approved bills.
+          Each Others user gets {SALARY_OTHERS_FREE_CALCS}.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

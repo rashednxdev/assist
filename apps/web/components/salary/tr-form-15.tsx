@@ -333,7 +333,7 @@ export function TrForm15({
             </div>
             {info.nid ? (
               <div>
-                এনআইডি নংঃ <Dots value={toBanglaDigits(info.nid)} width="30mm" />
+                এনআইডি: <Dots value={toBanglaDigits(info.nid)} width="30mm" />
               </div>
             ) : null}
           </>

@@ -4,7 +4,11 @@ import { authenticate } from '../../middleware/auth.js';
 import { requireAdmin } from '../../middleware/requireAdmin.js';
 import { asyncHandler } from '../../shared/asyncHandler.js';
 import {
+  adminRenameStaffOfficeHandler,
   adminResetSalaryOfficeHandler,
+  adminSetOfficeNameEditableHandler,
+  getSalaryFreeCalcsHandler,
+  updateSalaryFreeCalcsHandler,
   adminUpdateOtherOfficeHandler,
   calculateAllPhasesHandler,
   consumeBillHandler,
@@ -94,6 +98,15 @@ salaryRouter.put('/admin/bulk-size', authenticate, requireAdmin, asyncHandler(up
 salaryRouter.put('/admin/office-settings', authenticate, requireAdmin, asyncHandler(updateSalaryOfficeSettingsHandler));
 salaryRouter.get('/admin/free-tr-form', authenticate, requireAdmin, asyncHandler(getSalaryFreeTrFormHandler));
 salaryRouter.put('/admin/free-tr-form', authenticate, requireAdmin, asyncHandler(updateSalaryFreeTrFormHandler));
+salaryRouter.get('/admin/free-calcs', authenticate, requireAdmin, asyncHandler(getSalaryFreeCalcsHandler));
+salaryRouter.put('/admin/free-calcs', authenticate, requireAdmin, asyncHandler(updateSalaryFreeCalcsHandler));
+salaryRouter.put('/admin/staff-offices/:officeId', authenticate, requireAdmin, asyncHandler(adminRenameStaffOfficeHandler));
 salaryRouter.get('/admin/offices', authenticate, requireAdmin, asyncHandler(listSalaryUserOfficesHandler));
 salaryRouter.put('/admin/offices/:userId', authenticate, requireAdmin, asyncHandler(adminUpdateOtherOfficeHandler));
+salaryRouter.put(
+  '/admin/offices/:userId/office-name-editable',
+  authenticate,
+  requireAdmin,
+  asyncHandler(adminSetOfficeNameEditableHandler),
+);
 salaryRouter.delete('/admin/offices/:userId', authenticate, requireAdmin, asyncHandler(adminResetSalaryOfficeHandler));

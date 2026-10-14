@@ -328,6 +328,28 @@ export async function recordArrearsCalc(user: AuthUser, dto: RecordArrearsCalcDt
   return getMyBillAccess(user);
 }
 
+/**
+ * Adding a staff bill employee, or changing their pay details, counts as one arrears calculation:
+ * a free one first, otherwise the user needs an approved bill left.
+ */
+export async function recordStaffCalc(user: AuthUser): Promise<void> {
+  if (user.status !== 'active') throw forbidden('Account is not active');
+  if (isPlatformAdmin(user)) return;
+  await assertSalaryOfficeChosen(user.id);
+
+  const userId = new mongoose.Types.ObjectId(user.id);
+  const now = new Date();
+  const freeLimit = await salaryFreeCalcLimit(user.id);
+  await SalaryCalcUsage.updateOne({ user_id: userId }, { $setOnInsert: { user_id: userId } }, { upsert: true });
+  const free = await SalaryCalcUsage.findOneAndUpdate(
+    { user_id: userId, free_used: { $lt: freeLimit } },
+    { $inc: { free_used: 1, total: 1 }, $set: { updated_at: now } },
+  );
+  if (free) return;
+  if (remainingOf(await SalaryBillAccess.findOne({ user_id: userId })) <= 0) throw calcLimitError(freeLimit);
+  await SalaryCalcUsage.updateOne({ user_id: userId }, { $inc: { total: 1 }, $set: { updated_at: now } });
+}
+
 async function toAdminRows(docs: ISalaryBillAccess[]): Promise<SalaryBillAccessAdminRow[]> {
   const userIds = docs.map((d) => String(d.user_id));
   const [users, offices, calcs, freeLimits, freeTr] = await Promise.all([

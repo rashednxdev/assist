@@ -7,9 +7,12 @@ import {
   type SalaryStaffOfficeRecord,
   type SalaryStaffRecord,
 } from '@ibas/shared-types';
-import { badRequest, notFound } from '../../shared/errors/AppError.js';
+import type { AuthUser } from '../../middleware/auth.js';
+import { badRequest, forbidden, notFound } from '../../shared/errors/AppError.js';
 import { SalaryStaff, type ISalaryStaff } from './models/SalaryStaff.model.js';
 import { SalaryStaffOffice, type ISalaryStaffOffice } from './models/SalaryStaffOffice.model.js';
+import { recordStaffCalc } from './salary-access.service.js';
+import { isPlatformAdmin } from './salary-office.service.js';
 
 function toRecord(doc: ISalaryStaff): SalaryStaffRecord {
   return {
@@ -39,6 +42,19 @@ function toOfficeRecord(doc: ISalaryStaffOffice): SalaryStaffOfficeRecord {
   };
 }
 
+/** The details that change an employee's arrears; editing only these counts as a new calculation. */
+function payKey(s: Pick<SalaryStaffDto, 'grade' | 'old_pay' | 'housing_status' | 'hra_area' | 'excess_rr' | 'excess_puja' | 'joining_date'>): string {
+  return JSON.stringify([
+    s.grade,
+    s.old_pay,
+    s.housing_status,
+    s.hra_area,
+    Boolean(s.excess_rr),
+    Boolean(s.excess_puja),
+    s.joining_date ?? null,
+  ]);
+}
+
 async function assertOwnStaffOffice(userId: string, staffOfficeId: string | null): Promise<void> {
   if (!staffOfficeId) return;
   const exists = await SalaryStaffOffice.exists({ _id: staffOfficeId, user_id: userId });
@@ -50,25 +66,29 @@ export async function listMyStaff(userId: string): Promise<SalaryStaffRecord[]> 
   return docs.map(toRecord);
 }
 
-export async function createMyStaff(userId: string, dto: SalaryStaffDto): Promise<SalaryStaffRecord> {
-  const count = await SalaryStaff.countDocuments({ user_id: userId });
+export async function createMyStaff(user: AuthUser, dto: SalaryStaffDto): Promise<SalaryStaffRecord> {
+  const count = await SalaryStaff.countDocuments({ user_id: user.id });
   if (count >= SALARY_MAX_STAFF) throw badRequest(`You can add up to ${SALARY_MAX_STAFF} employees.`);
-  await assertOwnStaffOffice(userId, dto.staff_office_id);
+  await assertOwnStaffOffice(user.id, dto.staff_office_id);
+  await recordStaffCalc(user);
   const now = new Date();
   const doc = await SalaryStaff.create({
     ...dto,
-    user_id: new mongoose.Types.ObjectId(userId),
+    user_id: new mongoose.Types.ObjectId(user.id),
     created_at: now,
     updated_at: now,
   });
   return toRecord(doc);
 }
 
-export async function updateMyStaff(userId: string, staffId: string, dto: SalaryStaffDto): Promise<SalaryStaffRecord> {
+export async function updateMyStaff(user: AuthUser, staffId: string, dto: SalaryStaffDto): Promise<SalaryStaffRecord> {
   if (!mongoose.isValidObjectId(staffId)) throw notFound('Employee not found');
-  await assertOwnStaffOffice(userId, dto.staff_office_id);
+  await assertOwnStaffOffice(user.id, dto.staff_office_id);
+  const current = await SalaryStaff.findOne({ _id: staffId, user_id: user.id });
+  if (!current) throw notFound('Employee not found');
+  if (payKey(current) !== payKey(dto)) await recordStaffCalc(user);
   const doc = await SalaryStaff.findOneAndUpdate(
-    { _id: staffId, user_id: userId },
+    { _id: staffId, user_id: user.id },
     { $set: { ...dto, updated_at: new Date() } },
     { new: true },
   );
@@ -100,14 +120,16 @@ export async function createMyStaffOffice(userId: string, dto: SalaryStaffOffice
   return toOfficeRecord(doc);
 }
 
+/** Once added, only an admin can rename a staff bill office. */
 export async function updateMyStaffOffice(
-  userId: string,
+  user: AuthUser,
   officeId: string,
   dto: SalaryStaffOfficeDto,
 ): Promise<SalaryStaffOfficeRecord> {
+  if (!isPlatformAdmin(user)) throw forbidden('To change the office name, contact the admin.');
   if (!mongoose.isValidObjectId(officeId)) throw notFound('Office not found');
   const doc = await SalaryStaffOffice.findOneAndUpdate(
-    { _id: officeId, user_id: userId },
+    { _id: officeId, user_id: user.id },
     { $set: { name: dto.name, updated_at: new Date() } },
     { new: true },
   );

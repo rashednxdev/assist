@@ -6,10 +6,17 @@ import type {
   SalaryBulkSizeRecord,
   SalaryContactNumber,
   SalaryContactsRecord,
+  SalaryFreeCalcsSettingsRecord,
   SalaryFreeTrFormSettingsRecord,
   SalaryOfficeSettingsRecord,
 } from '@ibas/shared-types';
-import { SALARY_DEFAULT_BULK_SIZE, SALARY_FREE_TR_NID, SALARY_MAX_FREE_TR_COUNT } from '@ibas/shared-types';
+import {
+  SALARY_DEFAULT_BULK_SIZE,
+  SALARY_FREE_ARREARS_CALCS,
+  SALARY_FREE_TR_NID,
+  SALARY_MAX_FREE_CALCS,
+  SALARY_MAX_FREE_TR_COUNT,
+} from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -293,6 +300,112 @@ function FreeTrFormEditor() {
   );
 }
 
+function FreeCalcsEditor() {
+  const [settings, setSettings] = useState<SalaryFreeCalcsSettingsRecord | null>(null);
+  const [value, setValue] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    apiFetch<{ data: SalaryFreeCalcsSettingsRecord }>('/salary/admin/free-calcs')
+      .then((res) => {
+        setSettings(res.data);
+        setValue(res.data.free_calcs == null ? '' : String(res.data.free_calcs));
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'));
+  }, []);
+
+  async function save(next: number | null) {
+    setSaving(true);
+    setStatus('');
+    setError('');
+    try {
+      const res = await apiFetch<{ data: SalaryFreeCalcsSettingsRecord }>('/salary/admin/free-calcs', {
+        method: 'PUT',
+        body: JSON.stringify({ free_calcs: next }),
+      });
+      setSettings(res.data);
+      setValue(res.data.free_calcs == null ? '' : String(res.data.free_calcs));
+      setStatus(
+        res.data.free_calcs == null
+          ? 'Saved. Free calculations now follow the office rules.'
+          : `Saved. Every user without approval gets ${plural(res.data.free_calcs, 'free calculation')}.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function saveNumber() {
+    const n = Number(value);
+    if (value.trim() === '' || !Number.isInteger(n) || n < 0 || n > SALARY_MAX_FREE_CALCS) {
+      setError(`Enter a whole number of calculations from 0 to ${SALARY_MAX_FREE_CALCS}.`);
+      return;
+    }
+    void save(n);
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Free calculations without approval</CardTitle>
+        <CardDescription>
+          How many arrears calculations a user can make before an approved bill is needed. Each &quot;Calculate arrears
+          bill&quot;, and each employee added to the Office Staff Arrear Bill (or whose pay details are changed), uses one.
+          When none are left, the user must request a bulk. Leave it on the office rules to keep the per-office
+          defaults ({SALARY_FREE_ARREARS_CALCS} for an office&apos;s first user).
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {status ? <Alert variant="success">{status}</Alert> : null}
+        {error ? <Alert variant="error">{error}</Alert> : null}
+        {settings === null ? (
+          error ? null : <p className="text-sm text-muted">Loading…</p>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="font-medium">Now:</span>
+              {settings.free_calcs == null ? (
+                <Badge variant="secondary">Office rules</Badge>
+              ) : (
+                <Badge variant="success">{plural(settings.free_calcs, 'free calculation')} per user</Badge>
+              )}
+            </div>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="w-48 space-y-1">
+                <Label htmlFor="free-calcs" className="text-xs">
+                  Free calculations per user
+                </Label>
+                <Input
+                  id="free-calcs"
+                  type="number"
+                  min={0}
+                  max={SALARY_MAX_FREE_CALCS}
+                  inputMode="numeric"
+                  placeholder="Office rules"
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                />
+              </div>
+              <Button type="button" onClick={saveNumber} disabled={saving}>
+                {saving ? 'Saving…' : 'Save free calculations'}
+              </Button>
+              {settings.free_calcs != null ? (
+                <Button type="button" variant="outline" onClick={() => void save(null)} disabled={saving}>
+                  Use office rules
+                </Button>
+              ) : null}
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function ContactsEditor() {
   const [contacts, setContacts] = useState<SalaryContactNumber[]>([]);
   const [loading, setLoading] = useState(true);
@@ -415,6 +528,7 @@ export function SalaryAccessSettings() {
     <div className="space-y-6">
       <BulkSizeEditor />
       <OfficeSettingsEditor />
+      <FreeCalcsEditor />
       <FreeTrFormEditor />
       <ContactsEditor />
     </div>

@@ -2,14 +2,18 @@ import mongoose from 'mongoose';
 import {
   SALARY_OFFICE_REQUIRED_CODE,
   salaryFreeCalcsFor,
+  type AdminSalaryOfficeEditableDto,
   type AdminSalaryOtherOfficeDto,
   type OfficeOption,
   type SalaryJoinedOfficesRecord,
+  type SalaryFreeCalcsSettingsRecord,
   type SalaryOfficeRecord,
   type SalaryOfficeSettingsRecord,
   type SalaryOtherOfficeSuggestion,
+  type SalaryStaffOfficeDto,
   type SalaryUserOfficeAdminRow,
   type SaveSalaryOfficeDto,
+  type UpdateSalaryFreeCalcsDto,
   type UpdateSalaryOfficeSettingsDto,
 } from '@ibas/shared-types';
 import type { AuthUser } from '../../middleware/auth.js';
@@ -18,6 +22,7 @@ import { OfficeType } from '../org/models/OfficeType.model.js';
 import { departmentOf, officeIndex, parentPath, type IndexedOffice } from '../org/org.service.js';
 import { User } from '../users/models/User.model.js';
 import { SalarySettings } from './models/SalarySettings.model.js';
+import { SalaryStaffOffice } from './models/SalaryStaffOffice.model.js';
 import { SalaryUserOffice, type ISalaryUserOffice } from './models/SalaryUserOffice.model.js';
 import { salaryFreeTrStates } from './salary-free-tr.service.js';
 
@@ -95,6 +100,7 @@ function toRecord(
       other_office_name_bn: '',
       label: officeName(office),
       bill_office_name: '',
+      bill_office_editable: true,
       office_type: types.get(node.office_type_id) ?? null,
       updated_at: doc.updated_at.toISOString(),
     };
@@ -107,6 +113,7 @@ function toRecord(
     other_office_name_bn: doc.other_office_name_bn ?? '',
     label: doc.other_office_name,
     bill_office_name: doc.other_office_name_bn ?? '',
+    bill_office_editable: Boolean(doc.office_name_editable),
     office_type: null,
     updated_at: doc.updated_at.toISOString(),
   };
@@ -170,30 +177,61 @@ async function officeRank(doc: ISalaryUserOffice): Promise<number | null> {
   return 1 + (await SalaryUserOffice.countDocuments({ office_id: doc.office_id, _id: { $lt: doc._id } }));
 }
 
+export async function getSalaryFreeCalcs(): Promise<SalaryFreeCalcsSettingsRecord> {
+  const doc = await SalarySettings.findOne({ key: SETTINGS_KEY }).select('free_calcs updated_at').lean();
+  return { free_calcs: doc?.free_calcs ?? null, updated_at: doc?.updated_at?.toISOString() ?? null };
+}
+
+export async function updateSalaryFreeCalcs(
+  dto: UpdateSalaryFreeCalcsDto,
+  updatedBy: string,
+): Promise<SalaryFreeCalcsSettingsRecord> {
+  await SalarySettings.findOneAndUpdate(
+    { key: SETTINGS_KEY },
+    {
+      free_calcs: dto.free_calcs,
+      updated_by: new mongoose.Types.ObjectId(updatedBy),
+      updated_at: new Date(),
+    },
+    { upsert: true, setDefaultsOnInsert: true },
+  );
+  return getSalaryFreeCalcs();
+}
+
 async function freeCalcsOf(
   doc: ISalaryUserOffice | null,
   rec: SalaryOfficeRecord | null,
+  flat: number | null,
 ): Promise<{ rank: number | null; free: number }> {
   if (!doc || !rec) return { rank: null, free: 0 };
   const rank = await officeRank(doc);
+  if (flat != null) return { rank, free: flat };
   return { rank, free: salaryFreeCalcsFor({ is_other: !rec.office, office_type: rec.office_type, rank: rank ?? 1 }) };
 }
 
-/** Free arrears calculations for the user, by their office type and how many users chose that office before them. */
+/** Free arrears calculations for the user: the admin's number, else by office type and order among that office's users. */
 export async function salaryFreeCalcLimit(userId: string): Promise<number> {
-  const [map, types, doc] = await Promise.all([officeIndex(), officeTypeShorts(), SalaryUserOffice.findOne({ user_id: userId })]);
-  return (await freeCalcsOf(doc, toRecord(map, types, doc))).free;
+  const [map, types, doc, { free_calcs }] = await Promise.all([
+    officeIndex(),
+    officeTypeShorts(),
+    SalaryUserOffice.findOne({ user_id: userId }),
+    getSalaryFreeCalcs(),
+  ]);
+  return (await freeCalcsOf(doc, toRecord(map, types, doc), free_calcs)).free;
 }
 
 export async function salaryFreeCalcLimits(userIds: string[]): Promise<Map<string, number>> {
-  const [map, types, docs] = await Promise.all([
+  const [map, types, docs, { free_calcs }] = await Promise.all([
     officeIndex(),
     officeTypeShorts(),
     SalaryUserOffice.find({ user_id: { $in: userIds } }),
+    getSalaryFreeCalcs(),
   ]);
   const out = new Map<string, number>(userIds.map((id) => [id, 0]));
   await Promise.all(
-    docs.map(async (doc) => out.set(String(doc.user_id), (await freeCalcsOf(doc, toRecord(map, types, doc))).free)),
+    docs.map(async (doc) =>
+      out.set(String(doc.user_id), (await freeCalcsOf(doc, toRecord(map, types, doc), free_calcs)).free),
+    ),
   );
   return out;
 }
@@ -251,32 +289,44 @@ export async function listSalaryUserOffices(filters: {
   const q = filters.q?.trim();
   if (q) {
     const pattern = { $regex: escapeRegex(q), $options: 'i' };
-    const users = await User.find({
-      $or: [{ full_name_en: pattern }, { full_name_bn: pattern }, { email: pattern }, { phone: pattern }],
-    })
-      .select('_id')
-      .limit(500);
+    const [users, staffOffices] = await Promise.all([
+      User.find({
+        $or: [{ full_name_en: pattern }, { full_name_bn: pattern }, { email: pattern }, { phone: pattern }],
+      })
+        .select('_id')
+        .limit(500),
+      SalaryStaffOffice.find({ name: pattern }).select('user_id').limit(500).lean(),
+    ]);
     query.$or = [
-      { user_id: { $in: users.map((u) => u._id) } },
+      { user_id: { $in: [...users.map((u) => u._id), ...staffOffices.map((o) => o.user_id)] } },
       { other_office_name: pattern },
       { other_office_name_bn: pattern },
     ];
   }
-  const [docs, total, map, types] = await Promise.all([
+  const [docs, total, map, types, { free_calcs }] = await Promise.all([
     SalaryUserOffice.find(query).sort({ updated_at: -1 }).skip(filters.skip).limit(filters.limit),
     SalaryUserOffice.countDocuments(query),
     officeIndex(),
     officeTypeShorts(),
+    getSalaryFreeCalcs(),
   ]);
-  const [users, freeTr] = await Promise.all([
-    User.find({ _id: { $in: docs.map((d) => d.user_id) } }).select('full_name_en email phone'),
-    salaryFreeTrStates(docs.map((d) => String(d.user_id))),
+  const userIds = docs.map((d) => d.user_id);
+  const [users, freeTr, staffOffices] = await Promise.all([
+    User.find({ _id: { $in: userIds } }).select('full_name_en email phone'),
+    salaryFreeTrStates(userIds.map(String)),
+    SalaryStaffOffice.find({ user_id: { $in: userIds } }).sort({ created_at: 1, _id: 1 }).select('user_id name').lean(),
   ]);
   const byId = new Map(users.map((u) => [String(u._id), u]));
+  const staffOfficesBy = new Map<string, Array<{ id: string; name: string }>>();
+  for (const o of staffOffices) {
+    const list = staffOfficesBy.get(String(o.user_id)) ?? [];
+    list.push({ id: String(o._id), name: o.name });
+    staffOfficesBy.set(String(o.user_id), list);
+  }
   const items = await Promise.all(docs.map(async (doc): Promise<SalaryUserOfficeAdminRow> => {
     const u = byId.get(String(doc.user_id));
     const rec = toRecord(map, types, doc);
-    const { rank, free } = await freeCalcsOf(doc, rec);
+    const { rank, free } = await freeCalcsOf(doc, rec, free_calcs);
     return {
       user: {
         id: String(doc.user_id),
@@ -292,6 +342,8 @@ export async function listSalaryUserOffices(filters: {
       office_rank: rank,
       free_calcs: free,
       free_tr_form: freeTr.get(String(doc.user_id)) ?? 'none',
+      office_name_editable: Boolean(doc.office_name_editable),
+      staff_offices: staffOfficesBy.get(String(doc.user_id)) ?? [],
       updated_at: doc.updated_at.toISOString(),
     };
   }));
@@ -307,6 +359,18 @@ export async function adminUpdateOtherOffice(userId: string, dto: AdminSalaryOth
   doc.other_office_name_bn = dto.other_office_name_bn;
   doc.updated_at = new Date();
   await doc.save();
+}
+
+export async function adminSetOfficeNameEditable(userId: string, dto: AdminSalaryOfficeEditableDto): Promise<void> {
+  if (!mongoose.isValidObjectId(userId)) throw notFound('Office not found');
+  const res = await SalaryUserOffice.updateOne({ user_id: userId }, { $set: { office_name_editable: dto.editable } });
+  if (res.matchedCount === 0) throw notFound('This user has not chosen an office yet');
+}
+
+export async function adminRenameStaffOffice(officeId: string, dto: SalaryStaffOfficeDto): Promise<void> {
+  if (!mongoose.isValidObjectId(officeId)) throw notFound('Office not found');
+  const res = await SalaryStaffOffice.updateOne({ _id: officeId }, { $set: { name: dto.name, updated_at: new Date() } });
+  if (res.matchedCount === 0) throw notFound('Office not found');
 }
 
 /** Clears the user's office so they choose it again on their next visit to /salary. */

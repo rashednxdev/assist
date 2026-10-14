@@ -7,6 +7,7 @@ import {
   PAY_GRADES,
   isIsoDate,
   SALARY_BILL_LIMIT_CODE,
+  SALARY_CALC_LIMIT_CODE,
   calculateStaffArrears,
   formatTaka,
   isIncrementWithheld,
@@ -494,6 +495,100 @@ function StaffOfficeDialog({
   );
 }
 
+function StaffConfirmDialog({
+  locale,
+  office,
+  rows,
+  onEdit,
+  onEditOne,
+  onConfirm,
+}: {
+  locale: SalaryLocale;
+  office: string;
+  rows: Array<{ staff: SalaryStaffRecord; result: SalaryArrearResult }>;
+  onEdit: () => void;
+  onEditOne: (s: SalaryStaffRecord) => void;
+  onConfirm: () => void;
+}) {
+  const t = salaryCopy(locale);
+  const num = (v: string | number) => localNum(locale, v);
+  const amt = (n: number) => (n < 0 ? `− ${num(formatTaka(-n))}` : num(formatTaka(n)));
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 print:hidden" role="dialog" aria-modal="true">
+      <button type="button" aria-label={t.cancel} className="absolute inset-0 bg-slate-900/50" onClick={onEdit} />
+      <div className="relative flex max-h-[92vh] w-full max-w-4xl flex-col rounded-2xl bg-surface shadow-xl">
+        <div className="flex items-start justify-between gap-3 border-b border-border p-5">
+          <div>
+            <h2 className="flex items-center gap-2 text-lg font-bold">
+              <ShieldCheck className="h-5 w-5 text-amber-700" />
+              {t.staffConfirmTitle}
+            </h2>
+            <p className="mt-1 text-sm font-semibold text-slate-800">{office}</p>
+            <p className="mt-1 text-sm text-muted">{t.staffConfirmHint}</p>
+          </div>
+          <button type="button" onClick={onEdit} className="rounded-md p-1 text-muted hover:bg-slate-100" aria-label={t.cancel}>
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="overflow-auto p-4">
+          <table className="w-full min-w-[760px] text-sm">
+            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-muted">
+              <tr>
+                <th className="px-2 py-2 font-semibold">#</th>
+                <th className="px-2 py-2 font-semibold">{t.staffColEmployee}</th>
+                <th className="px-2 py-2 font-semibold">{t.nid}</th>
+                <th className="px-2 py-2 font-semibold">{t.grade}</th>
+                <th className="px-2 py-2 text-right font-semibold">{t.staffColBasic}</th>
+                <th className="px-2 py-2 font-semibold">{t.staffColHousing}</th>
+                <th className="px-2 py-2 font-semibold">{t.staffColJoining}</th>
+                <th className="px-2 py-2 text-right font-semibold">{t.staffColNet}</th>
+                <th className="px-2 py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(({ staff: s, result }, i) => (
+                <tr key={s.id} className="border-t border-border align-top">
+                  <td className="px-2 py-2 text-muted">{num(i + 1)}</td>
+                  <td className="px-2 py-2">
+                    <div className="font-semibold text-slate-900">{s.name}</div>
+                    <div className="text-xs text-muted">{s.post}</div>
+                  </td>
+                  <td className="px-2 py-2 font-mono text-xs">{s.nid ? num(s.nid) : '—'}</td>
+                  <td className="px-2 py-2">{num(s.grade)}</td>
+                  <td className="px-2 py-2 text-right font-mono">{num(formatTaka(s.old_pay))}</td>
+                  <td className="px-2 py-2 text-xs">
+                    {s.housing_status === 'hra_eligible' ? hraAreaText(locale, s.hra_area) : t.govtHousing}
+                  </td>
+                  <td className="px-2 py-2 text-xs">
+                    {s.joining_date ? num(s.joining_date.split('-').reverse().join('-')) : '—'}
+                  </td>
+                  <td className="px-2 py-2 text-right font-mono font-semibold">{amt(result.total_net_arrear)}</td>
+                  <td className="px-2 py-2 text-right">
+                    <Button type="button" variant="outline" size="sm" className="gap-1" onClick={() => onEditOne(s)}>
+                      <Pencil className="h-3.5 w-3.5" />
+                      {t.staffEdit}
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="flex flex-wrap justify-end gap-2 border-t border-border p-4">
+          <Button type="button" variant="outline" className="gap-1.5" onClick={onEdit}>
+            <Pencil className="h-4 w-4" />
+            {t.staffConfirmEdit}
+          </Button>
+          <Button type="button" className="gap-2 bg-amber-600 hover:bg-amber-700" onClick={onConfirm}>
+            <Download className="h-4 w-4" />
+            {t.staffConfirmOk}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Office staff arrear bill: saved employee details, live arrears table and one T.R. Form 15 for all. */
 export function SalaryStaffBill({
   locale,
@@ -532,7 +627,9 @@ export function SalaryStaffBill({
   const [dialog, setDialog] = useState<{ editing: SalaryStaffRecord | null } | null>(null);
   const [officeEdit, setOfficeEdit] = useState<{ editing: SalaryStaffOfficeRecord | null } | null>(null);
   const [officeDialog, setOfficeDialog] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [bulkDialog, setBulkDialog] = useState(false);
+  const [bulkMessage, setBulkMessage] = useState('');
   const [error, setError] = useState('');
   const [downloading, setDownloading] = useState(false);
   const [sign, setSign] = useState<StaffSignInput>({ enabled: true, name: '', post: '' });
@@ -611,10 +708,28 @@ export function SalaryStaffBill({
         setAllStaff((prev) => [...(prev ?? []), res.data]);
       }
     } catch (err) {
+      if (err instanceof ApiError && err.code === SALARY_CALC_LIMIT_CODE) {
+        setDialog(null);
+        void refreshAccess().then(() => {
+          setBulkMessage(err.message);
+          setBulkDialog(true);
+        });
+        return null;
+      }
       return err instanceof Error ? err.message : t.calcError;
     }
     setDialog(null);
+    void refreshAccess();
     return null;
+  }
+
+  async function refreshAccess() {
+    try {
+      const res = await apiFetch<{ data: SalaryBillAccessRecord }>('/salary/access');
+      onAccessChange(res.data);
+    } catch {
+      /* the next action reloads access */
+    }
   }
 
   async function remove(s: SalaryStaffRecord) {
@@ -671,8 +786,11 @@ export function SalaryStaffBill({
   function startDownload() {
     setError('');
     const alreadyPaid = staff != null && paidFor.current === billKey(staff);
-    if (!alreadyPaid && (!access?.can_bill || !enoughBills)) return setBulkDialog(true);
-    setOfficeDialog(true);
+    if (!alreadyPaid && (!access?.can_bill || !enoughBills)) {
+      setBulkMessage('');
+      return setBulkDialog(true);
+    }
+    setConfirmOpen(true);
   }
 
   async function confirmDownload(office: string, nextSign: StaffSignInput) {
@@ -697,6 +815,7 @@ export function SalaryStaffBill({
           void apiFetch<{ data: SalaryBillAccessRecord }>('/salary/access')
             .then((res) => {
               onAccessChange(res.data);
+              setBulkMessage('');
               setBulkDialog(true);
             })
             .catch(() => {});
@@ -806,10 +925,12 @@ export function SalaryStaffBill({
           ) : null}
           {activeOfficeRec ? (
             <div className="flex flex-wrap gap-2">
-              <Button type="button" size="sm" variant="outline" className="gap-1" onClick={() => setOfficeEdit({ editing: activeOfficeRec })}>
-                <Pencil className="h-3.5 w-3.5" />
-                {t.staffOfficeRename}
-              </Button>
+              {unlimited ? (
+                <Button type="button" size="sm" variant="outline" className="gap-1" onClick={() => setOfficeEdit({ editing: activeOfficeRec })}>
+                  <Pencil className="h-3.5 w-3.5" />
+                  {t.staffOfficeRename}
+                </Button>
+              ) : null}
               <Button
                 type="button"
                 size="sm"
@@ -823,6 +944,7 @@ export function SalaryStaffBill({
             </div>
           ) : null}
           <p className="text-xs text-amber-900">{t.staffOfficesHint}</p>
+          {unlimited ? null : <p className="text-xs font-semibold text-[#b71c1c]">{t.staffOfficeAdminOnly}</p>}
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -992,6 +1114,23 @@ export function SalaryStaffBill({
         />
       ) : null}
 
+      {confirmOpen && staff && valid.length === staff.length ? (
+        <StaffConfirmDialog
+          locale={locale}
+          office={activeOfficeRec ? activeOfficeRec.name : officeLabel || t.staffOwnOffice}
+          rows={valid}
+          onEdit={() => setConfirmOpen(false)}
+          onEditOne={(s) => {
+            setConfirmOpen(false);
+            setDialog({ editing: s });
+          }}
+          onConfirm={() => {
+            setConfirmOpen(false);
+            setOfficeDialog(true);
+          }}
+        />
+      ) : null}
+
       {officeDialog ? (
         <OfficeDialog
           locale={locale}
@@ -1018,7 +1157,10 @@ export function SalaryStaffBill({
         <SalaryBulkRequestDialog
           locale={locale}
           access={access}
-          message={access.remaining > 0 && !access.request.pending ? t.staffNeedMore(num(count), num(remaining)) : undefined}
+          message={
+            bulkMessage ||
+            (access.remaining > 0 && !access.request.pending ? t.staffNeedMore(num(count), num(remaining)) : undefined)
+          }
           onAccessChange={onAccessChange}
           onClose={() => setBulkDialog(false)}
         />

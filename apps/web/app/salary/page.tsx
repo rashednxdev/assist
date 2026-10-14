@@ -27,7 +27,6 @@ import {
   calculateEmployeeGross,
   calculateSalaryArrears,
   defaultArrearMonths,
-  effectiveSubstantiveGrade,
   formatTaka,
   PAY_GRADES,
   isFixedPayGrade,
@@ -53,7 +52,7 @@ import {
   salaryTrFormNo,
 } from '@ibas/shared-types';
 import { downloadFormPdf, pdfFileName } from '@/lib/salary-pdf';
-import { SalaryArrearsDialog, type ArrearsInputs } from '@/components/salary/salary-arrears-dialog';
+import { SalaryArrearsDialog, isChosenSubstantive, type ArrearsInputs } from '@/components/salary/salary-arrears-dialog';
 import { SalaryJoiningDateField } from '@/components/salary/salary-joining-date';
 import { TrForm15 } from '@/components/salary/tr-form-15';
 import { ApiError, apiFetch } from '@/lib/api-client';
@@ -524,7 +523,7 @@ export default function SalaryOn2026Page() {
   const [grade, setGrade] = useState<PayGrade | null>(null);
   const [oldPay, setOldPay] = useState(0);
   const [housingStatus, setHousingStatus] = useState<HousingStatus>('hra_eligible');
-  const [hraArea, setHraArea] = useState<HraArea>('dhaka');
+  const [hraArea, setHraArea] = useState<HraArea | ''>('');
   const [educationChildren, setEducationChildren] = useState<EducationChildren>(0);
   const [washingAllowance, setWashingAllowance] = useState(false);
   const [chargeType, setChargeType] = useState<ChargeType>('regular');
@@ -566,6 +565,8 @@ export default function SalaryOn2026Page() {
   const stepNo = grade && oldPay > 0 ? NPS_2015[grade].indexOf(oldPay) + 1 : 0;
   const askJoining = grade != null && asksJoiningDate(grade, oldPay);
   const joiningDate = askJoining ? joiningDateInput : '';
+  /** The calculators read the area only for house rent, which cannot run until an area is chosen. */
+  const calcHraArea: HraArea = hraArea || 'other';
   const allowancesTotal = gross
     ? gross.monthly_lines.filter((row) => row.code !== 'basic').reduce((sum, row) => sum + row.amount, 0)
     : 0;
@@ -577,7 +578,7 @@ export default function SalaryOn2026Page() {
         old_pay: oldPay,
         substantive_grade: substantiveGrade,
         housing_status: housingStatus,
-        hra_area: hraArea,
+        hra_area: calcHraArea,
         months: arrearMonths,
         joining_date: joiningDate,
         ...arrearExtras,
@@ -592,7 +593,7 @@ export default function SalaryOn2026Page() {
     oldPay,
     substantiveGrade,
     housingStatus,
-    hraArea,
+    calcHraArea,
     arrearMonths,
     joiningDate,
     arrearExtras,
@@ -610,6 +611,7 @@ export default function SalaryOn2026Page() {
     if (!grade) setError(t.gradeRequired);
     else if (stepNo <= 0) setError(t.basicRequired);
     else if (askJoining && !isIsoDate(joiningDate)) setError(t.joiningDateRequired);
+    else if (housingStatus === 'hra_eligible' && !hraArea) setError(t.hraAreaRequired);
     else {
       setError('');
       return grade;
@@ -645,7 +647,7 @@ export default function SalaryOn2026Page() {
           grade: g,
           basic: oldPay,
           housing_status: housingStatus,
-          hra_area: hraArea,
+          hra_area: calcHraArea,
           education_children: educationChildren,
           washing_allowance: washingAllowance,
           charge_type: chargeType,
@@ -701,7 +703,7 @@ export default function SalaryOn2026Page() {
         old_pay: v.oldPay,
         substantive_grade: v.substantiveGrade,
         housing_status: v.housingStatus,
-        hra_area: v.hraArea,
+        hra_area: v.hraArea || 'other',
         months,
         joining_date: v.joiningDate,
       }).total_net_arrear;
@@ -995,7 +997,7 @@ export default function SalaryOn2026Page() {
                       const g = e.target.value === '' ? null : (Number(e.target.value) as PayGrade);
                       setGrade(g);
                       setOldPay((prev) => (g && NPS_2015[g].includes(prev) ? prev : 0));
-                      setSubstantiveGrade(g);
+                      setSubstantiveGrade((prev) => (isChosenSubstantive(g, prev) ? prev : null));
                       resetResults();
                     }}
                   >
@@ -1100,6 +1102,9 @@ export default function SalaryOn2026Page() {
                       resetResults();
                     }}
                   >
+                    <option value="" disabled>
+                      {t.hraAreaPlaceholder}
+                    </option>
                     {HRA_AREAS.map((a) => (
                       <option key={a} value={a}>
                         {hraAreaText(locale, a)}
@@ -1117,12 +1122,15 @@ export default function SalaryOn2026Page() {
                   <select
                     id="substantiveGrade"
                     className="flex h-10 w-full rounded-md border-2 border-[#b71c1c] bg-red-50 px-3 text-sm font-semibold text-[#b71c1c] focus:border-[#b71c1c] focus:outline-none focus:ring-2 focus:ring-red-200"
-                    value={effectiveSubstantiveGrade(grade, substantiveGrade)}
+                    value={isChosenSubstantive(grade, substantiveGrade) ? substantiveGrade : ''}
                     onChange={(e) => {
                       setSubstantiveGrade(Number(e.target.value) as SubstantiveGrade);
                       resetResults();
                     }}
                   >
+                    <option value="" disabled>
+                      {t.substantivePlaceholder}
+                    </option>
                     {substantiveGradeOptions(grade).map((g) => (
                       <option key={g} value={g}>
                         {g === grade ? t.substantiveSame(num(g)) : `${t.grade} ${num(g)}`}
@@ -1330,7 +1338,7 @@ export default function SalaryOn2026Page() {
               substantiveGrade={substantiveGrade}
               joiningDate={joiningDate}
               housingStatus={housingStatus}
-              hraArea={hraArea}
+              hraArea={calcHraArea}
               months={arrearMonths}
               onMonthsChange={setArrearMonths}
               extras={arrearExtras}
@@ -1421,9 +1429,9 @@ export default function SalaryOn2026Page() {
 
       {arrearResult ? (
         trFormNo === 15 ? (
-          <TrForm15 result={arrearResult} hraArea={hraArea} info={printInfo} preparedOn={localNum('bn', preparedOn)} />
+          <TrForm15 result={arrearResult} hraArea={calcHraArea} info={printInfo} preparedOn={localNum('bn', preparedOn)} />
         ) : (
-          <TrForm13 result={arrearResult} hraArea={hraArea} info={printInfo} preparedOn={localNum('bn', preparedOn)} />
+          <TrForm13 result={arrearResult} hraArea={calcHraArea} info={printInfo} preparedOn={localNum('bn', preparedOn)} />
         )
       ) : null}
 

@@ -541,7 +541,7 @@ body {
 /* Name, designation and NID stay on one line; long values wrap inside their own field. */
 .salary-tr-form .tr-fields-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1.4fr) auto minmax(0, 1.1fr) auto 36mm;
+  grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr) auto calc(18ch + 2mm);
   align-items: end;
   column-gap: 1.5mm;
 }
@@ -549,6 +549,11 @@ body {
 .salary-tr-form .tr-fields-row .tr-dots {
   display: block;
   overflow-wrap: anywhere;
+}
+
+.salary-tr-form .tr-fields-row .tr-dots:last-child {
+  overflow-wrap: normal;
+  white-space: nowrap;
 }
 
 .salary-tr-form table {

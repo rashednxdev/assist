@@ -6,7 +6,6 @@ import {
   NPS_2015,
   PAY_GRADES,
   isIsoDate,
-  effectiveSubstantiveGrade,
   formatTaka,
   asksJoiningDate,
   salaryTrFormNo,
@@ -26,7 +25,9 @@ export interface ArrearsInputs {
   grade: PayGrade | null;
   oldPay: number;
   housingStatus: HousingStatus;
-  hraArea: HraArea;
+  /** '' until the user chooses; required for house rent. */
+  hraArea: HraArea | '';
+  /** Null until the user chooses; must be the same or a lower grade than `grade`. */
   substantiveGrade: SubstantiveGrade | null;
   /** YYYY-MM-DD for the initial basic of Grade 7–20, otherwise ''. */
   joiningDate: string;
@@ -34,6 +35,10 @@ export interface ArrearsInputs {
 
 const selectClass =
   'flex h-10 w-full rounded-md border border-indigo-300 bg-white px-3 text-sm font-medium focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:cursor-not-allowed disabled:bg-slate-100';
+
+export function isChosenSubstantive(grade: PayGrade | null, substantive: SubstantiveGrade | null): substantive is SubstantiveGrade {
+  return grade != null && substantive != null && substantive >= grade;
+}
 
 /** Confirms grade, basic, housing and substantive grade before the arrears bill is shown. */
 export function SalaryArrearsDialog({
@@ -57,8 +62,8 @@ export function SalaryArrearsDialog({
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const stepNo = v.grade && v.oldPay > 0 ? NPS_2015[v.grade].indexOf(v.oldPay) + 1 : 0;
-  const effectiveSubstantive = v.grade ? effectiveSubstantiveGrade(v.grade, v.substantiveGrade) : null;
-  const formNo = effectiveSubstantive ? salaryTrFormNo(effectiveSubstantive) : null;
+  const substantive = isChosenSubstantive(v.grade, v.substantiveGrade) ? v.substantiveGrade : null;
+  const formNo = substantive ? salaryTrFormNo(substantive) : null;
   const askJoining = v.grade != null && asksJoiningDate(v.grade, v.oldPay);
 
   async function submit(e: React.FormEvent) {
@@ -66,11 +71,13 @@ export function SalaryArrearsDialog({
     if (!v.grade) return setError(t.gradeRequired);
     if (stepNo <= 0) return setError(t.basicRequired);
     if (askJoining && !isIsoDate(v.joiningDate)) return setError(t.joiningDateRequired);
+    if (v.housingStatus === 'hra_eligible' && !v.hraArea) return setError(t.hraAreaRequired);
+    if (!substantive) return setError(t.substantiveRequired);
     setSubmitting(true);
     setError('');
     const message = await onConfirm({
       ...v,
-      substantiveGrade: effectiveSubstantive,
+      substantiveGrade: substantive,
       joiningDate: askJoining ? v.joiningDate : '',
     });
     setSubmitting(false);
@@ -111,7 +118,7 @@ export function SalaryArrearsDialog({
                     ...prev,
                     grade: g,
                     oldPay: g && NPS_2015[g].includes(prev.oldPay) ? prev.oldPay : 0,
-                    substantiveGrade: g,
+                    substantiveGrade: isChosenSubstantive(g, prev.substantiveGrade) ? prev.substantiveGrade : null,
                   }));
                 }}
               >
@@ -190,8 +197,14 @@ export function SalaryArrearsDialog({
                 id="arr-hra-area"
                 className={selectClass}
                 value={v.hraArea}
-                onChange={(e) => setV((prev) => ({ ...prev, hraArea: e.target.value as HraArea }))}
+                onChange={(e) => {
+                  setError('');
+                  setV((prev) => ({ ...prev, hraArea: e.target.value as HraArea }));
+                }}
               >
+                <option value="" disabled>
+                  {t.hraAreaPlaceholder}
+                </option>
                 {HRA_AREAS.map((a) => (
                   <option key={a} value={a}>
                     {hraAreaText(locale, a)}
@@ -207,11 +220,15 @@ export function SalaryArrearsDialog({
               <select
                 id="arr-substantive"
                 className="flex h-10 w-full rounded-md border-2 border-[#b71c1c] bg-red-50 px-3 text-sm font-semibold text-[#b71c1c] focus:border-[#b71c1c] focus:outline-none focus:ring-2 focus:ring-red-200"
-                value={effectiveSubstantiveGrade(v.grade, v.substantiveGrade)}
-                onChange={(e) =>
-                  setV((prev) => ({ ...prev, substantiveGrade: Number(e.target.value) as SubstantiveGrade }))
-                }
+                value={substantive ?? ''}
+                onChange={(e) => {
+                  setError('');
+                  setV((prev) => ({ ...prev, substantiveGrade: Number(e.target.value) as SubstantiveGrade }));
+                }}
               >
+                <option value="" disabled>
+                  {t.substantivePlaceholder}
+                </option>
                 {substantiveGradeOptions(v.grade).map((g) => (
                   <option key={g} value={g}>
                     {g === v.grade ? t.substantiveSame(num(g)) : `${t.grade} ${num(g)}`}

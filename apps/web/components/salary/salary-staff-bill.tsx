@@ -55,7 +55,8 @@ interface StaffForm {
   grade: PayGrade | null;
   oldPay: number;
   housingStatus: HousingStatus;
-  hraArea: HraArea;
+  /** '' until chosen; required for house rent. */
+  hraArea: HraArea | '';
   extras: ArrearExtras;
   joiningDate: string;
 }
@@ -67,7 +68,7 @@ const EMPTY_FORM: StaffForm = {
   grade: null,
   oldPay: 0,
   housingStatus: 'hra_eligible',
-  hraArea: 'dhaka',
+  hraArea: '',
   extras: NO_ARREAR_EXTRAS,
   joiningDate: '',
 };
@@ -125,6 +126,7 @@ function StaffDialog({
     if (!v.grade) return setError(t.gradeRequired);
     if (!NPS_2015[v.grade].includes(v.oldPay)) return setError(t.basicRequired);
     if (askJoining && !isIsoDate(v.joiningDate)) return setError(t.joiningDateRequired);
+    if (v.housingStatus === 'hra_eligible' && !v.hraArea) return setError(t.hraAreaRequired);
     setSaving(true);
     setError('');
     const message = await onSave({
@@ -134,7 +136,7 @@ function StaffDialog({
       grade: v.grade,
       old_pay: v.oldPay,
       housing_status: v.housingStatus,
-      hra_area: v.hraArea,
+      hra_area: v.hraArea || 'other',
       ...v.extras,
       joining_date: askJoining ? v.joiningDate : null,
     });
@@ -280,6 +282,9 @@ function StaffDialog({
                 value={v.hraArea}
                 onChange={(e) => setV((p) => ({ ...p, hraArea: e.target.value as HraArea }))}
               >
+                <option value="" disabled>
+                  {t.hraAreaPlaceholder}
+                </option>
                 {HRA_AREAS.map((a) => (
                   <option key={a} value={a}>
                     {hraAreaText(locale, a)}

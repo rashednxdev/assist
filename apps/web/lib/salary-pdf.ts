@@ -4,6 +4,10 @@ const LEGAL_LONG = 355.6;
 const LEGAL_SHORT = 215.9;
 /** Pages up to this much taller than their sheet are shrunk onto one sheet instead of being split. */
 const SHRINK_LIMIT = 1.3;
+const FOOTER_LABEL = 'Calculate By: ';
+const FOOTER_SITE = 'www.proassistbd.com';
+const FOOTER_URL = 'https://www.proassistbd.com';
+const FOOTER_GREEN: [number, number, number] = [21, 128, 61];
 
 interface Sheet {
   w: number;
@@ -56,6 +60,15 @@ export async function downloadFormPdf(root: HTMLElement, fileName: string): Prom
       if (!first) pdf.addPage([sheet.w, sheet.h], sheet.orientation);
       first = false;
     };
+    const addFooter = (sheet: Sheet) => {
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(7.5);
+      pdf.setTextColor(...FOOTER_GREEN);
+      const x = (sheet.w - pdf.getTextWidth(FOOTER_LABEL + FOOTER_SITE)) / 2;
+      const y = sheet.h - 3.5;
+      pdf.text(FOOTER_LABEL, x, y);
+      pdf.textWithLink(FOOTER_SITE, x + pdf.getTextWidth(FOOTER_LABEL), y, { url: FOOTER_URL });
+    };
     for (const page of pages) {
       const sheet = sheetOf(page);
       const dataUrl = await toJpeg(page, { quality: 0.92, pixelRatio: 2, backgroundColor: '#ffffff' });
@@ -66,11 +79,13 @@ export async function downloadFormPdf(root: HTMLElement, fileName: string): Prom
         const scale = Math.min(1, sheet.h / height);
         const w = sheet.w * scale;
         pdf.addImage(dataUrl, 'JPEG', (sheet.w - w) / 2, 0, w, height * scale);
+        addFooter(sheet);
         continue;
       }
       for (let offset = 0; offset < height - 1; offset += sheet.h) {
         addSheet(sheet);
         pdf.addImage(dataUrl, 'JPEG', 0, -offset, sheet.w, height);
+        addFooter(sheet);
       }
     }
     pdf.save(fileName);

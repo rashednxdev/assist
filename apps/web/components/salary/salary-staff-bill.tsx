@@ -37,7 +37,7 @@ import { TrForm15Staff, type TrStaffEntry } from '@/components/salary/tr-form-15
 import { STAMP_DUTY, type TrSignatory } from '@/components/salary/tr-form-parts';
 import { SalaryJoiningDateField } from '@/components/salary/salary-joining-date';
 import { ApiError, apiFetch } from '@/lib/api-client';
-import { toEnglishDigits } from '@/lib/bangla-format';
+import { preparedStampBn, toEnglishDigits } from '@/lib/bangla-format';
 import { downloadFormPdf, pdfFileName } from '@/lib/salary-pdf';
 import { HRA_AREAS, hraAreaText, localNum, salaryCopy, type SalaryLocale } from '@/lib/salary-i18n';
 
@@ -603,7 +603,6 @@ export function SalaryStaffBill({
   onAccessChange,
   officeLabel,
   officeLocked,
-  preparedOn,
   accessPanel,
   contactsPanel,
 }: {
@@ -615,8 +614,6 @@ export function SalaryStaffBill({
   officeLabel: string;
   /** The office name comes from the user's "Others" office and cannot be edited on the form. */
   officeLocked: boolean;
-  /** Already in Bangla digits; printed on the form. */
-  preparedOn: string;
   accessPanel: React.ReactNode;
   contactsPanel: React.ReactNode;
 }) {
@@ -642,6 +639,7 @@ export function SalaryStaffBill({
     office: string;
     entries: TrStaffEntry[];
     signatory: TrSignatory | null;
+    preparedOn: string;
   } | null>(null);
   const paidFor = useRef<string | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
@@ -839,6 +837,7 @@ export function SalaryStaffBill({
         hraArea: r.staff.hra_area,
         result: r.result,
       })),
+      preparedOn: preparedStampBn(),
     });
   }
 
@@ -1177,7 +1176,7 @@ export function SalaryStaffBill({
           staff={capture.entries}
           months={months}
           office={capture.office}
-          preparedOn={preparedOn}
+          preparedOn={capture.preparedOn}
           signatory={capture.signatory}
         />
       ) : null}

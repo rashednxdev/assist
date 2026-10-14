@@ -83,7 +83,7 @@ export function TrForm13({
 
   return (
     <div className="salary-tr-form hidden" lang="bn">
-      <section className="tr-page">
+      <section className="tr-page tr13-page tr13-p1 tr-fit">
         <div className="tr-head">
           <div className="tr-head-ref">
             <div>টি, আর, ফরম নং ১৩</div>
@@ -186,7 +186,7 @@ export function TrForm13({
         </p>
       </section>
 
-      <section className="tr-page">
+      <section className="tr-page tr13-page tr13-p2 tr-fit">
         <div className="tr-page-no">২</div>
         <div className="tr-p2-row">
           বাহক/ ব্যাংক/ এজেন্টের নামঃ <Dots width="110mm" />

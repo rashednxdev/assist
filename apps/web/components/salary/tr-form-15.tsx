@@ -6,8 +6,10 @@ import { takaInWords } from '@/lib/amount-words';
 import { toBanglaDigits } from '@/lib/bangla-format';
 import type { SalaryPrintInfo } from '@/components/salary/salary-print-dialog';
 import {
+  AttachFooter,
   CodeRow,
   Dots,
+  FitBody,
   STAMP_DUTY,
   STAMP_DUTY_CODE,
   Signature,
@@ -104,7 +106,7 @@ function TrForm15Pages({
 
   return (
     <>
-      <section className="tr-page">
+      <section className="tr-page tr15-p1 tr-fit">
         <div className="tr-head">
           <div className="tr-head-ref">
             <div>টি, আর, ফরম নং ১৫</div>
@@ -114,7 +116,7 @@ function TrForm15Pages({
           <div className="tr-head-main">
             <div className="tr-title">সংস্থাপন কর্মচারীগণের বেতনের বিল</div>
             <div className="tr-head-line">
-              <Dots value={period.month} width="44mm" /> মাসের <Dots value={period.year} width="34mm" />
+              <Dots value={period.month} width="36mm" /> মাসের <Dots value={period.year} width="28mm" />
             </div>
             <div className="tr-head-line">
               দপ্তরের নাম : <Dots value={office} width="80mm" />
@@ -200,7 +202,7 @@ function TrForm15Pages({
         </div>
       </section>
 
-      <section className="tr-page">
+      <section className="tr-page tr15-p2 tr-fit">
         <div className="tr-page-no">২</div>
         <ol className="tr15-certs">
           <li>
@@ -570,7 +572,8 @@ export const TrForm15Staff = forwardRef<
 
       <TrStaffSchedule staff={staff} months={months} office={office} />
 
-      <section className="tr-page">
+      <section className="tr-page tr-attach-page tr-autofit">
+        <FitBody>
         <div className="tr-attach-kicker">সংযুক্তি — টি, আর, ফরম নং ১৫</div>
         <div className="tr-attach-title">অফিস স্টাফের বকেয়া বিলের সারসংক্ষেপ</div>
         <table className="tr-info">
@@ -643,8 +646,9 @@ export const TrForm15Staff = forwardRef<
           {taka(payable)}
         </p>
         <p className="tr-attach-words">টাকা (কথায়) : {payableWords}</p>
-        <p className="tr-small">প্রস্তুতের তারিখ: {preparedOn}</p>
         {signatory ? <SignatureBlock signatory={signatory} /> : null}
+        </FitBody>
+        <AttachFooter preparedOn={preparedOn} />
       </section>
 
       {staff.map((s) => {

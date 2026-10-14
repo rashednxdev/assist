@@ -52,6 +52,7 @@ import {
   salaryTrFormNo,
 } from '@ibas/shared-types';
 import { downloadFormPdf, pdfFileName } from '@/lib/salary-pdf';
+import { preparedStampBn } from '@/lib/bangla-format';
 import { SalaryArrearsDialog, isChosenSubstantive, type ArrearsInputs } from '@/components/salary/salary-arrears-dialog';
 import { SalaryJoiningDateField } from '@/components/salary/salary-joining-date';
 import { TrForm15 } from '@/components/salary/tr-form-15';
@@ -1378,7 +1379,6 @@ export default function SalaryOn2026Page() {
               onAccessChange={setBillAccess}
               officeLabel={billOfficeName || (salaryOffice?.label ?? '')}
               officeLocked={Boolean(lockedOfficeName)}
-              preparedOn={localNum('bn', preparedOn)}
               accessPanel={
                 <SalaryBillAccessPanel
                   locale={locale}
@@ -1432,9 +1432,9 @@ export default function SalaryOn2026Page() {
 
       {arrearResult ? (
         trFormNo === 15 ? (
-          <TrForm15 result={arrearResult} hraArea={calcHraArea} info={printInfo} preparedOn={localNum('bn', preparedOn)} />
+          <TrForm15 result={arrearResult} hraArea={calcHraArea} info={printInfo} preparedOn={preparedStampBn()} />
         ) : (
-          <TrForm13 result={arrearResult} hraArea={calcHraArea} info={printInfo} preparedOn={localNum('bn', preparedOn)} />
+          <TrForm13 result={arrearResult} hraArea={calcHraArea} info={printInfo} preparedOn={preparedStampBn()} />
         )
       ) : null}
 

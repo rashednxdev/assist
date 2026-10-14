@@ -468,8 +468,17 @@ body {
   }
 }
 
+@font-face {
+  font-family: 'Nikosh';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: block;
+  src: url('/fonts/nikosh.woff2') format('woff2');
+}
+
 /* T.R. Form 13 layout (A4, 8mm page margins) */
 .salary-tr-form {
+  font-family: 'Nikosh', 'Noto Sans Bengali', serif;
   color: #000;
   font-size: 9pt;
   line-height: 1.3;
@@ -700,6 +709,110 @@ body {
 
 .salary-tr-form .tr-note {
   padding-left: 4mm;
+}
+
+/* T.R. Form 13 sheets: larger text, rows tightened so page 1 (up to the * footnote) stays one A4 sheet. */
+.salary-tr-form .tr13-page {
+  font-size: 10.1pt;
+  line-height: 1.2;
+}
+
+.salary-tr-form .tr13-page .tr-head-ref {
+  font-size: 9.5pt;
+}
+
+.salary-tr-form .tr13-page .tr-title {
+  font-size: 14.6pt;
+}
+
+.salary-tr-form .tr13-page .tr-head-line {
+  margin-top: 1mm;
+}
+
+.salary-tr-form .tr13-page .tr-fields {
+  margin: 2mm 0 1.5mm;
+}
+
+.salary-tr-form .tr13-page .tr-fields > div + div {
+  margin-top: 1.5mm;
+}
+
+.salary-tr-form .tr13-page .tr-grid th,
+.salary-tr-form .tr13-page .tr-grid td {
+  padding: 0.1mm 1.5mm;
+  height: 5.1mm;
+}
+
+.salary-tr-form .tr13-page .tr-box {
+  width: 3.2mm;
+  height: 3.2mm;
+  font-size: 6.3pt;
+  line-height: 3mm;
+  vertical-align: middle;
+}
+
+.salary-tr-form .tr13-page .tr-words {
+  height: 6mm;
+}
+
+.salary-tr-form .tr13-page .tr-footnote,
+.salary-tr-form .tr13-page .tr-small {
+  font-size: 8.5pt;
+}
+
+.salary-tr-form .tr13-page .tr-p2-heading {
+  font-size: 12.4pt;
+}
+
+/*
+ * Page 1 sized to fill A4 down to the * footnote (measured: ends ~286mm on the 297mm sheet).
+ * The ভবিষ্য তহবিল line has ~2mm to spare at 11.9pt with 10mm side margins; larger text wraps it.
+ */
+.salary-tr-form .tr13-p1 {
+  font-size: 11.9pt;
+  page: tr-tuned;
+}
+
+.salary-tr-form.tr-capture .tr-page.tr13-p1,
+.salary-tr-form.tr-capture .tr-page.tr13-p2,
+.salary-tr-form.tr-capture .tr-page.tr15-p1,
+.salary-tr-form.tr-capture .tr-page.tr15-p2 {
+  padding-left: 10mm;
+  padding-right: 10mm;
+}
+
+.salary-tr-form .tr13-p1 .tr-head-ref {
+  font-size: 11.2pt;
+}
+
+.salary-tr-form .tr13-p1 .tr-title {
+  font-size: 17.2pt;
+}
+
+.salary-tr-form .tr13-p1 .tr-grid th,
+.salary-tr-form .tr13-p1 .tr-grid td {
+  line-height: 1.08;
+  padding-top: 0;
+  padding-bottom: 0;
+  height: 5.45mm;
+}
+
+.salary-tr-form .tr13-p1 .tr-footnote {
+  font-size: 10pt;
+}
+
+.salary-tr-form .tr13-p2 {
+  font-size: 12.4pt;
+  page: tr-tuned;
+}
+
+.salary-tr-form .tr13-p2 .tr-p2-heading {
+  font-size: 15.2pt;
+}
+
+@page tr-tuned {
+  size: A4;
+  margin: 8mm 10mm 5mm;
 }
 
 .salary-tr-form .tr-attach-kicker {
@@ -949,11 +1062,39 @@ body {
 
 .salary-tr-form .tr-attach-footer {
   margin-top: 8mm;
-  border-top: 0.6pt solid #cbd5e1;
-  padding-top: 1mm;
-  text-align: center;
+  text-align: left;
   font-size: 7.5pt;
+  line-height: 1.35;
   color: #475569;
+}
+
+.salary-tr-form .tr-calc-by {
+  font-weight: 700;
+  color: #15803d;
+}
+
+.salary-tr-form .tr-calc-by a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.salary-tr-form.tr-capture .tr-page.tr-attach-page {
+  position: relative;
+  padding-bottom: 16mm;
+}
+
+.salary-tr-form.tr-capture .tr-attach-page > .tr-attach-footer {
+  position: absolute;
+  left: 10mm;
+  right: 10mm;
+  bottom: 4mm;
+  margin-top: 0;
+}
+
+/* `.tr-fit-body` is scaled by the PDF export (salary-pdf.ts) to fill the space inside this padding. */
+.salary-tr-form.tr-capture .tr-page.tr-autofit {
+  padding-left: 10mm;
+  padding-right: 10mm;
 }
 
 /* T.R. Form 15: instructions column beside the code table */
@@ -1082,6 +1223,77 @@ body {
 
 .salary-tr-form .tr15-office .tr-p2-signs {
   margin-top: 12mm;
+}
+
+/*
+ * T.R. Form 15 sheets at the T.R. Form 13 text sizes (measured: page 1 ends ~285mm, page 2 ~287mm of 297mm).
+ * Larger text or taller blocks push either page past one A4 sheet.
+ */
+.salary-tr-form .tr15-p1,
+.salary-tr-form .tr15-p2 {
+  page: tr-tuned;
+}
+
+.salary-tr-form .tr15-p1 {
+  font-size: 11.9pt;
+}
+
+.salary-tr-form .tr15-p1 .tr-head-ref {
+  font-size: 11.2pt;
+}
+
+.salary-tr-form .tr15-p1 .tr-title {
+  font-size: 17.2pt;
+}
+
+.salary-tr-form .tr15-p1 .tr15-person {
+  font-size: 9.5pt;
+}
+
+.salary-tr-form .tr15-p1 .tr15-notes {
+  font-size: 11pt;
+}
+
+.salary-tr-form .tr15-p1 .tr15-body .tr-grid th,
+.salary-tr-form .tr15-p1 .tr15-body .tr-grid td {
+  line-height: 1.08;
+  padding-top: 0;
+  padding-bottom: 0;
+  height: 5.75mm;
+}
+
+.salary-tr-form .tr15-p1 .tr-box {
+  width: 3.2mm;
+  height: 3.2mm;
+  font-size: 6.3pt;
+  line-height: 3mm;
+  vertical-align: middle;
+}
+
+.salary-tr-form .tr15-p1 .tr-footnote,
+.salary-tr-form .tr15-p1 .tr-small {
+  font-size: 10pt;
+}
+
+.salary-tr-form .tr15-p2 {
+  font-size: 11.3pt;
+}
+
+.salary-tr-form .tr15-p2 .tr-p2-heading {
+  font-size: 13.8pt;
+}
+
+.salary-tr-form .tr15-p2 .tr15-absent-body td {
+  height: 32mm;
+}
+
+.salary-tr-form .tr15-p2 .tr15-sign-left > div + div,
+.salary-tr-form .tr15-p2 .tr15-sign-right > div + div {
+  margin-top: 3.5mm;
+}
+
+.salary-tr-form .tr15-p2 .tr15-office .tr-p2-signs {
+  margin-top: 8mm;
 }
 
 /* Off-screen A4 pages captured for the PDF download */

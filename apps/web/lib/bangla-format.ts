@@ -14,6 +14,14 @@ export function banglaText(value: string | number | undefined | null, fallback =
   return toBanglaDigits(raw);
 }
 
+/** "dd-mm-yyyy hh:mm পূর্বাহ্ণ/অপরাহ্ণ" in Bangla digits. */
+export function preparedStampBn(date: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const h = date.getHours();
+  const stamp = `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${date.getFullYear()} ${pad(h % 12 || 12)}:${pad(date.getMinutes())}`;
+  return `${toBanglaDigits(stamp)} ${h < 12 ? 'পূর্বাহ্ণ' : 'অপরাহ্ণ'}`;
+}
+
 export function formatDurationBn(minutes: number): string {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;

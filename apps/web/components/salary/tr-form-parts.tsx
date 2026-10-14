@@ -137,6 +137,29 @@ export function SignatureBlock({ signatory }: { signatory: TrSignatory }) {
   );
 }
 
+/**
+ * Sheet content the PDF export may enlarge to fill the page; the section needs `tr-autofit`.
+ * Keep `AttachFooter` outside it so the footer stays pinned and unscaled.
+ */
+export function FitBody({ children }: { children: React.ReactNode }) {
+  return <div className="tr-fit-body">{children}</div>;
+}
+
+/**
+ * Bottom-left lines of an annexure sheet, the only footer in the T.R. PDFs; the sheet needs `tr-attach-page`
+ * to pin it to the page bottom. The PDF export keeps its link clickable.
+ */
+export function AttachFooter({ preparedOn }: { preparedOn: string }) {
+  return (
+    <div className="tr-attach-footer">
+      <div className="tr-calc-by">
+        Developed by: <a href="https://www.proassistbd.com">www.proassistbd.com</a>
+      </div>
+      <div>প্রস্তুতের তারিখ ও সময়: {preparedOn}</div>
+    </div>
+  );
+}
+
 /** Summary page attached after the T.R. form: employee details, month-wise working and totals. */
 export function TrAttachment({
   formNo,
@@ -167,7 +190,8 @@ export function TrAttachment({
   };
   const oneTime = oneTimeDeductions(t, fmt.amt, result);
   return (
-    <section className="tr-page">
+    <section className="tr-page tr-attach-page tr-autofit">
+      <FitBody>
       <div className="tr-attach-kicker">সংযুক্তি — টি, আর, ফরম নং {toBanglaDigits(formNo)}</div>
       <div className="tr-attach-title">{t.billTitle}</div>
       <table className="tr-info">
@@ -353,10 +377,9 @@ export function TrAttachment({
         স্ট্যাম্প ডিউটি বাদে প্রদেয়: (৳ {taka(result.total_net_arrear)} − ৳ {taka(STAMP_DUTY)}) = ৳ {taka(payable)}
       </p>
       <p className="tr-attach-words">{t.inWords(payableWords)}</p>
-      <p className="tr-small">
-        {t.preparedOn}: {preparedOn}
-      </p>
       {signatory ? <SignatureBlock signatory={signatory} /> : null}
+      </FitBody>
+      <AttachFooter preparedOn={preparedOn} />
     </section>
   );
 }

@@ -5,7 +5,12 @@ import {
   SALARY_CALC_LIMIT_CODE,
   SALARY_DEFAULT_BULK_SIZE,
   SALARY_FREE_ARREARS_CALCS,
+  SALARY_PRINT_REPORT_MAX_DAYS,
   calculateStaffArrears,
+  salaryCanSeeDownloads,
+  salaryPrintReportQuerySchema,
+  type SalaryPrintDayRow,
+  type SalaryPrintReport,
   type ConsumeSalaryBillDto,
   type ConsumeSalaryStaffBillDto,
   type RecordArrearsCalcDto,
@@ -555,6 +560,76 @@ export async function getBillAccessStats(): Promise<SalaryBillAccessStats> {
     pending_requests: pending,
     approved_users: approvedUsers,
   };
+}
+
+function dhakaDateKey(at: Date): string {
+  return new Date(at.getTime() + DHAKA_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+function dhakaDateStart(key: string): Date {
+  return new Date(Date.parse(`${key}T00:00:00Z`) - DHAKA_OFFSET_MS);
+}
+
+/** Downloads per Bangladesh date in the range, for one user or (without `userId`) everyone. */
+export async function salaryPrintReport(query: unknown, userId?: string): Promise<SalaryPrintReport> {
+  const parsed = salaryPrintReportQuerySchema.safeParse(query);
+  if (!parsed.success) throw badRequest(parsed.error.issues.map((i) => i.message).join('; '));
+  const to = parsed.data.to ?? dhakaDateKey(new Date());
+  const from = parsed.data.from ?? dhakaDateKey(new Date(dhakaDateStart(to).getTime() - 29 * DAY_MS));
+  const start = dhakaDateStart(from);
+  const end = new Date(dhakaDateStart(to).getTime() + DAY_MS);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) throw badRequest('Invalid date');
+  if (start >= end) throw badRequest('The start date must not be after the end date');
+  if ((end.getTime() - start.getTime()) / DAY_MS > SALARY_PRINT_REPORT_MAX_DAYS) {
+    throw badRequest(`Choose at most ${SALARY_PRINT_REPORT_MAX_DAYS} days`);
+  }
+
+  const base: Record<string, unknown> = { kind: { $in: PRINT_KINDS } };
+  if (userId) base.user_id = new mongoose.Types.ObjectId(userId);
+  const [groups, allTime] = await Promise.all([
+    SalaryBillUsage.aggregate<{ _id: { day: string; kind: SalaryBillKind }; n: number; users: mongoose.Types.ObjectId[] }>([
+      { $match: { ...base, created_at: { $gte: start, $lt: end } } },
+      {
+        $group: {
+          _id: { day: { $dateToString: { format: '%Y-%m-%d', date: '$created_at', timezone: '+06:00' } }, kind: '$kind' },
+          n: { $sum: 1 },
+          users: { $addToSet: '$user_id' },
+        },
+      },
+    ]),
+    SalaryBillUsage.countDocuments(base),
+  ]);
+
+  const byDay = new Map<string, { row: SalaryPrintDayRow; users: Set<string> }>();
+  for (const g of groups) {
+    let day = byDay.get(g._id.day);
+    if (!day) {
+      day = {
+        row: { date: g._id.day, total: 0, tr_form_13: 0, tr_form_15: 0, staff_tr_form_15: 0, arrears_pdf: 0, users: 0 },
+        users: new Set(),
+      };
+      byDay.set(g._id.day, day);
+    }
+    day.row.total += g.n;
+    if (g._id.kind === 'tr_form_13' || g._id.kind === 'tr_form_15' || g._id.kind === 'staff_tr_form_15' || g._id.kind === 'arrears_pdf') {
+      day.row[g._id.kind] += g.n;
+    }
+    for (const u of g.users) day.users.add(String(u));
+  }
+  const days = [...byDay.values()]
+    .map(({ row, users }) => ({ ...row, users: users.size }))
+    .sort((a, b) => b.date.localeCompare(a.date));
+  return { from, to, total: days.reduce((sum, d) => sum + d.total, 0), all_time: allTime, days };
+}
+
+export async function myPrintReport(user: AuthUser, query: unknown): Promise<SalaryPrintReport> {
+  if (!isPlatformAdmin(user)) {
+    const doc = await SalaryBillAccess.findOne({ user_id: user.id }).select('bill_limit').lean();
+    if (!salaryCanSeeDownloads({ unlimited: false, bill_limit: doc?.bill_limit ?? 0 })) {
+      throw forbidden('The download report is available after the admin approves your bills.');
+    }
+  }
+  return salaryPrintReport(query, user.id);
 }
 
 export async function listBillUsage(userId: string, limit = 30): Promise<SalaryBillUsageRecord[]> {

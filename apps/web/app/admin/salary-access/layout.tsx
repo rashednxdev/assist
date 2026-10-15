@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Building2, Calculator, ClipboardCheck, Settings } from 'lucide-react';
+import { BarChart3, Building2, Calculator, ClipboardCheck, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/shared/page-header';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ const tabs = [
   { href: '/admin/salary-access', label: 'Request approval', icon: ClipboardCheck },
   { href: '/admin/salary-access/settings', label: 'Settings', icon: Settings },
   { href: '/admin/salary-access/offices', label: 'User offices', icon: Building2 },
+  { href: '/admin/salary-access/report', label: 'Print report', icon: BarChart3 },
 ];
 
 export default function SalaryAccessLayout({ children }: { children: React.ReactNode }) {

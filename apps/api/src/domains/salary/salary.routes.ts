@@ -9,6 +9,8 @@ import {
   adminSetOfficeNameEditableHandler,
   adminSetAccountingOfficeHandler,
   adminSetOfficeAdminHandler,
+  adminPrintReportHandler,
+  myPrintReportHandler,
   searchBillPassingOfficesHandler,
   setMyAccountingOfficeHandler,
   getSalaryFreeCalcsHandler,
@@ -78,6 +80,7 @@ salaryRouter.put('/office', authenticate, publicLimit, asyncHandler(saveMySalary
 salaryRouter.get('/office/bill-passing', authenticate, asyncHandler(searchBillPassingOfficesHandler));
 salaryRouter.put('/office/accounting', authenticate, publicLimit, asyncHandler(setMyAccountingOfficeHandler));
 salaryRouter.get('/access', authenticate, asyncHandler(getMyBillAccessHandler));
+salaryRouter.get('/my-downloads', authenticate, asyncHandler(myPrintReportHandler));
 salaryRouter.post('/access/request', authenticate, publicLimit, asyncHandler(requestBillsHandler));
 salaryRouter.post('/bills', authenticate, publicLimit, asyncHandler(consumeBillHandler));
 salaryRouter.post('/arrears-calc', authenticate, publicLimit, asyncHandler(recordArrearsCalcHandler));
@@ -93,6 +96,7 @@ salaryRouter.delete('/staff/:staffId', authenticate, publicLimit, asyncHandler(d
 
 salaryRouter.get('/admin/access', authenticate, requireAdmin, asyncHandler(listBillAccessHandler));
 salaryRouter.get('/admin/access-stats', authenticate, requireAdmin, asyncHandler(getBillAccessStatsHandler));
+salaryRouter.get('/admin/print-report', authenticate, requireAdmin, asyncHandler(adminPrintReportHandler));
 salaryRouter.put('/admin/access/:userId', authenticate, requireAdmin, asyncHandler(updateBillAccessHandler));
 salaryRouter.put('/admin/access/:userId/note', authenticate, requireAdmin, asyncHandler(updateBillAccessNoteHandler));
 salaryRouter.post('/admin/access/:userId/reject', authenticate, requireAdmin, asyncHandler(rejectBillRequestHandler));

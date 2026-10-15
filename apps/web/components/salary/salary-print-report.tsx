@@ -1,0 +1,156 @@
+'use client';
+
+import { useCallback, useEffect, useState } from 'react';
+import type { SalaryPrintReport } from '@ibas/shared-types';
+import { apiFetch } from '@/lib/api-client';
+import { localNum, salaryCopy, type SalaryLocale } from '@/lib/salary-i18n';
+import { Alert } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+
+const DHAKA_OFFSET_MS = 6 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Bangladesh date `days` before today, as YYYY-MM-DD. */
+function dhakaDate(daysAgo = 0): string {
+  return new Date(Date.now() + DHAKA_OFFSET_MS - daysAgo * DAY_MS).toISOString().slice(0, 10);
+}
+
+/** Date-wise download counts from `path` (`?from=&to=`); `showUsers` adds the users-per-day column. */
+export function SalaryPrintReportView({
+  path,
+  locale,
+  showUsers = false,
+}: {
+  path: string;
+  locale: SalaryLocale;
+  showUsers?: boolean;
+}) {
+  const t = salaryCopy(locale);
+  const num = (v: string | number) => localNum(locale, v);
+  const [from, setFrom] = useState(dhakaDate(29));
+  const [to, setTo] = useState(dhakaDate());
+  const [report, setReport] = useState<SalaryPrintReport | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const load = useCallback(
+    async (f: string, tt: string) => {
+      setLoading(true);
+      setError('');
+      try {
+        const params = new URLSearchParams({ from: f, to: tt });
+        const res = await apiFetch<{ data: SalaryPrintReport }>(`${path}?${params.toString()}`);
+        setReport(res.data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : t.reportLoadError);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [path, t.reportLoadError],
+  );
+
+  useEffect(() => {
+    void load(dhakaDate(29), dhakaDate());
+  }, [load]);
+
+  const showPdf = Boolean(report?.days.some((d) => d.arrears_pdf > 0));
+  const sum = (key: 'tr_form_13' | 'tr_form_15' | 'staff_tr_form_15' | 'arrears_pdf') =>
+    report ? report.days.reduce((s, d) => s + d[key], 0) : 0;
+  const showDate = (iso: string) => num(iso.split('-').reverse().join('-'));
+
+  return (
+    <div className="space-y-4">
+      <form
+        className="flex flex-wrap items-end gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void load(from, to);
+        }}
+      >
+        <div className="space-y-1">
+          <Label htmlFor="report-from" className="text-xs font-bold">
+            {t.reportFrom}
+          </Label>
+          <Input id="report-from" type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} className="w-40" />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="report-to" className="text-xs font-bold">
+            {t.reportTo}
+          </Label>
+          <Input id="report-to" type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} className="w-40" />
+        </div>
+        <Button type="submit" disabled={loading || !from || !to}>
+          {loading ? '…' : t.reportShow}
+        </Button>
+      </form>
+
+      {error ? <Alert variant="error">{error}</Alert> : null}
+
+      {report ? (
+        <>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+              <p className="text-xs font-semibold text-emerald-900">
+                {t.reportRangeTotal} ({showDate(report.from)} – {showDate(report.to)})
+              </p>
+              <p className="text-2xl font-bold tabular-nums text-emerald-800">{num(report.total)}</p>
+            </div>
+            <div className="rounded-xl border border-border bg-surface p-3">
+              <p className="text-xs font-semibold text-muted">{t.reportAllTime}</p>
+              <p className="text-2xl font-bold tabular-nums text-slate-900">{num(report.all_time)}</p>
+            </div>
+          </div>
+
+          {report.days.length === 0 ? (
+            <p className="text-sm text-muted">{t.reportNone}</p>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-border">
+              <table className="w-full min-w-[32rem] text-sm">
+                <thead className="bg-slate-50 text-left text-xs font-semibold text-slate-600">
+                  <tr>
+                    <th className="px-3 py-2">{t.reportDate}</th>
+                    <th className="px-3 py-2 text-right">{t.reportTr13}</th>
+                    <th className="px-3 py-2 text-right">{t.reportTr15}</th>
+                    <th className="px-3 py-2 text-right">{t.reportStaff}</th>
+                    {showPdf ? <th className="px-3 py-2 text-right">{t.reportPdf}</th> : null}
+                    {showUsers ? <th className="px-3 py-2 text-right">{t.reportUsers}</th> : null}
+                    <th className="px-3 py-2 text-right">{t.reportTotal}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.days.map((d) => (
+                    <tr key={d.date} className="border-t border-border">
+                      <td className="px-3 py-2 font-medium tabular-nums">{showDate(d.date)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{num(d.tr_form_13)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{num(d.tr_form_15)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{num(d.staff_tr_form_15)}</td>
+                      {showPdf ? <td className="px-3 py-2 text-right tabular-nums">{num(d.arrears_pdf)}</td> : null}
+                      {showUsers ? <td className="px-3 py-2 text-right tabular-nums">{num(d.users)}</td> : null}
+                      <td className="px-3 py-2 text-right font-bold tabular-nums">{num(d.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="border-t-2 border-border bg-slate-50 font-bold">
+                  <tr>
+                    <td className="px-3 py-2">{t.reportTotal}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{num(sum('tr_form_13'))}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{num(sum('tr_form_15'))}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{num(sum('staff_tr_form_15'))}</td>
+                    {showPdf ? <td className="px-3 py-2 text-right tabular-nums">{num(sum('arrears_pdf'))}</td> : null}
+                    {showUsers ? <td className="px-3 py-2" /> : null}
+                    <td className="px-3 py-2 text-right tabular-nums">{num(report.total)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </>
+      ) : loading ? (
+        <p className="text-sm text-muted">…</p>
+      ) : null}
+    </div>
+  );
+}

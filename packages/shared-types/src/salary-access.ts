@@ -332,6 +332,39 @@ export interface SalaryPrintStats {
   approved: number;
 }
 
+const reportDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a YYYY-MM-DD date');
+
+/** Date range of a print report, Bangladesh dates; both ends included. Defaults to the last 30 days. */
+export const salaryPrintReportQuerySchema = z.object({
+  from: reportDate.optional(),
+  to: reportDate.optional(),
+});
+export type SalaryPrintReportQuery = z.infer<typeof salaryPrintReportQuerySchema>;
+export const SALARY_PRINT_REPORT_MAX_DAYS = 366;
+
+/** Downloads on one Bangladesh date; a staff T.R. Form 15 counts once per employee. */
+export interface SalaryPrintDayRow {
+  date: string;
+  total: number;
+  tr_form_13: number;
+  tr_form_15: number;
+  staff_tr_form_15: number;
+  arrears_pdf: number;
+  /** Users who downloaded that day. */
+  users: number;
+}
+
+export interface SalaryPrintReport {
+  from: string;
+  to: string;
+  /** Downloads in the range. */
+  total: number;
+  /** Downloads since the start. */
+  all_time: number;
+  /** Dates with downloads, newest first. */
+  days: SalaryPrintDayRow[];
+}
+
 export interface SalaryBillAccessStats {
   all_time: SalaryPrintStats;
   /** Since midnight, Bangladesh time. */
@@ -394,6 +427,11 @@ export interface SalaryBillAccessRecord {
   contacts_source: 'office' | 'admin';
   /** Bill-passing office whose admins are listed in `contacts`. */
   contact_office: string | null;
+}
+
+/** Admins and users the admin has granted bills to; status alone turns `pending` on a new request. */
+export function salaryCanSeeDownloads(access: Pick<SalaryBillAccessRecord, 'unlimited' | 'bill_limit'>): boolean {
+  return access.unlimited || access.bill_limit > 0;
 }
 
 export interface SalaryBillAccessAdminRow {

@@ -17,6 +17,7 @@ import {
   FileText,
   GraduationCap,
   HelpCircle,
+  History,
   Inbox,
   Library,
   Loader2,
@@ -58,7 +59,7 @@ import {
   type AccessRequiredVariant,
   type PackageTab,
 } from '@/components/dashboard/access-required-dialog';
-import type { MyAccessSummary } from '@ibas/shared-types';
+import { salaryCanSeeDownloads, type MyAccessSummary, type SalaryBillAccessRecord } from '@ibas/shared-types';
 import { accessDate } from '@/lib/billing-format';
 
 function PackageAccessLines({ access }: { access: MyAccessSummary | null }) {
@@ -241,6 +242,7 @@ export function UserDashboard({
     packageTab?: PackageTab | null;
   } | null>(null);
   const [access, setAccess] = useState<MyAccessSummary | null>(null);
+  const [salaryReport, setSalaryReport] = useState(false);
 
   const grants = user.module_access ?? [];
   const workflow = summary?.workflow;
@@ -272,6 +274,9 @@ export function UserDashboard({
     apiFetch<{ data: MyAccessSummary }>('/billing/my-access')
       .then((res) => setAccess(res.data))
       .catch(() => setAccess(null));
+    apiFetch<{ data: SalaryBillAccessRecord }>('/salary/access')
+      .then((res) => setSalaryReport(salaryCanSeeDownloads(res.data)))
+      .catch(() => setSalaryReport(false));
   }, []);
 
   function showBlocked(m: HomeModule, access: LearningAccess) {
@@ -417,6 +422,15 @@ export function UserDashboard({
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
+        {salaryReport && (
+          <ShortcutCard
+            href="/salary/downloads"
+            iconClass="bg-[#15803d]"
+            icon={<History className="h-5 w-5" />}
+            title="My salary downloads"
+            subtitle="Date-wise count of the arrear bill forms you downloaded"
+          />
+        )}
         {canMarathon && (
           <ShortcutCard
             href="/marathon"

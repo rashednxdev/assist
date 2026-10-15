@@ -9,6 +9,7 @@ import {
   ChevronDown,
   Download,
   HeartHandshake,
+  History,
   LayoutDashboard,
   LogOut,
   ReceiptText,
@@ -50,6 +51,7 @@ import {
   SALARY_FREE_TR_NID,
   SALARY_CALC_LIMIT_CODE,
   SALARY_FREE_ARREARS_CALCS,
+  salaryCanSeeDownloads,
   salaryTrFormNo,
 } from '@ibas/shared-types';
 import { downloadFormPdf, pdfFileName } from '@/lib/salary-pdf';
@@ -941,6 +943,17 @@ export default function SalaryOn2026Page() {
               <Share2 className="h-3.5 w-3.5" />
               {t.shareBtn}
             </Button>
+            {billAccess && salaryCanSeeDownloads(billAccess) ? (
+              <Link
+                href="/salary/downloads"
+                aria-label={t.myDownloadsBtn}
+                title={t.myDownloadsBtn}
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-white/30 bg-white/5 px-2.5 text-sm font-medium text-white hover:bg-white/15 print:hidden"
+              >
+                <History className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">{t.myDownloadsBtn}</span>
+              </Link>
+            ) : null}
             {salaryOnly ? null : (
               <Link
                 href="/dashboard"

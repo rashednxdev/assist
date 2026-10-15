@@ -268,6 +268,14 @@ export async function updateSalaryContactsHandler(req: AuthRequest, res: Respons
   res.json({ data: await accessService.updateSalaryContacts(dto, authUser(req).id) });
 }
 
+export async function myPrintReportHandler(req: AuthRequest, res: Response): Promise<void> {
+  res.json({ data: await accessService.myPrintReport(authUser(req), req.query) });
+}
+
+export async function adminPrintReportHandler(req: AuthRequest, res: Response): Promise<void> {
+  res.json({ data: await accessService.salaryPrintReport(req.query) });
+}
+
 export async function getSalaryBulkSizeHandler(_req: AuthRequest, res: Response): Promise<void> {
   res.json({ data: await accessService.getSalaryBulkSize() });
 }

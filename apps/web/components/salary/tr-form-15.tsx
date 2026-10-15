@@ -331,7 +331,7 @@ export function TrForm15({
         headBox={
           <>
             <div>
-              নামঃ <Dots value={info.employee} width="38mm" />
+              নামঃ <Dots value={info.employee} width="38mm" className="tr-name" />
             </div>
             {info.nid ? (
               <div>

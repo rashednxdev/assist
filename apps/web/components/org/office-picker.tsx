@@ -22,6 +22,7 @@ export function OfficePicker({
   departmentId,
   topLevel,
   shortLabel,
+  searchPath,
 }: {
   value: OfficeOption | null;
   onChange: (o: OfficeOption | null) => void;
@@ -37,6 +38,8 @@ export function OfficePicker({
   topLevel?: boolean;
   /** Show the office short name (the full name when it has none) instead of "Name (Short)". */
   shortLabel?: boolean;
+  /** Search this endpoint (`?q=`) instead of the office directory. */
+  searchPath?: string;
 }) {
   const label = (o: OfficeOption) => (shortLabel ? o.short_name || o.name : officeLabel(o));
   const [open, setOpen] = useState(false);
@@ -53,7 +56,10 @@ export function OfficePicker({
     setLoading(true);
     const t = setTimeout(() => {
       const scope = `${departmentId ? `&department_id=${departmentId}` : ''}${topLevel ? '&top_level=true' : ''}`;
-      apiFetch<{ data: OfficeOption[] }>(`/org/offices/options?limit=40&q=${encodeURIComponent(q)}${scope}`)
+      const url = searchPath
+        ? `${searchPath}?q=${encodeURIComponent(q)}`
+        : `/org/offices/options?limit=40&q=${encodeURIComponent(q)}${scope}`;
+      apiFetch<{ data: OfficeOption[] }>(url)
         .then((r) => {
           if (!alive) return;
           setOptions(r.data.filter((o) => o.id !== excludeId));
@@ -66,7 +72,7 @@ export function OfficePicker({
       alive = false;
       clearTimeout(t);
     };
-  }, [q, open, excludeId, departmentId, topLevel]);
+  }, [q, open, excludeId, departmentId, topLevel, searchPath]);
 
   useEffect(() => {
     if (!open) return;

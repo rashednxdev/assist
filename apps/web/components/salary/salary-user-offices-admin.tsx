@@ -1,15 +1,17 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Lock, LockOpen, Pencil, RotateCcw, Search } from 'lucide-react';
+import { Lock, LockOpen, Pencil, RotateCcw, Search, UserCog } from 'lucide-react';
 import {
   SALARY_EXTRA_USER_FREE_CALCS,
   SALARY_FREE_ARREARS_CALCS,
   SALARY_OFFICE_TYPE_EXTRA_USERS,
   SALARY_OTHERS_FREE_CALCS,
+  type OfficeOption,
   type SalaryUserOfficeAdminRow,
 } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
+import { OfficePicker, officeLabel } from '@/components/org/office-picker';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -90,12 +92,118 @@ function StaffOfficeItem({ office, onChanged }: { office: { id: string; name: st
   );
 }
 
+function AccountingOfficeEditor({ row, onChanged }: { row: SalaryUserOfficeAdminRow; onChanged: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState<OfficeOption | null>(row.accounting_office);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function save(next: OfficeOption | null) {
+    setBusy(true);
+    setError('');
+    try {
+      await apiFetch(`/salary/admin/offices/${row.user.id}/accounting-office`, {
+        method: 'PUT',
+        body: JSON.stringify({ accounting_office_id: next?.id ?? null }),
+      });
+      setEditing(false);
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-1.5 rounded-md border border-emerald-200 bg-emerald-50/50 px-2.5 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs">
+          <span className="font-semibold text-slate-600">Bill-passing office: </span>
+          {row.accounting_office ? (
+            <span className="font-medium text-slate-900">
+              {officeLabel(row.accounting_office)}
+              {row.accounting_office.type_short ? ` · ${row.accounting_office.type_short}` : ''}
+            </span>
+          ) : (
+            <span className="font-semibold text-rose-700">Not chosen yet — the user is asked to choose it</span>
+          )}
+        </p>
+        {editing ? null : (
+          <Button type="button" size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" onClick={() => setEditing(true)}>
+            <Pencil className="h-3 w-3" />
+            Change
+          </Button>
+        )}
+      </div>
+      {editing ? (
+        <div className="space-y-1.5">
+          <OfficePicker
+            searchPath="/salary/office/bill-passing"
+            value={value}
+            placeholder="Search CAFO, DCA, DAFO or UAO office…"
+            onChange={setValue}
+          />
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" onClick={() => void save(value)} disabled={busy || !value}>
+              {busy ? 'Saving…' : 'Save'}
+            </Button>
+            {row.accounting_office ? (
+              <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void save(null)}>
+                Clear (user chooses again)
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              onClick={() => {
+                setEditing(false);
+                setValue(row.accounting_office);
+                setError('');
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : null}
+      {error ? <Alert variant="error">{error}</Alert> : null}
+    </div>
+  );
+}
+
 function OfficeRow({ row, onChanged }: { row: SalaryUserOfficeAdminRow; onChanged: () => void }) {
   const [editing, setEditing] = useState(false);
   const [nameEn, setNameEn] = useState(row.other_office_name);
   const [nameBn, setNameBn] = useState(row.other_office_name_bn);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+
+  async function setOfficeAdmin(officeAdmin: boolean) {
+    if (
+      officeAdmin &&
+      !window.confirm(
+        `Make ${row.user.full_name_en} an office admin of ${row.label}? Users of offices that chose it as their bill-passing office will see their name and mobile number as the contact.`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      await apiFetch(`/salary/admin/offices/${row.user.id}/office-admin`, {
+        method: 'PUT',
+        body: JSON.stringify({ office_admin: officeAdmin }),
+      });
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function save() {
     setBusy(true);
@@ -152,6 +260,7 @@ function OfficeRow({ row, onChanged }: { row: SalaryUserOfficeAdminRow; onChange
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           {row.is_other ? <Badge variant="warning">Others</Badge> : <Badge variant="secondary">{row.office_type ?? 'Listed'}</Badge>}
+          {row.office_admin ? <Badge variant="success">Office admin</Badge> : null}
           {row.office_rank ? <Badge variant="secondary">{ordinal(row.office_rank)} user of this office</Badge> : null}
           <Badge variant={row.free_calcs > 0 ? 'success' : 'destructive'}>
             {row.free_calcs > 0 ? `${row.free_calcs} free calculation${row.free_calcs === 1 ? '' : 's'}` : 'No free calculations'}
@@ -211,6 +320,8 @@ function OfficeRow({ row, onChanged }: { row: SalaryUserOfficeAdminRow; onChange
         </div>
       )}
 
+      {row.accounting_office || row.needs_accounting_office ? <AccountingOfficeEditor row={row} onChanged={onChanged} /> : null}
+
       {row.staff_offices.length > 0 ? (
         <div className="space-y-1">
           <p className="text-xs font-semibold text-slate-600">Staff arrear bill offices ({row.staff_offices.length})</p>
@@ -245,6 +356,19 @@ function OfficeRow({ row, onChanged }: { row: SalaryUserOfficeAdminRow; onChange
               {row.office_name_editable ? 'Fix office name on forms' : 'Allow editing office name on forms'}
             </Button>
           ) : null}
+          {row.can_be_office_admin || row.office_admin ? (
+            <Button
+              type="button"
+              size="sm"
+              variant={row.office_admin ? 'outline' : 'default'}
+              className="gap-1.5"
+              disabled={busy}
+              onClick={() => void setOfficeAdmin(!row.office_admin)}
+            >
+              <UserCog className="h-3.5 w-3.5" />
+              {row.office_admin ? 'Remove office admin' : 'Make office admin'}
+            </Button>
+          ) : null}
           <Button type="button" size="sm" variant="outline" className="gap-1.5" disabled={busy} onClick={() => void reset()}>
             <RotateCcw className="h-3.5 w-3.5" />
             Reset office
@@ -257,7 +381,7 @@ function OfficeRow({ row, onChanged }: { row: SalaryUserOfficeAdminRow; onChange
 
 /** Users' salary offices: users cannot change their office after saving it, so the admin corrects it here. */
 export function SalaryUserOfficesAdmin() {
-  const [othersOnly, setOthersOnly] = useState(true);
+  const [filter, setFilter] = useState<'others' | 'all' | 'admins'>('others');
   const [q, setQ] = useState('');
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
@@ -272,7 +396,8 @@ export function SalaryUserOfficesAdmin() {
     setError('');
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
-      if (othersOnly) params.set('others', '1');
+      if (filter === 'others') params.set('others', '1');
+      if (filter === 'admins') params.set('admins', '1');
       if (query) params.set('q', query);
       const res = await apiFetch<{ data: SalaryUserOfficeAdminRow[]; meta: { total: number } }>(
         `/salary/admin/offices?${params.toString()}`,
@@ -284,7 +409,7 @@ export function SalaryUserOfficesAdmin() {
     } finally {
       setLoading(false);
     }
-  }, [othersOnly, query, page]);
+  }, [filter, query, page]);
 
   useEffect(() => {
     void load();
@@ -302,22 +427,27 @@ export function SalaryUserOfficesAdmin() {
           Offices a user added to their staff arrear bill can only be renamed here. Unless a number is set under
           Settings, free calculations follow the office rules: the first user gets {SALARY_FREE_ARREARS_CALCS}; the next
           users by office type ({EXTRA_RULE}) get {SALARY_EXTRA_USER_FREE_CALCS} each; later users need approved bills.
-          Each Others user gets {SALARY_OTHERS_FREE_CALCS}.
+          Each Others user gets {SALARY_OTHERS_FREE_CALCS}. Users of Others offices and of listed offices that are not
+          accounts offices choose a bill-passing office (CAFO, DCA, DAFO or UAO). Make users of a bill-passing office its
+          office admins: those offices then contact only them; without office admins they see the admin&apos;s contact numbers.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap gap-2">
-          {[
-            { id: true, label: 'Others offices' },
-            { id: false, label: 'All offices' },
-          ].map((f) => (
+          {(
+            [
+              { id: 'others', label: 'Others offices' },
+              { id: 'all', label: 'All offices' },
+              { id: 'admins', label: 'Office admins' },
+            ] as const
+          ).map((f) => (
             <Button
-              key={String(f.id)}
+              key={f.id}
               type="button"
               size="sm"
-              variant={othersOnly === f.id ? 'default' : 'outline'}
+              variant={filter === f.id ? 'default' : 'outline'}
               onClick={() => {
-                setOthersOnly(f.id);
+                setFilter(f.id);
                 setPage(1);
               }}
             >

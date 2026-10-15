@@ -33,6 +33,7 @@ import {
   arrearJoinStart,
   arrearMonthOptions,
   asksJoiningDate,
+  asksSubstantiveGrade,
   isIsoDate,
   substantiveGradeOptions,
   type EducationChildren,
@@ -53,7 +54,12 @@ import {
 } from '@ibas/shared-types';
 import { downloadFormPdf, pdfFileName } from '@/lib/salary-pdf';
 import { preparedStampBn } from '@/lib/bangla-format';
-import { SalaryArrearsDialog, isChosenSubstantive, type ArrearsInputs } from '@/components/salary/salary-arrears-dialog';
+import {
+  SalaryArrearsDialog,
+  isChosenSubstantive,
+  nextSubstantive,
+  type ArrearsInputs,
+} from '@/components/salary/salary-arrears-dialog';
 import { SalaryJoiningDateField } from '@/components/salary/salary-joining-date';
 import { TrForm15 } from '@/components/salary/tr-form-15';
 import { ApiError, apiFetch } from '@/lib/api-client';
@@ -525,6 +531,7 @@ export default function SalaryOn2026Page() {
   const [oldPay, setOldPay] = useState(0);
   const [housingStatus, setHousingStatus] = useState<HousingStatus>('hra_eligible');
   const [hraArea, setHraArea] = useState<HraArea | ''>('');
+  const [hraMissing, setHraMissing] = useState(false);
   const [educationChildren, setEducationChildren] = useState<EducationChildren>(0);
   const [washingAllowance, setWashingAllowance] = useState(false);
   const [chargeType, setChargeType] = useState<ChargeType>('regular');
@@ -612,8 +619,11 @@ export default function SalaryOn2026Page() {
     if (!grade) setError(t.gradeRequired);
     else if (stepNo <= 0) setError(t.basicRequired);
     else if (askJoining && !isIsoDate(joiningDate)) setError(t.joiningDateRequired);
-    else if (housingStatus === 'hra_eligible' && !hraArea) setError(t.hraAreaRequired);
-    else {
+    else if (housingStatus === 'hra_eligible' && !hraArea) {
+      setError(t.hraAreaRequired);
+      setHraMissing(true);
+      document.getElementById('hraArea')?.focus();
+    } else {
       setError('');
       return grade;
     }
@@ -987,7 +997,7 @@ export default function SalaryOn2026Page() {
             <div className="space-y-1.5">
               <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
                 <div className="space-y-1.5">
-                  <Label htmlFor="grade" className="text-sm font-medium">
+                  <Label htmlFor="grade" className="text-sm font-bold">
                     {t.grade}
                   </Label>
                   <select
@@ -998,7 +1008,7 @@ export default function SalaryOn2026Page() {
                       const g = e.target.value === '' ? null : (Number(e.target.value) as PayGrade);
                       setGrade(g);
                       setOldPay((prev) => (g && NPS_2015[g].includes(prev) ? prev : 0));
-                      setSubstantiveGrade((prev) => (isChosenSubstantive(g, prev) ? prev : null));
+                      setSubstantiveGrade((prev) => nextSubstantive(grade, g, prev));
                       resetResults();
                     }}
                   >
@@ -1011,7 +1021,7 @@ export default function SalaryOn2026Page() {
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="basic" className="text-sm font-medium">
+                  <Label htmlFor="basic" className="text-sm font-bold">
                     {t.basicJune}
                   </Label>
                   <select
@@ -1060,7 +1070,7 @@ export default function SalaryOn2026Page() {
 
             <div className="space-y-4 rounded-xl border border-teal-200 bg-teal-50/40 p-4">
               <fieldset className="space-y-2">
-                <legend className="text-sm font-medium text-slate-800">{t.housing}</legend>
+                <legend className="text-sm font-bold text-slate-800">{t.housing}</legend>
                 <label className="flex cursor-pointer items-start gap-2 text-sm">
                   <input
                     type="radio"
@@ -1091,15 +1101,21 @@ export default function SalaryOn2026Page() {
 
               {housingStatus === 'hra_eligible' ? (
                 <div className="space-y-1.5">
-                  <Label htmlFor="hraArea" className="text-sm font-medium">
+                  <Label htmlFor="hraArea" className="text-sm font-bold">
                     {t.hraArea}
                   </Label>
                   <select
                     id="hraArea"
-                    className="flex h-10 w-full rounded-md border border-teal-300 bg-white px-3 text-sm font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-200"
+                    aria-invalid={hraMissing && !hraArea}
+                    className={
+                      hraMissing && !hraArea
+                        ? 'flex h-10 w-full rounded-md border-2 border-[#b71c1c] bg-red-50 px-3 text-sm font-semibold text-[#b71c1c] ring-2 ring-red-200 focus:border-[#b71c1c] focus:outline-none focus:ring-2 focus:ring-red-300'
+                        : 'flex h-10 w-full rounded-md border border-teal-300 bg-white px-3 text-sm font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-200'
+                    }
                     value={hraArea}
                     onChange={(e) => {
                       setHraArea(e.target.value as HraArea);
+                      setHraMissing(false);
                       resetResults();
                     }}
                   >
@@ -1115,9 +1131,9 @@ export default function SalaryOn2026Page() {
                 </div>
               ) : null}
 
-              {grade != null ? (
+              {grade != null && asksSubstantiveGrade(grade) ? (
                 <div className="space-y-1.5">
-                  <Label htmlFor="substantiveGrade" className="text-sm font-medium">
+                  <Label htmlFor="substantiveGrade" className="text-sm font-bold">
                     {t.substantive}
                   </Label>
                   <select
@@ -1159,7 +1175,7 @@ export default function SalaryOn2026Page() {
                 <div className="space-y-4 border-t border-border px-4 py-4">
                   {grade != null && grade >= 2 && grade <= 10 ? (
                     <fieldset className="space-y-2">
-                      <legend className="text-sm font-medium text-slate-800">{t.postType}</legend>
+                      <legend className="text-sm font-bold text-slate-800">{t.postType}</legend>
                       <label className="flex cursor-pointer items-center gap-2 text-sm">
                         <input
                           type="radio"
@@ -1191,7 +1207,7 @@ export default function SalaryOn2026Page() {
 
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="space-y-1.5">
-                      <Label htmlFor="educationChildren" className="text-sm font-medium">
+                      <Label htmlFor="educationChildren" className="text-sm font-bold">
                         {t.education}
                       </Label>
                       <select
@@ -1212,7 +1228,7 @@ export default function SalaryOn2026Page() {
                     </div>
 
                     <fieldset className="space-y-2">
-                      <legend className="text-sm font-medium text-slate-800">{t.washing}</legend>
+                      <legend className="text-sm font-bold text-slate-800">{t.washing}</legend>
                       <label className="flex cursor-pointer items-center gap-2 text-sm">
                         <input
                           type="radio"
@@ -1241,7 +1257,7 @@ export default function SalaryOn2026Page() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label htmlFor="gpf-deduction" className="text-sm font-medium">
+                    <Label htmlFor="gpf-deduction" className="text-sm font-bold">
                       {t.gpf}
                     </Label>
                     <Input
@@ -1290,7 +1306,7 @@ export default function SalaryOn2026Page() {
               onRetry={() => void loadBillAccess()}
               onAccessChange={setBillAccess}
             />
-            <SalaryBillContacts locale={locale} contacts={billAccess?.contacts ?? []} />
+            <SalaryBillContacts locale={locale} contacts={billAccess?.contacts ?? []} office={billAccess?.contact_office} />
           </div>
         ) : null}
 
@@ -1364,7 +1380,7 @@ export default function SalaryOn2026Page() {
                   ) : null}
                 </>
               }
-              contactsPanel={<SalaryBillContacts locale={locale} contacts={billAccess?.contacts ?? []} />}
+              contactsPanel={<SalaryBillContacts locale={locale} contacts={billAccess?.contacts ?? []} office={billAccess?.contact_office} />}
             />
           </div>
         ) : null}
@@ -1388,7 +1404,7 @@ export default function SalaryOn2026Page() {
                   onAccessChange={setBillAccess}
                 />
               }
-              contactsPanel={<SalaryBillContacts locale={locale} contacts={billAccess?.contacts ?? []} />}
+              contactsPanel={<SalaryBillContacts locale={locale} contacts={billAccess?.contacts ?? []} office={billAccess?.contact_office} />}
             />
           </div>
         ) : null}

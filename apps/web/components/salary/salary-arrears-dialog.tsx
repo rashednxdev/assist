@@ -8,6 +8,7 @@ import {
   isIsoDate,
   formatTaka,
   asksJoiningDate,
+  asksSubstantiveGrade,
   salaryTrFormNo,
   substantiveGradeOptions,
   type HousingStatus,
@@ -36,8 +37,23 @@ export interface ArrearsInputs {
 const selectClass =
   'flex h-10 w-full rounded-md border border-indigo-300 bg-white px-3 text-sm font-medium focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:cursor-not-allowed disabled:bg-slate-100';
 
+/** A required choice the user tried to skip. */
+export const missingSelectClass =
+  'flex h-10 w-full rounded-md border-2 border-[#b71c1c] bg-red-50 px-3 text-sm font-semibold text-[#b71c1c] ring-2 ring-red-200 focus:border-[#b71c1c] focus:outline-none focus:ring-2 focus:ring-red-300';
+
 export function isChosenSubstantive(grade: PayGrade | null, substantive: SubstantiveGrade | null): substantive is SubstantiveGrade {
   return grade != null && substantive != null && substantive >= grade;
+}
+
+/** Substantive grade after the pay grade changes; a grade that is not asked uses itself, so its value is never kept as a choice. */
+export function nextSubstantive(
+  prevGrade: PayGrade | null,
+  grade: PayGrade | null,
+  prev: SubstantiveGrade | null,
+): SubstantiveGrade | null {
+  if (grade == null) return null;
+  if (!asksSubstantiveGrade(grade)) return grade;
+  return prevGrade != null && asksSubstantiveGrade(prevGrade) && isChosenSubstantive(grade, prev) ? prev : null;
 }
 
 /** Confirms grade, basic, housing and substantive grade before the arrears bill is shown. */
@@ -60,9 +76,16 @@ export function SalaryArrearsDialog({
   const num = (v: string | number) => localNum(locale, v);
   const [v, setV] = useState<ArrearsInputs>(initial);
   const [error, setError] = useState('');
+  const [hraMissing, setHraMissing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const stepNo = v.grade && v.oldPay > 0 ? NPS_2015[v.grade].indexOf(v.oldPay) + 1 : 0;
-  const substantive = isChosenSubstantive(v.grade, v.substantiveGrade) ? v.substantiveGrade : null;
+  const asksSubstantive = v.grade != null && asksSubstantiveGrade(v.grade);
+  const substantive =
+    v.grade != null && !asksSubstantive
+      ? v.grade
+      : isChosenSubstantive(v.grade, v.substantiveGrade)
+        ? v.substantiveGrade
+        : null;
   const formNo = substantive ? salaryTrFormNo(substantive) : null;
   const askJoining = v.grade != null && asksJoiningDate(v.grade, v.oldPay);
 
@@ -71,7 +94,11 @@ export function SalaryArrearsDialog({
     if (!v.grade) return setError(t.gradeRequired);
     if (stepNo <= 0) return setError(t.basicRequired);
     if (askJoining && !isIsoDate(v.joiningDate)) return setError(t.joiningDateRequired);
-    if (v.housingStatus === 'hra_eligible' && !v.hraArea) return setError(t.hraAreaRequired);
+    if (v.housingStatus === 'hra_eligible' && !v.hraArea) {
+      setHraMissing(true);
+      document.getElementById('arr-hra-area')?.focus();
+      return setError(t.hraAreaRequired);
+    }
     if (!substantive) return setError(t.substantiveRequired);
     setSubmitting(true);
     setError('');
@@ -106,7 +133,7 @@ export function SalaryArrearsDialog({
         <div className="space-y-4 p-5">
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
             <div className="space-y-1.5">
-              <Label htmlFor="arr-grade">{t.grade}</Label>
+              <Label htmlFor="arr-grade" className="font-bold">{t.grade}</Label>
               <select
                 id="arr-grade"
                 className={selectClass}
@@ -118,7 +145,7 @@ export function SalaryArrearsDialog({
                     ...prev,
                     grade: g,
                     oldPay: g && NPS_2015[g].includes(prev.oldPay) ? prev.oldPay : 0,
-                    substantiveGrade: isChosenSubstantive(g, prev.substantiveGrade) ? prev.substantiveGrade : null,
+                    substantiveGrade: nextSubstantive(prev.grade, g, prev.substantiveGrade),
                   }));
                 }}
               >
@@ -131,7 +158,7 @@ export function SalaryArrearsDialog({
               </select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="arr-basic">{t.basicJune}</Label>
+              <Label htmlFor="arr-basic" className="font-bold">{t.basicJune}</Label>
               <select
                 id="arr-basic"
                 className={`${selectClass} tabular-nums`}
@@ -167,7 +194,7 @@ export function SalaryArrearsDialog({
           ) : null}
 
           <fieldset className="space-y-2">
-            <legend className="text-sm font-medium text-slate-800">{t.housing}</legend>
+            <legend className="text-sm font-bold text-slate-800">{t.housing}</legend>
             <label className="flex cursor-pointer items-start gap-2 text-sm">
               <input
                 type="radio"
@@ -192,13 +219,15 @@ export function SalaryArrearsDialog({
 
           {v.housingStatus === 'hra_eligible' ? (
             <div className="space-y-1.5">
-              <Label htmlFor="arr-hra-area">{t.hraArea}</Label>
+              <Label htmlFor="arr-hra-area" className="font-bold">{t.hraArea}</Label>
               <select
                 id="arr-hra-area"
-                className={selectClass}
+                aria-invalid={hraMissing && !v.hraArea}
+                className={hraMissing && !v.hraArea ? missingSelectClass : selectClass}
                 value={v.hraArea}
                 onChange={(e) => {
                   setError('');
+                  setHraMissing(false);
                   setV((prev) => ({ ...prev, hraArea: e.target.value as HraArea }));
                 }}
               >
@@ -214,33 +243,35 @@ export function SalaryArrearsDialog({
             </div>
           ) : null}
 
-          <div className="space-y-1.5">
-            <Label htmlFor="arr-substantive">{t.substantive}</Label>
-            {v.grade ? (
-              <select
-                id="arr-substantive"
-                className="flex h-10 w-full rounded-md border-2 border-[#b71c1c] bg-red-50 px-3 text-sm font-semibold text-[#b71c1c] focus:border-[#b71c1c] focus:outline-none focus:ring-2 focus:ring-red-200"
-                value={substantive ?? ''}
-                onChange={(e) => {
-                  setError('');
-                  setV((prev) => ({ ...prev, substantiveGrade: Number(e.target.value) as SubstantiveGrade }));
-                }}
-              >
-                <option value="" disabled>
-                  {t.substantivePlaceholder}
-                </option>
-                {substantiveGradeOptions(v.grade).map((g) => (
-                  <option key={g} value={g}>
-                    {g === v.grade ? t.substantiveSame(num(g)) : `${t.grade} ${num(g)}`}
+          {v.grade && !asksSubstantive ? null : (
+            <div className="space-y-1.5">
+              <Label htmlFor="arr-substantive" className="font-bold">{t.substantive}</Label>
+              {v.grade ? (
+                <select
+                  id="arr-substantive"
+                  className="flex h-10 w-full rounded-md border-2 border-[#b71c1c] bg-red-50 px-3 text-sm font-semibold text-[#b71c1c] focus:border-[#b71c1c] focus:outline-none focus:ring-2 focus:ring-red-200"
+                  value={substantive ?? ''}
+                  onChange={(e) => {
+                    setError('');
+                    setV((prev) => ({ ...prev, substantiveGrade: Number(e.target.value) as SubstantiveGrade }));
+                  }}
+                >
+                  <option value="" disabled>
+                    {t.substantivePlaceholder}
                   </option>
-                ))}
-              </select>
-            ) : (
-              <p id="arr-substantive" className="rounded-md border border-border bg-slate-50 px-3 py-2 text-sm font-medium">
-                {t.gradeFirst}
-              </p>
-            )}
-          </div>
+                  {substantiveGradeOptions(v.grade).map((g) => (
+                    <option key={g} value={g}>
+                      {g === v.grade ? t.substantiveSame(num(g)) : `${t.grade} ${num(g)}`}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p id="arr-substantive" className="rounded-md border border-border bg-slate-50 px-3 py-2 text-sm font-medium">
+                  {t.gradeFirst}
+                </p>
+              )}
+            </div>
+          )}
 
           {formNo ? (
             <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-950">

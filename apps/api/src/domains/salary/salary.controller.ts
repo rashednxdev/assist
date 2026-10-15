@@ -2,6 +2,8 @@ import type { Request, Response } from 'express';
 import type { z } from 'zod';
 import {
   SALARY_ACCESS_LIST_FILTERS,
+  adminSalaryAccountingOfficeSchema,
+  adminSalaryOfficeAdminSchema,
   adminSalaryOfficeEditableSchema,
   adminSalaryOtherOfficeSchema,
   consumeSalaryBillSchema,
@@ -12,6 +14,7 @@ import {
   salaryStaffOfficeSchema,
   salaryStaffSchema,
   saveSalaryOfficeSchema,
+  setSalaryAccountingOfficeSchema,
   updateSalaryAdminNoteSchema,
   updateSalaryBillAccessSchema,
   updateSalaryBulkSizeSchema,
@@ -78,6 +81,28 @@ export async function saveMySalaryOfficeHandler(req: AuthRequest, res: Response)
   res.json({ data: await officeService.saveMySalaryOffice(authUser(req), dto) });
 }
 
+export async function setMyAccountingOfficeHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = parseBody(setSalaryAccountingOfficeSchema, req.body);
+  res.json({ data: await officeService.setMyAccountingOffice(authUser(req), dto) });
+}
+
+export async function searchBillPassingOfficesHandler(req: AuthRequest, res: Response): Promise<void> {
+  const q = typeof req.query.q === 'string' ? req.query.q.slice(0, 100) : '';
+  res.json({ data: await officeService.searchBillPassingOffices(q) });
+}
+
+export async function adminSetOfficeAdminHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = parseBody(adminSalaryOfficeAdminSchema, req.body);
+  await officeService.adminSetOfficeAdmin(String(req.params.userId), dto);
+  res.json({ data: { ok: true } });
+}
+
+export async function adminSetAccountingOfficeHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = parseBody(adminSalaryAccountingOfficeSchema, req.body);
+  await officeService.adminSetAccountingOffice(String(req.params.userId), dto);
+  res.json({ data: { ok: true } });
+}
+
 export async function searchOtherOfficesHandler(req: AuthRequest, res: Response): Promise<void> {
   const q = typeof req.query.q === 'string' ? req.query.q.slice(0, 200) : '';
   res.json({ data: await officeService.searchOtherOffices(q) });
@@ -87,7 +112,8 @@ export async function listSalaryUserOfficesHandler(req: AuthRequest, res: Respon
   const { page, limit, skip } = parsePagination(req);
   const q = typeof req.query.q === 'string' ? req.query.q : undefined;
   const othersOnly = req.query.others === '1';
-  const { items, total } = await officeService.listSalaryUserOffices({ q, othersOnly, skip, limit });
+  const officeAdminsOnly = req.query.admins === '1';
+  const { items, total } = await officeService.listSalaryUserOffices({ q, othersOnly, officeAdminsOnly, skip, limit });
   res.json({ data: items, meta: { page, limit, total } });
 }
 

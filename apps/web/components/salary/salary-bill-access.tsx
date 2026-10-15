@@ -25,6 +25,13 @@ function statusLabel(t: SalaryCopy, access: SalaryBillAccessRecord): string {
   return t.accessStatusNone;
 }
 
+function contactHintOf(t: SalaryCopy, access: SalaryBillAccessRecord): string {
+  if (access.contacts_source === 'office' && access.contact_office) {
+    return access.contacts.length > 0 ? t.contactOfficeHint(access.contact_office) : t.contactOfficeNoNumbers;
+  }
+  return access.contacts.length > 0 ? t.contactAdminHint : t.contactAdminNoNumbers;
+}
+
 function SectionFrame({ title, badge, children }: { title: string; badge?: string; children: React.ReactNode }) {
   return (
     <section className="overflow-hidden rounded-2xl border border-red-100 bg-gradient-to-br from-rose-50 via-white to-white shadow-sm print:hidden">
@@ -178,7 +185,7 @@ export function SalaryBulkRequestDialog({
             <>
               <Alert variant="success">
                 <span className="block font-semibold">{t.requestSent}</span>
-                <span className="block text-xs">{access.contacts.length > 0 ? t.contactAdminHint : t.contactAdminNoNumbers}</span>
+                <span className="block text-xs">{contactHintOf(t, access)}</span>
               </Alert>
               <div className="flex justify-end">
                 <Button type="button" onClick={onClose} className="min-w-24 bg-red-600 shadow-sm hover:bg-red-700" autoFocus>
@@ -254,7 +261,7 @@ export function SalaryBillAccessPanel({
   const pending = access.request.pending;
   const openLabel = pending ? t.requestUpdateBtn : t.newBulkBtn;
   const freeOffer = access.free_tr_form === 'available' && access.remaining <= 0;
-  const contactHint = access.contacts.length > 0 ? t.contactAdminHint : t.contactAdminNoNumbers;
+  const contactHint = contactHintOf(t, access);
 
   return (
     <SectionFrame title={t.accessTitle} badge={statusLabel(t, access)}>
@@ -385,11 +392,20 @@ export function SalaryBillAccessPanel({
   );
 }
 
-export function SalaryBillContacts({ locale, contacts }: { locale: SalaryLocale; contacts: SalaryContactNumber[] }) {
+export function SalaryBillContacts({
+  locale,
+  contacts,
+  office,
+}: {
+  locale: SalaryLocale;
+  contacts: SalaryContactNumber[];
+  /** Bill-passing office whose office admins are the contacts; otherwise they are the admin's numbers. */
+  office?: string | null;
+}) {
   const t = salaryCopy(locale);
   if (contacts.length === 0) return null;
   return (
-    <SectionFrame title={t.contactsTitle}>
+    <SectionFrame title={office ? t.contactsOfficeTitle(office) : t.contactsTitle}>
       <div className="-mx-4 -my-3 overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-rose-50 text-left text-xs font-semibold uppercase tracking-wide text-red-700">

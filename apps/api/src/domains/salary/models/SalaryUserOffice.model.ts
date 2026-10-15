@@ -10,6 +10,10 @@ export interface ISalaryUserOffice extends Document {
   other_office_name_bn: string;
   /** Admin lets this user edit the office name printed on the bill forms. */
   office_name_editable: boolean;
+  /** Bill-passing office (CAFO, DCA, DAFO or UAO) chosen by users of other offices. */
+  accounting_office_id: Types.ObjectId | null;
+  /** Admin made this user a contact for the offices whose bills their listed office passes. */
+  office_admin: boolean;
   updated_at: Date;
 }
 
@@ -21,11 +25,14 @@ const schema = new Schema<ISalaryUserOffice>(
     other_office_name: { type: String, default: '' },
     other_office_name_bn: { type: String, default: '' },
     office_name_editable: { type: Boolean, default: false },
+    accounting_office_id: { type: Schema.Types.ObjectId, ref: 'Office', default: null },
+    office_admin: { type: Boolean, default: false },
     updated_at: { type: Date, default: Date.now },
   },
   { timestamps: false },
 );
 
 schema.index({ office_id: 1, _id: 1 });
+schema.index({ office_id: 1, office_admin: 1 });
 
 export const SalaryUserOffice = mongoose.model<ISalaryUserOffice>('SalaryUserOffice', schema, 'salary_user_offices');

@@ -7,6 +7,10 @@ import {
   adminRenameStaffOfficeHandler,
   adminResetSalaryOfficeHandler,
   adminSetOfficeNameEditableHandler,
+  adminSetAccountingOfficeHandler,
+  adminSetOfficeAdminHandler,
+  searchBillPassingOfficesHandler,
+  setMyAccountingOfficeHandler,
   getSalaryFreeCalcsHandler,
   updateSalaryFreeCalcsHandler,
   adminUpdateOtherOfficeHandler,
@@ -71,6 +75,8 @@ salaryRouter.get('/office', authenticate, asyncHandler(getMySalaryOfficeHandler)
 salaryRouter.get('/office/settings', authenticate, asyncHandler(getSalaryOfficeSettingsHandler));
 salaryRouter.get('/office/others', authenticate, asyncHandler(searchOtherOfficesHandler));
 salaryRouter.put('/office', authenticate, publicLimit, asyncHandler(saveMySalaryOfficeHandler));
+salaryRouter.get('/office/bill-passing', authenticate, asyncHandler(searchBillPassingOfficesHandler));
+salaryRouter.put('/office/accounting', authenticate, publicLimit, asyncHandler(setMyAccountingOfficeHandler));
 salaryRouter.get('/access', authenticate, asyncHandler(getMyBillAccessHandler));
 salaryRouter.post('/access/request', authenticate, publicLimit, asyncHandler(requestBillsHandler));
 salaryRouter.post('/bills', authenticate, publicLimit, asyncHandler(consumeBillHandler));
@@ -108,5 +114,12 @@ salaryRouter.put(
   authenticate,
   requireAdmin,
   asyncHandler(adminSetOfficeNameEditableHandler),
+);
+salaryRouter.put('/admin/offices/:userId/office-admin', authenticate, requireAdmin, asyncHandler(adminSetOfficeAdminHandler));
+salaryRouter.put(
+  '/admin/offices/:userId/accounting-office',
+  authenticate,
+  requireAdmin,
+  asyncHandler(adminSetAccountingOfficeHandler),
 );
 salaryRouter.delete('/admin/offices/:userId', authenticate, requireAdmin, asyncHandler(adminResetSalaryOfficeHandler));

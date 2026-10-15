@@ -40,6 +40,7 @@ import {
   isPlatformAdmin,
   salaryFreeCalcLimit,
   salaryFreeCalcLimits,
+  salaryOfficeContacts,
   salaryOfficeLabels,
 } from './salary-office.service.js';
 import { claimSalaryFreeTrForm, salaryFreeTrStates, salaryFreeTrUsage } from './salary-free-tr.service.js';
@@ -129,14 +130,16 @@ export async function updateSalaryBulkSize(dto: UpdateSalaryBulkSizeDto, updated
 }
 
 export async function getMyBillAccess(user: AuthUser): Promise<SalaryBillAccessRecord> {
-  const [doc, { contacts }, { bulk_size }, calcDoc, freeLimit, freeTr] = await Promise.all([
+  const [doc, { contacts }, officeContacts, { bulk_size }, calcDoc, freeLimit, freeTr] = await Promise.all([
     SalaryBillAccess.findOne({ user_id: user.id }),
     getSalaryContacts(),
+    salaryOfficeContacts(user.id),
     getSalaryBulkSize(),
     SalaryCalcUsage.findOne({ user_id: user.id }).select('free_used unprinted').lean(),
     salaryFreeCalcLimit(user.id),
     salaryFreeTrUsage(user.id),
   ]);
+  const byOffice = officeContacts.contacts.length > 0;
   const unlimited = isPlatformAdmin(user);
   const remaining = remainingOf(doc);
   const calc = calcInfo(calcDoc, freeLimit);
@@ -156,7 +159,9 @@ export async function getMyBillAccess(user: AuthUser): Promise<SalaryBillAccessR
       user.status === 'active' &&
       (unlimited || calc.free_used < calc.free_limit || remaining > 0 || freeTr.state === 'available'),
     request: requestInfo(doc),
-    contacts,
+    contacts: byOffice ? officeContacts.contacts : contacts,
+    contacts_source: byOffice ? 'office' : 'admin',
+    contact_office: byOffice ? officeContacts.office : null,
   };
 }
 

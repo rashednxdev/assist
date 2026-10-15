@@ -27,6 +27,24 @@ export const SALARY_OFFICE_TYPE_EXTRA_USERS: Readonly<Record<string, number>> = 
   DAFO: 3,
   UAO: 2,
 };
+/** Accounts office types (by type short name); users of other offices name the office that passes their bills. */
+export const SALARY_ACCOUNTS_OFFICE_TYPES = ['CGA', 'CAFO', 'DCA', 'DAFO', 'UAO'] as const;
+/** Office types that can be chosen as the bill-passing (accounting) office. */
+export const SALARY_BILL_PASSING_OFFICE_TYPES = ['CAFO', 'DCA', 'DAFO', 'UAO'] as const;
+
+function typeIn(list: readonly string[], officeType: string | null | undefined): boolean {
+  return list.includes((officeType ?? '').trim().toUpperCase());
+}
+
+/** Others offices and listed offices that are not accounts offices must name their bill-passing office. */
+export function salaryNeedsAccountingOffice(office: { is_other: boolean; office_type: string | null }): boolean {
+  return office.is_other || !typeIn(SALARY_ACCOUNTS_OFFICE_TYPES, office.office_type);
+}
+
+export function isSalaryBillPassingType(officeType: string | null | undefined): boolean {
+  return typeIn(SALARY_BILL_PASSING_OFFICE_TYPES, officeType);
+}
+
 /** Free calculations for each of those extra users. */
 export const SALARY_EXTRA_USER_FREE_CALCS = 1;
 /** Free calculations for a user who typed an "Others" office. */
@@ -105,8 +123,13 @@ export const saveSalaryOfficeSchema = z
     office_id: officeId.nullable().default(null),
     other_office_name: otherNameEn,
     other_office_name_bn: otherNameBn,
+    /** Bill-passing office; required unless the user's own office is an accounts office. */
+    accounting_office_id: officeId.nullable().default(null),
   })
   .superRefine((v, ctx) => {
+    if (!v.office_id && !v.accounting_office_id) {
+      ctx.addIssue({ code: 'custom', path: ['accounting_office_id'], message: 'Select your bill-passing office' });
+    }
     if (v.office_id) {
       if (!v.circle_id) ctx.addIssue({ code: 'custom', path: ['circle_id'], message: 'Select your circle' });
       if (v.other_office_name || v.other_office_name_bn) {
@@ -140,6 +163,18 @@ export type AdminSalaryOtherOfficeDto = z.infer<typeof adminSalaryOtherOfficeSch
 export const adminSalaryOfficeEditableSchema = z.object({ editable: z.boolean() });
 export type AdminSalaryOfficeEditableDto = z.infer<typeof adminSalaryOfficeEditableSchema>;
 
+/** A user completing a saved office that has no bill-passing office yet. */
+export const setSalaryAccountingOfficeSchema = z.object({ accounting_office_id: officeId });
+export type SetSalaryAccountingOfficeDto = z.infer<typeof setSalaryAccountingOfficeSchema>;
+
+/** Admin change of a user's bill-passing office; null clears it so the user chooses again. */
+export const adminSalaryAccountingOfficeSchema = z.object({ accounting_office_id: officeId.nullable() });
+export type AdminSalaryAccountingOfficeDto = z.infer<typeof adminSalaryAccountingOfficeSchema>;
+
+/** Office admins of a bill-passing office are the contacts for the offices that chose it. */
+export const adminSalaryOfficeAdminSchema = z.object({ office_admin: z.boolean() });
+export type AdminSalaryOfficeAdminDto = z.infer<typeof adminSalaryOfficeAdminSchema>;
+
 /** One user's saved salary office, for the admin list. */
 export interface SalaryUserOfficeAdminRow {
   user: { id: string; full_name_en: string; email: string; phone: string };
@@ -157,6 +192,13 @@ export interface SalaryUserOfficeAdminRow {
   office_name_editable: boolean;
   /** Offices the user added to their staff arrear bill; only the admin can rename them. */
   staff_offices: Array<{ id: string; name: string }>;
+  /** Bill-passing office chosen by the user; null when not needed or not chosen yet. */
+  accounting_office: OfficeOption | null;
+  needs_accounting_office: boolean;
+  /** Contact person for the offices whose bills this user's office passes. */
+  office_admin: boolean;
+  /** Only users of a listed bill-passing office (CAFO, DCA, DAFO, UAO) can be office admins. */
+  can_be_office_admin: boolean;
   updated_at: string;
 }
 
@@ -219,6 +261,12 @@ export interface SalaryOfficeRecord {
   bill_office_editable: boolean;
   /** Short name of the listed office's type (CGA, CAFO, …); null for Others. */
   office_type: string | null;
+  /** The office that passes this office's bills; null for accounts offices or until chosen. */
+  accounting_office: OfficeOption | null;
+  /** The user must choose `accounting_office` before using /salary. */
+  needs_accounting_office: boolean;
+  /** The admin made this user a contact for the offices whose bills their office passes. */
+  office_admin: boolean;
   updated_at: string;
 }
 
@@ -341,7 +389,11 @@ export interface SalaryBillAccessRecord {
   /** Whether the next arrears calculation is allowed. */
   can_calculate: boolean;
   request: SalaryBillRequestInfo;
+  /** The office admins of the user's bill-passing office, or the admin's numbers when it has none. */
   contacts: SalaryContactNumber[];
+  contacts_source: 'office' | 'admin';
+  /** Bill-passing office whose admins are listed in `contacts`. */
+  contact_office: string | null;
 }
 
 export interface SalaryBillAccessAdminRow {

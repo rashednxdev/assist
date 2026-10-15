@@ -32,16 +32,15 @@ import {
   NO_ARREAR_EXTRAS,
   type ArrearExtras,
 } from '@/components/salary/salary-arrears-bill';
+import { missingSelectClass } from '@/components/salary/salary-arrears-dialog';
 import { SalaryBulkRequestDialog } from '@/components/salary/salary-bill-access';
 import { TrForm15Staff, type TrStaffEntry } from '@/components/salary/tr-form-15';
 import { STAMP_DUTY, type TrSignatory } from '@/components/salary/tr-form-parts';
 import { SalaryJoiningDateField } from '@/components/salary/salary-joining-date';
 import { ApiError, apiFetch } from '@/lib/api-client';
-import { preparedStampBn, toEnglishDigits } from '@/lib/bangla-format';
+import { preparedStampBn } from '@/lib/bangla-format';
 import { downloadFormPdf, pdfFileName } from '@/lib/salary-pdf';
 import { HRA_AREAS, hraAreaText, localNum, salaryCopy, type SalaryLocale } from '@/lib/salary-i18n';
-
-const NID_LENGTHS = [10, 13, 17];
 
 const selectClass =
   'flex h-10 w-full rounded-md border border-amber-300 bg-white px-3 text-sm font-medium focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200 disabled:cursor-not-allowed disabled:bg-slate-100';
@@ -112,6 +111,7 @@ function StaffDialog({
   const num = (v: string | number) => localNum(locale, v);
   const [v, setV] = useState<StaffForm>(initial);
   const [error, setError] = useState('');
+  const [hraMissing, setHraMissing] = useState(false);
   const [saving, setSaving] = useState(false);
   const askJoining = v.grade != null && asksJoiningDate(v.grade, v.oldPay);
 
@@ -122,11 +122,14 @@ function StaffDialog({
     const nid = v.nid.trim();
     if (name.length < 2) return setError(t.staffNameRequired);
     if (post.length < 2) return setError(t.staffPostRequired);
-    if (nid && !NID_LENGTHS.includes(nid.length)) return setError(t.nidInvalid);
     if (!v.grade) return setError(t.gradeRequired);
     if (!NPS_2015[v.grade].includes(v.oldPay)) return setError(t.basicRequired);
     if (askJoining && !isIsoDate(v.joiningDate)) return setError(t.joiningDateRequired);
-    if (v.housingStatus === 'hra_eligible' && !v.hraArea) return setError(t.hraAreaRequired);
+    if (v.housingStatus === 'hra_eligible' && !v.hraArea) {
+      setHraMissing(true);
+      document.getElementById('staff-hra-area')?.focus();
+      return setError(t.hraAreaRequired);
+    }
     setSaving(true);
     setError('');
     const message = await onSave({
@@ -165,7 +168,7 @@ function StaffDialog({
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="staff-name">
+              <Label htmlFor="staff-name" className="font-bold">
                 {t.staffName}
                 <span className="text-destructive"> *</span>
               </Label>
@@ -178,7 +181,7 @@ function StaffDialog({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="staff-post">
+              <Label htmlFor="staff-post" className="font-bold">
                 {t.staffPost}
                 <span className="text-destructive"> *</span>
               </Label>
@@ -190,21 +193,9 @@ function StaffDialog({
               />
             </div>
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="staff-nid">{t.nid}</Label>
-            <Input
-              id="staff-nid"
-              value={v.nid}
-              inputMode="numeric"
-              autoComplete="off"
-              placeholder={t.nidPlaceholder}
-              className="tabular-nums"
-              onChange={(e) => setV((p) => ({ ...p, nid: toEnglishDigits(e.target.value).replace(/\D/g, '').slice(0, 17) }))}
-            />
-          </div>
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
             <div className="space-y-1.5">
-              <Label htmlFor="staff-grade">{t.grade}</Label>
+              <Label htmlFor="staff-grade" className="font-bold">{t.grade}</Label>
               <select
                 id="staff-grade"
                 className={selectClass}
@@ -223,7 +214,7 @@ function StaffDialog({
               </select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="staff-basic">{t.basicJune}</Label>
+              <Label htmlFor="staff-basic" className="font-bold">{t.basicJune}</Label>
               <select
                 id="staff-basic"
                 className={`${selectClass} tabular-nums`}
@@ -251,7 +242,7 @@ function StaffDialog({
             />
           ) : null}
           <fieldset className="space-y-2">
-            <legend className="text-sm font-medium text-slate-800">{t.housing}</legend>
+            <legend className="text-sm font-bold text-slate-800">{t.housing}</legend>
             <label className="flex cursor-pointer items-start gap-2 text-sm">
               <input
                 type="radio"
@@ -275,12 +266,16 @@ function StaffDialog({
           </fieldset>
           {v.housingStatus === 'hra_eligible' ? (
             <div className="space-y-1.5">
-              <Label htmlFor="staff-hra-area">{t.hraArea}</Label>
+              <Label htmlFor="staff-hra-area" className="font-bold">{t.hraArea}</Label>
               <select
                 id="staff-hra-area"
-                className={selectClass}
+                aria-invalid={hraMissing && !v.hraArea}
+                className={hraMissing && !v.hraArea ? missingSelectClass : selectClass}
                 value={v.hraArea}
-                onChange={(e) => setV((p) => ({ ...p, hraArea: e.target.value as HraArea }))}
+                onChange={(e) => {
+                  setHraMissing(false);
+                  setV((p) => ({ ...p, hraArea: e.target.value as HraArea }));
+                }}
               >
                 <option value="" disabled>
                   {t.hraAreaPlaceholder}
@@ -368,7 +363,7 @@ function OfficeDialog({
           </button>
         </div>
         <div className="space-y-1.5 p-5">
-          <Label htmlFor="staff-office">{t.officeName}</Label>
+          <Label htmlFor="staff-office" className="font-bold">{t.officeName}</Label>
           <Input
             id="staff-office"
             value={office}
@@ -395,7 +390,7 @@ function OfficeDialog({
           {s.enabled ? (
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="staff-sign-name">{t.signName}</Label>
+                <Label htmlFor="staff-sign-name" className="font-bold">{t.signName}</Label>
                 <Input
                   id="staff-sign-name"
                   value={s.name}
@@ -405,7 +400,7 @@ function OfficeDialog({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="staff-sign-post">{t.signPost}</Label>
+                <Label htmlFor="staff-sign-post" className="font-bold">{t.signPost}</Label>
                 <Input
                   id="staff-sign-post"
                   value={s.post}
@@ -476,7 +471,7 @@ function StaffOfficeDialog({
           </button>
         </div>
         <div className="space-y-1.5 p-5">
-          <Label htmlFor="staff-office-name">{t.officeName}</Label>
+          <Label htmlFor="staff-office-name" className="font-bold">{t.officeName}</Label>
           <Input
             id="staff-office-name"
             value={name}
@@ -541,7 +536,6 @@ function StaffConfirmDialog({
               <tr>
                 <th className="px-2 py-2 font-semibold">#</th>
                 <th className="px-2 py-2 font-semibold">{t.staffColEmployee}</th>
-                <th className="px-2 py-2 font-semibold">{t.nid}</th>
                 <th className="px-2 py-2 font-semibold">{t.grade}</th>
                 <th className="px-2 py-2 text-right font-semibold">{t.staffColBasic}</th>
                 <th className="px-2 py-2 font-semibold">{t.staffColHousing}</th>
@@ -558,7 +552,6 @@ function StaffConfirmDialog({
                     <div className="font-semibold text-slate-900">{s.name}</div>
                     <div className="text-xs text-muted">{s.post}</div>
                   </td>
-                  <td className="px-2 py-2 font-mono text-xs">{s.nid ? num(s.nid) : '—'}</td>
                   <td className="px-2 py-2">{num(s.grade)}</td>
                   <td className="px-2 py-2 text-right font-mono">{num(formatTaka(s.old_pay))}</td>
                   <td className="px-2 py-2 text-xs">
@@ -833,7 +826,7 @@ export function SalaryStaffBill({
         id: r.staff.id,
         name: r.staff.name,
         post: r.staff.post,
-        nid: r.staff.nid,
+        nid: '',
         hraArea: r.staff.hra_area,
         result: r.result,
       })),
@@ -1000,10 +993,7 @@ export function SalaryStaffBill({
                       <td className="px-3 py-2 text-muted">{num(i + 1)}</td>
                       <td className="px-3 py-2">
                         <div className="font-semibold text-slate-900">{s.name}</div>
-                        <div className="text-xs text-muted">
-                          {s.post}
-                          {s.nid ? ` · ${t.nid}: ${num(s.nid)}` : ''}
-                        </div>
+                        <div className="text-xs text-muted">{s.post}</div>
                         {r && (r.excess_rr > 0 || r.excess_puja > 0) ? (
                           <div className="mt-0.5 text-xs font-medium text-rose-700">
                             {[

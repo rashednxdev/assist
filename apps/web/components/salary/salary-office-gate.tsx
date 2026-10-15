@@ -2,11 +2,12 @@
 
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { Building2 } from 'lucide-react';
-import type {
-  OfficeOption,
-  SalaryOfficeRecord,
-  SalaryOfficeSettingsRecord,
-  SalaryOtherOfficeSuggestion,
+import {
+  salaryNeedsAccountingOffice,
+  type OfficeOption,
+  type SalaryOfficeRecord,
+  type SalaryOfficeSettingsRecord,
+  type SalaryOtherOfficeSuggestion,
 } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { isPlatformAdmin } from '@/lib/capabilities';
@@ -44,6 +45,7 @@ function OfficeForm({
   initial,
   othersAllowed,
   addBangla,
+  accountingOnly = false,
   onSaved,
   onCancel,
 }: {
@@ -51,6 +53,8 @@ function OfficeForm({
   othersAllowed: boolean;
   /** An "Others" office saved without its Bangla name: only the names can be completed. */
   addBangla: boolean;
+  /** A saved office without its bill-passing office: only that can be chosen. */
+  accountingOnly?: boolean;
   onSaved: (office: SalaryOfficeRecord) => void;
   onCancel?: () => void;
 }) {
@@ -65,7 +69,10 @@ function OfficeForm({
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<SalaryOtherOfficeSuggestion[]>([]);
-  const showOthersOption = othersAllowed && !addBangla;
+  const [accounting, setAccounting] = useState<OfficeOption | null>(initial?.accounting_office ?? null);
+  const showOthersOption = othersAllowed && !addBangla && !accountingOnly;
+  const needsAccounting =
+    accountingOnly || others || (office != null && salaryNeedsAccountingOffice({ is_other: false, office_type: office.type_short ?? null }));
   const picked = suggestions.some(
     (s) => s.other_office_name === otherName.trim() && s.other_office_name_bn === otherNameBn.trim(),
   );
@@ -99,22 +106,31 @@ function OfficeForm({
   async function save() {
     const name = otherName.trim();
     const nameBn = otherNameBn.trim();
-    if (others && (name.length < 3 || !LATIN_LETTER.test(name))) return setError(t.officeErrOther);
-    if (others && (nameBn.length < 3 || !BANGLA_SCRIPT.test(nameBn))) return setError(t.officeErrOtherBn);
-    if (!others && !circle) return setError(t.officeErrCircle);
-    if (!others && !office) return setError(t.officeErrOffice);
+    if (!accountingOnly) {
+      if (others && (name.length < 3 || !LATIN_LETTER.test(name))) return setError(t.officeErrOther);
+      if (others && (nameBn.length < 3 || !BANGLA_SCRIPT.test(nameBn))) return setError(t.officeErrOtherBn);
+      if (!others && !circle) return setError(t.officeErrCircle);
+      if (!others && !office) return setError(t.officeErrOffice);
+    }
+    if (needsAccounting && !accounting) return setError(t.officeErrAccounting);
     setSaving(true);
     setError('');
     try {
-      const res = await apiFetch<{ data: SalaryOfficeRecord }>('/salary/office', {
-        method: 'PUT',
-        body: JSON.stringify({
-          circle_id: circle?.id ?? null,
-          office_id: others ? null : (office?.id ?? null),
-          other_office_name: others ? name : '',
-          other_office_name_bn: others ? nameBn : '',
-        }),
-      });
+      const res = accountingOnly
+        ? await apiFetch<{ data: SalaryOfficeRecord }>('/salary/office/accounting', {
+            method: 'PUT',
+            body: JSON.stringify({ accounting_office_id: accounting?.id }),
+          })
+        : await apiFetch<{ data: SalaryOfficeRecord }>('/salary/office', {
+            method: 'PUT',
+            body: JSON.stringify({
+              circle_id: circle?.id ?? null,
+              office_id: others ? null : (office?.id ?? null),
+              other_office_name: others ? name : '',
+              other_office_name_bn: others ? nameBn : '',
+              accounting_office_id: needsAccounting ? (accounting?.id ?? null) : null,
+            }),
+          });
       onSaved(res.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save');
@@ -134,7 +150,13 @@ function OfficeForm({
             <div>
               <h1 className="text-lg font-bold">{t.officeGateTitle}</h1>
               <p className="mt-0.5 text-xs text-emerald-100/90">
-                {addBangla ? t.officeAddBangla : showOthersOption ? t.officeGateIntro : t.officeGateIntroListed}
+                {accountingOnly
+                  ? t.officeAccountingNeeded
+                  : addBangla
+                    ? t.officeAddBangla
+                    : showOthersOption
+                      ? t.officeGateIntro
+                      : t.officeGateIntroListed}
               </p>
             </div>
           </div>
@@ -153,24 +175,31 @@ function OfficeForm({
         </div>
 
         <div className="space-y-4 p-5">
-          <div className="space-y-1.5">
-            <Label htmlFor="salary-office-circle">
-              {t.officeCircle} {others ? <span className="font-normal text-muted">{t.officeOptional}</span> : null}
-            </Label>
-            <OfficePicker
-              id="salary-office-circle"
-              topLevel
-              allowClear
-              value={circle}
-              placeholder={t.officeCirclePlaceholder}
-              onChange={(c) => {
-                setCircle(c);
-                if (c?.id !== circle?.id) setOffice(null);
-              }}
-            />
-          </div>
+          {accountingOnly ? (
+            <div className="rounded-lg border border-border bg-slate-50 px-3 py-2.5 text-sm">
+              <div className="text-xs text-muted">{t.officeOffice}</div>
+              <div className="font-semibold text-slate-900">{initial?.other_office_name_bn || initial?.label}</div>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <Label htmlFor="salary-office-circle">
+                {t.officeCircle} {others ? <span className="font-normal text-muted">{t.officeOptional}</span> : null}
+              </Label>
+              <OfficePicker
+                id="salary-office-circle"
+                topLevel
+                allowClear
+                value={circle}
+                placeholder={t.officeCirclePlaceholder}
+                onChange={(c) => {
+                  setCircle(c);
+                  if (c?.id !== circle?.id) setOffice(null);
+                }}
+              />
+            </div>
+          )}
 
-          {others ? null : (
+          {others || accountingOnly ? null : (
             <div className="space-y-1.5">
               <Label htmlFor="salary-office-office">{t.officeOffice}</Label>
               <OfficePicker
@@ -200,7 +229,7 @@ function OfficeForm({
             </label>
           ) : null}
 
-          {others ? (
+          {others && !accountingOnly ? (
             <div className="space-y-3">
               <p className="rounded-md border border-yellow-400 bg-gradient-to-r from-yellow-200 via-yellow-50 to-white px-3 py-2 text-xs font-semibold text-amber-950">
                 {t.officeOthersNotice}
@@ -268,6 +297,23 @@ function OfficeForm({
                   {picked ? <p className="text-xs font-semibold text-emerald-800">{t.officeExistingPicked}</p> : null}
                 </div>
               ) : null}
+            </div>
+          ) : null}
+
+          {needsAccounting ? (
+            <div className="space-y-1.5 rounded-lg border border-emerald-300 bg-emerald-50/60 p-3">
+              <Label htmlFor="salary-office-accounting">{t.officeAccounting}</Label>
+              <OfficePicker
+                id="salary-office-accounting"
+                searchPath="/salary/office/bill-passing"
+                value={accounting}
+                placeholder={t.officeAccountingPlaceholder}
+                onChange={(o) => {
+                  setAccounting(o);
+                  setError('');
+                }}
+              />
+              <p className="text-xs text-emerald-900">{t.officeAccountingHint}</p>
             </div>
           ) : null}
 
@@ -350,13 +396,15 @@ export function SalaryOfficeGate({ children }: { children: React.ReactNode }) {
   }
 
   const addBangla = !exempt && office != null && !office.office && !office.other_office_name_bn;
+  const addAccounting = !exempt && !addBangla && office != null && office.needs_accounting_office;
 
-  if (editing || addBangla || (!office && !exempt)) {
+  if (editing || addBangla || addAccounting || (!office && !exempt)) {
     return (
       <OfficeForm
         initial={office}
         othersAllowed={othersAllowed}
         addBangla={addBangla}
+        accountingOnly={addAccounting}
         onSaved={(saved) => {
           setOffice(saved);
           setEditing(false);

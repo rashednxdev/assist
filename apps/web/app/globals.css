@@ -929,8 +929,9 @@ body {
   text-align: center;
 }
 
-.salary-tr-form .tr-staff-name {
-  font-weight: 600;
+.salary-tr-form .tr-staff-name,
+.salary-tr-form .tr-name {
+  font-weight: 700;
 }
 
 .salary-tr-form .tr-schedule {
@@ -1058,6 +1059,7 @@ body {
 
 .salary-tr-form .tr-attest-name {
   font-weight: 700;
+  font-size: 10pt;
 }
 
 .salary-tr-form .tr-attach-footer {

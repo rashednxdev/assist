@@ -38,7 +38,7 @@ export function SalaryJoiningDateField({
 
   return (
     <div className="space-y-1.5 rounded-lg border border-amber-300 bg-amber-50/70 px-3 py-2.5">
-      <Label htmlFor={id} className="text-sm font-semibold text-amber-950">
+      <Label htmlFor={id} className="text-sm font-bold text-amber-950">
         {t.joiningDate}
       </Label>
       <input

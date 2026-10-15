@@ -112,7 +112,7 @@ export function TrForm13({
         <div className="tr-fields">
           <div className="tr-fields-row">
             <span>নামঃ</span>
-            <Dots value={info.employee} width="0" />
+            <Dots value={info.employee} width="0" className="tr-name" />
             <span>পদবিঃ</span>
             <Dots value={info.designation} width="0" />
             <span>এনআইডি:</span>

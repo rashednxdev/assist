@@ -46,9 +46,9 @@ export function periodText(keys: string[]): { month: string; year: string } {
   };
 }
 
-export function Dots({ value, width }: { value?: string; width: string }) {
+export function Dots({ value, width, className }: { value?: string; width: string; className?: string }) {
   return (
-    <span className="tr-dots" style={{ minWidth: width }}>
+    <span className={className ? `tr-dots ${className}` : 'tr-dots'} style={{ minWidth: width }}>
       {value || '\u00a0'}
     </span>
   );
@@ -199,7 +199,7 @@ export function TrAttachment({
           {info.employee ? (
             <tr>
               <td>{t.employeeName}</td>
-              <td>{info.employee}</td>
+              <td className="tr-name">{info.employee}</td>
             </tr>
           ) : null}
           {info.designation ? (

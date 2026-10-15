@@ -576,6 +576,11 @@ export function substantiveGradeOptions(grade: PayGrade): PayGrade[] {
   return PAY_GRADES.filter((g) => g >= grade);
 }
 
+/** Only Grade 6–10 users are asked for a substantive grade; for every other grade it is the pay grade. */
+export function asksSubstantiveGrade(grade: PayGrade): boolean {
+  return grade >= 6 && grade <= 10;
+}
+
 /** The chosen substantive grade when it is the same or lower than the pay grade; otherwise the pay grade. */
 export function effectiveSubstantiveGrade(grade: PayGrade, substantive: number | null | undefined): PayGrade {
   return substantive != null && isPayGrade(substantive) && substantive >= grade ? substantive : grade;

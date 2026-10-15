@@ -1,7 +1,11 @@
 import mongoose from 'mongoose';
 import {
   SALARY_OFFICE_REQUIRED_CODE,
+  isSalaryBillPassingType,
   salaryFreeCalcsFor,
+  salaryNeedsAccountingOffice,
+  type AdminSalaryAccountingOfficeDto,
+  type AdminSalaryOfficeAdminDto,
   type AdminSalaryOfficeEditableDto,
   type AdminSalaryOtherOfficeDto,
   type OfficeOption,
@@ -13,6 +17,7 @@ import {
   type SalaryStaffOfficeDto,
   type SalaryUserOfficeAdminRow,
   type SaveSalaryOfficeDto,
+  type SetSalaryAccountingOfficeDto,
   type UpdateSalaryFreeCalcsDto,
   type UpdateSalaryOfficeSettingsDto,
 } from '@ibas/shared-types';
@@ -61,14 +66,26 @@ export async function updateSalaryOfficeSettings(
   return getSalaryOfficeSettings();
 }
 
-function toOption(map: Map<string, IndexedOffice>, o: IndexedOffice): OfficeOption {
+function toOption(map: Map<string, IndexedOffice>, o: IndexedOffice, types?: Map<string, string>): OfficeOption {
   return {
     id: o.id,
     name: o.name,
     short_name: o.short_name,
     office_code: o.office_code,
+    ...(types ? { type_short: types.get(o.office_type_id) } : {}),
     parent_path: parentPath(map, o.parent_id),
   };
+}
+
+/** The saved bill-passing office while it is still an active CAFO, DCA, DAFO or UAO office. */
+function accountingOption(
+  map: Map<string, IndexedOffice>,
+  types: Map<string, string>,
+  id: string | null | undefined,
+): OfficeOption | null {
+  const node = id ? map.get(id) : undefined;
+  if (!node?.is_active || !isSalaryBillPassingType(types.get(node.office_type_id))) return null;
+  return toOption(map, node, types);
 }
 
 function officeName(o: OfficeOption): string {
@@ -89,10 +106,13 @@ function toRecord(
   if (!doc) return null;
   const circleNode = doc.circle_id ? map.get(String(doc.circle_id)) : undefined;
   const circle = circleNode?.is_active ? toOption(map, circleNode) : null;
+  const accounting = accountingOption(map, types, doc.accounting_office_id ? String(doc.accounting_office_id) : null);
   if (doc.office_id) {
     const node = map.get(String(doc.office_id));
     if (!node?.is_active) return null;
     const office = toOption(map, node);
+    const officeType = types.get(node.office_type_id) ?? null;
+    const needsAccounting = salaryNeedsAccountingOffice({ is_other: false, office_type: officeType });
     return {
       circle,
       office,
@@ -101,7 +121,10 @@ function toRecord(
       label: officeName(office),
       bill_office_name: '',
       bill_office_editable: true,
-      office_type: types.get(node.office_type_id) ?? null,
+      office_type: officeType,
+      accounting_office: needsAccounting ? accounting : null,
+      needs_accounting_office: needsAccounting && !accounting,
+      office_admin: Boolean(doc.office_admin) && isSalaryBillPassingType(officeType),
       updated_at: doc.updated_at.toISOString(),
     };
   }
@@ -115,6 +138,9 @@ function toRecord(
     bill_office_name: doc.other_office_name_bn ?? '',
     bill_office_editable: Boolean(doc.office_name_editable),
     office_type: null,
+    accounting_office: accounting,
+    needs_accounting_office: !accounting,
+    office_admin: false,
     updated_at: doc.updated_at.toISOString(),
   };
 }
@@ -141,12 +167,20 @@ export async function saveMySalaryOffice(user: AuthUser, dto: SaveSalaryOfficeDt
     const circle = map.get(dto.circle_id);
     if (!circle?.is_active || circle.parent_id) throw badRequest('Select a circle from the list');
   }
+  const types = await officeTypeShorts();
+  let needsAccounting = true;
   if (dto.office_id) {
     const office = map.get(dto.office_id);
     if (!office?.is_active) throw badRequest('Select an office from the list');
     if (departmentOf(map, office.id)?.id !== dto.circle_id) throw badRequest('This office is not in the selected circle');
+    needsAccounting = salaryNeedsAccountingOffice({ is_other: false, office_type: types.get(office.office_type_id) ?? null });
   } else if (!needsBanglaName(current) && !(await getSalaryOfficeSettings()).others_allowed) {
     throw badRequest('Choose your office from the list.');
+  }
+  const accountingId = needsAccounting ? dto.accounting_office_id : null;
+  if (needsAccounting) {
+    if (!accountingOption(map, types, accountingId)) throw badRequest('Select your bill-passing office (CAFO, DCA, DAFO or UAO) from the list');
+    if (accountingId === dto.office_id) throw badRequest('Your office cannot pass its own bills');
   }
   const doc = await SalaryUserOffice.findOneAndUpdate(
     { user_id: user.id },
@@ -156,18 +190,91 @@ export async function saveMySalaryOffice(user: AuthUser, dto: SaveSalaryOfficeDt
         office_id: dto.office_id ? new mongoose.Types.ObjectId(dto.office_id) : null,
         other_office_name: dto.office_id ? '' : dto.other_office_name,
         other_office_name_bn: dto.office_id ? '' : dto.other_office_name_bn,
+        accounting_office_id: accountingId ? new mongoose.Types.ObjectId(accountingId) : null,
         updated_at: new Date(),
       },
       $setOnInsert: { user_id: new mongoose.Types.ObjectId(user.id) },
     },
     { upsert: true, new: true, setDefaultsOnInsert: true },
   );
-  return toRecord(map, await officeTypeShorts(), doc)!;
+  return toRecord(map, types, doc)!;
+}
+
+/** Bill-passing office for a saved office that has none; once set, only the admin changes it. */
+export async function setMyAccountingOffice(user: AuthUser, dto: SetSalaryAccountingOfficeDto): Promise<SalaryOfficeRecord> {
+  const current = await getMySalaryOffice(user.id);
+  if (!current) throw badRequest('Select your office first.');
+  if (!current.needs_accounting_office && !(isPlatformAdmin(user) && current.accounting_office)) {
+    throw forbidden(
+      current.accounting_office
+        ? 'Your bill-passing office is already set. Ask the admin to change it.'
+        : 'Your office does not need a bill-passing office.',
+    );
+  }
+  const [map, types] = await Promise.all([officeIndex(), officeTypeShorts()]);
+  if (!accountingOption(map, types, dto.accounting_office_id)) {
+    throw badRequest('Select your bill-passing office (CAFO, DCA, DAFO or UAO) from the list');
+  }
+  if (dto.accounting_office_id === current.office?.id) throw badRequest('Your office cannot pass its own bills');
+  const doc = await SalaryUserOffice.findOneAndUpdate(
+    { user_id: user.id },
+    { $set: { accounting_office_id: new mongoose.Types.ObjectId(dto.accounting_office_id), updated_at: new Date() } },
+    { new: true },
+  );
+  return toRecord(map, types, doc)!;
+}
+
+/** Active CAFO, DCA, DAFO and UAO offices matching the typed name, short name, code or parent office. */
+export async function searchBillPassingOffices(q: string): Promise<OfficeOption[]> {
+  const [map, types] = await Promise.all([officeIndex(), officeTypeShorts()]);
+  const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const out: Array<OfficeOption & { score: number }> = [];
+  for (const o of map.values()) {
+    if (!o.is_active || !isSalaryBillPassingType(types.get(o.office_type_id))) continue;
+    const option = toOption(map, o, types);
+    const own = `${o.name} ${o.short_name ?? ''} ${o.office_code ?? ''}`.toLowerCase();
+    const hay = `${own} ${option.parent_path.toLowerCase()}`;
+    if (terms.length && !terms.every((t) => hay.includes(t))) continue;
+    out.push({ ...option, score: terms.length && terms.every((t) => own.includes(t)) ? 0 : 1 });
+  }
+  out.sort((a, b) => a.score - b.score || a.parent_path.localeCompare(b.parent_path) || a.name.localeCompare(b.name));
+  return out.slice(0, 40).map(({ score: _score, ...o }) => o);
+}
+
+/** Office admins of the user's bill-passing office, as contact numbers; empty when it has none. */
+export async function salaryOfficeContacts(
+  userId: string,
+): Promise<{ office: string | null; contacts: Array<{ label: string; number: string; whatsapp: boolean }> }> {
+  const rec = await getMySalaryOffice(userId);
+  const accounting = rec?.accounting_office;
+  if (!accounting) return { office: null, contacts: [] };
+  const admins = await SalaryUserOffice.find({
+    office_id: new mongoose.Types.ObjectId(accounting.id),
+    office_admin: true,
+    user_id: { $ne: new mongoose.Types.ObjectId(userId) },
+  })
+    .select('user_id')
+    .lean();
+  if (admins.length === 0) return { office: officeName(accounting), contacts: [] };
+  const users = await User.find({ _id: { $in: admins.map((a) => a.user_id) }, status: 'active' })
+    .select('full_name_en phone')
+    .sort({ full_name_en: 1 })
+    .lean();
+  return {
+    office: officeName(accounting),
+    contacts: users
+      .filter((u) => u.phone)
+      .map((u) => ({ label: `${u.full_name_en} (${accounting.short_name || accounting.name})`, number: u.phone, whatsapp: false })),
+  };
 }
 
 export async function assertSalaryOfficeChosen(userId: string): Promise<void> {
-  if (!(await getMySalaryOffice(userId))) {
+  const rec = await getMySalaryOffice(userId);
+  if (!rec) {
     throw new AppError(403, SALARY_OFFICE_REQUIRED_CODE, 'Select your office on the salary page first.');
+  }
+  if (rec.needs_accounting_office) {
+    throw new AppError(403, SALARY_OFFICE_REQUIRED_CODE, 'Select your bill-passing office on the salary page first.');
   }
 }
 
@@ -281,11 +388,13 @@ export async function searchOtherOffices(q: string): Promise<SalaryOtherOfficeSu
 export async function listSalaryUserOffices(filters: {
   q?: string;
   othersOnly: boolean;
+  officeAdminsOnly?: boolean;
   skip: number;
   limit: number;
 }): Promise<{ items: SalaryUserOfficeAdminRow[]; total: number }> {
   const query: Record<string, unknown> = {};
   if (filters.othersOnly) query.office_id = null;
+  if (filters.officeAdminsOnly) query.office_admin = true;
   const q = filters.q?.trim();
   if (q) {
     const pattern = { $regex: escapeRegex(q), $options: 'i' };
@@ -344,6 +453,10 @@ export async function listSalaryUserOffices(filters: {
       free_tr_form: freeTr.get(String(doc.user_id)) ?? 'none',
       office_name_editable: Boolean(doc.office_name_editable),
       staff_offices: staffOfficesBy.get(String(doc.user_id)) ?? [],
+      accounting_office: rec?.accounting_office ?? null,
+      needs_accounting_office: rec?.needs_accounting_office ?? false,
+      office_admin: rec?.office_admin ?? false,
+      can_be_office_admin: Boolean(rec?.office) && isSalaryBillPassingType(rec?.office_type),
       updated_at: doc.updated_at.toISOString(),
     };
   }));
@@ -365,6 +478,35 @@ export async function adminSetOfficeNameEditable(userId: string, dto: AdminSalar
   if (!mongoose.isValidObjectId(userId)) throw notFound('Office not found');
   const res = await SalaryUserOffice.updateOne({ user_id: userId }, { $set: { office_name_editable: dto.editable } });
   if (res.matchedCount === 0) throw notFound('This user has not chosen an office yet');
+}
+
+export async function adminSetOfficeAdmin(userId: string, dto: AdminSalaryOfficeAdminDto): Promise<void> {
+  if (!mongoose.isValidObjectId(userId)) throw notFound('Office not found');
+  const [map, types, doc] = await Promise.all([officeIndex(), officeTypeShorts(), SalaryUserOffice.findOne({ user_id: userId })]);
+  if (!doc) throw notFound('This user has not chosen an office yet');
+  const rec = toRecord(map, types, doc);
+  if (dto.office_admin && !(rec?.office && isSalaryBillPassingType(rec.office_type))) {
+    throw badRequest('Only users of a listed CAFO, DCA, DAFO or UAO office can be office admins.');
+  }
+  doc.office_admin = dto.office_admin;
+  await doc.save();
+}
+
+export async function adminSetAccountingOffice(userId: string, dto: AdminSalaryAccountingOfficeDto): Promise<void> {
+  if (!mongoose.isValidObjectId(userId)) throw notFound('Office not found');
+  const [map, types, doc] = await Promise.all([officeIndex(), officeTypeShorts(), SalaryUserOffice.findOne({ user_id: userId })]);
+  if (!doc) throw notFound('This user has not chosen an office yet');
+  const rec = toRecord(map, types, doc);
+  if (dto.accounting_office_id) {
+    if (rec && !rec.accounting_office && !rec.needs_accounting_office) {
+      throw badRequest('This office is an accounts office; it does not need a bill-passing office.');
+    }
+    if (!accountingOption(map, types, dto.accounting_office_id)) throw badRequest('Select a CAFO, DCA, DAFO or UAO office');
+    if (dto.accounting_office_id === String(doc.office_id ?? '')) throw badRequest('An office cannot pass its own bills');
+  }
+  doc.accounting_office_id = dto.accounting_office_id ? new mongoose.Types.ObjectId(dto.accounting_office_id) : null;
+  doc.updated_at = new Date();
+  await doc.save();
 }
 
 export async function adminRenameStaffOffice(officeId: string, dto: SalaryStaffOfficeDto): Promise<void> {

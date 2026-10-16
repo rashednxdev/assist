@@ -1,6 +1,6 @@
 'use client';
 
-import { forwardRef } from 'react';
+import { Fragment, forwardRef } from 'react';
 import type { HraArea, SalaryArrearResult } from '@ibas/shared-types';
 import { takaInWords } from '@/lib/amount-words';
 import { toBanglaDigits } from '@/lib/bangla-format';
@@ -538,26 +538,33 @@ function TrStaffSchedule({ staff, months, office }: { staff: TrStaffEntry[]; mon
   );
 }
 
-/** One T.R. Form 15 for all office staff: totals on the form, a staff summary sheet, then one attachment per employee. */
-export const TrForm15Staff = forwardRef<
-  HTMLDivElement,
-  { staff: TrStaffEntry[]; months: string[]; office: string; preparedOn: string; signatory: TrSignatory | null }
->(function TrForm15Staff({ staff, months, office, preparedOn, signatory }, ref) {
-  const sum = (pick: (r: SalaryArrearResult) => number) => staff.reduce((total, s) => total + pick(s.result), 0);
-  const netTotal = sum((r) => r.total_net_arrear);
+export interface TrStaffOfficeGroup {
+  /** Group header on the summary sheet (the office added for the staff bill). */
+  groupName: string;
+  staff: TrStaffEntry[];
+}
+
+function StaffTrBlock({
+  staff,
+  months,
+  office,
+}: {
+  staff: TrStaffEntry[];
+  months: string[];
+  office: string;
+}) {
+  const netTotal = staff.reduce((total, s) => total + s.result.total_net_arrear, 0);
   const stamp = STAMP_DUTY * staff.length;
   const payable = netTotal - stamp;
-  const payableWords = takaInWords('bn', payable);
-
   return (
-    <div ref={ref} className="salary-tr-form tr15 hidden" lang="bn">
+    <>
       <TrForm15Pages
         months={months}
         office={office}
         netTotal={netTotal}
         stamp={stamp}
         payable={payable}
-        payableWords={payableWords}
+        payableWords={takaInWords('bn', payable)}
         headBox={
           <>
             <div>
@@ -569,8 +576,38 @@ export const TrForm15Staff = forwardRef<
           </>
         }
       />
-
       <TrStaffSchedule staff={staff} months={months} office={office} />
+    </>
+  );
+}
+
+/** One T.R. Form 15 for office staff; pass `groups` for a consolidated summary grouped by office. */
+export const TrForm15Staff = forwardRef<
+  HTMLDivElement,
+  {
+    staff: TrStaffEntry[];
+    months: string[];
+    /** Office name on the single T.R. Form 15 (user-entered for consolidated). */
+    office: string;
+    preparedOn: string;
+    signatory: TrSignatory | null;
+    /** When set, one summary sheet grouped by office; still one T.R. Form 15 for all. */
+    groups?: TrStaffOfficeGroup[];
+  }
+>(function TrForm15Staff({ staff, months, office, preparedOn, signatory, groups }, ref) {
+  const officeGroups: TrStaffOfficeGroup[] =
+    groups && groups.length > 0 ? groups : [{ groupName: office, staff }];
+  const allStaff = officeGroups.flatMap((g) => g.staff);
+  const sum = (pick: (r: SalaryArrearResult) => number) => allStaff.reduce((total, s) => total + pick(s.result), 0);
+  const netTotal = sum((r) => r.total_net_arrear);
+  const stamp = STAMP_DUTY * allStaff.length;
+  const payable = netTotal - stamp;
+  const payableWords = takaInWords('bn', payable);
+  const multi = officeGroups.length > 1;
+
+  return (
+    <div ref={ref} className="salary-tr-form tr15 hidden" lang="bn">
+      <StaffTrBlock staff={allStaff} months={months} office={office} />
 
       <section className="tr-page tr-attach-page tr-autofit">
         <FitBody>
@@ -580,7 +617,7 @@ export const TrForm15Staff = forwardRef<
           <tbody>
             {office ? (
               <tr>
-                <td>দপ্তরের নাম</td>
+                <td>{multi ? 'টি.আর. ফরমে দপ্তরের নাম' : 'দপ্তরের নাম'}</td>
                 <td>{office}</td>
               </tr>
             ) : null}
@@ -609,30 +646,44 @@ export const TrForm15Staff = forwardRef<
             </tr>
           </thead>
           <tbody>
-            {staff.map((s, i) => {
-              const r = s.result;
+            {officeGroups.map((g, gi) => {
+              const before = officeGroups.slice(0, gi).reduce((n, x) => n + x.staff.length, 0);
               return (
-                <tr key={s.id}>
-                  <td className="tr-center">{toBanglaDigits(i + 1)}</td>
-                  <td>
-                    <div className="tr-staff-name">{s.name}</div>
-                    <div className="tr-math-sub">
-                      {s.post}
-                      {s.nid ? ` · এনআইডি ${toBanglaDigits(s.nid)}` : ''}
-                    </div>
-                  </td>
-                  <td className="tr-center">{toBanglaDigits(r.grade)}</td>
-                  <td className="tr-num">{taka(r.old_pay)}</td>
-                  <td className="tr-num">{taka(r.total_basic_difference + r.total_hra_protection)}</td>
-                  <td className="tr-num">{taka(r.total_deduction)}</td>
-                  <td className="tr-num">{taka(r.total_net_arrear)}</td>
-                  <td className="tr-num">{taka(STAMP_DUTY)}</td>
-                  <td className="tr-num">{taka(r.total_net_arrear - STAMP_DUTY)}</td>
-                </tr>
+                <Fragment key={`${g.groupName}-${gi}`}>
+                  {multi ? (
+                    <tr className="tr-total">
+                      <td colSpan={9} className="tr-staff-group-head">
+                        {g.groupName}
+                      </td>
+                    </tr>
+                  ) : null}
+                  {g.staff.map((s, i) => {
+                    const r = s.result;
+                    return (
+                      <tr key={s.id}>
+                        <td className="tr-center">{toBanglaDigits(before + i + 1)}</td>
+                        <td>
+                          <div className="tr-staff-name">{s.name}</div>
+                          <div className="tr-math-sub">
+                            {s.post}
+                            {s.nid ? ` · এনআইডি ${toBanglaDigits(s.nid)}` : ''}
+                          </div>
+                        </td>
+                        <td className="tr-center">{toBanglaDigits(r.grade)}</td>
+                        <td className="tr-num">{taka(r.old_pay)}</td>
+                        <td className="tr-num">{taka(r.total_basic_difference + r.total_hra_protection)}</td>
+                        <td className="tr-num">{taka(r.total_deduction)}</td>
+                        <td className="tr-num">{taka(r.total_net_arrear)}</td>
+                        <td className="tr-num">{taka(STAMP_DUTY)}</td>
+                        <td className="tr-num">{taka(r.total_net_arrear - STAMP_DUTY)}</td>
+                      </tr>
+                    );
+                  })}
+                </Fragment>
               );
             })}
             <tr className="tr-total">
-              <td colSpan={4}>মোট ({toBanglaDigits(staff.length)} জন)</td>
+              <td colSpan={4}>মোট ({toBanglaDigits(allStaff.length)} জন)</td>
               <td className="tr-num">{taka(sum((r) => r.total_basic_difference + r.total_hra_protection))}</td>
               <td className="tr-num">{taka(sum((r) => r.total_deduction))}</td>
               <td className="tr-num">{taka(netTotal)}</td>
@@ -642,7 +693,7 @@ export const TrForm15Staff = forwardRef<
           </tbody>
         </table>
         <p className="tr-attach-total">
-          স্ট্যাম্প ডিউটি বাদে প্রদেয়: (৳ {taka(netTotal)} − ৳ {taka(STAMP_DUTY)} × {toBanglaDigits(staff.length)}) = ৳{' '}
+          স্ট্যাম্প ডিউটি বাদে প্রদেয়: (৳ {taka(netTotal)} − ৳ {taka(STAMP_DUTY)} × {toBanglaDigits(allStaff.length)}) = ৳{' '}
           {taka(payable)}
         </p>
         <p className="tr-attach-words">টাকা (কথায়) : {payableWords}</p>
@@ -651,7 +702,7 @@ export const TrForm15Staff = forwardRef<
         <AttachFooter preparedOn={preparedOn} />
       </section>
 
-      {staff.map((s) => {
+      {allStaff.map((s) => {
         const each = s.result.total_net_arrear - STAMP_DUTY;
         return (
           <TrAttachment

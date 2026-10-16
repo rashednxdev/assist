@@ -40,6 +40,7 @@ import { SalaryBillUsage } from './models/SalaryBillUsage.model.js';
 import { SalaryCalcUsage, type ISalaryCalcUsage } from './models/SalaryCalcUsage.model.js';
 import { SalarySettings } from './models/SalarySettings.model.js';
 import { SalaryStaff } from './models/SalaryStaff.model.js';
+import { SalaryStaffOffice } from './models/SalaryStaffOffice.model.js';
 import {
   assertSalaryOfficeChosen,
   isPlatformAdmin,
@@ -235,10 +236,29 @@ export async function consumeBill(user: AuthUser, dto: ConsumeSalaryBillDto): Pr
   return getMyBillAccess(user);
 }
 
-/** Office staff T.R. Form 15 for one office: uses one approved bill per employee of that office, all or nothing. */
+/**
+ * Logs a staff T.R. Form 15 download. Bills are charged when employees are added, so printing is
+ * allowed any time.
+ */
 export async function consumeStaffBill(user: AuthUser, dto: ConsumeSalaryStaffBillDto): Promise<SalaryBillAccessRecord> {
   if (user.status !== 'active') throw forbidden('Account is not active');
-  const staff = await SalaryStaff.find({ user_id: user.id, staff_office_id: dto.staff_office_id ?? null })
+  if (!isPlatformAdmin(user)) await assertSalaryOfficeChosen(user.id);
+  const officeIds =
+    dto.staff_office_ids ??
+    (dto.staff_office_id !== undefined ? [dto.staff_office_id] : [null]);
+  const unique = [...new Set(officeIds.map((id) => id ?? null))];
+  for (const id of unique) {
+    if (id) {
+      const exists = await SalaryStaffOffice.exists({ _id: id, user_id: user.id });
+      if (!exists) throw badRequest('Choose offices from your staff bill list.');
+    }
+  }
+  const officeFilter = unique.map((id) => (id ? new mongoose.Types.ObjectId(id) : null));
+  const staff = await SalaryStaff.find({
+    user_id: user.id,
+    trashed_at: null,
+    staff_office_id: { $in: officeFilter },
+  })
     .sort({ created_at: 1, _id: 1 })
     .lean();
   if (staff.length === 0) throw badRequest('Add at least one employee first.');
@@ -251,22 +271,6 @@ export async function consumeStaffBill(user: AuthUser, dto: ConsumeSalaryStaffBi
   });
 
   const now = new Date();
-  if (!isPlatformAdmin(user)) {
-    await assertSalaryOfficeChosen(user.id);
-    const updated = await SalaryBillAccess.findOneAndUpdate(
-      { user_id: user.id, $expr: { $lte: [{ $add: ['$bills_used', staff.length] }, '$bill_limit'] } },
-      { $inc: { bills_used: staff.length }, $set: { last_used_at: now, updated_at: now } },
-      { new: true },
-    );
-    if (!updated) {
-      const remaining = remainingOf(await SalaryBillAccess.findOne({ user_id: user.id }));
-      throw new AppError(
-        403,
-        SALARY_BILL_LIMIT_CODE,
-        `This bill has ${staff.length} employees and needs ${staff.length} approved bills; you have ${remaining}. Request more from the admin.`,
-      );
-    }
-  }
   await SalaryBillUsage.insertMany(
     staff.map((s, i) => ({
       user_id: new mongoose.Types.ObjectId(user.id),
@@ -278,7 +282,35 @@ export async function consumeStaffBill(user: AuthUser, dto: ConsumeSalaryStaffBi
       created_at: now,
     })),
   );
+  await SalaryBillAccess.updateOne(
+    { user_id: user.id },
+    { $set: { last_used_at: now, updated_at: now } },
+  );
   return getMyBillAccess(user);
+}
+
+/** Uses one approved bill when adding a staff employee; free-calc users use `recordStaffCalc` instead. */
+export async function claimBillForStaffAdd(user: AuthUser): Promise<void> {
+  if (isPlatformAdmin(user)) return;
+  await assertSalaryOfficeChosen(user.id);
+  const access = await SalaryBillAccess.findOne({ user_id: user.id });
+  if (!access || access.bill_limit <= 0) {
+    await recordStaffCalc(user);
+    return;
+  }
+  const now = new Date();
+  const updated = await SalaryBillAccess.findOneAndUpdate(
+    { user_id: user.id, $expr: { $lt: ['$bills_used', '$bill_limit'] } },
+    { $inc: { bills_used: 1 }, $set: { updated_at: now } },
+    { new: true },
+  );
+  if (!updated) {
+    throw new AppError(
+      403,
+      SALARY_BILL_LIMIT_CODE,
+      `You have used all ${access.bill_limit} approved bills for staff employees. Request more from the admin.`,
+    );
+  }
 }
 
 /**

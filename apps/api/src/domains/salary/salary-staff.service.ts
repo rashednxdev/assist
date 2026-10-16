@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import {
   SALARY_MAX_STAFF,
   SALARY_MAX_STAFF_OFFICES,
+  salaryStaffNameChangeTooLarge,
   type SalaryStaffDto,
   type SalaryStaffOfficeDto,
   type SalaryStaffOfficeRecord,
@@ -11,7 +12,7 @@ import type { AuthUser } from '../../middleware/auth.js';
 import { badRequest, forbidden, notFound } from '../../shared/errors/AppError.js';
 import { SalaryStaff, type ISalaryStaff } from './models/SalaryStaff.model.js';
 import { SalaryStaffOffice, type ISalaryStaffOffice } from './models/SalaryStaffOffice.model.js';
-import { recordStaffCalc } from './salary-access.service.js';
+import { claimBillForStaffAdd, recordStaffCalc } from './salary-access.service.js';
 import { isPlatformAdmin } from './salary-office.service.js';
 
 function toRecord(doc: ISalaryStaff): SalaryStaffRecord {
@@ -28,6 +29,7 @@ function toRecord(doc: ISalaryStaff): SalaryStaffRecord {
     excess_puja: Boolean(doc.excess_puja),
     staff_office_id: doc.staff_office_id ? String(doc.staff_office_id) : null,
     joining_date: doc.joining_date ?? null,
+    trashed: Boolean(doc.trashed_at),
     created_at: doc.created_at.toISOString(),
     updated_at: doc.updated_at.toISOString(),
   };
@@ -70,11 +72,13 @@ export async function createMyStaff(user: AuthUser, dto: SalaryStaffDto): Promis
   const count = await SalaryStaff.countDocuments({ user_id: user.id });
   if (count >= SALARY_MAX_STAFF) throw badRequest(`You can add up to ${SALARY_MAX_STAFF} employees.`);
   await assertOwnStaffOffice(user.id, dto.staff_office_id);
-  await recordStaffCalc(user);
+  /** One approved bill per employee added; print does not charge again. */
+  await claimBillForStaffAdd(user);
   const now = new Date();
   const doc = await SalaryStaff.create({
     ...dto,
     user_id: new mongoose.Types.ObjectId(user.id),
+    trashed_at: null,
     created_at: now,
     updated_at: now,
   });
@@ -84,11 +88,14 @@ export async function createMyStaff(user: AuthUser, dto: SalaryStaffDto): Promis
 export async function updateMyStaff(user: AuthUser, staffId: string, dto: SalaryStaffDto): Promise<SalaryStaffRecord> {
   if (!mongoose.isValidObjectId(staffId)) throw notFound('Employee not found');
   await assertOwnStaffOffice(user.id, dto.staff_office_id);
-  const current = await SalaryStaff.findOne({ _id: staffId, user_id: user.id });
+  const current = await SalaryStaff.findOne({ _id: staffId, user_id: user.id, trashed_at: null });
   if (!current) throw notFound('Employee not found');
+  if (salaryStaffNameChangeTooLarge(current.name, dto.name)) {
+    throw badRequest('That name change is too large. Trash this employee and add a new one instead.');
+  }
   if (payKey(current) !== payKey(dto)) await recordStaffCalc(user);
   const doc = await SalaryStaff.findOneAndUpdate(
-    { _id: staffId, user_id: user.id },
+    { _id: staffId, user_id: user.id, trashed_at: null },
     { $set: { ...dto, updated_at: new Date() } },
     { new: true },
   );
@@ -96,10 +103,21 @@ export async function updateMyStaff(user: AuthUser, staffId: string, dto: Salary
   return toRecord(doc);
 }
 
-export async function deleteMyStaff(userId: string, staffId: string): Promise<void> {
+/** Soft-removes the employee; the bill already used for them is not returned. */
+export async function trashMyStaff(userId: string, staffId: string): Promise<void> {
   if (!mongoose.isValidObjectId(staffId)) throw notFound('Employee not found');
-  const res = await SalaryStaff.deleteOne({ _id: staffId, user_id: userId });
-  if (res.deletedCount === 0) throw notFound('Employee not found');
+  const now = new Date();
+  const doc = await SalaryStaff.findOneAndUpdate(
+    { _id: staffId, user_id: userId, trashed_at: null },
+    { $set: { trashed_at: now, updated_at: now } },
+    { new: true },
+  );
+  if (!doc) throw notFound('Employee not found');
+}
+
+/** @deprecated Prefer trashMyStaff; kept for the same DELETE route. */
+export async function deleteMyStaff(userId: string, staffId: string): Promise<void> {
+  return trashMyStaff(userId, staffId);
 }
 
 export async function listMyStaffOffices(userId: string): Promise<SalaryStaffOfficeRecord[]> {
@@ -137,10 +155,7 @@ export async function updateMyStaffOffice(
   return toOfficeRecord(doc);
 }
 
-/** Removes the office and the employees saved under it. */
-export async function deleteMyStaffOffice(userId: string, officeId: string): Promise<void> {
-  if (!mongoose.isValidObjectId(officeId)) throw notFound('Office not found');
-  const res = await SalaryStaffOffice.deleteOne({ _id: officeId, user_id: userId });
-  if (res.deletedCount === 0) throw notFound('Office not found');
-  await SalaryStaff.deleteMany({ user_id: userId, staff_office_id: officeId });
+/** Staff bill offices cannot be removed by users once saved. */
+export async function deleteMyStaffOffice(_userId: string, _officeId: string): Promise<void> {
+  throw forbidden('Staff bill offices cannot be removed. Contact the admin if the name is wrong.');
 }

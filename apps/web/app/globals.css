@@ -929,6 +929,12 @@ body {
   text-align: center;
 }
 
+.salary-tr-form .tr-staff-group-head {
+  text-align: left;
+  font-weight: 700;
+  background: #f1f5f9;
+}
+
 .salary-tr-form .tr-staff-name,
 .salary-tr-form .tr-name {
   font-weight: 700;

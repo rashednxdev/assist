@@ -15,6 +15,8 @@ export interface ISalaryBillAccess extends Document {
   approved_by: Types.ObjectId | null;
   approved_at: Date | null;
   last_used_at: Date | null;
+  /** Staff arrear bill PDF downloads; capped by SALARY_STAFF_PRINT_LIMIT. */
+  staff_prints_used: number;
   updated_at: Date;
 }
 
@@ -33,6 +35,7 @@ const schema = new Schema<ISalaryBillAccess>(
     approved_by: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     approved_at: { type: Date, default: null },
     last_used_at: { type: Date, default: null },
+    staff_prints_used: { type: Number, default: 0, min: 0 },
     updated_at: { type: Date, default: Date.now },
   },
   { timestamps: false },

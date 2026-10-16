@@ -467,8 +467,39 @@ export interface SalaryContactsRecord {
   updated_at: string | null;
 }
 
-/** Employees one user can keep in the office staff arrear bill. */
+/** Employees one user can keep in the office staff arrear bill (active and trashed). */
 export const SALARY_MAX_STAFF = 200;
+/** Offices a user prepares staff arrear bills for besides their own; not their registered office. */
+export const SALARY_MAX_STAFF_OFFICES = 20;
+
+/**
+ * True when editing would change more than 90% of the employee name; the user should trash and add
+ * a new employee instead.
+ */
+export function salaryStaffNameChangeTooLarge(prev: string, next: string): boolean {
+  const a = prev.trim().toLowerCase();
+  const b = next.trim().toLowerCase();
+  if (a === b) return false;
+  const maxLen = Math.max(a.length, b.length);
+  if (maxLen === 0) return false;
+  const dist = levenshtein(a, b);
+  return dist / maxLen > 0.9;
+}
+
+function levenshtein(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  const dp = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i]![0] = i;
+  for (let j = 0; j <= n; j++) dp[0]![j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i]![j] = Math.min(dp[i - 1]![j]! + 1, dp[i]![j - 1]! + 1, dp[i - 1]![j - 1]! + cost);
+    }
+  }
+  return dp[m]![n]!;
+}
 
 const arrearMonth = z.string().regex(/^\d{4}-\d{2}$/);
 
@@ -508,18 +539,28 @@ export type SalaryStaffDto = z.infer<typeof salaryStaffSchema>;
 
 export interface SalaryStaffRecord extends SalaryStaffDto {
   id: string;
+  /** Soft-removed; still counts toward the employee and approved-bill limits. */
+  trashed: boolean;
   created_at: string;
   updated_at: string;
 }
 
-export const consumeSalaryStaffBillSchema = z.object({
-  months: z.array(arrearMonth).min(1).max(60),
-  staff_office_id: officeId.nullable().default(null),
-});
-export type ConsumeSalaryStaffBillDto = z.infer<typeof consumeSalaryStaffBillSchema>;
+const staffOfficeKey = officeId.nullable();
 
-/** Offices a user prepares staff arrear bills for besides their own; not their registered office. */
-export const SALARY_MAX_STAFF_OFFICES = 20;
+export const consumeSalaryStaffBillSchema = z
+  .object({
+    months: z.array(arrearMonth).min(1).max(60),
+    /** One office (null = the user's own office). Ignored when `staff_office_ids` is set. */
+    staff_office_id: staffOfficeKey.optional(),
+    /** Consolidated print: one dedicated T.R. Form 15 per checked office. */
+    staff_office_ids: z.array(staffOfficeKey).min(1).max(SALARY_MAX_STAFF_OFFICES + 1).optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.staff_office_ids == null && v.staff_office_id === undefined) {
+      ctx.addIssue({ code: 'custom', path: ['staff_office_id'], message: 'Choose an office' });
+    }
+  });
+export type ConsumeSalaryStaffBillDto = z.infer<typeof consumeSalaryStaffBillSchema>;
 
 export const salaryStaffOfficeSchema = z.object({
   name: z.string().trim().min(3, 'Enter the full office name').max(200, 'Office name is too long'),

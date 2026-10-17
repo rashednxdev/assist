@@ -1061,7 +1061,7 @@ export function SalaryStaffBill({
               size="sm"
               variant="outline"
               onClick={() => setOfficeEdit({ editing: null })}
-              className="gap-1.5 border-amber-400 bg-white text-amber-900 hover:bg-amber-100"
+              className="gap-1.5 border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700"
             >
               <Plus className="h-3.5 w-3.5" />
               {t.staffAddOffice}

@@ -293,11 +293,15 @@ export const SALARY_MAX_BULKS_PER_REQUEST = 20;
 
 export const updateSalaryBulkSizeSchema = z.object({
   bulk_size: z.number().int().min(1, 'A bulk needs at least 1 bill').max(1000, 'A bulk can have at most 1000 bills'),
+  /** Suggested Taka price for one bulk; shown to admins on pending requests. */
+  bulk_price: z.number().int().min(0, 'Price cannot be negative').max(10_000_000, 'Price is too large').optional(),
 });
 export type UpdateSalaryBulkSizeDto = z.infer<typeof updateSalaryBulkSizeSchema>;
 
 export interface SalaryBulkSizeRecord {
   bulk_size: number;
+  /** Default Taka price per bulk for admin suggestions (0 = no suggestion). */
+  bulk_price: number;
   updated_at: string | null;
 }
 
@@ -311,6 +315,8 @@ export const updateSalaryBillAccessSchema = z.object({
   bill_limit: z.number().int().min(0).max(100000),
   bills_used: z.number().int().min(0).max(100000).optional(),
   admin_note: z.string().trim().max(500).optional(),
+  /** Taka charged for this approval; added to the user's charged total (admin-only). */
+  charge_amount: z.number().int().min(0).max(10_000_000).optional(),
 });
 export type UpdateSalaryBillAccessDto = z.infer<typeof updateSalaryBillAccessSchema>;
 
@@ -324,6 +330,35 @@ export const updateSalaryAdminNoteSchema = z.object({
   admin_note: z.string().trim().max(500),
 });
 export type UpdateSalaryAdminNoteDto = z.infer<typeof updateSalaryAdminNoteSchema>;
+
+const paymentDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a YYYY-MM-DD date');
+
+/** Record money received from a user for bill access (admin-only). */
+export const recordSalaryPaymentSchema = z.object({
+  amount: z.number().int().min(1, 'Enter at least 1').max(10_000_000, 'Amount is too large'),
+  /** Bangladesh date the money was received; defaults to today. */
+  received_at: paymentDate.optional(),
+  note: z.string().trim().max(200).default(''),
+});
+export type RecordSalaryPaymentDto = z.infer<typeof recordSalaryPaymentSchema>;
+
+export interface SalaryPaymentRecord {
+  id: string;
+  amount: number;
+  /** YYYY-MM-DD (Bangladesh). */
+  received_at: string;
+  note: string;
+}
+
+/** Admin-only money summary for one user's bill access. */
+export interface SalaryAccessBilling {
+  charged_total: number;
+  received_total: number;
+  due: number;
+  /** Suggested charge for the pending request (`requested_bulks × bulk_price`), or null. */
+  suggested_charge: number | null;
+  payments: SalaryPaymentRecord[];
+}
 
 /** T.R. Form 13 / 15, arrears PDF and office staff T.R. Form 15 downloads (one per employee). */
 export interface SalaryPrintStats {
@@ -447,6 +482,8 @@ export interface SalaryBillAccessAdminRow {
   request: SalaryBillRequestInfo;
   /** Seen only by admins. */
   admin_note: string;
+  /** Charged / received / due — never sent to the user. */
+  billing: SalaryAccessBilling;
   approved_at: string | null;
   last_used_at: string | null;
   updated_at: string;

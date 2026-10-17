@@ -15,6 +15,7 @@ import {
   salaryStaffSchema,
   saveSalaryOfficeSchema,
   setSalaryAccountingOfficeSchema,
+  recordSalaryPaymentSchema,
   updateSalaryAdminNoteSchema,
   updateSalaryBillAccessSchema,
   updateSalaryBulkSizeSchema,
@@ -249,6 +250,11 @@ export async function rejectBillRequestHandler(req: AuthRequest, res: Response):
 export async function updateBillAccessNoteHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = parseBody(updateSalaryAdminNoteSchema, req.body);
   res.json({ data: await accessService.updateBillAccessNote(String(req.params.userId), dto) });
+}
+
+export async function recordSalaryPaymentHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = parseBody(recordSalaryPaymentSchema, req.body);
+  res.json({ data: await accessService.recordSalaryPayment(String(req.params.userId), dto) });
 }
 
 export async function getBillAccessStatsHandler(_req: AuthRequest, res: Response): Promise<void> {

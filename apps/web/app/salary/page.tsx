@@ -274,18 +274,20 @@ function PhaseResultCard({
   const { t, locale } = ctx;
   const tk = (n: number) => localTaka(locale, n);
 
-  if (result.phase === '2027-07-01') {
-    const basic2026 = result.basic_on_2026_07 ?? result.matched_new_stage ?? result.new_pay;
-    const basic2027 = result.basic_on_2027_07 ?? result.new_pay;
-    const moved = basic2027 !== basic2026;
-    const delta = basic2027 - basic2026;
+  const stage3 = result.phase === '2027-07-01';
+  const basic2026 = result.basic_on_2026_07 ?? result.matched_new_stage ?? result.new_pay;
+  const basic2027 = result.basic_on_2027_07 ?? result.new_pay;
+  const moved = basic2027 !== basic2026;
+  const delta = basic2027 - basic2026;
+  const stageBasic = stage3 ? basic2027 : result.new_pay;
 
-    return (
-      <Card
-        className={`salary-print-stage overflow-hidden border border-border shadow-sm${stageClass ? ` ${stageClass}` : ''}`}
-      >
-        <StageHeader ctx={ctx} result={result} />
-        <CardContent className="space-y-4 p-4 sm:p-5">
+  return (
+    <Card
+      className={`salary-print-stage overflow-hidden border border-border shadow-sm${stageClass ? ` ${stageClass}` : ''}`}
+    >
+      <StageHeader ctx={ctx} result={result} />
+      <CardContent className="space-y-4 p-4 sm:p-5">
+        {stage3 ? (
           <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
             <div className="rounded-lg border border-border bg-slate-50 salary-print-stage3-box p-3">
               <p className="text-xs text-muted">{t.basic2026}</p>
@@ -304,76 +306,60 @@ function PhaseResultCard({
               </p>
             </div>
           </div>
-
-          {SHOW_ALLOWANCES ? (
-            <StageTotalAllowanceSummary
-              ctx={ctx}
-              stageBasic={basic2027}
-              fixedAllowancesTotal={fixedAllowancesTotal}
-              gpfDeduction={gpfDeduction}
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-3">
+            <ResultStat label={t.oldBasic} value={tk(result.old_pay)} />
+            <ResultStat
+              label={t.matched}
+              value={result.matched_new_stage != null ? tk(result.matched_new_stage) : '—'}
             />
-          ) : null}
-        </CardContent>
-      </Card>
-    );
-  }
+            <ResultStat
+              label={t.newBasic(localNum(locale, result.phase_label))}
+              value={tk(result.new_pay)}
+              emphasize
+            />
+          </div>
+        )}
 
-  return (
-    <Card
-      className={`salary-print-stage overflow-hidden border border-border shadow-sm${stageClass ? ` ${stageClass}` : ''}`}
-    >
-      <StageHeader ctx={ctx} result={result} />
-      <CardContent className="space-y-4 p-4 sm:p-5">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <ResultStat label={t.oldBasic} value={tk(result.old_pay)} />
-          <ResultStat
-            label={t.matched}
-            value={result.matched_new_stage != null ? tk(result.matched_new_stage) : '—'}
-          />
-          <ResultStat
-            label={t.newBasic(localNum(locale, result.phase_label))}
-            value={tk(result.new_pay)}
-            emphasize
-          />
-        </div>
-
-        <div className="overflow-x-auto rounded-xl border border-border">
-          <table className="w-full min-w-[640px] text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-muted">
-              <tr>
-                <th className="px-3 py-2 font-semibold">{t.stepCol}</th>
-                <th className="px-3 py-2 font-semibold">{t.descCol}</th>
-                <th className="px-3 py-2 font-semibold">{t.calcCol}</th>
-                <th className="px-3 py-2 text-right font-semibold">{t.amount}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {result.steps.map((row) => {
-                const text = stepText(locale, result, row);
-                return (
-                  <tr key={`${result.phase}-${row.step}-${row.label}`} className="border-t border-border">
-                    <td className="px-3 py-2 font-semibold text-slate-700">{localNum(locale, row.step)}</td>
-                    <td className="px-3 py-2">
-                      <div>{text.label}</div>
-                      {text.note ? <div className="text-xs text-muted">{text.note}</div> : null}
-                    </td>
-                    <td className="px-3 py-2 font-mono text-xs text-slate-600">
-                      {text.calculation?.trim() ? text.calculation : '—'}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono font-semibold">
-                      {localNum(locale, formatTaka(row.value))}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        {result.steps.length > 0 ? (
+          <div className="overflow-x-auto rounded-xl border border-border">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-muted">
+                <tr>
+                  <th className="px-3 py-2 font-semibold">{t.stepCol}</th>
+                  <th className="px-3 py-2 font-semibold">{t.descCol}</th>
+                  <th className="px-3 py-2 font-semibold">{t.calcCol}</th>
+                  <th className="px-3 py-2 text-right font-semibold">{t.amount}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.steps.map((row) => {
+                  const text = stepText(locale, result, row);
+                  return (
+                    <tr key={`${result.phase}-${row.step}-${row.label}`} className="border-t border-border">
+                      <td className="px-3 py-2 font-semibold text-slate-700">{localNum(locale, row.step)}</td>
+                      <td className="px-3 py-2">
+                        <div>{text.label}</div>
+                        {text.note ? <div className="text-xs text-muted">{text.note}</div> : null}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-xs text-slate-600">
+                        {text.calculation?.trim() ? text.calculation : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono font-semibold">
+                        {localNum(locale, formatTaka(row.value))}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
 
         {SHOW_ALLOWANCES ? (
           <StageTotalAllowanceSummary
             ctx={ctx}
-            stageBasic={result.new_pay}
+            stageBasic={stageBasic}
             fixedAllowancesTotal={fixedAllowancesTotal}
             gpfDeduction={gpfDeduction}
           />

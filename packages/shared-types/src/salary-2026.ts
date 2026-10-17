@@ -444,7 +444,27 @@ export function calculateSalary2026(input: Salary2026Input): Salary2026Result {
         used_next_stage_for_step5: false,
         basic_on_2026_07: newFixed,
         basic_on_2027_07: newFixed,
-        steps: [],
+        steps: [
+          {
+            step: 1,
+            label: 'New fixed basic (NPS 2026)',
+            value: newFixed,
+            note: 'Fixed pay: one published amount for this grade',
+          },
+          {
+            step: 2,
+            label: 'Basic as on 01-07-2026',
+            value: newFixed,
+            calculation: formatTaka(newFixed),
+          },
+          {
+            step: 3,
+            label: 'Basic as on 01-07-2027',
+            value: newFixed,
+            calculation: formatTaka(newFixed),
+            note: 'Fixed pay — no stage move',
+          },
+        ],
       };
     }
     const step5 = (newFixed - oldPay) * rate;
@@ -498,7 +518,7 @@ export function calculateSalary2026(input: Salary2026Input): Salary2026Result {
     ? nextAfterMatched
     : newScale[nextAfterMatchedIndex + 1]!;
 
-  // Stage-3 (01-07-2027): basics from scale stages (not percentage Steps 5–7).
+  // Stage-3 (01-07-2027): basics from scale stages; same Steps 1–4 as Stages 1–2, then 2026/2027 basics.
   if (phase === '2027-07-01') {
     return {
       grade,
@@ -519,7 +539,52 @@ export function calculateSalary2026(input: Salary2026Input): Salary2026Result {
       used_next_stage_for_step5: !isLast,
       basic_on_2026_07: nextAfterMatched,
       basic_on_2027_07: nextAfter2026Basic,
-      steps: [],
+      steps: [
+        {
+          step: 1,
+          label: 'Old pay − Old minimum pay (30-06-26)',
+          calculation: `${formatTaka(oldPay)} − ${formatTaka(oldMinimum)}`,
+          value: step1,
+        },
+        {
+          step: 2,
+          label: 'New minimum pay',
+          value: newMinimum,
+          note: 'Published NPS 2026 minimum for this grade',
+        },
+        {
+          step: 3,
+          label: 'New minimum + Step 1',
+          calculation: `${formatTaka(newMinimum)} + ${formatTaka(step1)}`,
+          value: step3,
+        },
+        {
+          step: 4,
+          label: 'Matching / next higher stage on NPS 2026',
+          value: step4,
+          note: step3 === step4 ? 'Exact stage match' : `Next higher than ${formatTaka(step3)}`,
+        },
+        {
+          step: 5,
+          label: 'Basic as on 01-07-2026 (next stage after Step 4)',
+          calculation: `${formatTaka(nextAfterMatched)}`,
+          value: nextAfterMatched,
+          note: withheld
+            ? 'Joined on or after 02-01-2026 — no 01-07-2026 increment (stays at Step 4)'
+            : isLast
+              ? 'Last stage — no next stage (stays at Step 4)'
+              : `Next stage after matched Step 4`,
+        },
+        {
+          step: 6,
+          label: 'Basic as on 01-07-2027 (next stage after 01-07-2026)',
+          calculation: `${formatTaka(nextAfter2026Basic)}`,
+          value: nextAfter2026Basic,
+          note: nextIsLast
+            ? 'Last stage — no further move'
+            : `Next stage after basic on 01-07-2026`,
+        },
+      ],
     };
   }
 

@@ -188,24 +188,42 @@ function AdminNote({ row, onSaved }: { row: SalaryBillAccessAdminRow; onSaved: (
   );
 }
 
+function money(n: number): string {
+  return `৳ ${formatTaka(n)}`;
+}
+
 function AccessDialog({
   row,
   bulkSize,
+  bulkPrice,
   onClose,
   onSaved,
   onNoteSaved,
 }: {
   row: SalaryBillAccessAdminRow;
   bulkSize: number;
+  bulkPrice: number;
   onClose: () => void;
   onSaved: () => void;
   onNoteSaved: (row: SalaryBillAccessAdminRow) => void;
 }) {
   const suggested = row.request.pending ? row.bills_used + (row.request.requested_bills ?? 0) : row.bill_limit;
+  const suggestedCharge = row.billing.suggested_charge ?? (row.request.pending && bulkPrice > 0 ? (row.request.requested_bulks ?? 0) * bulkPrice : 0);
   const [limit, setLimit] = useState(String(suggested));
+  const [charge, setCharge] = useState(String(suggestedCharge || ''));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [showHistory, setShowHistory] = useState(false);
+  const [payAmount, setPayAmount] = useState('');
+  const [payDate, setPayDate] = useState(() => new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString().slice(0, 10));
+  const [payNote, setPayNote] = useState('');
+  const [payBusy, setPayBusy] = useState(false);
+  const [payError, setPayError] = useState('');
+  const [localRow, setLocalRow] = useState(row);
+
+  useEffect(() => {
+    setLocalRow(row);
+  }, [row]);
 
   async function saveLimit() {
     const value = Number(limit);
@@ -213,12 +231,17 @@ function AccessDialog({
       setError('Enter a whole number (0 or more).');
       return;
     }
+    const chargeValue = charge.trim() === '' ? 0 : Number(charge);
+    if (!Number.isInteger(chargeValue) || chargeValue < 0) {
+      setError('Enter a whole Taka amount for the price (0 or more).');
+      return;
+    }
     setBusy(true);
     setError('');
     try {
       await apiFetch(`/salary/admin/access/${row.user.id}`, {
         method: 'PUT',
-        body: JSON.stringify({ bill_limit: value }),
+        body: JSON.stringify({ bill_limit: value, charge_amount: chargeValue > 0 ? chargeValue : undefined }),
       });
       onSaved();
     } catch (err) {
@@ -241,6 +264,36 @@ function AccessDialog({
       setBusy(false);
     }
   }
+
+  async function addPayment() {
+    const amount = Number(payAmount);
+    if (!Number.isInteger(amount) || amount < 1) {
+      setPayError('Enter a received amount of at least 1 Taka.');
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(payDate)) {
+      setPayError('Enter the received date.');
+      return;
+    }
+    setPayBusy(true);
+    setPayError('');
+    try {
+      const res = await apiFetch<{ data: SalaryBillAccessAdminRow }>(`/salary/admin/access/${row.user.id}/payment`, {
+        method: 'POST',
+        body: JSON.stringify({ amount, received_at: payDate, note: payNote.trim() }),
+      });
+      setLocalRow(res.data);
+      onNoteSaved(res.data);
+      setPayAmount('');
+      setPayNote('');
+    } catch (err) {
+      setPayError(err instanceof Error ? err.message : 'Failed to record payment');
+    } finally {
+      setPayBusy(false);
+    }
+  }
+
+  const billing = localRow.billing;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
@@ -284,6 +337,24 @@ function AccessDialog({
               <p className="text-xs">{formatWhen(row.last_used_at)}</p>
             </div>
           </div>
+
+          <div className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm sm:grid-cols-3">
+            <div>
+              <p className="text-xs text-muted">Charged (admin)</p>
+              <p className="font-semibold tabular-nums text-slate-900">{money(billing.charged_total)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted">Received (admin)</p>
+              <p className="font-semibold tabular-nums text-emerald-700">{money(billing.received_total)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted">Due</p>
+              <p className={cn('font-bold tabular-nums', billing.due > 0 ? 'text-rose-700' : 'text-emerald-700')}>
+                {money(billing.due)}
+              </p>
+            </div>
+          </div>
+
           <div className="space-y-0.5 text-xs text-slate-600">
             <p>
               Free calculations used: {row.calc.free_used} of {row.calc.free_limit} · Calculations toward next bill:{' '}
@@ -297,16 +368,28 @@ function AccessDialog({
           </div>
 
           {row.request.pending ? (
-            <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-950">
-              {row.bill_limit > 0 ? 'New bulk requested: ' : 'Requested '}
-              {row.request.requested_bulks ? (
-                <>
-                  <strong>{plural(row.request.requested_bulks, 'bulk')}</strong> ({plural(row.request.requested_bills ?? 0, 'bill')})
-                </>
+            <div className="space-y-1 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-950">
+              <p>
+                {row.bill_limit > 0 ? 'New bulk requested: ' : 'Requested '}
+                {row.request.requested_bulks ? (
+                  <>
+                    <strong>{plural(row.request.requested_bulks, 'bulk')}</strong> ({plural(row.request.requested_bills ?? 0, 'bill')})
+                  </>
+                ) : (
+                  <strong>{plural(row.request.requested_bills ?? 0, 'bill')}</strong>
+                )}{' '}
+                on {formatWhen(row.request.requested_at)}
+              </p>
+              {suggestedCharge > 0 ? (
+                <p className="text-xs font-semibold text-amber-900">
+                  Suggested amount to charge now: {money(suggestedCharge)}
+                  {bulkPrice > 0 && row.request.requested_bulks
+                    ? ` (${row.request.requested_bulks} × ${money(bulkPrice)} per bulk)`
+                    : ''}
+                </p>
               ) : (
-                <strong>{plural(row.request.requested_bills ?? 0, 'bill')}</strong>
-              )}{' '}
-              on {formatWhen(row.request.requested_at)}
+                <p className="text-xs text-amber-800">Set a price per bulk in Settings to see a suggested charge.</p>
+              )}
               {row.request.note ? <span className="block text-xs">User note: {row.request.note}</span> : null}
             </div>
           ) : null}
@@ -338,6 +421,20 @@ function AccessDialog({
                   </Button>
                 </div>
               </div>
+              <div className="w-40 space-y-1">
+                <Label htmlFor={`charge-${row.user.id}`} className="text-xs">
+                  Price to charge (৳)
+                </Label>
+                <Input
+                  id={`charge-${row.user.id}`}
+                  type="number"
+                  min={0}
+                  inputMode="numeric"
+                  value={charge}
+                  placeholder="0"
+                  onChange={(e) => setCharge(e.target.value)}
+                />
+              </div>
               <Button type="button" onClick={() => void saveLimit()} disabled={busy}>
                 {row.request.pending ? 'Approve' : 'Save'}
               </Button>
@@ -348,13 +445,82 @@ function AccessDialog({
               ) : null}
             </div>
             <p className="text-xs text-muted">
-              1 bulk = {plural(bulkSize, 'bill')}. Total includes bills already used ({row.bills_used}). Set it to{' '}
-              {row.bills_used} to stop further bills.
+              1 bulk = {plural(bulkSize, 'bill')}. Total includes bills already used ({row.bills_used}). Price is added to
+              this user&apos;s charged total (admin only). Leave price 0 to change bills without charging.
             </p>
             {error ? <Alert variant="error">{error}</Alert> : null}
           </div>
 
-          <AdminNote row={row} onSaved={onNoteSaved} />
+          <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50/50 p-3">
+            <p className="text-xs font-semibold text-emerald-950">
+              Received amount <span className="font-normal text-muted">(admins only · date-wise)</span>
+            </p>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="w-32 space-y-1">
+                <Label htmlFor={`pay-amt-${row.user.id}`} className="text-xs">
+                  Amount (৳)
+                </Label>
+                <Input
+                  id={`pay-amt-${row.user.id}`}
+                  type="number"
+                  min={1}
+                  inputMode="numeric"
+                  value={payAmount}
+                  onChange={(e) => setPayAmount(e.target.value)}
+                />
+              </div>
+              <div className="w-40 space-y-1">
+                <Label htmlFor={`pay-date-${row.user.id}`} className="text-xs">
+                  Received date
+                </Label>
+                <Input
+                  id={`pay-date-${row.user.id}`}
+                  type="date"
+                  value={payDate}
+                  onChange={(e) => setPayDate(e.target.value)}
+                />
+              </div>
+              <div className="min-w-[10rem] flex-1 space-y-1">
+                <Label htmlFor={`pay-note-${row.user.id}`} className="text-xs">
+                  Note
+                </Label>
+                <Input
+                  id={`pay-note-${row.user.id}`}
+                  value={payNote}
+                  maxLength={200}
+                  placeholder="Optional"
+                  onChange={(e) => setPayNote(e.target.value)}
+                />
+              </div>
+              <Button type="button" variant="outline" onClick={() => void addPayment()} disabled={payBusy}>
+                {payBusy ? 'Saving…' : 'Add received'}
+              </Button>
+            </div>
+            {payError ? <Alert variant="error">{payError}</Alert> : null}
+            {billing.payments.length === 0 ? (
+              <p className="text-xs text-muted">No payments recorded yet.</p>
+            ) : (
+              <ul className="divide-y divide-emerald-100 rounded-md border border-emerald-200 bg-white text-xs">
+                {billing.payments.map((p) => (
+                  <li key={p.id} className="flex flex-wrap items-baseline justify-between gap-2 px-3 py-2">
+                    <span className="font-medium tabular-nums text-slate-800">
+                      {p.received_at.split('-').reverse().join('-')}
+                    </span>
+                    <span className="font-semibold tabular-nums text-emerald-800">{money(p.amount)}</span>
+                    {p.note ? <span className="w-full text-muted">{p.note}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <AdminNote
+            row={localRow}
+            onSaved={(next) => {
+              setLocalRow(next);
+              onNoteSaved(next);
+            }}
+          />
 
           <div>
             <button
@@ -379,13 +545,16 @@ function AccessDialog({
 function AccessTable({ rows, onOpen }: { rows: SalaryBillAccessAdminRow[]; onOpen: (row: SalaryBillAccessAdminRow) => void }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-border">
-      <table className="w-full min-w-[36rem] text-sm">
+      <table className="w-full min-w-[48rem] text-sm">
         <thead className="bg-slate-50 text-left text-xs font-semibold text-slate-600">
           <tr>
             <th className="px-3 py-2">Name</th>
             <th className="px-3 py-2 text-right">Allowed</th>
             <th className="px-3 py-2 text-right">Used</th>
             <th className="px-3 py-2 text-right">Remaining</th>
+            <th className="px-3 py-2 text-right">Charged</th>
+            <th className="px-3 py-2 text-right">Received</th>
+            <th className="px-3 py-2 text-right">Due</th>
             <th className="px-3 py-2">Status</th>
             <th className="w-8 px-2 py-2" />
           </tr>
@@ -405,6 +574,11 @@ function AccessTable({ rows, onOpen }: { rows: SalaryBillAccessAdminRow[]; onOpe
                 <span className="block text-xs text-muted">{row.user.phone}</span>
                 <span className="block text-[10px] leading-tight text-slate-500">{row.office_label || 'Office not selected'}</span>
                 {row.admin_note ? <span className="block text-[11px] text-slate-500">Note: {row.admin_note}</span> : null}
+                {row.billing.suggested_charge != null ? (
+                  <span className="block text-[11px] font-medium text-amber-800">
+                    Suggest now: {money(row.billing.suggested_charge)}
+                  </span>
+                ) : null}
               </td>
               <td className="px-3 py-2 text-right font-semibold tabular-nums">{row.bill_limit}</td>
               <td className="px-3 py-2 text-right tabular-nums">{row.bills_used}</td>
@@ -415,6 +589,16 @@ function AccessTable({ rows, onOpen }: { rows: SalaryBillAccessAdminRow[]; onOpe
                 )}
               >
                 {row.remaining}
+              </td>
+              <td className="px-3 py-2 text-right tabular-nums text-slate-700">{money(row.billing.charged_total)}</td>
+              <td className="px-3 py-2 text-right tabular-nums text-emerald-700">{money(row.billing.received_total)}</td>
+              <td
+                className={cn(
+                  'px-3 py-2 text-right font-semibold tabular-nums',
+                  row.billing.due > 0 ? 'text-rose-700' : 'text-emerald-700',
+                )}
+              >
+                {money(row.billing.due)}
               </td>
               <td className="px-3 py-2">
                 <StatusBadge row={row} />
@@ -435,13 +619,17 @@ function AccessTable({ rows, onOpen }: { rows: SalaryBillAccessAdminRow[]; onOpe
   );
 }
 
-function GrantUser({ bulkSize, onSaved }: { bulkSize: number; onSaved: () => void }) {
+function GrantUser({ bulkSize, bulkPrice, onSaved }: { bulkSize: number; bulkPrice: number; onSaved: () => void }) {
   const [q, setQ] = useState('');
   const [results, setResults] = useState<UserOption[]>([]);
   const [selected, setSelected] = useState<UserOption | null>(null);
   const [limit, setLimit] = useState(String(bulkSize));
+  const [charge, setCharge] = useState(bulkPrice > 0 ? String(bulkPrice) : '');
 
   useEffect(() => setLimit(String(bulkSize)), [bulkSize]);
+  useEffect(() => {
+    if (bulkPrice > 0) setCharge(String(bulkPrice));
+  }, [bulkPrice]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
@@ -464,15 +652,24 @@ function GrantUser({ bulkSize, onSaved }: { bulkSize: number; onSaved: () => voi
       setError('Enter a whole number of bills (1 or more).');
       return;
     }
+    const chargeValue = charge.trim() === '' ? 0 : Number(charge);
+    if (!Number.isInteger(chargeValue) || chargeValue < 0) {
+      setError('Enter a whole Taka amount for the price (0 or more).');
+      return;
+    }
     setBusy(true);
     setError('');
     setStatus('');
     try {
       await apiFetch(`/salary/admin/access/${selected.id}`, {
         method: 'PUT',
-        body: JSON.stringify({ bill_limit: value }),
+        body: JSON.stringify({ bill_limit: value, charge_amount: chargeValue > 0 ? chargeValue : undefined }),
       });
-      setStatus(`${selected.full_name_en} can now use up to ${value} arrears bills in total.`);
+      setStatus(
+        `${selected.full_name_en} can now use up to ${value} arrears bills in total${
+          chargeValue > 0 ? ` · charged ${money(chargeValue)}` : ''
+        }.`,
+      );
       setSelected(null);
       setResults([]);
       setQ('');
@@ -526,7 +723,7 @@ function GrantUser({ bulkSize, onSaved }: { bulkSize: number; onSaved: () => voi
           </ul>
         ) : null}
         {selected ? (
-          <div className="grid items-end gap-2 sm:grid-cols-[minmax(0,1fr)_14rem_auto_auto]">
+          <div className="grid items-end gap-2 sm:grid-cols-[minmax(0,1fr)_12rem_9rem_auto_auto]">
             <div>
               <p className="text-xs text-muted">Selected user</p>
               <p className="text-sm font-semibold">{selected.full_name_en}</p>
@@ -549,6 +746,19 @@ function GrantUser({ bulkSize, onSaved }: { bulkSize: number; onSaved: () => voi
                   +1 bulk
                 </Button>
               </div>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="grant-charge" className="text-xs">
+                Price (৳)
+              </Label>
+              <Input
+                id="grant-charge"
+                type="number"
+                min={0}
+                value={charge}
+                placeholder="0"
+                onChange={(e) => setCharge(e.target.value)}
+              />
             </div>
             <Button type="button" onClick={() => void grant()} disabled={busy}>
               Approve
@@ -574,11 +784,15 @@ export default function SalaryAccessAdminPage() {
   const [error, setError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
   const [bulkSize, setBulkSize] = useState(SALARY_DEFAULT_BULK_SIZE);
+  const [bulkPrice, setBulkPrice] = useState(0);
   const [openRow, setOpenRow] = useState<SalaryBillAccessAdminRow | null>(null);
 
   useEffect(() => {
     apiFetch<{ data: SalaryBulkSizeRecord }>('/salary/admin/bulk-size')
-      .then((res) => setBulkSize(res.data.bulk_size))
+      .then((res) => {
+        setBulkSize(res.data.bulk_size);
+        setBulkPrice(res.data.bulk_price ?? 0);
+      })
       .catch(() => undefined);
   }, []);
 
@@ -682,13 +896,14 @@ export default function SalaryAccessAdminPage() {
         </CardContent>
       </Card>
 
-      <GrantUser bulkSize={bulkSize} onSaved={reload} />
+      <GrantUser bulkSize={bulkSize} bulkPrice={bulkPrice} onSaved={reload} />
 
       {openRow ? (
         <AccessDialog
           key={`${openRow.user.id}-${openRow.updated_at}`}
           row={openRow}
           bulkSize={bulkSize}
+          bulkPrice={bulkPrice}
           onClose={() => setOpenRow(null)}
           onSaved={() => {
             setOpenRow(null);

@@ -37,6 +37,7 @@ function plural(n: number, word: string): string {
 function BulkSizeEditor() {
   const [bulkSize, setBulkSize] = useState(SALARY_DEFAULT_BULK_SIZE);
   const [value, setValue] = useState(String(SALARY_DEFAULT_BULK_SIZE));
+  const [priceValue, setPriceValue] = useState('0');
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
@@ -46,14 +47,20 @@ function BulkSizeEditor() {
       .then((res) => {
         setBulkSize(res.data.bulk_size);
         setValue(String(res.data.bulk_size));
+        setPriceValue(String(res.data.bulk_price ?? 0));
       })
       .catch(() => undefined);
   }, []);
 
   async function save() {
     const size = Number(value);
+    const price = Number(priceValue);
     if (!Number.isInteger(size) || size < 1 || size > 1000) {
       setError('Enter a whole number of bills from 1 to 1000.');
+      return;
+    }
+    if (!Number.isInteger(price) || price < 0 || price > 10_000_000) {
+      setError('Enter a whole Taka price per bulk (0 or more).');
       return;
     }
     setSaving(true);
@@ -62,11 +69,15 @@ function BulkSizeEditor() {
     try {
       const res = await apiFetch<{ data: SalaryBulkSizeRecord }>('/salary/admin/bulk-size', {
         method: 'PUT',
-        body: JSON.stringify({ bulk_size: size }),
+        body: JSON.stringify({ bulk_size: size, bulk_price: price }),
       });
       setBulkSize(res.data.bulk_size);
       setValue(String(res.data.bulk_size));
-      setStatus(`Saved. Users now request bills in bulks of ${res.data.bulk_size}.`);
+      setPriceValue(String(res.data.bulk_price ?? 0));
+      setStatus(
+        `Saved. Users request bulks of ${res.data.bulk_size} bills` +
+          (res.data.bulk_price > 0 ? `; suggested charge is ৳ ${res.data.bulk_price} per bulk.` : '.'),
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');
     } finally {
@@ -77,9 +88,10 @@ function BulkSizeEditor() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Bill bulk size</CardTitle>
+        <CardTitle className="text-base">Bill bulk size & price</CardTitle>
         <CardDescription>
-          Users request one or more bulks. A request for 2 bulks asks for {plural(bulkSize * 2, 'bill')}.
+          Users request one or more bulks. A request for 2 bulks asks for {plural(bulkSize * 2, 'bill')}. The price per
+          bulk is only for admins — it suggests how much to charge on approval.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -100,8 +112,21 @@ function BulkSizeEditor() {
               onChange={(e) => setValue(e.target.value)}
             />
           </div>
+          <div className="w-44 space-y-1">
+            <Label htmlFor="bulk-price" className="text-xs">
+              Suggested price per bulk (৳)
+            </Label>
+            <Input
+              id="bulk-price"
+              type="number"
+              min={0}
+              inputMode="numeric"
+              value={priceValue}
+              onChange={(e) => setPriceValue(e.target.value)}
+            />
+          </div>
           <Button type="button" onClick={() => void save()} disabled={saving}>
-            {saving ? 'Saving…' : 'Save bulk size'}
+            {saving ? 'Saving…' : 'Save'}
           </Button>
         </div>
       </CardContent>

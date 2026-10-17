@@ -1,5 +1,13 @@
 import mongoose, { Schema, type Document, type Types } from 'mongoose';
 
+export interface ISalaryPayment {
+  _id: Types.ObjectId;
+  amount: number;
+  /** YYYY-MM-DD Bangladesh date. */
+  received_at: string;
+  note: string;
+}
+
 export interface ISalaryBillAccess extends Document {
   user_id: Types.ObjectId;
   status: 'pending' | 'approved' | 'rejected';
@@ -12,13 +20,25 @@ export interface ISalaryBillAccess extends Document {
   request_note: string;
   requested_at: Date | null;
   admin_note: string;
+  /** Total Taka charged across approvals (admin-only). */
+  charged_total: number;
+  /** Money received from the user, with dates (admin-only). */
+  payments: ISalaryPayment[];
   approved_by: Types.ObjectId | null;
   approved_at: Date | null;
   last_used_at: Date | null;
-  /** Staff arrear bill PDF downloads; capped by SALARY_STAFF_PRINT_LIMIT. */
   staff_prints_used: number;
   updated_at: Date;
 }
+
+const paymentSchema = new Schema<ISalaryPayment>(
+  {
+    amount: { type: Number, required: true, min: 1 },
+    received_at: { type: String, required: true },
+    note: { type: String, default: '' },
+  },
+  { _id: true },
+);
 
 const schema = new Schema<ISalaryBillAccess>(
   {
@@ -32,6 +52,8 @@ const schema = new Schema<ISalaryBillAccess>(
     request_note: { type: String, default: '' },
     requested_at: { type: Date, default: null },
     admin_note: { type: String, default: '' },
+    charged_total: { type: Number, default: 0, min: 0 },
+    payments: { type: [paymentSchema], default: [] },
     approved_by: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     approved_at: { type: Date, default: null },
     last_used_at: { type: Date, default: null },

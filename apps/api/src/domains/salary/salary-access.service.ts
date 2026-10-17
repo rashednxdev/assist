@@ -25,6 +25,8 @@ import {
   type SalaryBillRequestInfo,
   type SalaryPrintStats,
   type UpdateSalaryAdminNoteDto,
+  type RecordSalaryPaymentDto,
+  type SalaryAccessBilling,
   type SalaryBillUsageRecord,
   type SalaryBulkSizeRecord,
   type SalaryContactsRecord,
@@ -115,23 +117,22 @@ export async function updateSalaryContacts(
 }
 
 export async function getSalaryBulkSize(): Promise<SalaryBulkSizeRecord> {
-  const doc = await SalarySettings.findOne({ key: SETTINGS_KEY }).select('bulk_size updated_at').lean();
+  const doc = await SalarySettings.findOne({ key: SETTINGS_KEY }).select('bulk_size bulk_price updated_at').lean();
   return {
     bulk_size: doc?.bulk_size ?? SALARY_DEFAULT_BULK_SIZE,
+    bulk_price: doc?.bulk_price ?? 0,
     updated_at: doc?.updated_at?.toISOString() ?? null,
   };
 }
 
 export async function updateSalaryBulkSize(dto: UpdateSalaryBulkSizeDto, updatedBy: string): Promise<SalaryBulkSizeRecord> {
-  await SalarySettings.findOneAndUpdate(
-    { key: SETTINGS_KEY },
-    {
-      bulk_size: dto.bulk_size,
-      updated_by: new mongoose.Types.ObjectId(updatedBy),
-      updated_at: new Date(),
-    },
-    { upsert: true, setDefaultsOnInsert: true },
-  );
+  const set: Record<string, unknown> = {
+    bulk_size: dto.bulk_size,
+    updated_by: new mongoose.Types.ObjectId(updatedBy),
+    updated_at: new Date(),
+  };
+  if (dto.bulk_price != null) set.bulk_price = dto.bulk_price;
+  await SalarySettings.findOneAndUpdate({ key: SETTINGS_KEY }, { $set: set }, { upsert: true, setDefaultsOnInsert: true });
   return getSalaryBulkSize();
 }
 
@@ -392,14 +393,37 @@ export async function recordStaffCalc(user: AuthUser): Promise<void> {
   await SalaryCalcUsage.updateOne({ user_id: userId }, { $inc: { total: 1 }, $set: { updated_at: now } });
 }
 
+function billingOf(doc: ISalaryBillAccess, bulkPrice: number): SalaryAccessBilling {
+  const charged = Math.max(0, doc.charged_total ?? 0);
+  const payments = [...(doc.payments ?? [])]
+    .map((p) => ({
+      id: String(p._id),
+      amount: p.amount,
+      received_at: p.received_at,
+      note: p.note ?? '',
+    }))
+    .sort((a, b) => b.received_at.localeCompare(a.received_at) || b.id.localeCompare(a.id));
+  const received = payments.reduce((sum, p) => sum + p.amount, 0);
+  const bulks = doc.request_pending ? (doc.requested_bulks ?? 0) : 0;
+  const suggested = doc.request_pending && bulkPrice > 0 && bulks > 0 ? bulks * bulkPrice : null;
+  return {
+    charged_total: charged,
+    received_total: received,
+    due: Math.max(0, charged - received),
+    suggested_charge: suggested,
+    payments,
+  };
+}
+
 async function toAdminRows(docs: ISalaryBillAccess[]): Promise<SalaryBillAccessAdminRow[]> {
   const userIds = docs.map((d) => String(d.user_id));
-  const [users, offices, calcs, freeLimits, freeTr] = await Promise.all([
+  const [users, offices, calcs, freeLimits, freeTr, { bulk_price }] = await Promise.all([
     User.find({ _id: { $in: userIds } }).select('full_name_en email phone'),
     salaryOfficeLabels(userIds),
     SalaryCalcUsage.find({ user_id: { $in: userIds } }).select('user_id free_used unprinted').lean(),
     salaryFreeCalcLimits(userIds),
     salaryFreeTrStates(userIds),
+    getSalaryBulkSize(),
   ]);
   const byId = new Map(users.map((u) => [String(u._id), u]));
   const calcById = new Map(calcs.map((c) => [String(c.user_id), c]));
@@ -421,6 +445,7 @@ async function toAdminRows(docs: ISalaryBillAccess[]): Promise<SalaryBillAccessA
       free_tr_form: freeTr.get(String(doc.user_id)) ?? 'none',
       request: requestInfo(doc),
       admin_note: doc.admin_note ?? '',
+      billing: billingOf(doc, bulk_price),
       approved_at: doc.approved_at?.toISOString() ?? null,
       last_used_at: doc.last_used_at?.toISOString() ?? null,
       updated_at: doc.updated_at.toISOString(),
@@ -481,11 +506,41 @@ export async function updateBillAccess(
   if (dto.bills_used != null) set.bills_used = dto.bills_used;
   if (dto.admin_note != null) set.admin_note = dto.admin_note;
 
+  const update: Record<string, unknown> = { $set: set, $setOnInsert: { user_id: user._id } };
+  if (dto.charge_amount != null && dto.charge_amount > 0) {
+    update.$inc = { charged_total: dto.charge_amount };
+  }
+
+  const doc = await SalaryBillAccess.findOneAndUpdate({ user_id: userId }, update, {
+    upsert: true,
+    new: true,
+    setDefaultsOnInsert: true,
+  });
+  const [row] = await toAdminRows([doc]);
+  return row!;
+}
+
+function dhakaTodayKey(): string {
+  return new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+/** Adds a received payment for a user (admin-only money ledger). */
+export async function recordSalaryPayment(
+  userId: string,
+  dto: RecordSalaryPaymentDto,
+): Promise<SalaryBillAccessAdminRow> {
+  if (!mongoose.isValidObjectId(userId)) throw notFound('User not found');
+  const receivedAt = dto.received_at ?? dhakaTodayKey();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(receivedAt)) throw badRequest('Use a YYYY-MM-DD date');
   const doc = await SalaryBillAccess.findOneAndUpdate(
     { user_id: userId },
-    { $set: set, $setOnInsert: { user_id: user._id } },
-    { upsert: true, new: true, setDefaultsOnInsert: true },
+    {
+      $push: { payments: { amount: dto.amount, received_at: receivedAt, note: dto.note } },
+      $set: { updated_at: new Date() },
+    },
+    { new: true },
   );
+  if (!doc) throw notFound('No bill access record for this user. Approve bills first.');
   const [row] = await toAdminRows([doc]);
   return row!;
 }

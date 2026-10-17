@@ -926,8 +926,16 @@ export function stepText(locale: SalaryLocale, result: Salary2026Result, row: Sa
   const date = bn(result.phase_label);
   const pct = bn(result.rate_percent);
   const calculation = row.calculation ? bn(row.calculation) : undefined;
+  const stage3 = result.phase === '2027-07-01';
 
   if (result.fixed) {
+    if (stage3) {
+      if (row.step === 1) {
+        return { label: 'নতুন নির্ধারিত মূল বেতন (বেতনস্কেল ২০২৬)', note: 'নির্ধারিত বেতন: এই গ্রেডের একক প্রকাশিত পরিমাণ', calculation };
+      }
+      if (row.step === 2) return { label: '০১-০৭-২০২৬ তারিখে মূল বেতন', calculation };
+      return { label: '০১-০৭-২০২৭ তারিখে মূল বেতন', note: 'নির্ধারিত বেতন — ধাপ পরিবর্তন নেই', calculation };
+    }
     if (row.step === 5) {
       return {
         label: `(নতুন নির্ধারিত বেতন − পুরাতন বেতন) × ${pct}%`,
@@ -954,12 +962,30 @@ export function stepText(locale: SalaryLocale, result: Salary2026Result, row: Sa
       };
     }
     case 5:
+      if (stage3) {
+        return {
+          label: '০১-০৭-২০২৬ তারিখে মূল বেতন (স্টেপ ৪-এর পরবর্তী ধাপ)',
+          note: result.increment_withheld
+            ? '০২-০১-২০২৬ বা পরে যোগদান — ০১-০৭-২০২৬-এ ইনক্রিমেন্ট নেই (স্টেপ ৪-এ থাকে)'
+            : result.used_next_stage_for_step5 === false
+              ? 'শেষ ধাপ — পরবর্তী ধাপ নেই (স্টেপ ৪-এ থাকে)'
+              : 'মিলে যাওয়া স্টেপ ৪-এর পরবর্তী ধাপ',
+          calculation,
+        };
+      }
       return {
         label: `(স্টেপ ৪ − পুরাতন বেতন) × ${pct}%`,
         note: rateNoteBn(result.grade, result.rate_percent),
         calculation,
       };
     case 6:
+      if (stage3) {
+        return {
+          label: '০১-০৭-২০২৭ তারিখে মূল বেতন (০১-০৭-২০২৬-এর পরবর্তী ধাপ)',
+          note: result.increment_skipped ? 'শেষ ধাপ — আর ধাপ পরিবর্তন নেই' : '০১-০৭-২০২৬-এর মূল বেতনের পরবর্তী ধাপ',
+          calculation,
+        };
+      }
       return {
         label: `পরবর্তী ধাপ − স্টেপ ৪ (ফ্যাক্ট ইনক্রিমেন্ট ${date})`,
         note: result.increment_withheld

@@ -192,31 +192,34 @@ function StageCard({ ctx, result, allowances, gpf }: { ctx: Ctx; result: Salary2
               <Stat label={t.matched} value={result.matched_new_stage != null ? tk(result.matched_new_stage) : '—'} />
             </View>
             <Stat label={t.newBasic(date)} value={tk(result.new_pay)} emphasize />
-            <View style={styles.steps}>
-              {result.steps.map((row) => {
-                const text = stepText(locale, result, row);
-                return (
-                  <View key={`${result.phase}-${row.step}`} style={styles.stepRow}>
-                    <View style={[styles.stepNo, { backgroundColor: `${color}1f` }]}>
-                      <Text style={[styles.stepNoText, { color }]}>{localNum(locale, row.step)}</Text>
-                    </View>
-                    <View style={styles.flex}>
-                      <Text style={styles.stepLabel}>{text.label}</Text>
-                      {text.note ? <Text style={styles.tiny}>{text.note}</Text> : null}
-                      {text.calculation?.trim() ? <Text style={styles.stepCalc}>{text.calculation}</Text> : null}
-                    </View>
-                    <Text style={styles.stepAmount}>{localNum(locale, formatTaka(row.value))}</Text>
-                  </View>
-                );
-              })}
-            </View>
           </>
         )}
 
+        {result.steps.length > 0 ? (
+          <View style={styles.steps}>
+            {result.steps.map((row) => {
+              const text = stepText(locale, result, row);
+              return (
+                <View key={`${result.phase}-${row.step}`} style={styles.stepRow}>
+                  <View style={[styles.stepNo, { backgroundColor: `${color}1f` }]}>
+                    <Text style={[styles.stepNoText, { color }]}>{localNum(locale, row.step)}</Text>
+                  </View>
+                  <View style={styles.flex}>
+                    <Text style={styles.stepLabel}>{text.label}</Text>
+                    {text.note ? <Text style={styles.tiny}>{text.note}</Text> : null}
+                    {text.calculation?.trim() ? <Text style={styles.stepCalc}>{text.calculation}</Text> : null}
+                  </View>
+                  <Text style={styles.stepAmount}>{localNum(locale, formatTaka(row.value))}</Text>
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
+
         <AllowanceSummary ctx={ctx} basic={stage3 ? to : result.new_pay} allowances={allowances} gpf={gpf} />
 
-        {!stage3 && result.increment_skipped && !result.fixed ? (
-          <Text style={styles.warnText}>{t.lastStageWarn}</Text>
+        {result.increment_skipped && !result.fixed ? (
+          <Text style={styles.warnText}>{result.increment_withheld ? t.withheldWarn : t.lastStageWarn}</Text>
         ) : null}
       </View>
     </View>

@@ -5,6 +5,8 @@ export interface ISalarySettings extends Document {
   contacts: Array<{ label: string; number: string; whatsapp: boolean }>;
   /** Null means the default bulk size. */
   bulk_size: number | null;
+  /** Null means 0 (no suggested price). Taka per bulk for admin suggestions. */
+  bulk_price: number | null;
   /** Null means "Others" is allowed. */
   others_allowed: boolean | null;
   /** Periods the free single T.R. Form was on; users registered inside one get it. `to` null = still on. */
@@ -32,6 +34,7 @@ const schema = new Schema<ISalarySettings>(
       default: [],
     },
     bulk_size: { type: Number, default: null, min: 1 },
+    bulk_price: { type: Number, default: null, min: 0 },
     others_allowed: { type: Boolean, default: null },
     free_tr_periods: {
       type: [{ _id: false, from: { type: Date, required: true }, to: { type: Date, default: null } }],

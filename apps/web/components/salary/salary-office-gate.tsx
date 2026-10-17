@@ -7,6 +7,7 @@ import {
   type OfficeOption,
   type SalaryOfficeRecord,
   type SalaryOfficeSettingsRecord,
+  type SalaryOtherOfficeKind,
   type SalaryOtherOfficeSuggestion,
 } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
@@ -65,6 +66,9 @@ function OfficeForm({
   const [others, setOthers] = useState(addBangla || (othersAllowed && Boolean(initial && !initial.office)));
   const [otherName, setOtherName] = useState(initial?.other_office_name ?? '');
   const [otherNameBn, setOtherNameBn] = useState(initial?.other_office_name_bn ?? '');
+  const [otherKind, setOtherKind] = useState<SalaryOtherOfficeKind | null>(
+    initial?.other_office_kind ?? (addBangla ? 'gob' : null),
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
@@ -72,7 +76,10 @@ function OfficeForm({
   const [accounting, setAccounting] = useState<OfficeOption | null>(initial?.accounting_office ?? null);
   const showOthersOption = othersAllowed && !addBangla && !accountingOnly;
   const needsAccounting =
-    accountingOnly || others || (office != null && salaryNeedsAccountingOffice({ is_other: false, office_type: office.type_short ?? null }));
+    accountingOnly ||
+    (others
+      ? salaryNeedsAccountingOffice({ is_other: true, office_type: null, other_office_kind: otherKind })
+      : office != null && salaryNeedsAccountingOffice({ is_other: false, office_type: office.type_short ?? null }));
   const picked = suggestions.some(
     (s) => s.other_office_name === otherName.trim() && s.other_office_name_bn === otherNameBn.trim(),
   );
@@ -107,6 +114,7 @@ function OfficeForm({
     const name = otherName.trim();
     const nameBn = otherNameBn.trim();
     if (!accountingOnly) {
+      if (others && !otherKind) return setError(t.officeErrOtherKind);
       if (others && (name.length < 3 || !LATIN_LETTER.test(name))) return setError(t.officeErrOther);
       if (others && (nameBn.length < 3 || !BANGLA_SCRIPT.test(nameBn))) return setError(t.officeErrOtherBn);
       if (!others && !circle) return setError(t.officeErrCircle);
@@ -128,6 +136,7 @@ function OfficeForm({
               office_id: others ? null : (office?.id ?? null),
               other_office_name: others ? name : '',
               other_office_name_bn: others ? nameBn : '',
+              other_office_kind: others ? otherKind : null,
               accounting_office_id: needsAccounting ? (accounting?.id ?? null) : null,
             }),
           });
@@ -222,6 +231,10 @@ function OfficeForm({
                 checked={others}
                 onChange={(e) => {
                   setOthers(e.target.checked);
+                  if (!e.target.checked) {
+                    setOtherKind(null);
+                    setAccounting(null);
+                  }
                   setError('');
                 }}
               />
@@ -231,6 +244,48 @@ function OfficeForm({
 
           {others && !accountingOnly ? (
             <div className="space-y-3">
+              <div className="space-y-2 rounded-lg border border-indigo-300 bg-indigo-50/70 p-3">
+                <p className="text-sm font-bold text-indigo-950">{t.officeOtherKindLabel}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant={otherKind === 'gob' ? 'default' : 'outline'}
+                    className={
+                      otherKind === 'gob'
+                        ? 'bg-indigo-700 hover:bg-indigo-800'
+                        : 'border-indigo-300 bg-white text-indigo-950 hover:bg-indigo-100'
+                    }
+                    onClick={() => {
+                      setOtherKind('gob');
+                      setError('');
+                    }}
+                  >
+                    {t.officeOtherKindGob}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={otherKind === 'autonomous' ? 'default' : 'outline'}
+                    className={
+                      otherKind === 'autonomous'
+                        ? 'bg-indigo-700 hover:bg-indigo-800'
+                        : 'border-indigo-300 bg-white text-indigo-950 hover:bg-indigo-100'
+                    }
+                    onClick={() => {
+                      setOtherKind('autonomous');
+                      setAccounting(null);
+                      setError('');
+                    }}
+                  >
+                    {t.officeOtherKindAutonomous}
+                  </Button>
+                </div>
+                {otherKind === 'gob' ? (
+                  <p className="text-xs font-medium text-indigo-900">{t.officeOtherKindHintGob}</p>
+                ) : null}
+                {otherKind === 'autonomous' ? (
+                  <p className="text-xs font-medium text-indigo-900">{t.officeOtherKindHintAutonomous}</p>
+                ) : null}
+              </div>
               <p className="rounded-md border border-yellow-400 bg-gradient-to-r from-yellow-200 via-yellow-50 to-white px-3 py-2 text-xs font-semibold text-amber-950">
                 {t.officeOthersNotice}
               </p>

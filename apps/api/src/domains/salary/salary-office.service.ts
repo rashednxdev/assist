@@ -118,6 +118,7 @@ function toRecord(
       office,
       other_office_name: '',
       other_office_name_bn: '',
+      other_office_kind: null,
       label: officeName(office),
       bill_office_name: '',
       bill_office_editable: true,
@@ -129,17 +130,24 @@ function toRecord(
     };
   }
   if (!doc.other_office_name) return null;
+  const otherKind = doc.other_office_kind === 'autonomous' || doc.other_office_kind === 'gob' ? doc.other_office_kind : null;
+  const needsAccounting = salaryNeedsAccountingOffice({
+    is_other: true,
+    office_type: null,
+    other_office_kind: otherKind,
+  });
   return {
     circle,
     office: null,
     other_office_name: doc.other_office_name,
     other_office_name_bn: doc.other_office_name_bn ?? '',
+    other_office_kind: otherKind,
     label: doc.other_office_name,
     bill_office_name: doc.other_office_name_bn ?? '',
     bill_office_editable: Boolean(doc.office_name_editable),
     office_type: null,
-    accounting_office: accounting,
-    needs_accounting_office: !accounting,
+    accounting_office: needsAccounting ? accounting : null,
+    needs_accounting_office: needsAccounting && !accounting,
     office_admin: false,
     updated_at: doc.updated_at.toISOString(),
   };
@@ -176,6 +184,15 @@ export async function saveMySalaryOffice(user: AuthUser, dto: SaveSalaryOfficeDt
     needsAccounting = salaryNeedsAccountingOffice({ is_other: false, office_type: types.get(office.office_type_id) ?? null });
   } else if (!needsBanglaName(current) && !(await getSalaryOfficeSettings()).others_allowed) {
     throw badRequest('Choose your office from the list.');
+  } else {
+    if (dto.other_office_kind !== 'gob' && dto.other_office_kind !== 'autonomous') {
+      throw badRequest('Choose whether the office is GOB or autonomous');
+    }
+    needsAccounting = salaryNeedsAccountingOffice({
+      is_other: true,
+      office_type: null,
+      other_office_kind: dto.other_office_kind,
+    });
   }
   const accountingId = needsAccounting ? dto.accounting_office_id : null;
   if (needsAccounting) {
@@ -190,6 +207,7 @@ export async function saveMySalaryOffice(user: AuthUser, dto: SaveSalaryOfficeDt
         office_id: dto.office_id ? new mongoose.Types.ObjectId(dto.office_id) : null,
         other_office_name: dto.office_id ? '' : dto.other_office_name,
         other_office_name_bn: dto.office_id ? '' : dto.other_office_name_bn,
+        other_office_kind: dto.office_id ? null : dto.other_office_kind,
         accounting_office_id: accountingId ? new mongoose.Types.ObjectId(accountingId) : null,
         updated_at: new Date(),
       },

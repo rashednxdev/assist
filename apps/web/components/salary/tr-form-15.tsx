@@ -651,7 +651,7 @@ export const TrForm15Staff = forwardRef<
               return (
                 <Fragment key={`${g.groupName}-${gi}`}>
                   {multi ? (
-                    <tr className="tr-total">
+                    <tr className="tr-total tr-summary-group">
                       <td colSpan={9} className="tr-staff-group-head">
                         {g.groupName}
                       </td>
@@ -660,7 +660,7 @@ export const TrForm15Staff = forwardRef<
                   {g.staff.map((s, i) => {
                     const r = s.result;
                     return (
-                      <tr key={s.id}>
+                      <tr key={s.id} className="tr-summary-active">
                         <td className="tr-center">{toBanglaDigits(before + i + 1)}</td>
                         <td>
                           <div className="tr-staff-name">{s.name}</div>
@@ -682,7 +682,20 @@ export const TrForm15Staff = forwardRef<
                 </Fragment>
               );
             })}
-            <tr className="tr-total">
+            {Array.from({ length: Math.max(0, 12 - allStaff.length) }, (_, i) => (
+              <tr key={`empty-${i}`} className="tr-summary-empty" aria-hidden>
+                <td className="tr-center">&nbsp;</td>
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+              </tr>
+            ))}
+            <tr className="tr-total tr-summary-active">
               <td colSpan={4}>মোট ({toBanglaDigits(allStaff.length)} জন)</td>
               <td className="tr-num">{taka(sum((r) => r.total_basic_difference + r.total_hra_protection))}</td>
               <td className="tr-num">{taka(sum((r) => r.total_deduction))}</td>

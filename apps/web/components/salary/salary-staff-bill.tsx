@@ -38,6 +38,13 @@ import { SalaryBulkRequestDialog } from '@/components/salary/salary-bill-access'
 import { TrForm15Staff, type TrStaffEntry, type TrStaffOfficeGroup } from '@/components/salary/tr-form-15';
 import { STAMP_DUTY, type TrSignatory } from '@/components/salary/tr-form-parts';
 import { SalaryJoiningDateField } from '@/components/salary/salary-joining-date';
+import {
+  EMPTY_EXCEPTIONAL_DRAFT,
+  SalaryExceptionalIssuesField,
+  exceptionalFromIssues,
+  exceptionalToStaffDto,
+  type ExceptionalDraft,
+} from '@/components/salary/salary-exceptional-issues';
 import { ApiError, apiFetch } from '@/lib/api-client';
 import { preparedStampBn } from '@/lib/bangla-format';
 import { downloadFormPdf, pdfFileName } from '@/lib/salary-pdf';
@@ -59,6 +66,7 @@ interface StaffForm {
   hraArea: HraArea | '';
   extras: ArrearExtras;
   joiningDate: string;
+  exceptional: ExceptionalDraft;
 }
 
 const EMPTY_FORM: StaffForm = {
@@ -71,6 +79,7 @@ const EMPTY_FORM: StaffForm = {
   hraArea: '',
   extras: NO_ARREAR_EXTRAS,
   joiningDate: '',
+  exceptional: EMPTY_EXCEPTIONAL_DRAFT,
 };
 
 function nextStage(grade: PayGrade, oldPay: number, joiningDate: string | null): number {
@@ -91,6 +100,7 @@ function toForm(s: SalaryStaffRecord): StaffForm {
     hraArea: s.hra_area,
     extras: { excess_rr: Boolean(s.excess_rr), excess_puja: Boolean(s.excess_puja) },
     joiningDate: s.joining_date ?? '',
+    exceptional: exceptionalFromIssues(s.exceptional),
   };
 }
 
@@ -143,6 +153,7 @@ function StaffDialog({
       hra_area: v.hraArea || 'other',
       ...v.extras,
       joining_date: askJoining ? v.joiningDate : null,
+      exceptional: exceptionalToStaffDto(v.exceptional),
     });
     setSaving(false);
     if (message) setError(message);
@@ -242,6 +253,11 @@ function StaffDialog({
               onChange={(joiningDate) => setV((p) => ({ ...p, joiningDate }))}
             />
           ) : null}
+          <SalaryExceptionalIssuesField
+            locale={locale}
+            value={v.exceptional}
+            onChange={(exceptional) => setV((p) => ({ ...p, exceptional }))}
+          />
           <fieldset className="space-y-2">
             <legend className="text-sm font-bold text-slate-800">{t.housing}</legend>
             <label className="flex cursor-pointer items-start gap-2 text-sm">

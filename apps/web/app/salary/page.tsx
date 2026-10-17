@@ -31,7 +31,7 @@ import {
   formatTaka,
   PAY_GRADES,
   isFixedPayGrade,
-  arrearJoinStart,
+  arrearPeriodStart,
   arrearMonthOptions,
   asksJoiningDate,
   asksSubstantiveGrade,
@@ -63,6 +63,12 @@ import {
   type ArrearsInputs,
 } from '@/components/salary/salary-arrears-dialog';
 import { SalaryJoiningDateField } from '@/components/salary/salary-joining-date';
+import {
+  EMPTY_EXCEPTIONAL_DRAFT,
+  SalaryExceptionalIssuesField,
+  exceptionalToIssues,
+  type ExceptionalDraft,
+} from '@/components/salary/salary-exceptional-issues';
 import { TrForm15 } from '@/components/salary/tr-form-15';
 import { ApiError, apiFetch } from '@/lib/api-client';
 import { SalaryBillAccessPanel, SalaryBillContacts, SalaryBulkRequestDialog } from '@/components/salary/salary-bill-access';
@@ -366,7 +372,13 @@ function PhaseResultCard({
         ) : null}
 
         {result.increment_skipped && !result.fixed ? (
-          <p className="text-xs text-amber-800">{result.increment_withheld ? t.withheldWarn : t.lastStageWarn}</p>
+          <p className="text-xs text-amber-800">
+            {result.increment_withheld
+              ? result.increment_exempt
+                ? t.exemptWarn
+                : t.withheldWarn
+              : t.lastStageWarn}
+          </p>
         ) : null}
       </CardContent>
     </Card>
@@ -534,6 +546,7 @@ export default function SalaryOn2026Page() {
   const [showStaff, setShowStaff] = useState(false);
   const [arrearMonths, setArrearMonths] = useState<string[]>(() => defaultArrearMonths());
   const [arrearExtras, setArrearExtras] = useState<ArrearExtras>(NO_ARREAR_EXTRAS);
+  const [exceptional, setExceptional] = useState<ExceptionalDraft>(EMPTY_EXCEPTIONAL_DRAFT);
   const [printDialog, setPrintDialog] = useState<PrintTarget | null>(null);
   const [printMode, setPrintMode] = useState<PrintTarget | null>(null);
   const [printInfo, setPrintInfo] = useState<SalaryPrintInfo>(EMPTY_PRINT_INFO);
@@ -561,6 +574,7 @@ export default function SalaryOn2026Page() {
   const stepNo = grade && oldPay > 0 ? NPS_2015[grade].indexOf(oldPay) + 1 : 0;
   const askJoining = grade != null && asksJoiningDate(grade, oldPay);
   const joiningDate = askJoining ? joiningDateInput : '';
+  const exceptionalIssues = useMemo(() => exceptionalToIssues(exceptional), [exceptional]);
   /** The calculators read the area only for house rent, which cannot run until an area is chosen. */
   const calcHraArea: HraArea = hraArea || 'other';
   const allowancesTotal = gross
@@ -577,6 +591,7 @@ export default function SalaryOn2026Page() {
         hra_area: calcHraArea,
         months: arrearMonths,
         joining_date: joiningDate,
+        exceptional: exceptionalIssues,
         ...arrearExtras,
       });
     } catch {
@@ -592,6 +607,7 @@ export default function SalaryOn2026Page() {
     calcHraArea,
     arrearMonths,
     joiningDate,
+    exceptionalIssues,
     arrearExtras,
   ]);
   const trFormNo = arrearResult ? salaryTrFormNo(arrearResult.substantive_grade) : 13;
@@ -640,7 +656,14 @@ export default function SalaryOn2026Page() {
     try {
       // Always compute on the client so Step 5–7 rules match the shipped web bundle.
       // Remote API images can lag after deploy; do not use their results for display.
-      setResults(calculateSalary2026AllPhases({ grade: g, old_pay: oldPay, joining_date: joiningDate }));
+      setResults(
+        calculateSalary2026AllPhases({
+          grade: g,
+          old_pay: oldPay,
+          joining_date: joiningDate,
+          increment_exempt: Boolean(exceptionalIssues?.increment_exempt),
+        }),
+      );
       setGross(
         calculateEmployeeGross({
           grade: g,
@@ -688,11 +711,12 @@ export default function SalaryOn2026Page() {
 
   async function applyArrearsInputs(v: ArrearsInputs): Promise<string | null> {
     if (!v.grade) return t.gradeRequired;
-    const join = arrearJoinStart(v.grade, v.oldPay, v.joiningDate);
+    const issues = exceptionalToIssues(v.exceptional);
+    const start = arrearPeriodStart(v.grade, v.oldPay, v.joiningDate, issues?.arrear_start_date);
     let months = arrearMonths;
-    if (join) {
-      months = arrearMonths.filter((m) => m >= join.month);
-      if (months.length === 0) months = arrearMonthOptions().filter((m) => m >= join.month);
+    if (start) {
+      months = arrearMonths.filter((m) => m >= start.month);
+      if (months.length === 0) months = arrearMonthOptions().filter((m) => m >= start.month);
       if (months.length === 0) return t.joiningFuture;
     }
     let netTotal: number;
@@ -705,6 +729,7 @@ export default function SalaryOn2026Page() {
         hra_area: v.hraArea || 'other',
         months,
         joining_date: v.joiningDate,
+        exceptional: issues,
       }).total_net_arrear;
     } catch (err) {
       return err instanceof Error ? err.message : t.calcError;
@@ -734,7 +759,8 @@ export default function SalaryOn2026Page() {
       v.housingStatus !== housingStatus ||
       v.hraArea !== hraArea ||
       v.substantiveGrade !== substantiveGrade ||
-      v.joiningDate !== joiningDate;
+      v.joiningDate !== joiningDate ||
+      JSON.stringify(v.exceptional) !== JSON.stringify(exceptional);
     if (changed) {
       setResults(null);
       setGross(null);
@@ -746,6 +772,7 @@ export default function SalaryOn2026Page() {
     setHraArea(v.hraArea);
     setSubstantiveGrade(v.substantiveGrade);
     if (v.joiningDate) setJoiningDateInput(v.joiningDate);
+    setExceptional(v.exceptional);
     setArrearMonths(months);
     setArrearsDialog(false);
     setError('');
@@ -1065,6 +1092,16 @@ export default function SalaryOn2026Page() {
                   />
                 </div>
               ) : null}
+              <div className="pt-2">
+                <SalaryExceptionalIssuesField
+                  locale={locale}
+                  value={exceptional}
+                  onChange={(next) => {
+                    setExceptional(next);
+                    resetResults();
+                  }}
+                />
+              </div>
             </div>
 
             <div className="space-y-4 rounded-xl border border-teal-200 bg-teal-50/40 p-4">
@@ -1353,6 +1390,7 @@ export default function SalaryOn2026Page() {
               oldPay={oldPay}
               substantiveGrade={substantiveGrade}
               joiningDate={joiningDate}
+              exceptional={exceptionalIssues}
               housingStatus={housingStatus}
               hraArea={calcHraArea}
               months={arrearMonths}
@@ -1487,7 +1525,15 @@ export default function SalaryOn2026Page() {
       {arrearsDialog ? (
         <SalaryArrearsDialog
           locale={locale}
-          initial={{ grade, oldPay, housingStatus, hraArea, substantiveGrade, joiningDate: joiningDateInput }}
+          initial={{
+            grade,
+            oldPay,
+            housingStatus,
+            hraArea,
+            substantiveGrade,
+            joiningDate: joiningDateInput,
+            exceptional,
+          }}
           calcNote={calcNote()}
           onCancel={() => setArrearsDialog(false)}
           onConfirm={applyArrearsInputs}

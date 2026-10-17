@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import { Download, Loader2 } from 'lucide-react';
 import {
-  arrearJoinStart,
+  arrearPeriodStart,
   arrearMonthOptions,
   calculateSalaryArrears,
   defaultArrearMonths,
@@ -14,6 +14,7 @@ import {
   type PayGrade,
   type SalaryArrearMonthRow,
   type SalaryArrearResult,
+  type SalaryExceptionalIssues,
   type SubstantiveGrade,
 } from '@ibas/shared-types';
 import { Card, CardContent } from '@/components/ui/card';
@@ -348,6 +349,7 @@ export function SalaryArrearsBill({
   oldPay,
   substantiveGrade,
   joiningDate,
+  exceptional = null,
   housingStatus,
   hraArea,
   months,
@@ -365,6 +367,7 @@ export function SalaryArrearsBill({
   oldPay: number;
   substantiveGrade: SubstantiveGrade | null;
   joiningDate: string;
+  exceptional?: SalaryExceptionalIssues | null;
   housingStatus: HousingStatus;
   hraArea: HraArea;
   months: string[];
@@ -396,6 +399,7 @@ export function SalaryArrearsBill({
           hra_area: hraArea,
           months,
           joining_date: joiningDate,
+          exceptional,
           ...extras,
         }),
         error: '',
@@ -403,9 +407,9 @@ export function SalaryArrearsBill({
     } catch (err) {
       return { result: null, error: err instanceof Error ? err.message : t.calcError };
     }
-  }, [grade, oldPay, substantiveGrade, joiningDate, housingStatus, hraArea, months, extras, t]);
+  }, [grade, oldPay, substantiveGrade, joiningDate, exceptional, housingStatus, hraArea, months, extras, t]);
   const oneTime = result ? oneTimeDeductions(t, amt, result) : [];
-  const fromMonth = arrearJoinStart(grade, oldPay, joiningDate)?.month;
+  const fromMonth = arrearPeriodStart(grade, oldPay, joiningDate, exceptional?.arrear_start_date)?.month;
 
   return (
     <Card className="overflow-hidden border border-indigo-200 shadow-sm">
@@ -435,10 +439,24 @@ export function SalaryArrearsBill({
                   <BasisRow label={t.basisSubstantive} value={num(result.substantive_grade)} />
                 ) : null}
                 {result.increment_withheld ? (
-                  <BasisRow label={t.basisIncrement} value={t.basisNoIncrement} />
+                  <BasisRow
+                    label={t.basisIncrement}
+                    value={result.increment_exempt ? t.basisNoIncrementExempt : t.basisNoIncrement}
+                  />
+                ) : null}
+                {result.pay_change ? (
+                  <BasisRow
+                    label={t.basisPayChange}
+                    value={`${num(result.pay_change.effective_date.split('-').reverse().join('-'))} · ${t.grade} ${num(result.pay_change.grade)} · ৳ ${amt(result.pay_change.old_pay)}`}
+                  />
                 ) : null}
                 {result.arrear_from_date ? (
-                  <BasisRow label={t.basisJoining} value={num(isoToDmy(result.arrear_from_date))} />
+                  <BasisRow
+                    label={
+                      result.increment_withheld && !result.increment_exempt ? t.basisJoining : t.basisArrearStart
+                    }
+                    value={num(isoToDmy(result.arrear_from_date))}
+                  />
                 ) : null}
                 <BasisRow label={t.basisDrawn} value={tk(result.next_step)} />
                 <BasisRow

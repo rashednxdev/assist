@@ -1,6 +1,18 @@
 import mongoose, { Schema, type Document, type Types } from 'mongoose';
 import type { HousingStatus, HraArea } from '@ibas/shared-types';
 
+export interface ISalaryStaffPayChange {
+  effective_date: string;
+  grade: number;
+  old_pay: number;
+}
+
+export interface ISalaryStaffExceptional {
+  increment_exempt: boolean;
+  pay_change: ISalaryStaffPayChange | null;
+  arrear_start_date: string | null;
+}
+
 /** One employee in a user's office staff arrear bill. Only the inputs are stored; arrears are recalculated. */
 export interface ISalaryStaff extends Document {
   user_id: Types.ObjectId;
@@ -17,11 +29,30 @@ export interface ISalaryStaff extends Document {
   staff_office_id: Types.ObjectId | null;
   /** YYYY-MM-DD; set for the initial basic of Grade 7–20. */
   joining_date: string | null;
+  exceptional: ISalaryStaffExceptional;
   /** Soft-removed; still counted toward limits. Null = active. */
   trashed_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
+
+const payChangeSchema = new Schema<ISalaryStaffPayChange>(
+  {
+    effective_date: { type: String, required: true },
+    grade: { type: Number, required: true, min: 1, max: 20 },
+    old_pay: { type: Number, required: true, min: 1 },
+  },
+  { _id: false },
+);
+
+const exceptionalSchema = new Schema<ISalaryStaffExceptional>(
+  {
+    increment_exempt: { type: Boolean, default: false },
+    pay_change: { type: payChangeSchema, default: null },
+    arrear_start_date: { type: String, default: null },
+  },
+  { _id: false },
+);
 
 const schema = new Schema<ISalaryStaff>(
   {
@@ -37,6 +68,10 @@ const schema = new Schema<ISalaryStaff>(
     excess_puja: { type: Boolean, default: false },
     staff_office_id: { type: Schema.Types.ObjectId, ref: 'SalaryStaffOffice', default: null },
     joining_date: { type: String, default: null },
+    exceptional: {
+      type: exceptionalSchema,
+      default: () => ({ increment_exempt: false, pay_change: null, arrear_start_date: null }),
+    },
     trashed_at: { type: Date, default: null },
     created_at: { type: Date, default: Date.now },
     updated_at: { type: Date, default: Date.now },

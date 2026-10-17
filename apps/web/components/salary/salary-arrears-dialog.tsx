@@ -21,6 +21,10 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { HRA_AREAS, hraAreaText, localNum, salaryCopy, type SalaryLocale } from '@/lib/salary-i18n';
 import { SalaryJoiningDateField } from '@/components/salary/salary-joining-date';
+import {
+  SalaryExceptionalIssuesField,
+  type ExceptionalDraft,
+} from '@/components/salary/salary-exceptional-issues';
 
 export interface ArrearsInputs {
   grade: PayGrade | null;
@@ -32,6 +36,7 @@ export interface ArrearsInputs {
   substantiveGrade: SubstantiveGrade | null;
   /** YYYY-MM-DD for the initial basic of Grade 7–20, otherwise ''. */
   joiningDate: string;
+  exceptional: ExceptionalDraft;
 }
 
 const selectClass =
@@ -192,6 +197,15 @@ export function SalaryArrearsDialog({
               }}
             />
           ) : null}
+
+          <SalaryExceptionalIssuesField
+            locale={locale}
+            value={v.exceptional}
+            onChange={(exceptional) => {
+              setError('');
+              setV((prev) => ({ ...prev, exceptional }));
+            }}
+          />
 
           <fieldset className="space-y-2">
             <legend className="text-sm font-bold text-slate-800">{t.housing}</legend>

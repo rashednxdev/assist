@@ -233,12 +233,21 @@ export function TrAttachment({
           {result.increment_withheld ? (
             <tr>
               <td>{t.basisIncrement}</td>
-              <td>{t.basisNoIncrement}</td>
+              <td>{result.increment_exempt ? t.basisNoIncrementExempt : t.basisNoIncrement}</td>
+            </tr>
+          ) : null}
+          {result.pay_change ? (
+            <tr>
+              <td>{t.basisPayChange}</td>
+              <td>
+                {toBanglaDigits(isoToDmy(result.pay_change.effective_date))} · {t.grade}{' '}
+                {toBanglaDigits(result.pay_change.grade)} · ৳ {taka(result.pay_change.old_pay)}
+              </td>
             </tr>
           ) : null}
           {result.arrear_from_date ? (
             <tr>
-              <td>{t.basisJoining}</td>
+              <td>{result.increment_withheld && !result.increment_exempt ? t.basisJoining : t.basisArrearStart}</td>
               <td>{toBanglaDigits(isoToDmy(result.arrear_from_date))}</td>
             </tr>
           ) : null}

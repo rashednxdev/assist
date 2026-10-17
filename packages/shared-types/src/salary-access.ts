@@ -36,9 +36,22 @@ function typeIn(list: readonly string[], officeType: string | null | undefined):
   return list.includes((officeType ?? '').trim().toUpperCase());
 }
 
-/** Others offices and listed offices that are not accounts offices must name their bill-passing office. */
-export function salaryNeedsAccountingOffice(office: { is_other: boolean; office_type: string | null }): boolean {
-  return office.is_other || !typeIn(SALARY_ACCOUNTS_OFFICE_TYPES, office.office_type);
+/** Others office nature: GOB must name a bill-passing office; autonomous may skip it. */
+export const SALARY_OTHER_OFFICE_KINDS = ['gob', 'autonomous'] as const;
+export type SalaryOtherOfficeKind = (typeof SALARY_OTHER_OFFICE_KINDS)[number];
+
+/**
+ * Listed non-accounts offices and GOB “Others” must name a bill-passing office.
+ * Autonomous “Others” do not.
+ */
+export function salaryNeedsAccountingOffice(office: {
+  is_other: boolean;
+  office_type: string | null;
+  /** For Others only; null/legacy Others are treated as GOB (accounts office required). */
+  other_office_kind?: SalaryOtherOfficeKind | null;
+}): boolean {
+  if (office.is_other) return office.other_office_kind !== 'autonomous';
+  return !typeIn(SALARY_ACCOUNTS_OFFICE_TYPES, office.office_type);
 }
 
 export function isSalaryBillPassingType(officeType: string | null | undefined): boolean {
@@ -123,20 +136,32 @@ export const saveSalaryOfficeSchema = z
     office_id: officeId.nullable().default(null),
     other_office_name: otherNameEn,
     other_office_name_bn: otherNameBn,
-    /** Bill-passing office; required unless the user's own office is an accounts office. */
+    /** Required for Others: সরকারি (GOB) or স্বায়ত্তশাসিত. */
+    other_office_kind: z.enum(SALARY_OTHER_OFFICE_KINDS).nullable().default(null),
+    /** Bill-passing office; required for GOB Others and listed non-accounts offices. */
     accounting_office_id: officeId.nullable().default(null),
   })
   .superRefine((v, ctx) => {
-    if (!v.office_id && !v.accounting_office_id) {
-      ctx.addIssue({ code: 'custom', path: ['accounting_office_id'], message: 'Select your bill-passing office' });
-    }
     if (v.office_id) {
       if (!v.circle_id) ctx.addIssue({ code: 'custom', path: ['circle_id'], message: 'Select your circle' });
       if (v.other_office_name || v.other_office_name_bn) {
         ctx.addIssue({ code: 'custom', path: ['other_office_name'], message: 'Choose a listed office or Others, not both' });
       }
+      if (v.other_office_kind) {
+        ctx.addIssue({ code: 'custom', path: ['other_office_kind'], message: 'Office kind applies only to Others' });
+      }
     } else {
       checkOtherNames(v, ctx);
+      if (!v.other_office_kind) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['other_office_kind'],
+          message: 'Choose whether the office is GOB or autonomous',
+        });
+      }
+      if (v.other_office_kind !== 'autonomous' && !v.accounting_office_id) {
+        ctx.addIssue({ code: 'custom', path: ['accounting_office_id'], message: 'Select your bill-passing office' });
+      }
     }
   });
 export type SaveSalaryOfficeDto = z.infer<typeof saveSalaryOfficeSchema>;
@@ -253,6 +278,8 @@ export interface SalaryOfficeRecord {
   office: OfficeOption | null;
   other_office_name: string;
   other_office_name_bn: string;
+  /** For Others: GOB or autonomous; null for listed offices. */
+  other_office_kind: SalaryOtherOfficeKind | null;
   /** Display name: the listed office or the typed English name. */
   label: string;
   /** Default office name on the bill forms: the Bangla name for Others, otherwise empty. */
@@ -540,6 +567,24 @@ function levenshtein(a: string, b: string): number {
 
 const arrearMonth = z.string().regex(/^\d{4}-\d{2}$/);
 
+const staffPayChangeSchema = z
+  .object({
+    effective_date: z.string(),
+    grade: z.number().int().min(1).max(20),
+    old_pay: z.number().int().min(1),
+  })
+  .nullable()
+  .default(null);
+
+/** Exceptional fixation / arrears overrides for one staff employee (admin of their own bill). */
+export const salaryStaffExceptionalSchema = z
+  .object({
+    increment_exempt: z.boolean().default(false),
+    pay_change: staffPayChangeSchema,
+    arrear_start_date: z.string().nullable().default(null),
+  })
+  .default({ increment_exempt: false, pay_change: null, arrear_start_date: null });
+
 /** One office staff employee; only these details are stored, the arrears are always recalculated. */
 export const salaryStaffSchema = z
   .object({
@@ -563,6 +608,7 @@ export const salaryStaffSchema = z
      * 01-07-2026 increment; after 01-07-2026 the arrears start from it.
      */
     joining_date: z.string().nullable().default(null),
+    exceptional: salaryStaffExceptionalSchema,
   })
   .superRefine((v, ctx) => {
     if (!NPS_2015[v.grade as PayGrade]?.includes(v.old_pay)) {
@@ -570,6 +616,40 @@ export const salaryStaffSchema = z
     }
     if (asksJoiningDate(v.grade, v.old_pay) && !isIsoDate(v.joining_date)) {
       ctx.addIssue({ code: 'custom', path: ['joining_date'], message: 'Enter the joining date of service' });
+    }
+    const ex = v.exceptional;
+    if (ex.arrear_start_date != null && ex.arrear_start_date !== '') {
+      if (!isIsoDate(ex.arrear_start_date)) {
+        ctx.addIssue({ code: 'custom', path: ['exceptional', 'arrear_start_date'], message: 'Enter a valid arrears start date' });
+      } else if (ex.arrear_start_date <= '2026-07-01') {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['exceptional', 'arrear_start_date'],
+          message: 'Custom arrears start must be after 01-07-2026',
+        });
+      }
+    }
+    if (ex.pay_change) {
+      if (!isIsoDate(ex.pay_change.effective_date)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['exceptional', 'pay_change', 'effective_date'],
+          message: 'Enter the pay-change effective date',
+        });
+      } else if (ex.pay_change.effective_date < '2026-07-01') {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['exceptional', 'pay_change', 'effective_date'],
+          message: 'Pay change must be on or after 01-07-2026',
+        });
+      }
+      if (!NPS_2015[ex.pay_change.grade as PayGrade]?.includes(ex.pay_change.old_pay)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['exceptional', 'pay_change', 'old_pay'],
+          message: 'Choose a basic from the pay-change grade scale',
+        });
+      }
     }
   });
 export type SalaryStaffDto = z.infer<typeof salaryStaffSchema>;

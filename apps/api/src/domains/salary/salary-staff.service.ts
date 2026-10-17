@@ -16,6 +16,7 @@ import { claimBillForStaffAdd, recordStaffCalc } from './salary-access.service.j
 import { isPlatformAdmin } from './salary-office.service.js';
 
 function toRecord(doc: ISalaryStaff): SalaryStaffRecord {
+  const ex = doc.exceptional;
   return {
     id: String(doc._id),
     name: doc.name,
@@ -29,6 +30,17 @@ function toRecord(doc: ISalaryStaff): SalaryStaffRecord {
     excess_puja: Boolean(doc.excess_puja),
     staff_office_id: doc.staff_office_id ? String(doc.staff_office_id) : null,
     joining_date: doc.joining_date ?? null,
+    exceptional: {
+      increment_exempt: Boolean(ex?.increment_exempt),
+      pay_change: ex?.pay_change
+        ? {
+            effective_date: ex.pay_change.effective_date,
+            grade: ex.pay_change.grade,
+            old_pay: ex.pay_change.old_pay,
+          }
+        : null,
+      arrear_start_date: ex?.arrear_start_date ?? null,
+    },
     trashed: Boolean(doc.trashed_at),
     created_at: doc.created_at.toISOString(),
     updated_at: doc.updated_at.toISOString(),
@@ -45,7 +57,12 @@ function toOfficeRecord(doc: ISalaryStaffOffice): SalaryStaffOfficeRecord {
 }
 
 /** The details that change an employee's arrears; editing only these counts as a new calculation. */
-function payKey(s: Pick<SalaryStaffDto, 'grade' | 'old_pay' | 'housing_status' | 'hra_area' | 'excess_rr' | 'excess_puja' | 'joining_date'>): string {
+function payKey(
+  s: Pick<
+    SalaryStaffDto,
+    'grade' | 'old_pay' | 'housing_status' | 'hra_area' | 'excess_rr' | 'excess_puja' | 'joining_date' | 'exceptional'
+  >,
+): string {
   return JSON.stringify([
     s.grade,
     s.old_pay,
@@ -54,6 +71,7 @@ function payKey(s: Pick<SalaryStaffDto, 'grade' | 'old_pay' | 'housing_status' |
     Boolean(s.excess_rr),
     Boolean(s.excess_puja),
     s.joining_date ?? null,
+    s.exceptional ?? null,
   ]);
 }
 

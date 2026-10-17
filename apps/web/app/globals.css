@@ -815,14 +815,26 @@ body {
   margin: 8mm 10mm 5mm;
 }
 
+/* Attachment + staff summary sheet: A4, 0.5in margins (Form 13/15 main pages unchanged). */
+@page tr-attach {
+  size: A4;
+  margin: 0.5in;
+}
+
+.salary-tr-form .tr-attach-page {
+  page: tr-attach;
+  font-size: 10pt;
+  line-height: 1.35;
+}
+
 .salary-tr-form .tr-attach-kicker {
-  font-size: 8.5pt;
+  font-size: 9.5pt;
   font-weight: 600;
 }
 
 .salary-tr-form .tr-attach-title {
   margin: 1mm 0 3mm;
-  font-size: 12pt;
+  font-size: 13pt;
   font-weight: 700;
 }
 
@@ -842,14 +854,14 @@ body {
 
 .salary-tr-form .tr-attach-head {
   margin: 4mm 0 1.5mm;
-  font-size: 10pt;
+  font-size: 11pt;
   font-weight: 700;
 }
 
 .salary-tr-form .tr-month-blocks .salary-bill-month {
   break-inside: avoid;
   page-break-inside: avoid;
-  font-size: 8.5pt;
+  font-size: 9.5pt;
 }
 
 .salary-tr-form .tr-month-blocks .salary-bill-month + .salary-bill-month {
@@ -863,11 +875,11 @@ body {
 }
 
 .salary-tr-form .tr-month-blocks .text-sm {
-  font-size: 8.5pt;
+  font-size: 9.5pt;
 }
 
 .salary-tr-form .tr-month-blocks .text-xs {
-  font-size: 7.5pt;
+  font-size: 8.5pt;
 }
 
 .salary-tr-form .tr-summary {
@@ -876,7 +888,7 @@ body {
 }
 
 .salary-tr-form .tr-summary th {
-  font-size: 8pt;
+  font-size: 9pt;
   font-weight: 700;
 }
 
@@ -887,7 +899,7 @@ body {
 .salary-tr-form .tr-math {
   width: 62%;
   border-collapse: collapse;
-  font-size: 10pt;
+  font-size: 11pt;
   font-weight: 700;
   break-inside: avoid;
   page-break-inside: avoid;
@@ -913,16 +925,36 @@ body {
   margin-top: 3mm;
   break-inside: auto;
   page-break-inside: auto;
+  table-layout: fixed;
+  width: 100%;
 }
 
-.salary-tr-form .tr-staff-summary th,
-.salary-tr-form .tr-staff-summary td {
-  font-size: 8pt;
+.salary-tr-form .tr-staff-summary th {
+  font-size: 9pt;
 }
 
 .salary-tr-form .tr-staff-summary tr {
   break-inside: avoid;
   page-break-inside: avoid;
+}
+
+/* Unused placeholder rows: compact. Active staff / total rows: taller + ~25% larger type. */
+.salary-tr-form .tr-staff-summary tr.tr-summary-empty td {
+  height: 3.2mm;
+  padding: 0.15mm 0.4mm;
+  font-size: 6pt;
+  line-height: 1;
+}
+
+.salary-tr-form .tr-staff-summary tr.tr-summary-active td {
+  height: 7.2mm;
+  padding: 1.2mm 0.8mm;
+  font-size: 10pt;
+  line-height: 1.25;
+}
+
+.salary-tr-form .tr-staff-summary tr.tr-summary-active .tr-math-sub {
+  font-size: 8pt;
 }
 
 .salary-tr-form .tr-staff-summary .tr-center {
@@ -1027,12 +1059,12 @@ body {
 
 .salary-tr-form .tr-math .tr-math-net td {
   border-top: 0.8pt solid #000;
-  font-size: 11pt;
+  font-size: 12pt;
 }
 
 .salary-tr-form .tr-attach-total {
   margin-top: 4mm;
-  font-size: 10pt;
+  font-size: 11pt;
   font-weight: 700;
 }
 
@@ -1088,21 +1120,28 @@ body {
 
 .salary-tr-form.tr-capture .tr-page.tr-attach-page {
   position: relative;
-  padding-bottom: 16mm;
+  /* 0.5in = 12.7mm; extra bottom room for the annexure footer. */
+  padding: 0.5in;
+  padding-bottom: 18mm;
 }
 
 .salary-tr-form.tr-capture .tr-attach-page > .tr-attach-footer {
   position: absolute;
-  left: 10mm;
-  right: 10mm;
+  left: 0.5in;
+  right: 0.5in;
   bottom: 4mm;
   margin-top: 0;
 }
 
 /* `.tr-fit-body` is scaled by the PDF export (salary-pdf.ts) to fill the space inside this padding. */
-.salary-tr-form.tr-capture .tr-page.tr-autofit {
+.salary-tr-form.tr-capture .tr-page.tr-autofit:not(.tr-attach-page) {
   padding-left: 10mm;
   padding-right: 10mm;
+}
+
+.salary-tr-form.tr-capture .tr-page.tr-attach-page.tr-autofit {
+  padding-left: 0.5in;
+  padding-right: 0.5in;
 }
 
 /* T.R. Form 15: instructions column beside the code table */

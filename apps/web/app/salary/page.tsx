@@ -1557,8 +1557,7 @@ export default function SalaryOn2026Page() {
       </footer>
 
       <p className="salary-print-footer hidden">
-        {t.printFooter}
-        <span className="block font-semibold text-[#15803d]">Calculate By: www.proassistbd.com</span>
+        <span className="font-semibold">Calculate By: www.proassistbd.com</span>
       </p>
 
       {arrearResult ? (

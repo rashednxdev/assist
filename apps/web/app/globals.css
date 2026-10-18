@@ -241,9 +241,33 @@ body {
     border-top-color: #000 !important;
   }
 
-  .salary-print-mode-salary .salary-print-footer .text-\[\#15803d\],
   .salary-print-mode-salary .salary-print-footer [class*='text-'] {
     color: #000 !important;
+  }
+
+  /* Plain hero in salary PDF — no gradient / coloured badge fills */
+  .salary-print-mode-salary .salary-print-hero {
+    background: #fff !important;
+    background-image: none !important;
+    border-bottom: 1px solid #000 !important;
+    color: #000 !important;
+  }
+
+  .salary-print-mode-salary .salary-print-hero h1,
+  .salary-print-mode-salary .salary-print-hero p,
+  .salary-print-mode-salary .salary-print-hero [class*='text-'] {
+    color: #000 !important;
+    background: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+  }
+
+  .salary-print-mode-salary .salary-print-hero [class*='bg-'],
+  .salary-print-mode-salary .salary-print-hero [class*='ring-'] {
+    background: #fff !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    border: none !important;
   }
 
   .salary-print-root .salary-print-hide,

@@ -229,10 +229,16 @@ export function TrAttachment({
                 : ''}
             </td>
           </tr>
-          {result.substantive_grade !== result.grade ? (
+          {result.substantive_grade !== result.grade || result.substantive_grade_after != null ? (
             <tr>
               <td>{t.basisSubstantive}</td>
               <td>{toBanglaDigits(result.substantive_grade)}</td>
+            </tr>
+          ) : null}
+          {result.substantive_grade_after != null ? (
+            <tr>
+              <td>{t.basisSubstantiveAfter}</td>
+              <td>{toBanglaDigits(result.substantive_grade_after)}</td>
             </tr>
           ) : null}
           {result.increment_withheld ? (
@@ -293,6 +299,18 @@ export function TrAttachment({
               {result.special_rate_fixed ? t.arrBandStaff : result.substantive_grade >= 10 ? t.arrBandHigh : t.arrBandLow})
             </td>
           </tr>
+          {result.special_rate_percent_after != null &&
+          result.substantive_grade_after != null &&
+          !result.special_rate_fixed &&
+          result.special_rate_percent_after !== result.special_rate_percent ? (
+            <tr>
+              <td>{t.basisSpecialAfter}</td>
+              <td>
+                {toBanglaDigits(result.special_rate_percent_after)}% (
+                {result.substantive_grade_after >= 10 ? t.arrBandHigh : t.arrBandLow})
+              </td>
+            </tr>
+          ) : null}
           <tr>
             <td>{t.basisHousing}</td>
             <td>{result.hra_eligible ? hraAreaText('bn', hraArea) : t.govtHousing}</td>

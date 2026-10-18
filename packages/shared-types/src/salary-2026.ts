@@ -273,6 +273,11 @@ export interface SalaryPayChange {
   effective_date: string;
   grade: number;
   old_pay: number;
+  /**
+   * Substantive grade of the working post after this pay change.
+   * Used for post-promotion special allowance and T.R. Form; pre-promotion uses the main `substantive_grade`.
+   */
+  substantive_grade?: number | null;
 }
 
 /** Optional exceptional inputs that alter fixation and arrears (web “Exceptional issues” dialog). */
@@ -300,6 +305,13 @@ export interface Salary2026Input {
   joining_date?: string | null;
   /** When true, Step 6 (01-07-2026 increment) is excluded regardless of joining date. */
   increment_exempt?: boolean;
+  /**
+   * Promotion / demotion / higher scale from the exceptional-issues dialog.
+   * New basic = fixation new_pay + (matched 2026 step − origin fixed 01-07-2026) × phase rate.
+   */
+  pay_change?: SalaryPayChange | null;
+  /** Substantive grade for the promotion % rate (defaults like arrears). */
+  substantive_grade?: number | null;
 }
 
 export interface Salary2026StepRow {
@@ -336,6 +348,19 @@ export interface Salary2026Result {
   basic_on_2026_07?: number;
   /** Stage-3 only: basic as on 01-07-2027 = next stage after 01-07-2026 basic (or same if last). */
   basic_on_2027_07?: number;
+  /** Promotion / higher-scale increase added to this phase’s new basic (0 when none). */
+  pay_change_increase: number;
+  /** Effective date of promotion / higher scale (YYYY-MM-DD), or null. */
+  pay_change_effective_date: string | null;
+  /**
+   * New basic before the promotion / higher-scale date (fixation only).
+   * Null when there is no pay change. After that date, use `new_pay`.
+   */
+  new_pay_before_pay_change: number | null;
+  /** Stage-3: 01-07-2026 basic before the promotion overlay. */
+  basic_on_2026_07_before_pay_change?: number | null;
+  /** Stage-3: 01-07-2027 basic before the promotion overlay. */
+  basic_on_2027_07_before_pay_change?: number | null;
   steps: Salary2026StepRow[];
 }
 
@@ -400,6 +425,9 @@ function buildPercentageScaleResult(opts: {
     increment_withheld: withheld,
     increment_exempt: incrementExempt,
     used_next_stage_for_step5: !isLast,
+    pay_change_increase: 0,
+    pay_change_effective_date: null,
+    new_pay_before_pay_change: null,
     steps: [
       {
         step: 1,
@@ -438,7 +466,9 @@ function buildPercentageScaleResult(opts: {
         calculation: `${formatTaka(nextStageAmount)} − ${formatTaka(step4)}`,
         value: step6,
         note: withheld
-          ? 'Joined on or after 02-01-2026 — no increment (Step 6 = 0)'
+          ? incrementExempt
+            ? 'Exceptional exemption — no increment (Step 6 = 0)'
+            : 'Joined on or after 02-01-2026 — no increment (Step 6 = 0)'
           : isLast
             ? 'Last stage — no next stage (Step 6 = 0)'
             : `Next stage ${formatTaka(nextStageAmount)} − Step 4`,
@@ -453,7 +483,8 @@ function buildPercentageScaleResult(opts: {
   };
 }
 
-export function calculateSalary2026(input: Salary2026Input): Salary2026Result {
+/** Core fixation only (no promotion overlay). */
+function calculateSalary2026Base(input: Salary2026Input): Salary2026Result {
   const grade = input.grade;
   const phase: SalaryPhase = input.phase ?? '2026-07-01';
   if (!isPayGrade(grade)) throw new Error('Grade must be between 1 and 20');
@@ -493,8 +524,11 @@ export function calculateSalary2026(input: Salary2026Input): Salary2026Result {
         increment: 0,
         increment_skipped: true,
         increment_withheld: false,
-        increment_exempt: false,
+        increment_exempt: Boolean(input.increment_exempt),
         used_next_stage_for_step5: false,
+        pay_change_increase: 0,
+        pay_change_effective_date: null,
+        new_pay_before_pay_change: null,
         basic_on_2026_07: newFixed,
         basic_on_2027_07: newFixed,
         steps: [
@@ -538,8 +572,11 @@ export function calculateSalary2026(input: Salary2026Input): Salary2026Result {
       increment: 0,
       increment_skipped: true,
       increment_withheld: false,
-      increment_exempt: false,
+      increment_exempt: Boolean(input.increment_exempt),
       used_next_stage_for_step5: false,
+      pay_change_increase: 0,
+      pay_change_effective_date: null,
+      new_pay_before_pay_change: null,
       steps: [
         {
           step: 5,
@@ -592,6 +629,9 @@ export function calculateSalary2026(input: Salary2026Input): Salary2026Result {
       increment_withheld: withheld,
       increment_exempt: Boolean(input.increment_exempt),
       used_next_stage_for_step5: !isLast,
+      pay_change_increase: 0,
+      pay_change_effective_date: null,
+      new_pay_before_pay_change: null,
       basic_on_2026_07: nextAfterMatched,
       basic_on_2027_07: nextAfter2026Basic,
       steps: [
@@ -660,6 +700,158 @@ export function calculateSalary2026(input: Salary2026Input): Salary2026Result {
     withheld,
     incrementExempt: Boolean(input.increment_exempt),
   });
+}
+
+/** YYYY-MM-DD → DD-MM-YYYY for step notes. */
+function payChangeDateLabel(iso: string): string {
+  return iso.split('-').reverse().join('-');
+}
+
+/** Which conversion phase contains this calendar date. */
+export function salaryPhaseForDate(iso: string): SalaryPhase {
+  if (iso >= '2027-07-01') return '2027-07-01';
+  if (iso >= '2027-01-01') return '2027-01-01';
+  return '2026-07-01';
+}
+
+/**
+ * After fixation: add promotion / higher-scale increase
+ * (matched NPS 2026 − origin fixed 01-07-2026) × phase rate on the substantive grade.
+ *
+ * - Phase that contains the effective date → Before + After basics
+ * - Earlier phases → fixation only (no promo overlay)
+ * - Later phases → single revised (after) basic only
+ */
+function applyPayChangeToSalaryResult(result: Salary2026Result, input: Salary2026Input): Salary2026Result {
+  const payChange = assertPayChange(input.pay_change);
+  if (!payChange) return result;
+
+  const changePhase = salaryPhaseForDate(payChange.effective_date);
+  const resultIdx = SALARY_PHASES.indexOf(result.phase);
+  const changeIdx = SALARY_PHASES.indexOf(changePhase);
+
+  /** Phases before the promotion date: keep fixation; no before/after pair. */
+  if (resultIdx < changeIdx) {
+    return {
+      ...result,
+      pay_change_effective_date: payChange.effective_date,
+      pay_change_increase: 0,
+      new_pay_before_pay_change: null,
+    };
+  }
+
+  /** Promotion % uses the post-promotion substantive grade (selected with the pay change). */
+  const substantive = effectiveSubstantiveGrade(
+    payChange.grade as PayGrade,
+    payChange.substantive_grade ?? input.substantive_grade,
+  );
+  const originFixed = originFixedBasic2026(
+    result.grade,
+    result.old_pay,
+    input.joining_date,
+    Boolean(input.increment_exempt),
+  );
+  const matched = promotedMatchedBasic2026(originFixed, payChange.grade as PayGrade);
+  const scaleDiff = matched - originFixed;
+  const ratePct = Math.round(promotionIncreaseRate(substantive, result.phase) * 100);
+  const fromDate = payChangeDateLabel(payChange.effective_date);
+  const note = `Matched NPS 2026 ${formatTaka(matched)} − fixed 01-07-2026 ${formatTaka(originFixed)} (Grade ${payChange.grade})`;
+  /** Only the phase that contains the effective date shows Before + After. */
+  const showBeforeAfter = resultIdx === changeIdx;
+
+  if (result.phase === '2027-07-01') {
+    const before2026 = result.basic_on_2026_07 ?? result.new_pay;
+    const before2027 = result.basic_on_2027_07 ?? result.new_pay;
+    const inc2026 = toPaisa(scaleDiff * promotionIncreaseRate(substantive, '2026-07-01'));
+    const inc2027 = toPaisa(scaleDiff * promotionIncreaseRate(substantive, result.phase));
+    const after2026 = toPaisa(before2026 + inc2026);
+    const after2027 = toPaisa(before2027 + inc2027);
+    const n = result.steps.length;
+    return {
+      ...result,
+      new_pay: after2027,
+      basic_on_2026_07: after2026,
+      basic_on_2027_07: after2027,
+      pay_change_increase: inc2027,
+      pay_change_effective_date: payChange.effective_date,
+      new_pay_before_pay_change: showBeforeAfter ? before2027 : null,
+      basic_on_2026_07_before_pay_change: showBeforeAfter ? before2026 : null,
+      basic_on_2027_07_before_pay_change: showBeforeAfter ? before2027 : null,
+      steps: showBeforeAfter
+        ? [
+            ...result.steps,
+            {
+              step: n + 1,
+              label: `Basic before promotion / higher scale (before ${fromDate})`,
+              calculation: formatTaka(before2027),
+              value: before2027,
+              note: `Applies until the day before ${fromDate}`,
+            },
+            {
+              step: n + 2,
+              label: `Basic after promotion / higher scale (from ${fromDate})`,
+              calculation: `${formatTaka(before2027)} + ${formatTaka(scaleDiff)} × ${ratePct}%`,
+              value: after2027,
+              note,
+            },
+          ]
+        : [
+            ...result.steps,
+            {
+              step: n + 1,
+              label: 'Revised basic after promotion / higher scale',
+              calculation: `${formatTaka(before2027)} + ${formatTaka(scaleDiff)} × ${ratePct}%`,
+              value: after2027,
+              note,
+            },
+          ],
+    };
+  }
+
+  const before = result.new_pay;
+  const increase = toPaisa(scaleDiff * promotionIncreaseRate(substantive, result.phase));
+  const after = toPaisa(before + increase);
+  const n = result.steps.length;
+  return {
+    ...result,
+    new_pay: after,
+    pay_change_increase: increase,
+    pay_change_effective_date: payChange.effective_date,
+    new_pay_before_pay_change: showBeforeAfter ? before : null,
+    steps: showBeforeAfter
+      ? [
+          ...result.steps,
+          {
+            step: n + 1,
+            label: `Basic before promotion / higher scale (before ${fromDate})`,
+            calculation: formatTaka(before),
+            value: before,
+            note: `Applies until the day before ${fromDate}`,
+          },
+          {
+            step: n + 2,
+            label: `Basic after promotion / higher scale (from ${fromDate})`,
+            calculation: `${formatTaka(before)} + ${formatTaka(scaleDiff)} × ${ratePct}%`,
+            value: after,
+            note,
+          },
+        ]
+      : [
+          ...result.steps,
+          {
+            step: n + 1,
+            label: 'Revised basic after promotion / higher scale',
+            calculation: `${formatTaka(before)} + ${formatTaka(scaleDiff)} × ${ratePct}%`,
+            value: after,
+            note,
+          },
+        ],
+  };
+}
+
+/** Fixation for one phase; applies increment hold-up and optional promotion / higher scale. */
+export function calculateSalary2026(input: Salary2026Input): Salary2026Result {
+  return applyPayChangeToSalaryResult(calculateSalary2026Base(input), input);
 }
 
 /** All three conversion phases, in order. */
@@ -1019,7 +1211,14 @@ function assertPayChange(change: SalaryPayChange | null | undefined): SalaryPayC
   if (!scale.includes(basic)) {
     throw new Error(`Basic ${basic} is not a stage on Grade ${change.grade} of NPS 2015`);
   }
-  return { effective_date: change.effective_date, grade: change.grade as PayGrade, old_pay: basic };
+  const promoGrade = change.grade as PayGrade;
+  const substantive = effectiveSubstantiveGrade(promoGrade, change.substantive_grade);
+  return {
+    effective_date: change.effective_date,
+    grade: promoGrade,
+    old_pay: basic,
+    substantive_grade: substantive,
+  };
 }
 
 /** Month keys (YYYY-MM) from July 2026 up to and including the month of `today`. */
@@ -1065,7 +1264,7 @@ export interface SalaryArrearInput {
   grade: PayGrade;
   /** Basic on 30 June 2026 (NPS 2015 stage). */
   old_pay: number;
-  /** Same as the pay grade or lower; sets the special allowance rate (15% for 10–20) and the T.R. Form. */
+  /** Same as the pay grade or lower; sets the special allowance rate (15% for 10–20) only. */
   substantive_grade?: SubstantiveGrade | null;
   housing_status: HousingStatus;
   hra_area: HraArea;
@@ -1096,6 +1295,8 @@ export interface SalaryArrearMonthRow {
   drawn_basic: number;
   /** New basic − drawn basic. */
   basic_difference: number;
+  /** Special allowance % used for this segment (10 or 15 from its substantive grade). */
+  special_rate_percent: number;
   special_allowance: number;
   excess_hra: number;
   /**
@@ -1121,7 +1322,13 @@ export interface SalaryArrearMonthRow {
 
 export interface SalaryArrearResult {
   grade: PayGrade;
+  /** Substantive grade before promotion — special allowance on pre-promotion segments. */
   substantive_grade: PayGrade;
+  /**
+   * Substantive grade after exceptional promotion / higher scale; null when there is no pay change.
+   * Special allowance on post-promotion segments and T.R. Form use this grade.
+   */
+  substantive_grade_after: PayGrade | null;
   old_pay: number;
   /** NPS 2015 stage after the 30 June 2026 basic (the basic itself when it is the last stage). */
   next_step: number;
@@ -1143,11 +1350,17 @@ export interface SalaryArrearResult {
   pay_change_origin_fixed_2026: number | null;
   /** Matched new-grade 2026 basic − origin fixed 2026 basic (before applying 40%/50%/…). */
   pay_change_scale_diff: number | null;
-  /** Grade printed / used for T.R. Form choice after exceptional promotion (else pay grade). */
+  /**
+   * Grade for T.R. Form: post-promotion substantive when a pay change applies, else the pay grade.
+   * Without a pay change the download uses `substantive_grade`.
+   */
   bill_grade: PayGrade;
   /** House rent entitlement amount as of 30/06/2026 (HRA on the June basic). */
   hra_entitlement_30_06: number;
+  /** Special allowance % for pre-promotion segments (or the only rate when there is no pay change). */
   special_rate_percent: number;
+  /** Special allowance % for post-promotion segments; null when there is no pay change. */
+  special_rate_percent_after: number | null;
   /** True when the rate was fixed by `special_rate` (office staff bill) rather than the substantive grade. */
   special_rate_fixed: boolean;
   special_allowance: number;
@@ -1207,7 +1420,7 @@ function originFixedBasic2026(
   // 2) Map that onto NPS 2026 (Steps 1–4) and take the next stage as the fixed 01/07/2026
   //    2026-scale basic (e.g. → ৳90,700). Do not re-apply joining withhold on the already-incremented basic.
   const incremented = nps2015AfterIncrement(grade, oldPay, joiningDate, incrementExempt).next_step;
-  const fixed = calculateSalary2026({
+  const fixed = calculateSalary2026Base({
     grade,
     old_pay: incremented,
     phase: '2027-07-01',
@@ -1259,7 +1472,7 @@ function primaryArrearBasis(
       const key = `p:${grade}:${oldPay}:${phase}:${incrementExempt ? 1 : 0}:${joiningDate ?? ''}`;
       let value = basicCache.get(key);
       if (value == null) {
-        value = calculateSalary2026({
+        value = calculateSalary2026Base({
           grade,
           old_pay: oldPay,
           phase,
@@ -1303,7 +1516,7 @@ function promotedArrearBasis(
       const key = `c:${originGrade}:${originOldPay}:${promoGrade}:${matched2026}:${phase}:${incrementExempt ? 1 : 0}:${joiningDate ?? ''}:${substantive}`;
       let value = basicCache.get(key);
       if (value == null) {
-        const originNew = calculateSalary2026({
+        const originNew = calculateSalary2026Base({
           grade: originGrade,
           old_pay: originOldPay,
           phase,
@@ -1354,6 +1567,7 @@ function blendArrearSegment(
   | 'new_basic'
   | 'drawn_basic'
   | 'basic_difference'
+  | 'special_rate_percent'
   | 'special_allowance'
   | 'excess_hra'
   | 'hra_protection'
@@ -1366,6 +1580,7 @@ function blendArrearSegment(
   const drawnBasic = basis.next_step;
   const basicDifference = newBasic - drawnBasic;
   const specialAllowance = Math.round(drawnBasic * specialRate);
+  const specialRatePercent = Math.round(specialRate * 100);
   const hra = hraAdjustment(hraEligible, hraArea, entitlementBasic30_06, drawnBasic);
   const fullNet = toPaisa(basicDifference - specialAllowance - hra.excess_hra + hra.hra_protection);
   const base = {
@@ -1373,6 +1588,7 @@ function blendArrearSegment(
     drawn_basic: drawnBasic,
     pay_change_segment: basis.pay_change_segment,
     segment_grade: basis.grade,
+    special_rate_percent: specialRatePercent,
   };
   if (days === monthDays) {
     return {
@@ -1442,9 +1658,16 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
     );
   }
 
+  /** Pre-promotion substantive (main form); post-promotion from pay_change when present. */
   const substantive = effectiveSubstantiveGrade(grade, input.substantive_grade);
+  const substantiveAfter =
+    payChange != null
+      ? effectiveSubstantiveGrade(payChange.grade as PayGrade, payChange.substantive_grade)
+      : null;
   const specialRateFixed = input.special_rate != null;
-  const specialRate = input.special_rate ?? specialAllowanceRate(substantive);
+  const specialRateBefore = input.special_rate ?? specialAllowanceRate(substantive);
+  const specialRateAfter =
+    input.special_rate ?? (substantiveAfter != null ? specialAllowanceRate(substantiveAfter) : specialRateBefore);
   const hraEligible = input.housing_status !== 'govt_accommodation';
   const basicCache = new Map<string, number>();
   /** House rent entitlement is locked to the 30/06/2026 basic for every stage / promotion. */
@@ -1461,7 +1684,7 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
   const scaleDiff =
     matchedPromo != null && originFixed2026 != null ? matchedPromo - originFixed2026 : null;
   const changed =
-    payChange && matchedPromo != null && originFixed2026 != null
+    payChange && matchedPromo != null && originFixed2026 != null && substantiveAfter != null
       ? promotedArrearBasis(
           grade,
           oldPay,
@@ -1470,12 +1693,13 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
           incrementExempt,
           originFixed2026,
           matchedPromo,
-          substantive,
+          substantiveAfter,
           basicCache,
         )
       : null;
 
-  const billGrade = (payChange && isPayGrade(payChange.grade) ? Math.max(grade, payChange.grade) : grade) as PayGrade;
+  /** T.R. Form after promotion uses the post-promotion substantive grade. */
+  const billGrade = (substantiveAfter ?? grade) as PayGrade;
 
   const rows: SalaryArrearMonthRow[] = [];
   for (const month of months) {
@@ -1502,12 +1726,13 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
     for (const s of segs) {
       const days = s.to - s.from + 1;
       if (days <= 0) continue;
+      const segRate = s.basis.pay_change_segment ? specialRateAfter : specialRateBefore;
       const blend = blendArrearSegment(
         s.basis,
         phase,
         days,
         monthDays,
-        specialRate,
+        segRate,
         hraEligible,
         input.hra_area,
         entitlementBasic30_06,
@@ -1536,6 +1761,7 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
   return {
     grade,
     substantive_grade: substantive,
+    substantive_grade_after: substantiveAfter,
     old_pay: oldPay,
     next_step: primary.next_step,
     next_step_is_last: primary.next_step_is_last,
@@ -1548,9 +1774,10 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
     pay_change_scale_diff: scaleDiff,
     bill_grade: billGrade,
     hra_entitlement_30_06: hraEntitlement?.amount ?? 0,
-    special_rate_percent: Math.round(specialRate * 100),
+    special_rate_percent: Math.round(specialRateBefore * 100),
+    special_rate_percent_after: payChange != null ? Math.round(specialRateAfter * 100) : null,
     special_rate_fixed: specialRateFixed,
-    special_allowance: Math.round(primary.next_step * specialRate),
+    special_allowance: Math.round(primary.next_step * specialRateBefore),
     hra_eligible: hraEligible,
     hra_on_next_step: primaryHra.hra_drawn,
     hra_protection: primaryHra.hra_protection,
@@ -1560,7 +1787,7 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
       : 0,
     hra_rate_percent_old_pay: hraEntitlement?.rate_percent ?? 0,
     excess_hra: primaryHra.excess_hra,
-    monthly_deduction: toPaisa(Math.round(primary.next_step * specialRate) + primaryHra.excess_hra),
+    monthly_deduction: toPaisa(Math.round(primary.next_step * specialRateBefore) + primaryHra.excess_hra),
     rows,
     increment,
     excess_rr: excessRr,

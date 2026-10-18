@@ -56,9 +56,9 @@ const salaryEn = {
   postType: 'Post type (Grades 2–10)',
   regular: 'Regular (default)',
   currentCharge: 'Current charge — extra ৳ 1,500 / month',
-  substantive: 'Substantive grade of working post (for arrears)',
+  substantive: 'Substantive grade before promotion (special allowance)',
   substantiveHint:
-    'Set to your grade by default; choose the same or a lower grade if your substantive post is lower (e.g. Grade 9 → 9, 10, 11 … 20). Special allowance on arrears: 15% for substantive Grade 10–20, 10% for 1–9. Substantive Grade 11–20 also gets tiffin ৳ 200 and conveyance ৳ 300.',
+    'Used for special allowance on months before any promotion / higher scale (15% for Grade 10–20, 10% for 1–9). Also tiffin ৳ 200 and conveyance ৳ 300 for Grade 11–20. After promotion, select a separate substantive grade in Exceptional issues.',
   housing: 'Housing',
   hraEligible: 'Eligible for House Rent Allowance (select posting area)',
   govtAccommodation: 'Government-provided accommodation (HRA not payable; house-rent deduction may apply)',
@@ -96,6 +96,13 @@ const salaryEn = {
   newBasic: (date: string) => `New basic (${date})`,
   basic2026: '01-07-2026 basic',
   basic2027: '01-07-2027 basic',
+  basicBeforePayChange: (date: string) => `Basic before ${date}`,
+  basicAfterPayChange: (date: string) => `Basic from ${date}`,
+  revisedBasicAfterPayChange: 'Revised basic (after promotion / higher scale)',
+  payChangeBasicsHint: (date: string) =>
+    `Promotion / higher scale from ${date}: this phase shows basic before and after that date.`,
+  payChangeRevisedHint: (date: string) =>
+    `Promotion / higher scale from ${date}: this later phase shows only the revised basic.`,
   nextStage: (amount: string) => `+ ${amount} (next stage)`,
   lastStage: 'Last stage — no change',
   lastStageWarn: 'Matched stage is the last stage on the 2026 scale — Step 6 = 0 (no next stage).',
@@ -129,22 +136,26 @@ const salaryEn = {
   exLabel: 'Exceptional issues',
   exEdit: 'Edit exceptional issues',
   exDialogTitle: 'Exceptional issues',
-  exDialogHint:
-    'Use only when, within the arrears period, an increment / promotion / demotion / pay from a specific date applies. Then the options below apply.',
+  exDialogHint: 'Only if increment, promotion/higher scale, or a custom arrears start applies.',
   exDialogPhone: '01866738860',
   exIncrementTitle: 'Increment exemption (01-07-2026)',
-  exIncrementHint:
-    'Check if, for a special reason, the employee did not receive or is not eligible for the increment on 01-07-2026. Arrears and salary are calculated without that increment.',
+  exIncrementHint: 'No 01-07-2026 increment for a special reason — Step 6 = 0.',
   exIncrementSummary: 'No increment on 01-07-2026 (exceptional exemption)',
-  exPayTitle: 'Promotion / demotion adjustment',
-  exPayHint:
-    'Enter the promotion effective date, target Grade, and the 2015 Basic drawn in that grade (for drawn basic, HRA and special allowance). New basic after promotion = original stage new basic + (promoted 2026 step − fixed 01-07-2026 2026-scale basic) × 40%/50% (or Stage-2 rate) by substantive grade. House rent entitlement stays on 30-06-2026; excess drawn is deducted. Split months are listed separately.',
+  exPayTitle: 'Promotion / higher scale',
+  exPayHint: 'Effective date, new Grade & 2015 basic drawn, plus substantive grade after promotion.',
+  exPaySubstantive: 'Substantive grade after promotion',
+  exPaySubstantiveHint:
+    'Separate from the main-form substantive. Sets special allowance on months after promotion (15% for Grade 10–20, 10% for 1–9) and the T.R. Form.',
+  exPaySubstantiveRequired: 'Select the substantive grade after promotion / higher scale.',
+  exPaySubstantiveShort: 'Substantive',
+  exPaySubstantiveAuto: (g: string) =>
+    `Substantive grade after promotion is Grade ${g} (same as the new grade).`,
   exPayDate: 'Effective date',
   exPayBasic: 'Basic (NPS 2015)',
   exPaySummary: (date: string, grade: string, basic: string) =>
     `Pay change from ${date}: Grade ${grade}, basic ৳ ${basic} (NPS 2015)`,
   exStartTitle: 'Custom arrears start date',
-  exStartHint: 'If arrears begin after 01-07-2026, calculate from that date (joining month is prorated by days served).',
+  exStartHint: 'If arrears are needed from a date after 01-07-2026 (joining month prorated).',
   exStartDate: 'Arrears start date',
   exStartSummary: (date: string) => `Arrears start from ${date}`,
   exNeedOne: 'Turn on at least one exceptional option, or clear the checkbox.',
@@ -251,7 +262,9 @@ const salaryEn = {
   billTitle: 'Arrears bill — 2026 pay fixation',
   billBasis: 'Basis of calculation',
   basisGrade: 'Grade',
-  basisSubstantive: 'Substantive grade (for special allowance)',
+  basisSubstantive: 'Substantive grade before promotion',
+  basisSubstantiveAfter: 'Substantive grade after promotion',
+  basisSpecialAfter: 'Special allowance after promotion',
   basisDrawn: 'Basic drawn (01-07-2026)',
   basisSpecial: 'Special allowance rate',
   basisHousing: 'House rent',
@@ -285,7 +298,8 @@ const salaryEn = {
   arrDialogHint: 'Check these details before the arrears bill is calculated.',
   substantiveSame: (g: string) => `Same as grade ${g}`,
   billFormLabel: 'Bill form',
-  billFormRule: 'T.R. Form 13 for substantive grades 1–10, T.R. Form 15 for 11–20.',
+  billFormRule:
+    'T.R. Form 13 for grades 1–10, T.R. Form 15 for 11–20. With exceptional promotion / higher scale, the post-promotion substantive grade sets the form; otherwise the main substantive grade does.',
   accessTitle: 'Bill print Access',
   accessUseNote: (size: string) => `Bills are approved in bulks of ${size}. Each T.R. Form 13 / 15 download uses one bill.`,
   accessStatusApproved: 'Approved',
@@ -535,9 +549,9 @@ const salaryBn: SalaryCopy = {
   postType: 'পদের ধরন (গ্রেড ২–১০)',
   regular: 'নিয়মিত (ডিফল্ট)',
   currentCharge: 'চলতি দায়িত্ব — অতিরিক্ত ৳ ১,৫০০ / মাস',
-  substantive: 'কর্মরত পদের মূল গ্রেড (বকেয়ার জন্য)',
+  substantive: 'পদোন্নতির আগের মূল গ্রেড (বিশেষ ভাতা)',
   substantiveHint:
-    'ডিফল্টভাবে আপনার গ্রেডই মূল গ্রেড; মূল পদ নিচের হলে একই বা নিচের গ্রেড নির্বাচন করুন (যেমন: গ্রেড ৯ → ৯, ১০, ১১ … ২০)। বকেয়ার বিশেষ ভাতা: মূল গ্রেড ১০–২০ হলে ১৫%, ১–৯ হলে ১০%। মূল গ্রেড ১১–২০ হলে টিফিন ৳ ২০০ ও যাতায়াত ৳ ৩০০-ও প্রযোজ্য।',
+    'পদোন্নতি/উচ্চতর স্কেলের আগের মাসগুলোর বিশেষ ভাতা নির্ধারণ করে (গ্রেড ১০–২০ হলে ১৫%, ১–৯ হলে ১০%)। মূল গ্রেড ১১–২০ হলে টিফিন ৳ ২০০ ও যাতায়াত ৳ ৩০০-ও প্রযোজ্য। পদোন্নতির পরের মূল গ্রেড ব্যতিক্রমী বিষয়ে আলাদাভাবে নির্বাচন করুন।',
   housing: 'আবাসন',
   hraEligible: 'বাড়ি ভাড়া ভাতা প্রাপ্য (কর্মস্থলের এলাকা নির্বাচন করুন)',
   govtAccommodation: 'সরকারি বাসা বরাদ্দপ্রাপ্ত (বাড়ি ভাড়া ভাতা প্রদেয় নয়; বাড়ি ভাড়া কর্তন প্রযোজ্য হতে পারে)',
@@ -575,6 +589,13 @@ const salaryBn: SalaryCopy = {
   newBasic: (date) => `নতুন মূল বেতন (${date})`,
   basic2026: '০১-০৭-২০২৬-এর মূল বেতন',
   basic2027: '০১-০৭-২০২৭-এর মূল বেতন',
+  basicBeforePayChange: (date) => `${date}-এর আগের মূল বেতন`,
+  basicAfterPayChange: (date) => `${date} থেকে মূল বেতন`,
+  revisedBasicAfterPayChange: 'সংশোধিত মূল বেতন (পদোন্নতি / উচ্চতর স্কেলের পর)',
+  payChangeBasicsHint: (date) =>
+    `${date} থেকে পদোন্নতি / উচ্চতর স্কেল: এই পর্যায়ে সেই তারিখের আগে ও পরের মূল বেতন দেখানো হয়েছে।`,
+  payChangeRevisedHint: (date) =>
+    `${date} থেকে পদোন্নতি / উচ্চতর স্কেল: পরবর্তী এই পর্যায়ে শুধু সংশোধিত মূল বেতন দেখানো হয়েছে।`,
   nextStage: (amount) => `+ ${amount} (পরবর্তী ধাপ)`,
   lastStage: 'শেষ ধাপ — কোনো পরিবর্তন নেই',
   lastStageWarn: 'মিলে যাওয়া ধাপটি ২০২৬ স্কেলের শেষ ধাপ — স্টেপ ৬ = ০ (পরবর্তী ধাপ নেই)।',
@@ -608,22 +629,25 @@ const salaryBn: SalaryCopy = {
   exLabel: salaryEn.exLabel,
   exEdit: salaryEn.exEdit,
   exDialogTitle: 'ব্যতিক্রমী বিষয়',
-  exDialogHint:
-    'শুধুমাত্র যখন বকেয়া হিসাবের মাঝে ইনক্রিমেন্ট/পদোন্নতি/পদাবনতি/নির্দিষ্ট দিন হতে বকেয়া বেতন প্রাপ্য হয় তখন নিচের বিষয় সমূহ প্রযোজ্য।',
+  exDialogHint: 'শুধু ইনক্রিমেন্ট, পদোন্নতি/উচ্চতর স্কেল, বা কাস্টম বকেয়া শুরু প্রযোজ্য হলে।',
   exDialogPhone: '01866738860',
   exIncrementTitle: 'ইনক্রিমেন্ট অব্যাহতি (০১-০৭-২০২৬)',
-  exIncrementHint:
-    'বিশেষ কারণে কেউ ০১-০৭-২০২৬-এর ইনক্রিমেন্ট পাননি বা প্রাপ্য নন হলে টিক দিন। বকেয়া ও বেতন সেই ইনক্রিমেন্ট বাদে হিসাব হবে।',
+  exIncrementHint: 'বিশেষ কারণে ০১-০৭-২০২৬-এ ইনক্রিমেন্ট নেই — স্টেপ ৬ = ০।',
   exIncrementSummary: '০১-০৭-২০২৬-এ ইনক্রিমেন্ট নেই (ব্যতিক্রমী অব্যাহতি)',
-  exPayTitle: 'পদোন্নতি / পদাবনতি সমন্বয়',
-  exPayHint:
-    'পদোন্নতির কার্যকর তারিখ, লক্ষ্য গ্রেড এবং সেই গ্রেডে উত্তোলিত ২০১৫ মূল বেতন দিন (উত্তোলিত মূল, বাড়ি ভাড়া ও বিশেষ সুবিধার জন্য)। পদোন্নতির পর নতুন মূল = পুরোনো স্টেজের নতুন মূল + (পদোন্নতির ২০২৬ ধাপ − ০১-০৭-২০২৬ নির্ধারিত ২০২৬ মূল) × ৪০%/৫০% (বা স্টেজ-২ হার) সাবস্ট্যান্টিভ গ্রেড অনুযায়ী। বাড়ি ভাড়া ৩০-০৬-২০২৬ প্রাপ্যতায়; অতিরিক্ত উত্তোলন কর্তনযোগ্য। বিভক্ত মাস আলাদা।',
+  exPayTitle: 'পদোন্নতি / উচ্চতর স্কেল',
+  exPayHint: 'কার্যকরের তারিখ, নতুন গ্রেড, উত্তোলিত ২০১৫ মূল বেতন ও পদোন্নতির পরের মূল গ্রেড।',
+  exPaySubstantive: 'পদোন্নতির পরের মূল গ্রেড',
+  exPaySubstantiveHint:
+    'মূল ফর্মের মূল গ্রেড থেকে আলাদা। পদোন্নতির পরের মাসগুলোর বিশেষ ভাতা (গ্রেড ১০–২০ হলে ১৫%, ১–৯ হলে ১০%) এবং টি.আর. ফরম নির্ধারণ করে।',
+  exPaySubstantiveRequired: 'পদোন্নতি / উচ্চতর স্কেলের পরের মূল গ্রেড নির্বাচন করুন।',
+  exPaySubstantiveShort: 'মূল গ্রেড',
+  exPaySubstantiveAuto: (g) => `পদোন্নতির পরের মূল গ্রেড গ্রেড ${g} (নতুন গ্রেডের অনুরূপ)।`,
   exPayDate: 'কার্যকর তারিখ',
   exPayBasic: 'মূল বেতন (এনপিএস ২০১৫)',
   exPaySummary: (date, grade, basic) =>
     `বেতন পরিবর্তন ${date} থেকে: গ্রেড ${grade}, মূল ৳ ${basic} (এনপিএস ২০১৫)`,
   exStartTitle: 'কাস্টম বকেয়া শুরুর তারিখ',
-  exStartHint: 'বকেয়া ০১-০৭-২০২৬-এর পরে শুরু হলে সেই তারিখ থেকে হিসাব (যোগদানের মাসে দিন অনুযায়ী আনুপাতিক)।',
+  exStartHint: '০১-০৭-২০২৬-এর পরের তারিখ হতে বকেয়া প্রয়োজন হলে (যোগদানের মাস আনুপাতিক)।',
   exStartDate: 'বকেয়া শুরুর তারিখ',
   exStartSummary: (date) => `বকেয়া শুরু ${date} থেকে`,
   exNeedOne: 'কমপক্ষে একটি ব্যতিক্রমী অপশন চালু করুন, অথবা টিক সরিয়ে দিন।',
@@ -727,7 +751,9 @@ const salaryBn: SalaryCopy = {
   billTitle: 'বকেয়া বেতন ও ভাতাদি সমন্বয় — (বেতন স্কেল ২০২৬)',
   billBasis: 'হিসাবের ভিত্তি',
   basisGrade: 'গ্রেড',
-  basisSubstantive: 'মূল গ্রেড (বিশেষ ভাতার জন্য)',
+  basisSubstantive: 'পদোন্নতির আগের মূল গ্রেড',
+  basisSubstantiveAfter: 'পদোন্নতির পরের মূল গ্রেড',
+  basisSpecialAfter: 'পদোন্নতির পরের বিশেষ ভাতা',
   basisDrawn: 'উত্তোলিত মূল বেতন (০১-০৭-২০২৬)',
   basisSpecial: 'বিশেষ ভাতার হার',
   basisHousing: 'বাড়ি ভাড়া',
@@ -761,7 +787,8 @@ const salaryBn: SalaryCopy = {
   arrDialogHint: 'বকেয়া বিল হিসাবের আগে তথ্যগুলো যাচাই করুন।',
   substantiveSame: (g) => `গ্রেড ${g}-এর অনুরূপ`,
   billFormLabel: 'বিল ফরম',
-  billFormRule: 'মূল গ্রেড ১–১০ এর জন্য টি.আর. ফরম ১৩, ১১–২০ এর জন্য টি.আর. ফরম ১৫।',
+  billFormRule:
+    'গ্রেড ১–১০ এর জন্য টি.আর. ফরম ১৩, ১১–২০ এর জন্য টি.আর. ফরম ১৫। ব্যতিক্রমী পদোন্নতি/উচ্চতর স্কেল থাকলে পদোন্নতির পরের মূল গ্রেড দিয়ে ফরম নির্ধারিত হয়; না থাকলে মূল ফর্মের মূল গ্রেড দিয়ে।',
   accessTitle: 'বিল প্রিন্ট অনুমতি',
   accessUseNote: (size) => `বিল ${size}টি করে বাল্কে অনুমোদন দেওয়া হয়। প্রতিবার টি.আর. ফরম ১৩ / ১৫ ডাউনলোডে একটি বিল ব্যবহৃত হবে।`,
   accessStatusApproved: 'অনুমোদিত',
@@ -1056,6 +1083,36 @@ export function stepText(locale: SalaryLocale, result: Salary2026Result, row: Sa
     return { label: `পুরাতন বেতন + স্টেপ ৫ (নতুন মূল বেতন) (${date})`, calculation };
   }
 
+  if (row.label.startsWith('Basic before promotion')) {
+    return {
+      label: row.label
+        .replace('Basic before promotion / higher scale (before ', 'পদোন্নতি / উচ্চতর স্কেলের আগের মূল বেতন (')
+        .replace(/\)$/, ')-এর আগে)'),
+      note: row.note?.startsWith('Applies until')
+        ? `প্রযোজ্য ${bn(row.note.replace('Applies until the day before ', ''))}-এর আগের দিন পর্যন্ত`
+        : row.note
+          ? bn(row.note)
+          : undefined,
+      calculation,
+    };
+  }
+  if (row.label.startsWith('Basic after promotion')) {
+    return {
+      label: row.label
+        .replace('Basic after promotion / higher scale (from ', 'পদোন্নতি / উচ্চতর স্কেলের পরের মূল বেতন (')
+        .replace(/\)$/, ') থেকে)'),
+      note: row.note ? bn(row.note) : undefined,
+      calculation,
+    };
+  }
+  if (row.label.startsWith('Revised basic after promotion')) {
+    return {
+      label: 'সংশোধিত মূল বেতন (পদোন্নতি / উচ্চতর স্কেলের পর)',
+      note: row.note ? bn(row.note) : undefined,
+      calculation,
+    };
+  }
+
   switch (row.step) {
     case 1:
       return { label: 'পুরাতন বেতন − পুরাতন সর্বনিম্ন বেতন (৩০-০৬-২৬)', calculation };
@@ -1075,11 +1132,13 @@ export function stepText(locale: SalaryLocale, result: Salary2026Result, row: Sa
       if (stage3) {
         return {
           label: '০১-০৭-২০২৬ তারিখে মূল বেতন (স্টেপ ৪-এর পরবর্তী ধাপ)',
-          note: result.increment_withheld
-            ? '০২-০১-২০২৬ বা পরে যোগদান — ০১-০৭-২০২৬-এ ইনক্রিমেন্ট নেই (স্টেপ ৪-এ থাকে)'
-            : result.used_next_stage_for_step5 === false
-              ? 'শেষ ধাপ — পরবর্তী ধাপ নেই (স্টেপ ৪-এ থাকে)'
-              : 'মিলে যাওয়া স্টেপ ৪-এর পরবর্তী ধাপ',
+          note: result.increment_exempt
+            ? 'ব্যতিক্রমী অব্যাহতি — ০১-০৭-২০২৬-এ ইনক্রিমেন্ট নেই (স্টেপ ৪-এ থাকে)'
+            : result.increment_withheld
+              ? '০২-০১-২০২৬ বা পরে যোগদান — ০১-০৭-২০২৬-এ ইনক্রিমেন্ট নেই (স্টেপ ৪-এ থাকে)'
+              : result.used_next_stage_for_step5 === false
+                ? 'শেষ ধাপ — পরবর্তী ধাপ নেই (স্টেপ ৪-এ থাকে)'
+                : 'মিলে যাওয়া স্টেপ ৪-এর পরবর্তী ধাপ',
           calculation,
         };
       }
@@ -1098,11 +1157,13 @@ export function stepText(locale: SalaryLocale, result: Salary2026Result, row: Sa
       }
       return {
         label: `পরবর্তী ধাপ − স্টেপ ৪ (ফ্যাক্ট ইনক্রিমেন্ট ${date})`,
-        note: result.increment_withheld
-          ? '০২-০১-২০২৬ বা পরে যোগদান — ইনক্রিমেন্ট নেই (স্টেপ ৬ = ০)'
-          : result.increment_skipped
-          ? 'শেষ ধাপ — পরবর্তী ধাপ নেই (স্টেপ ৬ = ০)'
-          : `পরবর্তী ধাপ ${bn(formatTaka((result.matched_new_stage ?? 0) + row.value))} − স্টেপ ৪`,
+        note: result.increment_exempt
+          ? 'ব্যতিক্রমী অব্যাহতি — ইনক্রিমেন্ট নেই (স্টেপ ৬ = ০)'
+          : result.increment_withheld
+            ? '০২-০১-২০২৬ বা পরে যোগদান — ইনক্রিমেন্ট নেই (স্টেপ ৬ = ০)'
+            : result.increment_skipped
+              ? 'শেষ ধাপ — পরবর্তী ধাপ নেই (স্টেপ ৬ = ০)'
+              : `পরবর্তী ধাপ ${bn(formatTaka((result.matched_new_stage ?? 0) + row.value))} − স্টেপ ৪`,
         calculation,
       };
     case 7:

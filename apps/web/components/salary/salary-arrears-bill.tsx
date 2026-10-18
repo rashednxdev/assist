@@ -9,6 +9,7 @@ import {
   defaultArrearMonths,
   formatTaka,
   roundSalaryTaka,
+  salaryArrearTrGrade,
   salaryTrFormNo,
   type HousingStatus,
   type HraArea,
@@ -95,11 +96,13 @@ export function MonthMath({ f, result, group }: { f: Fmt; result: SalaryArrearRe
   const { t, locale, num, amt, signed } = f;
   const row = group.lead;
   const leadMonth = monthRowLabel(locale, row);
-  const specialCalc = `${amt(row.drawn_basic)} × ${num(result.special_rate_percent)}%`;
+  /** Dedicated % for this segment (pre- vs post-promotion), from the arrears engine. */
+  const specialRatePercent = row.special_rate_percent;
+  const specialCalc = `${amt(row.drawn_basic)} × ${num(specialRatePercent)}%`;
   const prorated = row.days < row.month_days;
   const fullDiff = row.new_basic - row.drawn_basic;
   /** Whole-month figures for lines 1–6; line 7 prorates when the segment is a partial month. */
-  const fullSpecial = Math.round((row.drawn_basic * result.special_rate_percent) / 100);
+  const fullSpecial = Math.round((row.drawn_basic * specialRatePercent) / 100);
   const scaleUp = (n: number) =>
     prorated && row.days > 0 ? roundSalaryTaka((n * row.month_days) / row.days) : n;
   const fullHra = scaleUp(row.excess_hra);
@@ -443,8 +446,11 @@ export function SalaryArrearsBill({
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">{t.billBasis}</h3>
               <div className="overflow-hidden rounded-xl border border-border text-sm">
                 <BasisRow label={t.basisGrade} value={num(result.grade)} />
-                {result.substantive_grade !== result.grade ? (
+                {result.substantive_grade !== result.grade || result.substantive_grade_after != null ? (
                   <BasisRow label={t.basisSubstantive} value={num(result.substantive_grade)} />
+                ) : null}
+                {result.substantive_grade_after != null ? (
+                  <BasisRow label={t.basisSubstantiveAfter} value={num(result.substantive_grade_after)} />
                 ) : null}
                 {result.increment_withheld ? (
                   <BasisRow
@@ -490,6 +496,16 @@ export function SalaryArrearsBill({
                     result.substantive_grade >= 10 ? t.arrBandHigh : t.arrBandLow
                   })`}
                 />
+                {result.special_rate_percent_after != null &&
+                result.substantive_grade_after != null &&
+                result.special_rate_percent_after !== result.special_rate_percent ? (
+                  <BasisRow
+                    label={t.basisSpecialAfter}
+                    value={`${num(result.special_rate_percent_after)}% (${
+                      result.substantive_grade_after >= 10 ? t.arrBandHigh : t.arrBandLow
+                    })`}
+                  />
+                ) : null}
                 <BasisRow
                   label={t.basisHousing}
                   value={result.hra_eligible ? hraAreaText(locale, hraArea) : t.govtHousing}
@@ -646,7 +662,7 @@ export function SalaryArrearsBill({
                 {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                 {downloading
                   ? t.downloading
-                  : t.trFormDownload(String(salaryTrFormNo(Math.max(result.substantive_grade, result.bill_grade))))}
+                  : t.trFormDownload(String(salaryTrFormNo(salaryArrearTrGrade(result))))}
               </Button>
             </div>
 

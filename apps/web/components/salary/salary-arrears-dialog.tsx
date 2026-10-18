@@ -22,7 +22,9 @@ import { Label } from '@/components/ui/label';
 import { HRA_AREAS, hraAreaText, localNum, salaryCopy, type SalaryLocale } from '@/lib/salary-i18n';
 import { SalaryJoiningDateField } from '@/components/salary/salary-joining-date';
 import {
+  EMPTY_EXCEPTIONAL_DRAFT,
   SalaryExceptionalIssuesField,
+  exceptionalToIssues,
   type ExceptionalDraft,
 } from '@/components/salary/salary-exceptional-issues';
 
@@ -91,7 +93,9 @@ export function SalaryArrearsDialog({
       : isChosenSubstantive(v.grade, v.substantiveGrade)
         ? v.substantiveGrade
         : null;
-  const formNo = substantive ? salaryTrFormNo(substantive) : null;
+  const payChange = exceptionalToIssues(v.exceptional)?.pay_change ?? null;
+  const trGrade = payChange?.substantive_grade ?? substantive;
+  const formNo = trGrade != null ? salaryTrFormNo(trGrade) : null;
   const askJoining = v.grade != null && asksJoiningDate(v.grade, v.oldPay);
 
   async function submit(e: React.FormEvent) {
@@ -151,6 +155,7 @@ export function SalaryArrearsDialog({
                     grade: g,
                     oldPay: g && NPS_2015[g].includes(prev.oldPay) ? prev.oldPay : 0,
                     substantiveGrade: nextSubstantive(prev.grade, g, prev.substantiveGrade),
+                    exceptional: EMPTY_EXCEPTIONAL_DRAFT,
                   }));
                 }}
               >

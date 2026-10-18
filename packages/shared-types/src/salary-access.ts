@@ -1,6 +1,13 @@
 import { z } from 'zod';
 import type { OfficeOption } from './org.js';
-import { NPS_2015, asksJoiningDate, isIsoDate, type PayGrade } from './salary-2026.js';
+import {
+  NPS_2015,
+  asksJoiningDate,
+  asksSubstantiveGrade,
+  isIsoDate,
+  substantiveGradeOptions,
+  type PayGrade,
+} from './salary-2026.js';
 
 /** Each T.R. Form download (or legacy arrears bill PDF) uses one approved bill. */
 export const SALARY_PRINT_KINDS = ['arrears_pdf', 'tr_form_13', 'tr_form_15'] as const;
@@ -97,9 +104,25 @@ export interface SalaryFreeCalcsSettingsRecord {
 export const SALARY_CALCS_PER_BILL = 5;
 export const SALARY_CALC_LIMIT_CODE = 'SALARY_CALC_LIMIT';
 
-/** T.R. Form 13 for substantive grades 1–10, T.R. Form 15 for 11–20. */
-export function salaryTrFormNo(substantiveGrade: number): 13 | 15 {
-  return substantiveGrade >= 11 ? 15 : 13;
+/** T.R. Form 13 for grades 1–10, T.R. Form 15 for 11–20. */
+export function salaryTrFormNo(grade: number): 13 | 15 {
+  return grade >= 11 ? 15 : 13;
+}
+
+/**
+ * T.R. Form grade for an arrears result: post-promotion substantive when a pay change
+ * applies, otherwise the main (pre-promotion) substantive grade.
+ */
+export function salaryArrearTrGrade(result: {
+  substantive_grade: number;
+  bill_grade: number;
+  pay_change: { grade: number; substantive_grade?: number | null } | null;
+  substantive_grade_after?: number | null;
+}): number {
+  if (result.pay_change) {
+    return result.substantive_grade_after ?? result.bill_grade;
+  }
+  return result.substantive_grade;
 }
 
 export const SALARY_ACCESS_STATUSES = ['none', 'pending', 'approved', 'rejected'] as const;
@@ -572,6 +595,7 @@ const staffPayChangeSchema = z
     effective_date: z.string(),
     grade: z.number().int().min(1).max(20),
     old_pay: z.number().int().min(1),
+    substantive_grade: z.number().int().min(1).max(20).nullable().optional(),
   })
   .nullable()
   .default(null);
@@ -648,6 +672,18 @@ export const salaryStaffSchema = z
           code: 'custom',
           path: ['exceptional', 'pay_change', 'old_pay'],
           message: 'Choose a basic from the pay-change grade scale',
+        });
+      }
+      const promoGrade = ex.pay_change.grade as PayGrade;
+      const postSub = ex.pay_change.substantive_grade;
+      if (
+        asksSubstantiveGrade(promoGrade) &&
+        (postSub == null || !substantiveGradeOptions(promoGrade).includes(postSub as PayGrade))
+      ) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['exceptional', 'pay_change', 'substantive_grade'],
+          message: 'Select the substantive grade after promotion / higher scale',
         });
       }
     }

@@ -214,7 +214,12 @@ function StaffDialog({
                 value={v.grade ?? ''}
                 onChange={(e) => {
                   const g = e.target.value === '' ? null : (Number(e.target.value) as PayGrade);
-                  setV((p) => ({ ...p, grade: g, oldPay: g && NPS_2015[g].includes(p.oldPay) ? p.oldPay : 0 }));
+                  setV((p) => ({
+                    ...p,
+                    grade: g,
+                    oldPay: g && NPS_2015[g].includes(p.oldPay) ? p.oldPay : 0,
+                    exceptional: EMPTY_EXCEPTIONAL_DRAFT,
+                  }));
                 }}
               >
                 <option value="">{t.gradePlaceholder}</option>

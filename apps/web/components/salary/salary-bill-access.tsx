@@ -187,6 +187,7 @@ export function SalaryBulkRequestDialog({
                 <span className="block font-semibold">{t.requestSent}</span>
                 <span className="block text-xs">{contactHintOf(t, access)}</span>
               </Alert>
+              <SalaryBillContacts locale={locale} contacts={access.contacts} office={access.contact_office} />
               <div className="flex justify-end">
                 <Button type="button" onClick={onClose} className="min-w-24 bg-red-600 shadow-sm hover:bg-red-700" autoFocus>
                   {t.ok}
@@ -197,6 +198,8 @@ export function SalaryBulkRequestDialog({
             <>
               {reason ? <p className="font-semibold text-red-700">{reason}</p> : null}
               <p>{pending ? t.requestDialogPending : t.requestDialogHint}</p>
+              <p className="text-xs font-medium text-slate-600">{contactHintOf(t, access)}</p>
+              <SalaryBillContacts locale={locale} contacts={access.contacts} office={access.contact_office} />
               <BulkRequestForm
                 locale={locale}
                 access={access}

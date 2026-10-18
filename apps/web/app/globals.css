@@ -155,7 +155,7 @@ body {
   @apply border-t border-amber-900/10 pt-4;
 }
 
-/* Salary calculator — print / save as PDF (2 pages: Stage 1–2 | Stage 3 + thanks) */
+/* Salary calculator — print / save as PDF */
 @media print {
   @page {
     margin: 8mm;
@@ -172,6 +172,78 @@ body {
     print-color-adjust: exact;
     min-height: 0 !important;
     position: relative;
+  }
+
+  /* Salary PDF: plain white page, black text; no coloured fills / thanks block */
+  .salary-print-mode-salary,
+  .salary-print-mode-salary main {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  .salary-print-mode-salary .salary-print-thanks {
+    display: none !important;
+  }
+
+  .salary-print-mode-salary [class*='Card'],
+  .salary-print-mode-salary [class*='rounded'],
+  .salary-print-mode-salary .salary-print-stage,
+  .salary-print-mode-salary .salary-print-stat,
+  .salary-print-mode-salary .salary-print-stage3-box,
+  .salary-print-mode-salary .salary-print-scale,
+  .salary-print-mode-salary table,
+  .salary-print-mode-salary thead {
+    background: #fff !important;
+    background-image: none !important;
+    color: #000 !important;
+    box-shadow: none !important;
+  }
+
+  .salary-print-mode-salary .salary-print-stage-header {
+    background: #fff !important;
+    color: #000 !important;
+    border-bottom: 1px solid #000 !important;
+  }
+
+  .salary-print-mode-salary .salary-print-stage-header span {
+    color: #000 !important;
+  }
+
+  .salary-print-mode-salary .salary-print-stat,
+  .salary-print-mode-salary .salary-print-stage3-box,
+  .salary-print-mode-salary .salary-print-scale,
+  .salary-print-mode-salary [class*='border'] {
+    border-color: #000 !important;
+  }
+
+  .salary-print-mode-salary .text-muted,
+  .salary-print-mode-salary .text-slate-500,
+  .salary-print-mode-salary .text-slate-600,
+  .salary-print-mode-salary .text-slate-700,
+  .salary-print-mode-salary .text-slate-800,
+  .salary-print-mode-salary .text-slate-900,
+  .salary-print-mode-salary .text-emerald-900,
+  .salary-print-mode-salary .text-teal-900,
+  .salary-print-mode-salary .text-teal-950,
+  .salary-print-mode-salary .text-amber-800,
+  .salary-print-mode-salary .text-amber-900,
+  .salary-print-mode-salary .text-rose-700,
+  .salary-print-mode-salary .text-rose-800,
+  .salary-print-mode-salary .text-rose-900,
+  .salary-print-mode-salary .text-violet-500,
+  .salary-print-mode-salary .text-white,
+  .salary-print-mode-salary .text-white\/90 {
+    color: #000 !important;
+  }
+
+  .salary-print-mode-salary .salary-print-footer {
+    color: #000 !important;
+    border-top-color: #000 !important;
+  }
+
+  .salary-print-mode-salary .salary-print-footer .text-\[\#15803d\],
+  .salary-print-mode-salary .salary-print-footer [class*='text-'] {
+    color: #000 !important;
   }
 
   .salary-print-root .salary-print-hide,

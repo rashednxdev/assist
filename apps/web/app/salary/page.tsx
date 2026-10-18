@@ -52,6 +52,7 @@ import {
   SALARY_CALC_LIMIT_CODE,
   SALARY_FREE_ARREARS_CALCS,
   salaryCanSeeDownloads,
+  salaryArrearTrGrade,
   salaryTrFormNo,
 } from '@ibas/shared-types';
 import { downloadFormPdf, pdfFileName } from '@/lib/salary-pdf';
@@ -264,6 +265,11 @@ function StageTotalAllowanceSummary({
   );
 }
 
+function payChangeDmy(iso: string, locale: SalaryLocale): string {
+  const dmy = iso.split('-').reverse().join('-');
+  return locale === 'bn' ? localNum(locale, dmy) : dmy;
+}
+
 function PhaseResultCard({
   ctx,
   result,
@@ -281,8 +287,14 @@ function PhaseResultCard({
   const tk = (n: number) => localTaka(locale, n);
 
   const stage3 = result.phase === '2027-07-01';
+  const payChangeDate = result.pay_change_effective_date
+    ? payChangeDmy(result.pay_change_effective_date, locale)
+    : null;
+  const beforePayChange = result.new_pay_before_pay_change;
   const basic2026 = result.basic_on_2026_07 ?? result.matched_new_stage ?? result.new_pay;
   const basic2027 = result.basic_on_2027_07 ?? result.new_pay;
+  const basic2026Before = result.basic_on_2026_07_before_pay_change;
+  const basic2027Before = result.basic_on_2027_07_before_pay_change;
   const moved = basic2027 !== basic2026;
   const delta = basic2027 - basic2026;
   const stageBasic = stage3 ? basic2027 : result.new_pay;
@@ -293,24 +305,62 @@ function PhaseResultCard({
     >
       <StageHeader ctx={ctx} result={result} />
       <CardContent className="space-y-4 p-4 sm:p-5">
+        {payChangeDate && beforePayChange != null ? (
+          <p className="text-xs font-medium text-slate-700">{t.payChangeBasicsHint(payChangeDate)}</p>
+        ) : payChangeDate && result.pay_change_increase > 0 ? (
+          <p className="text-xs font-medium text-slate-700">{t.payChangeRevisedHint(payChangeDate)}</p>
+        ) : null}
         {stage3 ? (
-          <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
-            <div className="rounded-lg border border-border bg-slate-50 salary-print-stage3-box p-3">
-              <p className="text-xs text-muted">{t.basic2026}</p>
-              <p className="mt-1 font-mono text-lg font-bold text-slate-900">{tk(basic2026)}</p>
-            </div>
-            <ArrowRight className="salary-print-hide mx-auto h-5 w-5 text-violet-500" aria-hidden />
-            <div
-              className={`salary-print-stage3-box rounded-lg border p-3 ${
-                moved ? 'border-violet-200 bg-violet-50' : 'border-amber-200 bg-amber-50'
-              }`}
-            >
-              <p className="text-xs text-muted">{t.basic2027}</p>
-              <p className="mt-1 font-mono text-lg font-bold text-slate-900">{tk(basic2027)}</p>
-              <p className="mt-1 text-xs font-medium text-muted">
-                {moved ? t.nextStage(tk(delta)) : t.lastStage}
-              </p>
-            </div>
+          <div className="space-y-3">
+            {payChangeDate && basic2026Before != null && basic2027Before != null ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-lg border border-border bg-slate-50 p-3">
+                  <p className="text-xs font-semibold text-muted">{t.basicBeforePayChange(payChangeDate)}</p>
+                  <p className="mt-1 text-xs text-muted">{t.basic2026}</p>
+                  <p className="font-mono text-base font-bold text-slate-900">{tk(basic2026Before)}</p>
+                  <p className="mt-2 text-xs text-muted">{t.basic2027}</p>
+                  <p className="font-mono text-base font-bold text-slate-900">{tk(basic2027Before)}</p>
+                </div>
+                <div className="rounded-lg border border-border bg-slate-50 p-3">
+                  <p className="text-xs font-semibold text-slate-800">{t.basicAfterPayChange(payChangeDate)}</p>
+                  <p className="mt-1 text-xs text-muted">{t.basic2026}</p>
+                  <p className="font-mono text-base font-bold text-slate-900">{tk(basic2026)}</p>
+                  <p className="mt-2 text-xs text-muted">{t.basic2027}</p>
+                  <p className="font-mono text-base font-bold text-slate-900">{tk(basic2027)}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+                <div className="rounded-lg border border-border bg-slate-50 salary-print-stage3-box p-3">
+                  <p className="text-xs text-muted">{t.basic2026}</p>
+                  <p className="mt-1 font-mono text-lg font-bold text-slate-900">{tk(basic2026)}</p>
+                </div>
+                <ArrowRight className="salary-print-hide mx-auto h-5 w-5 text-violet-500" aria-hidden />
+                <div
+                  className={`salary-print-stage3-box rounded-lg border p-3 ${
+                    moved ? 'border-violet-200 bg-violet-50' : 'border-amber-200 bg-amber-50'
+                  }`}
+                >
+                  <p className="text-xs text-muted">
+                    {payChangeDate && result.pay_change_increase > 0 ? t.revisedBasicAfterPayChange : t.basic2027}
+                  </p>
+                  <p className="mt-1 font-mono text-lg font-bold text-slate-900">{tk(basic2027)}</p>
+                  <p className="mt-1 text-xs font-medium text-muted">
+                    {moved ? t.nextStage(tk(delta)) : t.lastStage}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : payChangeDate && beforePayChange != null ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <ResultStat label={t.oldBasic} value={tk(result.old_pay)} />
+            <ResultStat
+              label={t.matched}
+              value={result.matched_new_stage != null ? tk(result.matched_new_stage) : '—'}
+            />
+            <ResultStat label={t.basicBeforePayChange(payChangeDate)} value={tk(beforePayChange)} />
+            <ResultStat label={t.basicAfterPayChange(payChangeDate)} value={tk(result.new_pay)} emphasize />
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-3">
@@ -320,7 +370,11 @@ function PhaseResultCard({
               value={result.matched_new_stage != null ? tk(result.matched_new_stage) : '—'}
             />
             <ResultStat
-              label={t.newBasic(localNum(locale, result.phase_label))}
+              label={
+                payChangeDate && result.pay_change_increase > 0
+                  ? t.revisedBasicAfterPayChange
+                  : t.newBasic(localNum(locale, result.phase_label))
+              }
               value={tk(result.new_pay)}
               emphasize
             />
@@ -484,6 +538,7 @@ function SalarySummaryCard({
   const { t, locale } = ctx;
   const tk = (n: number) => localTaka(locale, n);
   const stageBasic = (r: Salary2026Result) => (r.phase === '2027-07-01' ? r.basic_on_2027_07 ?? r.new_pay : r.new_pay);
+  const hasPayChange = results.some((r) => r.pay_change_effective_date && r.new_pay_before_pay_change != null);
 
   return (
     <Card className="salary-print-avoid-break overflow-hidden border border-emerald-300 shadow-sm">
@@ -492,15 +547,34 @@ function SalarySummaryCard({
         <p className="mt-0.5 text-xs text-emerald-100/90">{t.summarySub(localNum(locale, grade), tk(oldPay))}</p>
       </div>
       <CardContent className="space-y-3 p-4 sm:p-5">
-        <div className="grid gap-3 sm:grid-cols-3">
-          {results.map((r) => (
-            <ResultStat
-              key={r.phase}
-              label={t.stageTitle(STAGE_HEADER[r.phase].n, localNum(locale, r.phase_label))}
-              value={tk(stageBasic(r))}
-              emphasize={r.phase === '2026-07-01'}
-            />
-          ))}
+        <div className={`grid gap-3 ${hasPayChange ? 'sm:grid-cols-1' : 'sm:grid-cols-3'}`}>
+          {results.map((r) => {
+            const date = r.pay_change_effective_date ? payChangeDmy(r.pay_change_effective_date, locale) : null;
+            const before = r.new_pay_before_pay_change;
+            if (date && before != null) {
+              return (
+                <div key={r.phase} className="grid gap-2 rounded-xl border border-border p-3 sm:grid-cols-2">
+                  <p className="text-xs font-semibold text-slate-800 sm:col-span-2">
+                    {t.stageTitle(STAGE_HEADER[r.phase].n, localNum(locale, r.phase_label))}
+                  </p>
+                  <ResultStat label={t.basicBeforePayChange(date)} value={tk(before)} />
+                  <ResultStat label={t.basicAfterPayChange(date)} value={tk(stageBasic(r))} emphasize />
+                </div>
+              );
+            }
+            return (
+              <ResultStat
+                key={r.phase}
+                label={
+                  date && r.pay_change_increase > 0
+                    ? `${t.stageTitle(STAGE_HEADER[r.phase].n, localNum(locale, r.phase_label))} · ${t.revisedBasicAfterPayChange}`
+                    : t.stageTitle(STAGE_HEADER[r.phase].n, localNum(locale, r.phase_label))
+                }
+                value={tk(stageBasic(r))}
+                emphasize={r.phase === '2026-07-01'}
+              />
+            );
+          })}
         </div>
         {SHOW_ALLOWANCES ? (
           <div className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2">
@@ -610,9 +684,7 @@ export default function SalaryOn2026Page() {
     exceptionalIssues,
     arrearExtras,
   ]);
-  const trFormNo = arrearResult
-    ? salaryTrFormNo(Math.max(arrearResult.substantive_grade, arrearResult.bill_grade))
-    : 13;
+  const trFormNo = arrearResult ? salaryTrFormNo(salaryArrearTrGrade(arrearResult)) : 13;
 
   function resetResults() {
     setResults(null);
@@ -658,18 +730,21 @@ export default function SalaryOn2026Page() {
     try {
       // Always compute on the client so Step 5–7 rules match the shipped web bundle.
       // Remote API images can lag after deploy; do not use their results for display.
+      const payChange = exceptionalIssues?.pay_change ?? null;
       setResults(
         calculateSalary2026AllPhases({
           grade: g,
           old_pay: oldPay,
           joining_date: joiningDate,
           increment_exempt: Boolean(exceptionalIssues?.increment_exempt),
+          pay_change: payChange,
+          substantive_grade: substantiveGrade,
         }),
       );
       setGross(
         calculateEmployeeGross({
-          grade: g,
-          basic: oldPay,
+          grade: (payChange?.grade as PayGrade | undefined) ?? g,
+          basic: payChange?.old_pay ?? oldPay,
           housing_status: housingStatus,
           hra_area: calcHraArea,
           education_children: educationChildren,
@@ -1037,6 +1112,7 @@ export default function SalaryOn2026Page() {
                       setGrade(g);
                       setOldPay((prev) => (g && NPS_2015[g].includes(prev) ? prev : 0));
                       setSubstantiveGrade((prev) => nextSubstantive(grade, g, prev));
+                      setExceptional(EMPTY_EXCEPTIONAL_DRAFT);
                       resetResults();
                     }}
                   >
@@ -1356,7 +1432,7 @@ export default function SalaryOn2026Page() {
               oldPay={oldPay}
               results={results}
               allowancesTotal={allowancesTotal}
-              onPdf={() => setPrintDialog('salary')}
+              onPdf={() => (billAccess?.can_bill ? setPrintDialog('salary') : setBulkDialog(true))}
             />
 
             <div className="salary-print-scale space-y-1 rounded-lg border border-dashed border-border bg-white p-3 text-xs text-muted">
@@ -1451,7 +1527,7 @@ export default function SalaryOn2026Page() {
         {results ? (
           <section
             aria-label={t.thanksTitle}
-            className="salary-print-thanks relative overflow-hidden rounded-2xl border border-rose-200/80 bg-gradient-to-br from-rose-50 via-white to-amber-50 px-5 py-8 text-center shadow-sm sm:px-8"
+            className="salary-print-thanks salary-print-hide relative overflow-hidden rounded-2xl border border-rose-200/80 bg-gradient-to-br from-rose-50 via-white to-amber-50 px-5 py-8 text-center shadow-sm sm:px-8"
           >
             <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-rose-200/40 blur-2xl salary-print-hide" />
             <div className="pointer-events-none absolute -bottom-10 -left-6 h-28 w-28 rounded-full bg-amber-200/50 blur-2xl salary-print-hide" />

@@ -5,6 +5,7 @@ export interface ISalaryStaffPayChange {
   effective_date: string;
   grade: number;
   old_pay: number;
+  substantive_grade?: number | null;
 }
 
 export interface ISalaryStaffExceptional {
@@ -41,6 +42,7 @@ const payChangeSchema = new Schema<ISalaryStaffPayChange>(
     effective_date: { type: String, required: true },
     grade: { type: Number, required: true, min: 1, max: 20 },
     old_pay: { type: Number, required: true, min: 1 },
+    substantive_grade: { type: Number, min: 1, max: 20, default: null },
   },
   { _id: false },
 );

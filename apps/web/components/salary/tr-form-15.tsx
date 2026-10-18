@@ -21,7 +21,7 @@ import {
   type FormRow,
   type TrSignatory,
 } from '@/components/salary/tr-form-parts';
-import { monthText } from '@/lib/salary-i18n';
+import { monthText, salaryCopy } from '@/lib/salary-i18n';
 
 const PAY_ROWS: FormRow[] = [
   { code: '৩১১১২০১', label: 'মূল বেতন (কর্মচারী) (বেতনস্কেল ২০২৬ এর বকেয়া)' },
@@ -91,6 +91,7 @@ function TrForm15Pages({
   payable,
   payableWords,
   headBox,
+  signatory = null,
 }: {
   months: string[];
   office: string;
@@ -99,6 +100,8 @@ function TrForm15Pages({
   payable: number;
   payableWords: string;
   headBox: React.ReactNode;
+  /** Drawing officer — fills নাম / পদবি on page 2 when set (staff bills). */
+  signatory?: TrSignatory | null;
 }) {
   const period = periodText(months);
   const payRows = PAY_ROWS.map((row, i) => (i === 0 ? { ...row, amount: netTotal } : row));
@@ -274,10 +277,10 @@ function TrForm15Pages({
               আয়ন কর্মকর্তার স্বাক্ষর <Dots width="52mm" />
             </div>
             <div>
-              নাম <Dots width="70mm" />
+              নাম <Dots value={signatory?.name || undefined} width="70mm" />
             </div>
             <div>
-              পদবি <Dots width="68mm" />
+              পদবি <Dots value={signatory?.post || undefined} width="68mm" />
             </div>
             <div>
               সিল <Dots width="40mm" />
@@ -398,6 +401,8 @@ const SCHEDULE_DEDUCTION_COLS: Array<[string, string]> = [
 const SCHEDULE_COLS = 29;
 /** Employee rows per Legal sheet; the header repeats on every sheet. */
 const SCHEDULE_ROWS_PER_SHEET = 15;
+/** Columns 1, 2, 3, 19, 26, 27 (1-based) — filled data; larger type on the schedule sheet. */
+const SCHEDULE_DATA_COLS = new Set([0, 1, 2, 18, 25, 26]);
 
 /** Columns 1, 2, 3, 19, 26 and 27 of the establishment pay bill schedule (0-based indexes). */
 function scheduleCells(serial: number, s: TrStaffEntry): React.ReactNode[] {
@@ -418,20 +423,83 @@ function scheduleCells(serial: number, s: TrStaffEntry): React.ReactNode[] {
   return cells;
 }
 
+type ScheduleLine =
+  | { kind: 'group'; name: string; groupSerial: number }
+  | { kind: 'staff'; entry: TrStaffEntry; serial: number };
+
+function scheduleLinesFromGroups(groups: TrStaffOfficeGroup[]): ScheduleLine[] {
+  const lines: ScheduleLine[] = [];
+  let serial = 0;
+  let groupSerial = 0;
+  for (const g of groups) {
+    if (g.staff.length === 0) continue;
+    if (g.groupName.trim()) {
+      groupSerial += 1;
+      lines.push({ kind: 'group', name: g.groupName.trim(), groupSerial });
+    }
+    for (const entry of g.staff) {
+      serial += 1;
+      lines.push({ kind: 'staff', entry, serial });
+    }
+  }
+  return lines;
+}
+
+/** Pack schedule lines into sheets of up to SCHEDULE_ROWS_PER_SHEET staff; repeat group header across pages. */
+function packScheduleSheets(lines: ScheduleLine[]): ScheduleLine[][] {
+  const sheets: ScheduleLine[][] = [];
+  let current: ScheduleLine[] = [];
+  let staffOnSheet = 0;
+  let activeGroup: { name: string; groupSerial: number } | null = null;
+
+  function startSheet(repeat: { name: string; groupSerial: number } | null) {
+    if (current.length) sheets.push(current);
+    current = [];
+    staffOnSheet = 0;
+    if (repeat) current.push({ kind: 'group', name: repeat.name, groupSerial: repeat.groupSerial });
+  }
+
+  for (const line of lines) {
+    if (line.kind === 'group') {
+      activeGroup = { name: line.name, groupSerial: line.groupSerial };
+      current.push(line);
+      continue;
+    }
+    if (staffOnSheet >= SCHEDULE_ROWS_PER_SHEET) {
+      startSheet(activeGroup);
+    }
+    current.push(line);
+    staffOnSheet += 1;
+  }
+  if (current.length) sheets.push(current);
+  return sheets.length > 0 ? sheets : [[]];
+}
+
 /** Establishment pay bill schedule (Legal, landscape): one row per employee, totals on the last sheet. */
-function TrStaffSchedule({ staff, months, office }: { staff: TrStaffEntry[]; months: string[]; office: string }) {
+function TrStaffSchedule({
+  staff,
+  months,
+  office,
+  groups,
+}: {
+  staff: TrStaffEntry[];
+  months: string[];
+  office: string;
+  groups?: TrStaffOfficeGroup[];
+}) {
   const period = periodText(months);
   const netTotal = staff.reduce((sum, s) => sum + s.result.total_net_arrear, 0);
   const stamp = STAMP_DUTY * staff.length;
   const payable = netTotal - stamp;
-  const sheets: TrStaffEntry[][] = [];
-  for (let i = 0; i < staff.length; i += SCHEDULE_ROWS_PER_SHEET) sheets.push(staff.slice(i, i + SCHEDULE_ROWS_PER_SHEET));
+  const officeGroups: TrStaffOfficeGroup[] =
+    groups && groups.length > 0 ? groups.filter((g) => g.staff.length > 0) : [{ groupName: office, staff }];
+  const lines = scheduleLinesFromGroups(officeGroups);
+  const sheets = packScheduleSheets(lines);
 
   return (
     <>
-      {sheets.map((rows, sheetIndex) => {
+      {sheets.map((sheetLines, sheetIndex) => {
         const last = sheetIndex === sheets.length - 1;
-        const offset = sheetIndex * SCHEDULE_ROWS_PER_SHEET;
         return (
           <section key={sheetIndex} className="tr-page tr-legal-l tr-schedule">
             <div className="tr-schedule-title">সংস্থাপন কর্মচারীদের বেতন বিল</div>
@@ -499,28 +567,47 @@ function TrStaffSchedule({ staff, months, office }: { staff: TrStaffEntry[]; mon
                 </tr>
               </thead>
               <tbody>
-                {rows.map((s, i) => (
-                  <tr key={s.id}>
-                    {scheduleCells(offset + i + 1, s).map((cell, c) => (
-                      <td key={c} className={c === 1 ? 'tr-schedule-name' : c === 0 ? 'tr-center' : 'tr-num'}>
-                        {cell}
+                {sheetLines.map((line, li) =>
+                  line.kind === 'group' ? (
+                    <tr key={`g-${sheetIndex}-${li}-${line.name}`} className="tr-schedule-group-row">
+                      <td colSpan={SCHEDULE_COLS} className="tr-schedule-group-name">
+                        <span className="tr-schedule-group-serial">{toBanglaDigits(line.groupSerial)}.</span>{' '}
+                        {line.name}
                       </td>
-                    ))}
-                  </tr>
-                ))}
+                    </tr>
+                  ) : (
+                    <tr key={line.entry.id}>
+                      {scheduleCells(line.serial, line.entry).map((cell, c) => (
+                        <td
+                          key={c}
+                          className={[
+                            c === 1 ? 'tr-schedule-name' : c === 0 ? 'tr-center' : 'tr-num',
+                            SCHEDULE_DATA_COLS.has(c) ? 'tr-schedule-data' : '',
+                          ]
+                            .filter(Boolean)
+                            .join(' ')}
+                        >
+                          {cell}
+                        </td>
+                      ))}
+                    </tr>
+                  ),
+                )}
                 {last ? (
                   <tr className="tr-total">
-                    <td colSpan={2}>মোট ({toBanglaDigits(staff.length)} জন)</td>
-                    <td className="tr-num">{taka(netTotal)}</td>
+                    <td colSpan={2} className="tr-schedule-data">
+                      মোট ({toBanglaDigits(staff.length)} জন)
+                    </td>
+                    <td className="tr-num tr-schedule-data">{taka(netTotal)}</td>
                     {Array.from({ length: 15 }, (_, i) => (
                       <td key={`a${i}`} />
                     ))}
-                    <td className="tr-num">{taka(stamp)}</td>
+                    <td className="tr-num tr-schedule-data">{taka(stamp)}</td>
                     {Array.from({ length: 6 }, (_, i) => (
                       <td key={`b${i}`} />
                     ))}
-                    <td className="tr-num">{taka(stamp)}</td>
-                    <td className="tr-num">{taka(payable)}</td>
+                    <td className="tr-num tr-schedule-data">{taka(stamp)}</td>
+                    <td className="tr-num tr-schedule-data">{taka(payable)}</td>
                     <td />
                     <td />
                   </tr>
@@ -548,10 +635,14 @@ function StaffTrBlock({
   staff,
   months,
   office,
+  groups,
+  signatory = null,
 }: {
   staff: TrStaffEntry[];
   months: string[];
   office: string;
+  groups?: TrStaffOfficeGroup[];
+  signatory?: TrSignatory | null;
 }) {
   const netTotal = staff.reduce((total, s) => total + s.result.total_net_arrear, 0);
   const stamp = STAMP_DUTY * staff.length;
@@ -565,6 +656,7 @@ function StaffTrBlock({
         stamp={stamp}
         payable={payable}
         payableWords={takaInWords('bn', payable)}
+        signatory={signatory}
         headBox={
           <>
             <div>
@@ -576,7 +668,7 @@ function StaffTrBlock({
           </>
         }
       />
-      <TrStaffSchedule staff={staff} months={months} office={office} />
+      <TrStaffSchedule staff={staff} months={months} office={office} groups={groups} />
     </>
   );
 }
@@ -604,10 +696,17 @@ export const TrForm15Staff = forwardRef<
   const payable = netTotal - stamp;
   const payableWords = takaInWords('bn', payable);
   const multi = officeGroups.length > 1;
+  const tBn = salaryCopy('bn');
 
   return (
     <div ref={ref} className="salary-tr-form tr15 hidden" lang="bn">
-      <StaffTrBlock staff={allStaff} months={months} office={office} />
+      <StaffTrBlock
+        staff={allStaff}
+        months={months}
+        office={office}
+        groups={officeGroups}
+        signatory={signatory}
+      />
 
       <section className="tr-page tr-attach-page tr-autofit">
         <FitBody>
@@ -619,6 +718,18 @@ export const TrForm15Staff = forwardRef<
               <tr>
                 <td>{multi ? 'টি.আর. ফরমে দপ্তরের নাম' : 'দপ্তরের নাম'}</td>
                 <td>{office}</td>
+              </tr>
+            ) : null}
+            {signatory?.name ? (
+              <tr>
+                <td>{tBn.signName}</td>
+                <td className="tr-name">{signatory.name}</td>
+              </tr>
+            ) : null}
+            {signatory?.post ? (
+              <tr>
+                <td>{tBn.signPost}</td>
+                <td>{signatory.post}</td>
               </tr>
             ) : null}
             <tr>
@@ -710,26 +821,39 @@ export const TrForm15Staff = forwardRef<
           {taka(payable)}
         </p>
         <p className="tr-attach-words">টাকা (কথায়) : {payableWords}</p>
-        {signatory ? <SignatureBlock signatory={signatory} /> : null}
         </FitBody>
+        {signatory ? <SignatureBlock signatory={signatory} /> : null}
         <AttachFooter preparedOn={preparedOn} />
       </section>
 
-      {allStaff.map((s) => {
-        const each = s.result.total_net_arrear - STAMP_DUTY;
-        return (
-          <TrAttachment
-            key={s.id}
-            formNo={15}
-            result={s.result}
-            hraArea={s.hraArea}
-            info={{ office, employee: s.name, designation: s.post, nid: s.nid, signature: false }}
-            preparedOn={preparedOn}
-            payable={each}
-            payableWords={takaInWords('bn', each)}
-            signatory={signatory}
-          />
-        );
+      {officeGroups.flatMap((g) => {
+        const sheetOffice = g.groupName.trim() || office;
+        return g.staff.map((s) => {
+          const each = s.result.total_net_arrear - STAMP_DUTY;
+          /** Like single TR 13/15: signature block uses this sheet’s officer (employee) + their group office. */
+          const sheetSignatory = signatory
+            ? { name: s.name, post: s.post, office: sheetOffice }
+            : null;
+          return (
+            <TrAttachment
+              key={s.id}
+              formNo={15}
+              result={s.result}
+              hraArea={s.hraArea}
+              info={{
+                office: sheetOffice,
+                employee: s.name,
+                designation: s.post,
+                nid: s.nid,
+                signature: Boolean(signatory),
+              }}
+              preparedOn={preparedOn}
+              payable={each}
+              payableWords={takaInWords('bn', each)}
+              signatory={sheetSignatory}
+            />
+          );
+        });
       })}
     </div>
   );

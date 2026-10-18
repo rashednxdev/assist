@@ -295,8 +295,10 @@ export function TrAttachment({
           <tr>
             <td>{t.basisSpecial}</td>
             <td>
-              {toBanglaDigits(result.special_rate_percent)}% (
-              {result.special_rate_fixed ? t.arrBandStaff : result.substantive_grade >= 10 ? t.arrBandHigh : t.arrBandLow})
+              {toBanglaDigits(result.special_rate_percent)}%
+              {result.special_rate_fixed
+                ? null
+                : ` (${result.substantive_grade >= 10 ? t.arrBandHigh : t.arrBandLow})`}
             </td>
           </tr>
           {result.special_rate_percent_after != null &&
@@ -440,8 +442,8 @@ export function TrAttachment({
         স্ট্যাম্প ডিউটি বাদে প্রদেয়: (৳ {taka(result.total_net_arrear)} − ৳ {taka(STAMP_DUTY)}) = ৳ {taka(payable)}
       </p>
       <p className="tr-attach-words">{t.inWords(payableWords)}</p>
-      {signatory ? <SignatureBlock signatory={signatory} /> : null}
       </FitBody>
+      {signatory ? <SignatureBlock signatory={signatory} /> : null}
       <AttachFooter preparedOn={preparedOn} />
     </section>
   );

@@ -1146,6 +1146,30 @@ body {
   text-align: left;
 }
 
+/* Schedule data cols 1, 2, 3, 19, 26, 27: +40% vs cell base 6.5pt → 9.1pt */
+.salary-tr-form .tr-schedule-grid td.tr-schedule-data,
+.salary-tr-form .tr-schedule-grid th.tr-schedule-data {
+  font-size: 9.1pt;
+  font-weight: 700;
+}
+
+.salary-tr-form .tr-schedule-grid td.tr-schedule-data .tr-staff-name,
+.salary-tr-form .tr-schedule-grid td.tr-schedule-data div {
+  font-size: inherit;
+}
+
+.salary-tr-form .tr-schedule-grid tr.tr-schedule-group-row td.tr-schedule-group-name {
+  text-align: left;
+  font-size: 9.1pt;
+  font-weight: 600;
+  background: #f1f5f9;
+  padding: 1.2mm 1.5mm;
+}
+
+.salary-tr-form .tr-schedule-grid .tr-schedule-group-serial {
+  font-weight: 800;
+}
+
 .salary-tr-form .tr-schedule-foot {
   margin-top: 2mm;
   text-align: center;

@@ -492,9 +492,13 @@ export function SalaryArrearsBill({
                 <BasisRow label={t.basisDrawn} value={tk(result.next_step)} />
                 <BasisRow
                   label={t.basisSpecial}
-                  value={`${num(result.special_rate_percent)}% (${
-                    result.substantive_grade >= 10 ? t.arrBandHigh : t.arrBandLow
-                  })`}
+                  value={
+                    result.special_rate_fixed
+                      ? `${num(result.special_rate_percent)}%`
+                      : `${num(result.special_rate_percent)}% (${
+                          result.substantive_grade >= 10 ? t.arrBandHigh : t.arrBandLow
+                        })`
+                  }
                 />
                 {result.special_rate_percent_after != null &&
                 result.substantive_grade_after != null &&

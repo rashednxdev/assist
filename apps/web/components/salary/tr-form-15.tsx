@@ -669,7 +669,7 @@ export const TrForm15Staff = forwardRef<
                             {s.nid ? ` · এনআইডি ${toBanglaDigits(s.nid)}` : ''}
                           </div>
                         </td>
-                        <td className="tr-center">{toBanglaDigits(r.grade)}</td>
+                        <td className="tr-center">{toBanglaDigits(r.bill_grade)}</td>
                         <td className="tr-num">{taka(r.old_pay)}</td>
                         <td className="tr-num">{taka(r.total_basic_difference + r.total_hra_protection)}</td>
                         <td className="tr-num">{taka(r.total_deduction)}</td>

@@ -220,9 +220,21 @@ export function formatTaka(amount: number): string {
   return new Intl.NumberFormat('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(paisa / 100);
 }
 
-/** Basic × whole-percent rates never need more than two decimals; this only strips floating-point noise. */
+/**
+ * Paisa → whole Taka (government half-up rule):
+ * - 50 paisa or more → round up to the next taka (2.50 → 3, 2.60 → 3)
+ * - less than 50 paisa → discard the fraction (2.49 → 2)
+ */
+export function roundSalaryTaka(amount: number): number {
+  const sign = amount < 0 ? -1 : 1;
+  const abs = Math.abs(amount);
+  const whole = Math.trunc(abs);
+  const fraction = abs - whole;
+  return sign * (fraction >= 0.5 ? whole + 1 : whole);
+}
+
 function toPaisa(amount: number): number {
-  return Math.round(amount * 100) / 100;
+  return roundSalaryTaka(amount);
 }
 
 function stageOrNextHigher(scale: readonly number[], target: number): { amount: number; index: number } {
@@ -1080,21 +1092,31 @@ export interface SalaryArrearMonthRow {
   phase: SalaryPhase;
   phase_title: string;
   new_basic: number;
-  /** Basic drawn in the month: NPS 2015 stage after the 30 June 2026 basic. */
+  /** Basic drawn in the month: NPS 2015 stage after the 30 June 2026 basic (or after promotion, the new grade). */
   drawn_basic: number;
   /** New basic − drawn basic. */
   basic_difference: number;
   special_allowance: number;
   excess_hra: number;
-  /** June 2026 house rent − July 2026 house rent when July is lower; added to the arrears. */
+  /**
+   * House rent shortfall vs the 30/06/2026 entitlement when drawn HRA is lower; added to arrears.
+   * Entitlement is always HRA on the 30/06/2026 basic (not the promoted basic).
+   */
   hra_protection: number;
   /** basic_difference − special_allowance − excess_hra + hra_protection. */
   net_arrear: number;
-  /** Days paid in the month: fewer than `month_days` only in the joining month. */
+  /** Days paid in the month: fewer than `month_days` only in a joining or pay-change segment. */
   days: number;
   month_days: number;
   /** Net arrear for the whole month; `net_arrear` = this ÷ month_days × days. */
   full_net_arrear: number;
+  /** True when this row is the post-promotion / higher-scale segment. */
+  pay_change_segment: boolean;
+  /** Inclusive day range within the month when the month is split (e.g. promotion mid-month). */
+  day_from: number | null;
+  day_to: number | null;
+  /** Grade used for new basic / drawn in this segment. */
+  segment_grade: PayGrade;
 }
 
 export interface SalaryArrearResult {
@@ -1112,6 +1134,19 @@ export interface SalaryArrearResult {
   arrear_from_date: string | null;
   /** Mid-period promotion/demotion applied in the arrears, or null. */
   pay_change: SalaryPayChange | null;
+  /**
+   * After promotion: NPS 2026 stage on the new grade (equal/next higher to the old grade’s
+   * 01/07/2026 fixed 2026-scale basic). Used only to size the promotion increase.
+   */
+  pay_change_matched_basic: number | null;
+  /** Old grade’s fixed NPS 2026 basic as on 01/07/2026 (including annual increment), e.g. ৳90,700. */
+  pay_change_origin_fixed_2026: number | null;
+  /** Matched new-grade 2026 basic − origin fixed 2026 basic (before applying 40%/50%/…). */
+  pay_change_scale_diff: number | null;
+  /** Grade printed / used for T.R. Form choice after exceptional promotion (else pay grade). */
+  bill_grade: PayGrade;
+  /** House rent entitlement amount as of 30/06/2026 (HRA on the June basic). */
+  hra_entitlement_30_06: number;
   special_rate_percent: number;
   /** True when the rate was fixed by `special_rate` (office staff bill) rather than the substantive grade. */
   special_rate_fixed: boolean;
@@ -1142,52 +1177,86 @@ export interface SalaryArrearResult {
   total_net_arrear: number;
 }
 
-type ArrearBasisAmounts = {
-  grade: PayGrade;
-  old_pay: number;
-  next_step: number;
-  next_step_is_last: boolean;
-  withheld: boolean;
-  new_basic: (phase: SalaryPhase) => number;
-  special_allowance: number;
-  excess_hra: number;
-  hra_protection: number;
-  hra_on_next_step: number;
-  hra_on_old_pay: number;
-  hra_rate_percent_next_step: number;
-  hra_rate_percent_old_pay: number;
-  monthly_deduction: number;
-};
-
-function arrearBasisAmounts(
+/** NPS 2015 stage after the 30/06/2026 basic (annual increment on 01/07/2026), or the basic itself when withheld/last. */
+function nps2015AfterIncrement(
   grade: PayGrade,
   oldPay: number,
   joiningDate: string | null | undefined,
   incrementExempt: boolean,
-  specialRate: number,
-  hraEligible: boolean,
-  hraArea: HraArea,
-  basicCache: Map<string, number>,
-): ArrearBasisAmounts {
+): { next_step: number; next_step_is_last: boolean; withheld: boolean } {
   const scale = NPS_2015[grade];
   const oldIndex = scale.indexOf(oldPay);
-  const nextIsLast = oldIndex >= scale.length - 1;
+  const nextIsLast = oldIndex < 0 || oldIndex >= scale.length - 1;
   const withheld = isIncrementExcluded(grade, oldPay, joiningDate, incrementExempt);
   const nextStep = nextIsLast || withheld ? oldPay : scale[oldIndex + 1]!;
-  const specialAllowance = Math.round(nextStep * specialRate);
-  const hraNext = hraEligible ? calculateHouseRentAllowance(nextStep, hraArea) : null;
-  const hraOld = hraEligible ? calculateHouseRentAllowance(oldPay, hraArea) : null;
-  const hraGap = hraNext && hraOld ? toPaisa(hraNext.amount - hraOld.amount) : 0;
-  const excessHra = Math.max(0, hraGap);
-  const hraProtection = Math.max(0, -hraGap);
+  return { next_step: nextStep, next_step_is_last: nextIsLast || withheld, withheld };
+}
+
+/**
+ * Old grade’s fixed NPS 2026 basic as on 01/07/2026, including the annual increment:
+ * take the next 2015 stage, then the Stage-3 “basic as on 01-07-2026” on that amount
+ * (e.g. Grade-6 ৳47,600 → ৳49,980 → ৳90,700).
+ */
+function originFixedBasic2026(
+  grade: PayGrade,
+  oldPay: number,
+  joiningDate: string | null | undefined,
+  incrementExempt: boolean,
+): number {
+  // 1) Annual increment on NPS 2015 (e.g. 47,600 → 49,980).
+  // 2) Map that onto NPS 2026 (Steps 1–4) and take the next stage as the fixed 01/07/2026
+  //    2026-scale basic (e.g. → ৳90,700). Do not re-apply joining withhold on the already-incremented basic.
+  const incremented = nps2015AfterIncrement(grade, oldPay, joiningDate, incrementExempt).next_step;
+  const fixed = calculateSalary2026({
+    grade,
+    old_pay: incremented,
+    phase: '2027-07-01',
+  }).basic_on_2026_07;
+  return fixed ?? stageOrNextHigher(NPS_2026[grade], incremented).amount;
+}
+
+/**
+ * Promotion / higher scale on NPS 2026 of the target grade:
+ * equal or next higher stage to the old grade’s fixed 01/07/2026 2026-scale basic.
+ */
+function promotedMatchedBasic2026(originFixed2026: number, promoGrade: PayGrade): number {
+  return stageOrNextHigher(NPS_2026[promoGrade], originFixed2026).amount;
+}
+
+/** Percentage applied to the promotion scale difference (substantive grade; Stage-3 uses Stage-2 rates). */
+function promotionIncreaseRate(substantive: PayGrade, phase: SalaryPhase): number {
+  if (phase === '2027-07-01') return salaryConversionRate(substantive, '2027-01-01');
+  return salaryConversionRate(substantive, phase);
+}
+
+type ArrearBasisAmounts = {
+  grade: PayGrade;
+  old_pay: number;
+  /** Drawn basic for the segment (NPS 2015). */
+  next_step: number;
+  next_step_is_last: boolean;
+  withheld: boolean;
+  pay_change_segment: boolean;
+  new_basic: (phase: SalaryPhase) => number;
+};
+
+function primaryArrearBasis(
+  grade: PayGrade,
+  oldPay: number,
+  joiningDate: string | null | undefined,
+  incrementExempt: boolean,
+  basicCache: Map<string, number>,
+): ArrearBasisAmounts {
+  const step = nps2015AfterIncrement(grade, oldPay, joiningDate, incrementExempt);
   return {
     grade,
     old_pay: oldPay,
-    next_step: nextStep,
-    next_step_is_last: nextIsLast,
-    withheld,
+    next_step: step.next_step,
+    next_step_is_last: step.next_step_is_last,
+    withheld: step.withheld,
+    pay_change_segment: false,
     new_basic: (phase) => {
-      const key = `${grade}:${oldPay}:${phase}:${incrementExempt ? 1 : 0}:${joiningDate ?? ''}`;
+      const key = `p:${grade}:${oldPay}:${phase}:${incrementExempt ? 1 : 0}:${joiningDate ?? ''}`;
       let value = basicCache.get(key);
       if (value == null) {
         value = calculateSalary2026({
@@ -1201,14 +1270,73 @@ function arrearBasisAmounts(
       }
       return value;
     },
-    special_allowance: specialAllowance,
-    excess_hra: excessHra,
-    hra_protection: hraProtection,
-    hra_on_next_step: hraNext?.amount ?? 0,
-    hra_on_old_pay: hraOld?.amount ?? 0,
-    hra_rate_percent_next_step: hraNext?.rate_percent ?? 0,
-    hra_rate_percent_old_pay: hraOld?.rate_percent ?? 0,
-    monthly_deduction: toPaisa(specialAllowance + excessHra),
+  };
+}
+
+/**
+ * After promotion: admissible new basic = original stage new_pay + (matched − originFixed) × rate%.
+ * Exception dialog grade/basic only set drawn basic (and thus HRA / special on that drawn amount).
+ */
+function promotedArrearBasis(
+  originGrade: PayGrade,
+  originOldPay: number,
+  payChange: SalaryPayChange,
+  joiningDate: string | null | undefined,
+  incrementExempt: boolean,
+  originFixed2026: number,
+  matched2026: number,
+  substantive: PayGrade,
+  basicCache: Map<string, number>,
+): ArrearBasisAmounts {
+  const promoGrade = payChange.grade as PayGrade;
+  const promoOldPay = payChange.old_pay;
+  const scaleDiff = matched2026 - originFixed2026;
+  return {
+    grade: promoGrade,
+    old_pay: promoOldPay,
+    // Dialog Grade & Basic → drawn (no second annual increment on the new grade).
+    next_step: promoOldPay,
+    next_step_is_last: true,
+    withheld: false,
+    pay_change_segment: true,
+    new_basic: (phase) => {
+      const key = `c:${originGrade}:${originOldPay}:${promoGrade}:${matched2026}:${phase}:${incrementExempt ? 1 : 0}:${joiningDate ?? ''}:${substantive}`;
+      let value = basicCache.get(key);
+      if (value == null) {
+        const originNew = calculateSalary2026({
+          grade: originGrade,
+          old_pay: originOldPay,
+          phase,
+          joining_date: joiningDate,
+          increment_exempt: incrementExempt,
+        }).new_pay;
+        const increase = toPaisa(scaleDiff * promotionIncreaseRate(substantive, phase));
+        value = toPaisa(originNew + increase);
+        basicCache.set(key, value);
+      }
+      return value;
+    },
+  };
+}
+
+/** House rent vs 30/06/2026 entitlement; excess drawn (e.g. after promotion) is deductible. */
+function hraAdjustment(
+  hraEligible: boolean,
+  hraArea: HraArea,
+  entitlementBasic30_06: number,
+  drawnBasic: number,
+): { excess_hra: number; hra_protection: number; hra_drawn: number; hra_entitlement: number } {
+  if (!hraEligible) {
+    return { excess_hra: 0, hra_protection: 0, hra_drawn: 0, hra_entitlement: 0 };
+  }
+  const entitlement = calculateHouseRentAllowance(entitlementBasic30_06, hraArea).amount;
+  const drawn = calculateHouseRentAllowance(drawnBasic, hraArea).amount;
+  const gap = toPaisa(drawn - entitlement);
+  return {
+    excess_hra: Math.max(0, gap),
+    hra_protection: Math.max(0, -gap),
+    hra_drawn: drawn,
+    hra_entitlement: entitlement,
   };
 }
 
@@ -1217,33 +1345,53 @@ function blendArrearSegment(
   phase: SalaryPhase,
   days: number,
   monthDays: number,
+  specialRate: number,
+  hraEligible: boolean,
+  hraArea: HraArea,
+  entitlementBasic30_06: number,
 ): Pick<
   SalaryArrearMonthRow,
-  'new_basic' | 'drawn_basic' | 'basic_difference' | 'special_allowance' | 'excess_hra' | 'hra_protection' | 'net_arrear' | 'full_net_arrear'
+  | 'new_basic'
+  | 'drawn_basic'
+  | 'basic_difference'
+  | 'special_allowance'
+  | 'excess_hra'
+  | 'hra_protection'
+  | 'net_arrear'
+  | 'full_net_arrear'
+  | 'pay_change_segment'
+  | 'segment_grade'
 > {
   const newBasic = basis.new_basic(phase);
-  const basicDifference = newBasic - basis.next_step;
-  const fullNet = toPaisa(basicDifference - basis.monthly_deduction + basis.hra_protection);
+  const drawnBasic = basis.next_step;
+  const basicDifference = newBasic - drawnBasic;
+  const specialAllowance = Math.round(drawnBasic * specialRate);
+  const hra = hraAdjustment(hraEligible, hraArea, entitlementBasic30_06, drawnBasic);
+  const fullNet = toPaisa(basicDifference - specialAllowance - hra.excess_hra + hra.hra_protection);
+  const base = {
+    new_basic: newBasic,
+    drawn_basic: drawnBasic,
+    pay_change_segment: basis.pay_change_segment,
+    segment_grade: basis.grade,
+  };
   if (days === monthDays) {
     return {
-      new_basic: newBasic,
-      drawn_basic: basis.next_step,
+      ...base,
       basic_difference: basicDifference,
-      special_allowance: basis.special_allowance,
-      excess_hra: basis.excess_hra,
-      hra_protection: basis.hra_protection,
+      special_allowance: specialAllowance,
+      excess_hra: hra.excess_hra,
+      hra_protection: hra.hra_protection,
       net_arrear: fullNet,
       full_net_arrear: fullNet,
     };
   }
   const part = (amount: number) => toPaisa((amount * days) / monthDays);
   const net = part(fullNet);
-  const special = part(basis.special_allowance);
-  const excess = part(basis.excess_hra);
-  const protection = part(basis.hra_protection);
+  const special = part(specialAllowance);
+  const excess = part(hra.excess_hra);
+  const protection = part(hra.hra_protection);
   return {
-    new_basic: newBasic,
-    drawn_basic: basis.next_step,
+    ...base,
     basic_difference: toPaisa(net + special + excess - protection),
     special_allowance: special,
     excess_hra: excess,
@@ -1253,12 +1401,21 @@ function blendArrearSegment(
   };
 }
 
+/** Engine label is month (+ day range); UI localizes promotion tags via `monthRowLabel`. */
+function segmentLabel(month: string, from: number, to: number, monthDays: number, _payChange: boolean): string {
+  const base = arrearMonthLabel(month);
+  if (from === 1 && to === monthDays) return base;
+  return `${base} (${from}–${to})`;
+}
+
 /**
  * Monthly arrears on the 2026 fixation:
- * (new basic − next stage after the 30-06-2026 basic) − special allowance − excess house rent
- * + house rent protection (when July 2026 house rent is below June 2026).
- * The difference, special allowance and excess house rent are all worked out on the NPS 2015
- * stage after the 30-06-2026 basic, because that is what was paid in those months.
+ * (new basic − drawn NPS 2015 stage) − special allowance − excess house rent
+ * + house rent protection.
+ * House rent entitlement is always the amount applicable on the 30/06/2026 basic; any excess
+ * drawn after promotion (or otherwise) is deducted as overpayment.
+ * Promotion / higher scale: fix 01/07/2026 increment on the old grade, then match that step to
+ * equal/next higher on NPS 2026 of the new grade; months split by the effective date are listed separately.
  */
 export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearResult {
   const grade = input.grade;
@@ -1290,31 +1447,38 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
   const specialRate = input.special_rate ?? specialAllowanceRate(substantive);
   const hraEligible = input.housing_status !== 'govt_accommodation';
   const basicCache = new Map<string, number>();
+  /** House rent entitlement is locked to the 30/06/2026 basic for every stage / promotion. */
+  const entitlementBasic30_06 = oldPay;
+  const hraEntitlement = hraEligible ? calculateHouseRentAllowance(entitlementBasic30_06, input.hra_area) : null;
 
-  const primary = arrearBasisAmounts(
-    grade,
-    oldPay,
-    input.joining_date,
-    incrementExempt,
-    specialRate,
-    hraEligible,
-    input.hra_area,
-    basicCache,
-  );
-  const changed = payChange
-    ? arrearBasisAmounts(
-        payChange.grade as PayGrade,
-        payChange.old_pay,
-        input.joining_date,
-        incrementExempt,
-        specialRate,
-        hraEligible,
-        input.hra_area,
-        basicCache,
-      )
-    : null;
+  const primary = primaryArrearBasis(grade, oldPay, input.joining_date, incrementExempt, basicCache);
+  const originFixed2026 =
+    payChange != null ? originFixedBasic2026(grade, oldPay, input.joining_date, incrementExempt) : null;
+  const matchedPromo =
+    payChange != null && originFixed2026 != null
+      ? promotedMatchedBasic2026(originFixed2026, payChange.grade as PayGrade)
+      : null;
+  const scaleDiff =
+    matchedPromo != null && originFixed2026 != null ? matchedPromo - originFixed2026 : null;
+  const changed =
+    payChange && matchedPromo != null && originFixed2026 != null
+      ? promotedArrearBasis(
+          grade,
+          oldPay,
+          payChange,
+          input.joining_date,
+          incrementExempt,
+          originFixed2026,
+          matchedPromo,
+          substantive,
+          basicCache,
+        )
+      : null;
 
-  const rows: SalaryArrearMonthRow[] = months.map((month) => {
+  const billGrade = (payChange && isPayGrade(payChange.grade) ? Math.max(grade, payChange.grade) : grade) as PayGrade;
+
+  const rows: SalaryArrearMonthRow[] = [];
+  for (const month of months) {
     const phase = arrearPhaseForMonth(month);
     const monthDays = daysInMonth(month);
     const startDay = periodStart && month === periodStart.month ? periodStart.day : 1;
@@ -1330,60 +1494,44 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
     } else if (month > payChange.effective_date.slice(0, 7)) {
       segs.push({ basis: changed, from: startDay, to: monthDays });
     } else {
-      // Effective month: old basis until the day before, new basis from the effective day.
       const split = Math.max(startDay, changeDay!);
       if (split > startDay) segs.push({ basis: primary, from: startDay, to: split - 1 });
       if (split <= monthDays) segs.push({ basis: changed, from: split, to: monthDays });
     }
 
-    const parts = segs
-      .map((s) => {
-        const days = s.to - s.from + 1;
-        if (days <= 0) return null;
-        return { days, blend: blendArrearSegment(s.basis, phase, days, monthDays) };
-      })
-      .filter((p): p is { days: number; blend: ReturnType<typeof blendArrearSegment> } => p != null);
-
-    const days = parts.reduce((n, p) => n + p.days, 0);
-    const last = parts[parts.length - 1]!.blend;
-    const first = parts[0]!.blend;
-    if (parts.length === 1) {
-      return {
+    for (const s of segs) {
+      const days = s.to - s.from + 1;
+      if (days <= 0) continue;
+      const blend = blendArrearSegment(
+        s.basis,
+        phase,
+        days,
+        monthDays,
+        specialRate,
+        hraEligible,
+        input.hra_area,
+        entitlementBasic30_06,
+      );
+      rows.push({
         month,
-        label: arrearMonthLabel(month),
+        label: segmentLabel(month, s.from, s.to, monthDays, s.basis.pay_change_segment),
         phase,
         phase_title: salaryPhaseTitle(phase),
         days,
         month_days: monthDays,
-        ...first,
-      };
+        day_from: s.from === 1 && s.to === monthDays ? null : s.from,
+        day_to: s.from === 1 && s.to === monthDays ? null : s.to,
+        ...blend,
+      });
     }
-    // Mid-month pay change: sum prorated columns; show the later basis basics.
-    const sumPick = (pick: (b: ReturnType<typeof blendArrearSegment>) => number) =>
-      toPaisa(parts.reduce((n, p) => n + pick(p.blend), 0));
-    return {
-      month,
-      label: arrearMonthLabel(month),
-      phase,
-      phase_title: salaryPhaseTitle(phase),
-      new_basic: last.new_basic,
-      drawn_basic: last.drawn_basic,
-      basic_difference: sumPick((b) => b.basic_difference),
-      special_allowance: sumPick((b) => b.special_allowance),
-      excess_hra: sumPick((b) => b.excess_hra),
-      hra_protection: sumPick((b) => b.hra_protection),
-      net_arrear: sumPick((b) => b.net_arrear),
-      days,
-      month_days: monthDays,
-      full_net_arrear: toPaisa(parts.reduce((n, p) => n + p.blend.full_net_arrear * (p.days / monthDays), 0)),
-    };
-  });
+  }
 
   const sum = (pick: (r: SalaryArrearMonthRow) => number) => toPaisa(rows.reduce((s, r) => s + pick(r), 0));
   const increment = primary.next_step - oldPay;
   const excessRr = input.excess_rr ? increment : 0;
   const excessPuja = input.excess_puja ? increment * 2 : 0;
   const oneTime = excessRr + excessPuja;
+  const primaryHra = hraAdjustment(hraEligible, input.hra_area, entitlementBasic30_06, primary.next_step);
 
   return {
     grade,
@@ -1395,17 +1543,24 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
     increment_exempt: incrementExempt,
     arrear_from_date: periodStart?.date ?? null,
     pay_change: payChange,
+    pay_change_matched_basic: matchedPromo,
+    pay_change_origin_fixed_2026: originFixed2026,
+    pay_change_scale_diff: scaleDiff,
+    bill_grade: billGrade,
+    hra_entitlement_30_06: hraEntitlement?.amount ?? 0,
     special_rate_percent: Math.round(specialRate * 100),
     special_rate_fixed: specialRateFixed,
-    special_allowance: primary.special_allowance,
+    special_allowance: Math.round(primary.next_step * specialRate),
     hra_eligible: hraEligible,
-    hra_on_next_step: primary.hra_on_next_step,
-    hra_protection: primary.hra_protection,
-    hra_on_old_pay: primary.hra_on_old_pay,
-    hra_rate_percent_next_step: primary.hra_rate_percent_next_step,
-    hra_rate_percent_old_pay: primary.hra_rate_percent_old_pay,
-    excess_hra: primary.excess_hra,
-    monthly_deduction: primary.monthly_deduction,
+    hra_on_next_step: primaryHra.hra_drawn,
+    hra_protection: primaryHra.hra_protection,
+    hra_on_old_pay: hraEntitlement?.amount ?? 0,
+    hra_rate_percent_next_step: hraEligible
+      ? calculateHouseRentAllowance(primary.next_step, input.hra_area).rate_percent
+      : 0,
+    hra_rate_percent_old_pay: hraEntitlement?.rate_percent ?? 0,
+    excess_hra: primaryHra.excess_hra,
+    monthly_deduction: toPaisa(Math.round(primary.next_step * specialRate) + primaryHra.excess_hra),
     rows,
     increment,
     excess_rr: excessRr,

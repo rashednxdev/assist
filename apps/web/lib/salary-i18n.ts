@@ -7,6 +7,7 @@ import {
   type HraArea,
   type Salary2026Result,
   type Salary2026StepRow,
+  type SalaryArrearMonthRow,
 } from '@ibas/shared-types';
 import { toBanglaDigits } from '@/lib/bangla-format';
 
@@ -117,6 +118,13 @@ const salaryEn = {
   basisNoIncrement: 'Not given — joined on or after 02-01-2026',
   basisNoIncrementExempt: 'Not given — exceptional exemption',
   basisPayChange: 'Promotion / demotion (from)',
+  basisPayChangeMatched: 'Promoted NPS 2026 step (equal/next higher)',
+  basisPayChangeOriginFixed: 'Fixed NPS 2026 basic on 01-07-2026 (with increment)',
+  basisPayChangeScaleDiff: 'Promotion scale difference',
+  basisHraEntitlement: 'HRA entitlement (30-06-2026)',
+  basisBillGrade: 'Grade for T.R. Form / bill',
+  arrPayChangeSeg: 'After promotion / higher scale',
+  arrPayChangeSegBefore: 'Before promotion / higher scale',
   basisArrearStart: 'Arrears start date',
   exLabel: 'Exceptional issues',
   exEdit: 'Edit exceptional issues',
@@ -130,7 +138,7 @@ const salaryEn = {
   exIncrementSummary: 'No increment on 01-07-2026 (exceptional exemption)',
   exPayTitle: 'Promotion / demotion adjustment',
   exPayHint:
-    'If pay rose or fell on or after 01-07-2026 (promotion or disciplinary penalty), enter the effective date with the Grade and Basic under the 2015 Pay Scale. Basic and house rent are re-determined from that date.',
+    'Enter the promotion effective date, target Grade, and the 2015 Basic drawn in that grade (for drawn basic, HRA and special allowance). New basic after promotion = original stage new basic + (promoted 2026 step − fixed 01-07-2026 2026-scale basic) × 40%/50% (or Stage-2 rate) by substantive grade. House rent entitlement stays on 30-06-2026; excess drawn is deducted. Split months are listed separately.',
   exPayDate: 'Effective date',
   exPayBasic: 'Basic (NPS 2015)',
   exPaySummary: (date: string, grade: string, basic: string) =>
@@ -258,6 +266,7 @@ const salaryEn = {
   lineDiff: 'Difference (1 − 2)',
   lineSpecial: 'Less: special allowance',
   lineHra: 'Less: excess house rent',
+  lineHraDrawn: 'Drawn house rent',
   lineHraProtection: 'Add: house rent protection (June 2026 − July 2026)',
   lineNet: 'Net arrears (3 − 4 − 5)',
   lineNetProtection: 'Net arrears (3 − 4 + 5)',
@@ -526,7 +535,7 @@ const salaryBn: SalaryCopy = {
   postType: 'পদের ধরন (গ্রেড ২–১০)',
   regular: 'নিয়মিত (ডিফল্ট)',
   currentCharge: 'চলতি দায়িত্ব — অতিরিক্ত ৳ ১,৫০০ / মাস',
-  substantive: 'কর্মরত পদের মূল (Substantive) গ্রেড (বকেয়ার জন্য)',
+  substantive: 'কর্মরত পদের মূল গ্রেড (বকেয়ার জন্য)',
   substantiveHint:
     'ডিফল্টভাবে আপনার গ্রেডই মূল গ্রেড; মূল পদ নিচের হলে একই বা নিচের গ্রেড নির্বাচন করুন (যেমন: গ্রেড ৯ → ৯, ১০, ১১ … ২০)। বকেয়ার বিশেষ ভাতা: মূল গ্রেড ১০–২০ হলে ১৫%, ১–৯ হলে ১০%। মূল গ্রেড ১১–২০ হলে টিফিন ৳ ২০০ ও যাতায়াত ৳ ৩০০-ও প্রযোজ্য।',
   housing: 'আবাসন',
@@ -588,6 +597,13 @@ const salaryBn: SalaryCopy = {
   basisNoIncrement: 'প্রাপ্য নয় — ০২-০১-২০২৬ বা পরে যোগদান',
   basisNoIncrementExempt: 'প্রাপ্য নয় — ব্যতিক্রমী অব্যাহতি',
   basisPayChange: 'পদোন্নতি / পদাবনতি (থেকে)',
+  basisPayChangeMatched: 'পদোন্নতির এনপিএস ২০২৬ ধাপ (সমান/পরবর্তী উচ্চতর)',
+  basisPayChangeOriginFixed: '০১-০৭-২০২৬-এ নির্ধারিত এনপিএস ২০২৬ মূল (ইনক্রিমেন্টসহ)',
+  basisPayChangeScaleDiff: 'পদোন্নতির স্কেল পার্থক্য',
+  basisHraEntitlement: 'বাড়ি ভাড়া প্রাপ্যতা (৩০-০৬-২০২৬)',
+  basisBillGrade: 'টি.আর. ফরম / বিলের গ্রেড',
+  arrPayChangeSeg: 'পদোন্নতি / উচ্চতর স্কেলের পর',
+  arrPayChangeSegBefore: 'পদোন্নতি / উচ্চতর স্কেলের আগে',
   basisArrearStart: 'বকেয়া শুরুর তারিখ',
   exLabel: salaryEn.exLabel,
   exEdit: salaryEn.exEdit,
@@ -601,7 +617,7 @@ const salaryBn: SalaryCopy = {
   exIncrementSummary: '০১-০৭-২০২৬-এ ইনক্রিমেন্ট নেই (ব্যতিক্রমী অব্যাহতি)',
   exPayTitle: 'পদোন্নতি / পদাবনতি সমন্বয়',
   exPayHint:
-    '০১-০৭-২০২৬ বা পরে পদোন্নতি বা শাস্তিমূলক কারণে বেতন বাড়লে/কমলে কার্যকর তারিখসহ ২০১৫ স্কেলের গ্রেড ও মূল বেতন দিন। সেই তারিখ থেকে মূল বেতন ও বাড়ি ভাড়া পুনর্নির্ধারিত হবে।',
+    'পদোন্নতির কার্যকর তারিখ, লক্ষ্য গ্রেড এবং সেই গ্রেডে উত্তোলিত ২০১৫ মূল বেতন দিন (উত্তোলিত মূল, বাড়ি ভাড়া ও বিশেষ সুবিধার জন্য)। পদোন্নতির পর নতুন মূল = পুরোনো স্টেজের নতুন মূল + (পদোন্নতির ২০২৬ ধাপ − ০১-০৭-২০২৬ নির্ধারিত ২০২৬ মূল) × ৪০%/৫০% (বা স্টেজ-২ হার) সাবস্ট্যান্টিভ গ্রেড অনুযায়ী। বাড়ি ভাড়া ৩০-০৬-২০২৬ প্রাপ্যতায়; অতিরিক্ত উত্তোলন কর্তনযোগ্য। বিভক্ত মাস আলাদা।',
   exPayDate: 'কার্যকর তারিখ',
   exPayBasic: 'মূল বেতন (এনপিএস ২০১৫)',
   exPaySummary: (date, grade, basic) =>
@@ -610,11 +626,11 @@ const salaryBn: SalaryCopy = {
   exStartHint: 'বকেয়া ০১-০৭-২০২৬-এর পরে শুরু হলে সেই তারিখ থেকে হিসাব (যোগদানের মাসে দিন অনুযায়ী আনুপাতিক)।',
   exStartDate: 'বকেয়া শুরুর তারিখ',
   exStartSummary: (date) => `বকেয়া শুরু ${date} থেকে`,
-  exNeedOne: salaryEn.exNeedOne,
-  exPayDateRequired: salaryEn.exPayDateRequired,
-  exPayDateMin: salaryEn.exPayDateMin,
-  exStartRequired: salaryEn.exStartRequired,
-  exStartMin: salaryEn.exStartMin,
+  exNeedOne: 'কমপক্ষে একটি ব্যতিক্রমী অপশন চালু করুন, অথবা টিক সরিয়ে দিন।',
+  exPayDateRequired: 'বেতন পরিবর্তনের কার্যকর তারিখ লিখুন।',
+  exPayDateMin: 'বেতন পরিবর্তন ০১-০৭-২০২৬ বা তার পরে হতে হবে।',
+  exStartRequired: 'কাস্টম বকেয়া শুরুর তারিখ লিখুন।',
+  exStartMin: 'কাস্টম বকেয়া শুরু ০১-০৭-২০২৬-এর পরে হতে হবে।',
   exApply: salaryEn.exApply,
   exClear: salaryEn.exClear,
   exemptWarn:
@@ -686,8 +702,8 @@ const salaryBn: SalaryCopy = {
   gradeRequired: 'প্রথমে আপনার গ্রেড নির্বাচন করুন।',
   hraAreaPlaceholder: 'কর্মস্থল / বাড়ি ভাড়া এলাকা নির্বাচন করুন',
   hraAreaRequired: 'কর্মস্থল / বাড়ি ভাড়া এলাকা নির্বাচন করুন।',
-  substantivePlaceholder: 'মূল (Substantive) গ্রেড নির্বাচন করুন',
-  substantiveRequired: 'কর্মরত পদের মূল (Substantive) গ্রেড নির্বাচন করুন।',
+  substantivePlaceholder: 'মূল গ্রেড নির্বাচন করুন',
+  substantiveRequired: 'কর্মরত পদের মূল গ্রেড নির্বাচন করুন।',
   moreOptions: salaryEn.moreOptions,
   moreOptionsHint: 'পদের ধরন, শিক্ষা, ধোলাই ভাতা, জিপিএফ',
   allowanceInputNote: 'নোট: ভাতাসমূহ আপনার দেওয়া তথ্যের ভিত্তিতে হিসাব করা হয়েছে।',
@@ -722,10 +738,11 @@ const salaryBn: SalaryCopy = {
   lineDrawn: 'বাদ: উত্তোলিত মূল বেতন (০১-০৭-২০২৬)',
   sameAs: (months, lead) => `${months} এর প্রাপ্য বকেয়া: ${lead}-এর অনুরূপ`,
   amountHead: 'টাকা',
-  printFooter: salaryEn.printFooter,
+  printFooter: 'প্রোঅ্যাসিস্ট | মহাহিসাবরক্ষক এর দপ্তর (হিসাব শাখা) কর্তৃক উন্নয়নকৃত',
   lineDiff: 'পার্থক্য (১ − ২)',
   lineSpecial: 'বাদ: বিশেষ ভাতা',
   lineHra: 'বাদ: অতিরিক্ত বাড়ি ভাড়া',
+  lineHraDrawn: 'উত্তোলিত বাড়ি ভাড়া',
   lineHraProtection: 'যোগ: বাড়ি ভাড়া সুরক্ষা (জুন ২০২৬ − জুলাই ২০২৬)',
   lineNet: 'নিট বকেয়া (৩ − ৪ − ৫)',
   lineNetProtection: 'নিট বকেয়া (৩ − ৪ + ৫)',
@@ -737,7 +754,7 @@ const salaryBn: SalaryCopy = {
   trFormDetails: (n) => `টি.আর. ফরম ${n}-এর তথ্য`,
   downloadNow: salaryEn.downloadNow,
   downloading: salaryEn.downloading,
-  downloadFailed: 'এখানে পিডিএফ তৈরি করা যায়নি, তাই প্রিন্ট উইন্ডো খোলা হয়েছে। সেখানে "Save as PDF" নির্বাচন করুন।',
+  downloadFailed: 'এখানে পিডিএফ তৈরি করা যায়নি, তাই প্রিন্ট উইন্ডো খোলা হয়েছে। সেখানে "পিডিএফ হিসাবে সংরক্ষণ" নির্বাচন করুন।',
   printHintNameRequired: 'কর্মচারীর নাম আবশ্যক। অফিস ও পদবি ঐচ্ছিক।',
   nameRequired: 'ডাউনলোডের জন্য কর্মচারীর নাম লিখুন।',
   arrDialogTitle: 'বকেয়া বিলের তথ্য',
@@ -745,7 +762,7 @@ const salaryBn: SalaryCopy = {
   substantiveSame: (g) => `গ্রেড ${g}-এর অনুরূপ`,
   billFormLabel: 'বিল ফরম',
   billFormRule: 'মূল গ্রেড ১–১০ এর জন্য টি.আর. ফরম ১৩, ১১–২০ এর জন্য টি.আর. ফরম ১৫।',
-  accessTitle: salaryEn.accessTitle,
+  accessTitle: 'বিল প্রিন্ট অনুমতি',
   accessUseNote: (size) => `বিল ${size}টি করে বাল্কে অনুমোদন দেওয়া হয়। প্রতিবার টি.আর. ফরম ১৩ / ১৫ ডাউনলোডে একটি বিল ব্যবহৃত হবে।`,
   accessStatusApproved: 'অনুমোদিত',
   accessStatusPending: 'অপেক্ষমাণ',
@@ -805,8 +822,8 @@ const salaryBn: SalaryCopy = {
   officeCircleFirst: 'আগে হিসাবরক্ষণ সার্কেল বা অডিট অধিদপ্তর সমূহ নির্বাচন করুন',
   officeOthers: 'আমার অফিস তালিকায় নেই (অন্যান্য)',
   officeOtherKindLabel: 'এই অফিসটি সরকারি (GOB) না স্বায়ত্তশাসিত?',
-  officeOtherKindGob: salaryEn.officeOtherKindGob,
-  officeOtherKindAutonomous: salaryEn.officeOtherKindAutonomous,
+  officeOtherKindGob: 'সরকারি (GOB)',
+  officeOtherKindAutonomous: 'স্বায়ত্তশাসিত',
   officeOtherKindHintGob: 'সরকারি (GOB) অফিসের জন্য বিল পাসকারী হিসাবরক্ষণ অফিস নির্বাচন করতে হবে।',
   officeOtherKindHintAutonomous: 'স্বায়ত্তশাসিত অফিসের নাম স্বাধীনভাবে লেখা যাবে; হিসাবরক্ষণ অফিস আবশ্যক নয়।',
   officeErrOtherKind: 'অফিসটি সরকারি (GOB) না স্বায়ত্তশাসিত তা নির্বাচন করুন।',
@@ -912,8 +929,8 @@ const salaryBn: SalaryCopy = {
   staffConsolTitle: 'একত্রিত টি.আর. ফরম ১৫ প্রিন্ট',
   staffConsolHint:
     'যে অফিসগুলো অন্তর্ভুক্ত করবেন সেগুলো টিক দিন। সব টিক দেওয়া অফিসের জন্য একটি টি.আর. ফরম ১৫ হবে। একটি সারসংক্ষেপে কর্মচারীরা অফিস অনুযায়ী গ্রুপ করা থাকবে।',
-  staffConsolSelectAll: 'সব নির্বাচন',
-  staffConsolClear: 'মুছুন',
+  staffConsolSelectAll: salaryEn.staffConsolSelectAll,
+  staffConsolClear: salaryEn.staffConsolClear,
   staffConsolNeedOne: 'কমপক্ষে একটি কর্মচারীসহ অফিস টিক দিন।',
   staffOfficeSpellConfirm: (name) =>
     `অফিসের নামের বানান কি সঠিক?\n\n"${name}"\n\nসংরক্ষণের পর অফিসের নাম সরানো বা পরিবর্তন করা যাবে না (শুধু অ্যাডমিন পারেন)।`,
@@ -967,6 +984,21 @@ export function monthText(locale: SalaryLocale, key: string): string {
   const [y, m] = key.split('-');
   const name = salaryCopy(locale).months[Number(m) - 1];
   return name ? `${name} ${localNum(locale, y ?? '')}` : key;
+}
+
+/** Localized month / promotion-segment label for arrear rows. */
+export function monthRowLabel(
+  locale: SalaryLocale,
+  row: Pick<SalaryArrearMonthRow, 'month' | 'day_from' | 'day_to' | 'pay_change_segment'>,
+): string {
+  const t = salaryCopy(locale);
+  const base = monthText(locale, row.month);
+  if (row.day_from != null && row.day_to != null) {
+    const tag = row.pay_change_segment ? t.arrPayChangeSeg : t.arrPayChangeSegBefore;
+    return `${base} (${localNum(locale, row.day_from)}–${localNum(locale, row.day_to)}, ${tag})`;
+  }
+  if (row.pay_change_segment) return `${base} (${t.arrPayChangeSeg})`;
+  return base;
 }
 
 const HRA_AREA_BN: Record<HraArea, string> = {

@@ -2,7 +2,7 @@
 
 import { formatTaka, type HraArea, type SalaryArrearResult } from '@ibas/shared-types';
 import { toBanglaDigits } from '@/lib/bangla-format';
-import { hraAreaText, monthText, salaryCopy } from '@/lib/salary-i18n';
+import { hraAreaText, monthRowLabel, monthText, salaryCopy } from '@/lib/salary-i18n';
 import type { SalaryPrintInfo } from '@/components/salary/salary-print-dialog';
 import {
   MonthMath,
@@ -222,7 +222,12 @@ export function TrAttachment({
           ) : null}
           <tr>
             <td>{t.basisGrade}</td>
-            <td>{toBanglaDigits(result.grade)}</td>
+            <td>
+              {toBanglaDigits(result.grade)}
+              {result.bill_grade !== result.grade
+                ? ` → ${toBanglaDigits(result.bill_grade)} (${t.basisBillGrade})`
+                : ''}
+            </td>
           </tr>
           {result.substantive_grade !== result.grade ? (
             <tr>
@@ -237,12 +242,38 @@ export function TrAttachment({
             </tr>
           ) : null}
           {result.pay_change ? (
+            <>
+              <tr>
+                <td>{t.basisPayChange}</td>
+                <td>
+                  {toBanglaDigits(isoToDmy(result.pay_change.effective_date))} · {t.grade}{' '}
+                  {toBanglaDigits(result.pay_change.grade)} · {t.lineDrawn} ৳ {taka(result.pay_change.old_pay)}
+                </td>
+              </tr>
+              {result.pay_change_origin_fixed_2026 != null ? (
+                <tr>
+                  <td>{t.basisPayChangeOriginFixed}</td>
+                  <td>৳ {taka(result.pay_change_origin_fixed_2026)}</td>
+                </tr>
+              ) : null}
+              {result.pay_change_matched_basic != null ? (
+                <tr>
+                  <td>{t.basisPayChangeMatched}</td>
+                  <td>৳ {taka(result.pay_change_matched_basic)}</td>
+                </tr>
+              ) : null}
+              {result.pay_change_scale_diff != null ? (
+                <tr>
+                  <td>{t.basisPayChangeScaleDiff}</td>
+                  <td>৳ {taka(result.pay_change_scale_diff)}</td>
+                </tr>
+              ) : null}
+            </>
+          ) : null}
+          {result.hra_eligible ? (
             <tr>
-              <td>{t.basisPayChange}</td>
-              <td>
-                {toBanglaDigits(isoToDmy(result.pay_change.effective_date))} · {t.grade}{' '}
-                {toBanglaDigits(result.pay_change.grade)} · ৳ {taka(result.pay_change.old_pay)}
-              </td>
+              <td>{t.basisHraEntitlement}</td>
+              <td>৳ {taka(result.hra_entitlement_30_06)}</td>
             </tr>
           ) : null}
           {result.arrear_from_date ? (
@@ -315,10 +346,10 @@ export function TrAttachment({
           </tr>
         </thead>
         <tbody>
-          {result.rows.map((row) => (
-            <tr key={row.month}>
+          {result.rows.map((row, idx) => (
+            <tr key={`${row.month}-${row.day_from ?? 'f'}-${idx}`}>
               <td>
-                {monthText('bn', row.month)}
+                {monthRowLabel('bn', row)}
                 {daysNote(t, toBanglaDigits, row)}
               </td>
               <td className="tr-num">{taka(row.new_basic)}</td>

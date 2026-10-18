@@ -8,6 +8,7 @@ import {
   calculateSalaryArrears,
   defaultArrearMonths,
   formatTaka,
+  roundSalaryTaka,
   salaryTrFormNo,
   type HousingStatus,
   type HraArea,
@@ -24,6 +25,7 @@ import {
   hraAreaText,
   localNum,
   localTaka,
+  monthRowLabel,
   monthText,
   salaryCopy,
   type SalaryCopy,
@@ -67,12 +69,14 @@ function sameMath(a: SalaryArrearMonthRow, b: SalaryArrearMonthRow): boolean {
     a.special_allowance === b.special_allowance &&
     a.excess_hra === b.excess_hra &&
     a.hra_protection === b.hra_protection &&
+    a.pay_change_segment === b.pay_change_segment &&
+    a.segment_grade === b.segment_grade &&
     a.days === a.month_days &&
     b.days === b.month_days
   );
 }
 
-/** "(26 of 30 days)" for the joining month, '' for a full month. */
+/** "(26 of 30 days)" / day-range note for joining or promotion-split months. */
 export function daysNote(t: SalaryCopy, num: (v: string | number) => string, row: SalaryArrearMonthRow): string {
   return row.days < row.month_days ? ` (${t.arrDaysNote(num(row.days), num(row.month_days))})` : '';
 }
@@ -90,27 +94,34 @@ export function groupMonths(rows: SalaryArrearMonthRow[]): MonthGroup[] {
 export function MonthMath({ f, result, group }: { f: Fmt; result: SalaryArrearResult; group: MonthGroup }) {
   const { t, locale, num, amt, signed } = f;
   const row = group.lead;
-  const leadMonth = monthText(locale, row.month);
-  const specialCalc = `${amt(result.next_step)} × ${num(result.special_rate_percent)}%`;
+  const leadMonth = monthRowLabel(locale, row);
+  const specialCalc = `${amt(row.drawn_basic)} × ${num(result.special_rate_percent)}%`;
   const prorated = row.days < row.month_days;
-  // Lines 1–6 show the whole month; a joining month then adds line 7 for the days served.
   const fullDiff = row.new_basic - row.drawn_basic;
-  const fullSpecial = result.special_allowance;
-  const fullHra = result.excess_hra;
-  const fullProtection = result.hra_protection;
+  /** Whole-month figures for lines 1–6; line 7 prorates when the segment is a partial month. */
+  const fullSpecial = Math.round((row.drawn_basic * result.special_rate_percent) / 100);
+  const scaleUp = (n: number) =>
+    prorated && row.days > 0 ? roundSalaryTaka((n * row.month_days) / row.days) : n;
+  const fullHra = scaleUp(row.excess_hra);
+  const fullProtection = scaleUp(row.hra_protection);
   const protection = fullProtection > 0;
+  const hraEntitlement = result.hra_entitlement_30_06;
+  /** Drawn HRA for this segment = entitlement ± excess/protection (whole-month). */
+  const hraDrawn = protection ? hraEntitlement - fullProtection : hraEntitlement + fullHra;
   const hraLine = protection
     ? {
         no: 5,
         label: t.lineHraProtection,
-        calc: `${amt(result.hra_on_old_pay)} − ${amt(result.hra_on_next_step)}`,
+        calc: `৳ ${amt(hraEntitlement)} (${t.basisHraEntitlement}) − ৳ ${amt(hraDrawn)} (${t.lineHraDrawn})`,
         value: `+ ${amt(fullProtection)}`,
         tone: 'plus' as const,
       }
     : {
         no: 5,
         label: t.lineHra,
-        calc: result.hra_eligible ? `${amt(result.hra_on_next_step)} − ${amt(result.hra_on_old_pay)}` : t.arrHraNone,
+        calc: result.hra_eligible
+          ? `৳ ${amt(hraDrawn)} (${t.lineHraDrawn}) − ৳ ${amt(hraEntitlement)} (${t.basisHraEntitlement})`
+          : t.arrHraNone,
         value: `− ${amt(fullHra)}`,
         tone: 'minus' as const,
       };
@@ -156,10 +167,7 @@ export function MonthMath({ f, result, group }: { f: Fmt; result: SalaryArrearRe
   return (
     <div className="salary-bill-month overflow-hidden rounded-xl border border-border">
       <div className="flex items-center justify-between gap-2 bg-slate-50 px-3 py-1.5 text-sm font-bold text-slate-800">
-        <span>
-          {leadMonth}
-          {daysNote(t, num, row)}
-        </span>
+        <span>{leadMonth}</span>
         <span className="text-xs font-semibold text-muted">{t.amountHead}</span>
       </div>
       <table className="w-full text-sm">
@@ -445,10 +453,27 @@ export function SalaryArrearsBill({
                   />
                 ) : null}
                 {result.pay_change ? (
-                  <BasisRow
-                    label={t.basisPayChange}
-                    value={`${num(result.pay_change.effective_date.split('-').reverse().join('-'))} · ${t.grade} ${num(result.pay_change.grade)} · ৳ ${amt(result.pay_change.old_pay)}`}
-                  />
+                  <>
+                    <BasisRow
+                      label={t.basisPayChange}
+                      value={`${num(result.pay_change.effective_date.split('-').reverse().join('-'))} · ${t.grade} ${num(result.pay_change.grade)} · ${t.lineDrawn} ৳ ${amt(result.pay_change.old_pay)}`}
+                    />
+                    {result.pay_change_origin_fixed_2026 != null ? (
+                      <BasisRow label={t.basisPayChangeOriginFixed} value={tk(result.pay_change_origin_fixed_2026)} />
+                    ) : null}
+                    {result.pay_change_matched_basic != null ? (
+                      <BasisRow label={t.basisPayChangeMatched} value={tk(result.pay_change_matched_basic)} />
+                    ) : null}
+                    {result.pay_change_scale_diff != null ? (
+                      <BasisRow label={t.basisPayChangeScaleDiff} value={tk(result.pay_change_scale_diff)} />
+                    ) : null}
+                  </>
+                ) : null}
+                {result.hra_eligible ? (
+                  <BasisRow label={t.basisHraEntitlement} value={tk(result.hra_entitlement_30_06)} />
+                ) : null}
+                {result.bill_grade !== result.grade ? (
+                  <BasisRow label={t.basisBillGrade} value={num(result.bill_grade)} />
                 ) : null}
                 {result.arrear_from_date ? (
                   <BasisRow
@@ -483,7 +508,12 @@ export function SalaryArrearsBill({
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">{t.billMonthsHead}</h3>
               <div className="space-y-3">
                 {groupMonths(result.rows).map((group) => (
-                  <MonthMath key={group.lead.month} f={f} result={result} group={group} />
+                  <MonthMath
+                    key={`${group.lead.month}-${group.lead.day_from ?? 'f'}-${group.lead.pay_change_segment ? 'p' : 'b'}`}
+                    f={f}
+                    result={result}
+                    group={group}
+                  />
                 ))}
               </div>
             </section>
@@ -506,13 +536,10 @@ export function SalaryArrearsBill({
                     </tr>
                   </thead>
                   <tbody>
-                    {result.rows.map((row) => (
-                      <tr key={row.month} className="border-t border-border">
+                    {result.rows.map((row, idx) => (
+                      <tr key={`${row.month}-${row.day_from ?? 'f'}-${idx}`} className="border-t border-border">
                         <td className="px-3 py-2">
-                          <div className="font-medium text-slate-800">
-                            {monthText(locale, row.month)}
-                            {daysNote(t, num, row)}
-                          </div>
+                          <div className="font-medium text-slate-800">{monthRowLabel(locale, row)}</div>
                           <div className="text-xs text-muted">{t.stageName(STAGE_NUMBER[row.phase])}</div>
                         </td>
                         <td className="px-3 py-2 text-right font-mono">{amt(row.new_basic)}</td>
@@ -617,7 +644,9 @@ export function SalaryArrearsBill({
                 className="gap-2 bg-indigo-700 px-8 hover:bg-indigo-800"
               >
                 {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                {downloading ? t.downloading : t.trFormDownload(String(salaryTrFormNo(result.substantive_grade)))}
+                {downloading
+                  ? t.downloading
+                  : t.trFormDownload(String(salaryTrFormNo(Math.max(result.substantive_grade, result.bill_grade))))}
               </Button>
             </div>
 

@@ -610,7 +610,9 @@ export default function SalaryOn2026Page() {
     exceptionalIssues,
     arrearExtras,
   ]);
-  const trFormNo = arrearResult ? salaryTrFormNo(arrearResult.substantive_grade) : 13;
+  const trFormNo = arrearResult
+    ? salaryTrFormNo(Math.max(arrearResult.substantive_grade, arrearResult.bill_grade))
+    : 13;
 
   function resetResults() {
     setResults(null);

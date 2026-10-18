@@ -1120,16 +1120,16 @@ body {
 
 .salary-tr-form.tr-capture .tr-page.tr-attach-page {
   position: relative;
-  /* 0.5in = 12.7mm; extra bottom room for the annexure footer. */
+  /* Annexure: 0.5in header & footer margins; extra bottom for footer text height. */
   padding: 0.5in;
-  padding-bottom: 18mm;
+  padding-bottom: calc(0.5in + 12mm);
 }
 
 .salary-tr-form.tr-capture .tr-attach-page > .tr-attach-footer {
   position: absolute;
   left: 0.5in;
   right: 0.5in;
-  bottom: 4mm;
+  bottom: 0.5in;
   margin-top: 0;
 }
 
@@ -1140,8 +1140,8 @@ body {
 }
 
 .salary-tr-form.tr-capture .tr-page.tr-attach-page.tr-autofit {
-  padding-left: 0.5in;
-  padding-right: 0.5in;
+  padding: 0.5in;
+  padding-bottom: calc(0.5in + 12mm);
 }
 
 /* T.R. Form 15: instructions column beside the code table */

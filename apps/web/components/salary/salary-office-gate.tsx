@@ -36,7 +36,9 @@ const SalaryOfficeContext = createContext<SalaryOfficeContextValue>({
 });
 
 const BANGLA_SCRIPT = /[\u0980-\u09FF]/;
-const LATIN_LETTER = /[A-Za-z]/;
+const LATIN_LETTER = /[A-Za-z]/
+
+type OfficePath = 'accounts' | 'others';
 
 export function useSalaryOffice(): SalaryOfficeContextValue {
   return useContext(SalaryOfficeContext);
@@ -63,7 +65,15 @@ function OfficeForm({
   const t = salaryCopy(locale);
   const [circle, setCircle] = useState<OfficeOption | null>(initial?.circle ?? null);
   const [office, setOffice] = useState<OfficeOption | null>(initial?.office ?? null);
-  const [others, setOthers] = useState(addBangla || (othersAllowed && Boolean(initial && !initial.office)));
+  const initialOthers = addBangla || (othersAllowed && Boolean(initial && !initial.office));
+  const [path, setPath] = useState<OfficePath | null>(() => {
+    if (accountingOnly) return null;
+    if (addBangla || (initial && !initial.office && initial.other_office_name)) return 'others';
+    if (initial?.office) return 'accounts';
+    if (!othersAllowed) return 'accounts';
+    return null;
+  });
+  const others = path === 'others' || initialOthers;
   const [otherName, setOtherName] = useState(initial?.other_office_name ?? '');
   const [otherNameBn, setOtherNameBn] = useState(initial?.other_office_name_bn ?? '');
   const [otherKind, setOtherKind] = useState<SalaryOtherOfficeKind | null>(
@@ -74,7 +84,11 @@ function OfficeForm({
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<SalaryOtherOfficeSuggestion[]>([]);
   const [accounting, setAccounting] = useState<OfficeOption | null>(initial?.accounting_office ?? null);
-  const showOthersOption = othersAllowed && !addBangla && !accountingOnly;
+  const showPathChoice = othersAllowed && !addBangla && !accountingOnly && path == null;
+  const showAccountsFields = !accountingOnly && !addBangla && (path === 'accounts' || (!othersAllowed && path !== 'others'));
+  const showOthersFields = others && !accountingOnly;
+  /** For Others: GOB/Statutory first; only then circle, names, and bill-pass. */
+  const othersKindChosen = otherKind != null;
   const needsAccounting =
     accountingOnly ||
     (others
@@ -110,10 +124,26 @@ function OfficeForm({
     setError('');
   }
 
+  function choosePath(next: OfficePath) {
+    setPath(next);
+    setError('');
+    if (next === 'accounts') {
+      setOtherKind(null);
+      setOtherName('');
+      setOtherNameBn('');
+      setAccounting(null);
+    } else {
+      setOffice(null);
+      setOtherKind(null);
+      setAccounting(null);
+    }
+  }
+
   async function save() {
     const name = otherName.trim();
     const nameBn = otherNameBn.trim();
     if (!accountingOnly) {
+      if (showPathChoice || (othersAllowed && !addBangla && path == null)) return setError(t.officeErrPath);
       if (others && !otherKind) return setError(t.officeErrOtherKind);
       if (others && (name.length < 3 || !LATIN_LETTER.test(name))) return setError(t.officeErrOther);
       if (others && (nameBn.length < 3 || !BANGLA_SCRIPT.test(nameBn))) return setError(t.officeErrOtherBn);
@@ -163,9 +193,11 @@ function OfficeForm({
                   ? t.officeAccountingNeeded
                   : addBangla
                     ? t.officeAddBangla
-                    : showOthersOption
+                    : showPathChoice
                       ? t.officeGateIntro
-                      : t.officeGateIntroListed}
+                      : path === 'others'
+                        ? t.officePathHintOthers
+                        : t.officeGateIntroListed}
               </p>
             </div>
           </div>
@@ -189,60 +221,89 @@ function OfficeForm({
               <div className="text-xs text-muted">{t.officeOffice}</div>
               <div className="font-semibold text-slate-900">{initial?.other_office_name_bn || initial?.label}</div>
             </div>
-          ) : (
-            <div className="space-y-1.5">
-              <Label htmlFor="salary-office-circle">
-                {t.officeCircle} {others ? <span className="font-normal text-muted">{t.officeOptional}</span> : null}
-              </Label>
-              <OfficePicker
-                id="salary-office-circle"
-                topLevel
-                allowClear
-                value={circle}
-                placeholder={t.officeCirclePlaceholder}
-                onChange={(c) => {
-                  setCircle(c);
-                  if (c?.id !== circle?.id) setOffice(null);
-                }}
-              />
-            </div>
-          )}
-
-          {others || accountingOnly ? null : (
-            <div className="space-y-1.5">
-              <Label htmlFor="salary-office-office">{t.officeOffice}</Label>
-              <OfficePicker
-                id="salary-office-office"
-                shortLabel
-                departmentId={circle?.id}
-                disabled={!circle}
-                value={office}
-                placeholder={circle ? t.officeOfficePlaceholder : t.officeCircleFirst}
-                onChange={setOffice}
-              />
-            </div>
-          )}
-
-          {showOthersOption ? (
-            <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-slate-50 px-3 py-2.5 text-sm font-medium">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded"
-                checked={others}
-                onChange={(e) => {
-                  setOthers(e.target.checked);
-                  if (!e.target.checked) {
-                    setOtherKind(null);
-                    setAccounting(null);
-                  }
-                  setError('');
-                }}
-              />
-              {t.officeOthers}
-            </label>
           ) : null}
 
-          {others && !accountingOnly ? (
+          {showPathChoice ? (
+            <div className="space-y-2 rounded-lg border border-emerald-300 bg-emerald-50/70 p-3">
+              <p className="text-sm font-bold text-emerald-950">{t.officePathLabel}</p>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-auto border-emerald-300 bg-white py-3 text-emerald-950 hover:bg-emerald-100"
+                  onClick={() => choosePath('accounts')}
+                >
+                  {t.officePathAccounts}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-auto border-emerald-300 bg-white py-3 text-emerald-950 hover:bg-emerald-100"
+                  onClick={() => choosePath('others')}
+                >
+                  {t.officePathOthers}
+                </Button>
+              </div>
+              <p className="text-xs text-emerald-900">{t.officePathHintAccounts}</p>
+              <p className="text-xs text-emerald-900">{t.officePathHintOthers}</p>
+            </div>
+          ) : null}
+
+          {path != null && showPathChoice === false && othersAllowed && !addBangla && !accountingOnly ? (
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-semibold text-emerald-900">
+                {path === 'accounts' ? t.officePathAccounts : t.officePathOthers}
+              </span>
+              <button
+                type="button"
+                className="font-medium text-primary hover:underline"
+                onClick={() => {
+                  setPath(null);
+                  setOtherKind(null);
+                  setOffice(null);
+                  setAccounting(null);
+                  setError('');
+                }}
+              >
+                {t.officeCancel}
+              </button>
+            </div>
+          ) : null}
+
+          {/* Accounts office: circle + office list */}
+          {showAccountsFields ? (
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="salary-office-circle">{t.officeCircle}</Label>
+                <OfficePicker
+                  id="salary-office-circle"
+                  topLevel
+                  allowClear
+                  value={circle}
+                  placeholder={t.officeCirclePlaceholder}
+                  onChange={(c) => {
+                    setCircle(c);
+                    if (c?.id !== circle?.id) setOffice(null);
+                  }}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="salary-office-office">{t.officeOffice}</Label>
+                <OfficePicker
+                  id="salary-office-office"
+                  shortLabel
+                  departmentId={circle?.id}
+                  disabled={!circle}
+                  value={office}
+                  placeholder={circle ? t.officeOfficePlaceholder : t.officeCircleFirst}
+                  onChange={setOffice}
+                />
+              </div>
+            </>
+          ) : null}
+
+          {/* Others: GOB / Statutory first */}
+          {showOthersFields ? (
             <div className="space-y-3">
               <div className="space-y-2 rounded-lg border border-indigo-300 bg-indigo-50/70 p-3">
                 <p className="text-sm font-bold text-indigo-950">{t.officeOtherKindLabel}</p>
@@ -286,76 +347,102 @@ function OfficeForm({
                   <p className="text-xs font-medium text-indigo-900">{t.officeOtherKindHintAutonomous}</p>
                 ) : null}
               </div>
-              <p className="rounded-md border border-yellow-400 bg-gradient-to-r from-yellow-200 via-yellow-50 to-white px-3 py-2 text-xs font-semibold text-amber-950">
-                {t.officeOthersNotice}
-              </p>
-              <div className="space-y-1.5">
-                <Label htmlFor="salary-office-other-bn">{t.officeOtherNameBn}</Label>
-                <Input
-                  id="salary-office-other-bn"
-                  lang="bn"
-                  maxLength={200}
-                  value={otherNameBn}
-                  placeholder={t.officeOtherPlaceholderBn}
-                  onChange={(e) => {
-                    setOtherNameBn(e.target.value);
-                    setQuery(e.target.value);
-                  }}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="salary-office-other">{t.officeOtherName}</Label>
-                <Input
-                  id="salary-office-other"
-                  lang="en"
-                  maxLength={200}
-                  value={otherName}
-                  placeholder={t.officeOtherPlaceholder}
-                  onChange={(e) => {
-                    setOtherName(e.target.value);
-                    setQuery(e.target.value);
-                  }}
-                />
-              </div>
-              {suggestions.length > 0 ? (
-                <div className="space-y-2 rounded-lg border border-sky-300 bg-sky-50 p-3">
-                  <p className="text-xs font-semibold text-sky-950">{t.officeExistingTitle}</p>
-                  <ul className="space-y-1.5">
-                    {suggestions.map((s) => {
-                      const selected = s.other_office_name === otherName.trim() && s.other_office_name_bn === otherNameBn.trim();
-                      return (
-                        <li
-                          key={`${s.other_office_name_bn}|${s.other_office_name}`}
-                          className={cn(
-                            'flex items-center justify-between gap-2 rounded-md border bg-white px-2.5 py-2',
-                            selected ? 'border-emerald-500 ring-2 ring-emerald-200' : 'border-sky-200',
-                          )}
-                        >
-                          <div className="min-w-0 text-sm">
-                            <div className="font-semibold text-slate-900">{s.other_office_name_bn}</div>
-                            <div className="text-xs text-slate-600">{s.other_office_name}</div>
-                            <div className="text-[11px] text-sky-800">{t.officeExistingUsers(String(s.users))}</div>
-                          </div>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant={selected ? 'default' : 'outline'}
-                            className={selected ? 'bg-emerald-700 hover:bg-emerald-800' : undefined}
-                            onClick={() => pick(s)}
-                          >
-                            {selected ? t.officeExistingSelected : t.officeExistingSelect}
-                          </Button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                  {picked ? <p className="text-xs font-semibold text-emerald-800">{t.officeExistingPicked}</p> : null}
-                </div>
+
+              {othersKindChosen || addBangla ? (
+                <>
+                  {!addBangla ? (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="salary-office-circle-others">
+                        {t.officeCircle} <span className="font-normal text-muted">{t.officeOptional}</span>
+                      </Label>
+                      <OfficePicker
+                        id="salary-office-circle-others"
+                        topLevel
+                        allowClear
+                        value={circle}
+                        placeholder={t.officeCirclePlaceholder}
+                        onChange={(c) => {
+                          setCircle(c);
+                          setError('');
+                        }}
+                      />
+                    </div>
+                  ) : null}
+
+                  <p className="rounded-md border border-yellow-400 bg-gradient-to-r from-yellow-200 via-yellow-50 to-white px-3 py-2 text-xs font-semibold text-amber-950">
+                    {t.officeOthersNotice}
+                  </p>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="salary-office-other-bn">{t.officeOtherNameBn}</Label>
+                    <Input
+                      id="salary-office-other-bn"
+                      lang="bn"
+                      maxLength={200}
+                      value={otherNameBn}
+                      placeholder={t.officeOtherPlaceholderBn}
+                      onChange={(e) => {
+                        setOtherNameBn(e.target.value);
+                        setQuery(e.target.value);
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="salary-office-other">{t.officeOtherName}</Label>
+                    <Input
+                      id="salary-office-other"
+                      lang="en"
+                      maxLength={200}
+                      value={otherName}
+                      placeholder={t.officeOtherPlaceholder}
+                      onChange={(e) => {
+                        setOtherName(e.target.value);
+                        setQuery(e.target.value);
+                      }}
+                    />
+                  </div>
+                  {suggestions.length > 0 ? (
+                    <div className="space-y-2 rounded-lg border border-sky-300 bg-sky-50 p-3">
+                      <p className="text-xs font-semibold text-sky-950">{t.officeExistingTitle}</p>
+                      <ul className="space-y-1.5">
+                        {suggestions.map((s) => {
+                          const selected =
+                            s.other_office_name === otherName.trim() && s.other_office_name_bn === otherNameBn.trim();
+                          return (
+                            <li
+                              key={`${s.other_office_name_bn}|${s.other_office_name}`}
+                              className={cn(
+                                'flex items-center justify-between gap-2 rounded-md border bg-white px-2.5 py-2',
+                                selected ? 'border-emerald-500 ring-2 ring-emerald-200' : 'border-sky-200',
+                              )}
+                            >
+                              <div className="min-w-0 text-sm">
+                                <div className="font-semibold text-slate-900">{s.other_office_name_bn}</div>
+                                <div className="text-xs text-slate-600">{s.other_office_name}</div>
+                                <div className="text-[11px] text-sky-800">{t.officeExistingUsers(String(s.users))}</div>
+                              </div>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={selected ? 'default' : 'outline'}
+                                className={selected ? 'bg-emerald-700 hover:bg-emerald-800' : undefined}
+                                onClick={() => pick(s)}
+                              >
+                                {selected ? t.officeExistingSelected : t.officeExistingSelect}
+                              </Button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                      {picked ? <p className="text-xs font-semibold text-emerald-800">{t.officeExistingPicked}</p> : null}
+                    </div>
+                  ) : null}
+                </>
               ) : null}
             </div>
           ) : null}
 
-          {needsAccounting ? (
+          {/* Bill-passing (pass) office — after GOB/Statutory for others, or when listed office needs it */}
+          {needsAccounting && (accountingOnly || !others || othersKindChosen || addBangla) ? (
             <div className="space-y-1.5 rounded-lg border border-emerald-300 bg-emerald-50/60 p-3">
               <Label htmlFor="salary-office-accounting">{t.officeAccounting}</Label>
               <OfficePicker
@@ -376,16 +463,18 @@ function OfficeForm({
 
           {error ? <Alert variant="error">{error}</Alert> : null}
 
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" onClick={() => void save()} disabled={saving} className="bg-emerald-700 hover:bg-emerald-800">
-              {saving ? t.officeSaving : t.officeSave}
-            </Button>
-            {onCancel ? (
-              <Button type="button" variant="outline" onClick={onCancel} disabled={saving}>
-                {t.officeCancel}
+          {!showPathChoice ? (
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" onClick={() => void save()} disabled={saving} className="bg-emerald-700 hover:bg-emerald-800">
+                {saving ? t.officeSaving : t.officeSave}
               </Button>
-            ) : null}
-          </div>
+              {onCancel ? (
+                <Button type="button" variant="outline" onClick={onCancel} disabled={saving}>
+                  {t.officeCancel}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

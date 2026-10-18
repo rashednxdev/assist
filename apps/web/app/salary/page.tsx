@@ -585,8 +585,8 @@ function SalarySummaryCard({
             <p className="mt-1 text-xs font-medium text-amber-800">{t.allowanceInputNote}</p>
           </div>
         ) : null}
-        <div className="flex flex-wrap gap-2 print:hidden">
-          <Button type="button" onClick={onPdf} className="gap-2">
+        <div className="flex flex-wrap justify-center gap-2 print:hidden">
+          <Button type="button" onClick={onPdf} className="gap-2 bg-red-600 hover:bg-red-700">
             <Download className="h-4 w-4" />
             {t.pdf}
           </Button>

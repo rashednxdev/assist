@@ -346,7 +346,12 @@ export function TrAttachment({
       <div className="tr-attach-head">{t.billMonthsHead}</div>
       <div className="tr-month-blocks">
         {groupMonths(result.rows).map((group) => (
-          <MonthMath key={group.lead.month} f={fmt} result={result} group={group} />
+          <MonthMath
+            key={`${group.lead.month}-${group.lead.day_from ?? 'f'}-${group.lead.pay_change_segment ? 'p' : 'b'}`}
+            f={fmt}
+            result={result}
+            group={group}
+          />
         ))}
       </div>
 

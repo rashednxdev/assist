@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { AlertTriangle, X } from 'lucide-react';
+import { AlertTriangle, MessageCircle, X } from 'lucide-react';
 import {
   NPS_2015,
   NO_EXCEPTIONAL_ISSUES,
@@ -256,6 +256,16 @@ export function SalaryExceptionalIssuesField({
                   {t.exDialogTitle}
                 </h2>
                 <div className="flex shrink-0 items-center gap-2">
+                  <a
+                    href={`https://wa.me/${t.exDialogPhone.replace(/\D/g, '').replace(/^0/, '880')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 rounded-full bg-[#25D366] px-2.5 py-1 text-xs font-semibold text-white shadow-sm hover:bg-[#1ebe57]"
+                    aria-label={t.whatsapp}
+                  >
+                    <MessageCircle className="h-3.5 w-3.5" />
+                    {t.whatsapp}
+                  </a>
                   <a
                     href={`tel:${t.exDialogPhone}`}
                     className="text-base font-bold tabular-nums text-slate-900 hover:text-primary"

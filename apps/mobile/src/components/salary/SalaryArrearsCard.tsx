@@ -164,8 +164,11 @@ export function SalaryArrearsCard({
                 <Text style={styles.label}>{t.arrColDiff}</Text>
                 <Text style={styles.label}>{t.arrColNet}</Text>
               </View>
-              {result.rows.map((row) => (
-                <View key={row.month} style={styles.row}>
+              {result.rows.map((row, idx) => (
+                <View
+                  key={`${row.month}-${row.day_from ?? 'f'}-${row.pay_change_segment ? 'p' : 'b'}-${idx}`}
+                  style={styles.row}
+                >
                   <View style={styles.flex}>
                     <Text style={styles.rowTitle}>
                       {monthText(locale, row.month)}

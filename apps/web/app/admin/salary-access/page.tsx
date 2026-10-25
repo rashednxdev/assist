@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { ChevronRight, Search, X } from 'lucide-react';
+import { ChevronRight, MessageCircle, Search, X } from 'lucide-react';
 import type {
   SalaryAccessListFilter,
   SalaryBillAccessAdminRow,
@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { phoneWhatsAppHref } from '@/lib/contact';
 import { cn } from '@/lib/utils';
 
 type StatusFilter = SalaryAccessListFilter | 'all';
@@ -37,6 +38,25 @@ interface UserOption {
   full_name_en: string;
   email: string;
   phone: string;
+}
+
+function WhatsAppUser({ name, phone }: { name: string; phone: string }) {
+  const href = phoneWhatsAppHref(phone, `Hi ${name}, regarding your ProAssist salary bill.`);
+  if (!href) return null;
+  return (
+    <Button asChild size="sm" variant="outline" className="h-8 gap-1.5 px-2">
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        aria-label={`WhatsApp ${name}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <MessageCircle className="h-3.5 w-3.5 text-emerald-600" />
+        WhatsApp
+      </a>
+    </Button>
+  );
 }
 
 function formatWhen(iso: string | null): string {
@@ -315,9 +335,12 @@ function AccessDialog({
               {row.user.full_name_en}
               <StatusBadge row={row} />
             </h2>
-            <p className="text-xs text-muted">
-              {row.user.phone}
-              {row.user.email ? ` · ${row.user.email}` : ''}
+            <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
+              <span>
+                {row.user.phone}
+                {row.user.email ? ` · ${row.user.email}` : ''}
+              </span>
+              <WhatsAppUser name={row.user.full_name_en} phone={row.user.phone} />
             </p>
             <p className="text-xs text-slate-600">
               <span className="font-medium">Office:</span> {row.office_label || 'Not selected yet'}
@@ -608,7 +631,10 @@ function AccessTable({ rows, onOpen }: { rows: SalaryBillAccessAdminRow[]; onOpe
             >
               <td className="px-3 py-2">
                 <span className="block font-semibold text-slate-900">{row.user.full_name_en}</span>
-                <span className="block text-xs text-muted">{row.user.phone}</span>
+                <span className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted">
+                  <span>{row.user.phone}</span>
+                  <WhatsAppUser name={row.user.full_name_en} phone={row.user.phone} />
+                </span>
                 <span className="block text-[10px] leading-tight text-slate-500">{row.office_label || 'Office not selected'}</span>
                 {row.admin_note ? <span className="block text-[11px] text-slate-500">Note: {row.admin_note}</span> : null}
                 {row.billing.suggested_charge != null ? (

@@ -9,6 +9,7 @@ import {
   defaultArrearMonths,
   formatTaka,
   roundSalaryTaka,
+  specialAllowanceAmount,
   salaryArrearTrGrade,
   salaryTrFormNo,
   type HousingStatus,
@@ -98,11 +99,15 @@ export function MonthMath({ f, result, group }: { f: Fmt; result: SalaryArrearRe
   const leadMonth = monthRowLabel(locale, row);
   /** Dedicated % for this segment (pre- vs post-promotion), from the arrears engine. */
   const specialRatePercent = row.special_rate_percent;
-  const specialCalc = `${amt(row.drawn_basic)} × ${num(specialRatePercent)}%`;
   const prorated = row.days < row.month_days;
   const fullDiff = row.new_basic - row.drawn_basic;
   /** Whole-month figures for lines 1–6; line 7 prorates when the segment is a partial month. */
-  const fullSpecial = Math.round((row.drawn_basic * specialRatePercent) / 100);
+  const rawSpecial = Math.round((row.drawn_basic * specialRatePercent) / 100);
+  const fullSpecial = specialAllowanceAmount(row.drawn_basic, specialRatePercent / 100);
+  const specialCalc =
+    fullSpecial > rawSpecial
+      ? `${amt(row.drawn_basic)} × ${num(specialRatePercent)}% (${t.specialMin(amt(fullSpecial))})`
+      : `${amt(row.drawn_basic)} × ${num(specialRatePercent)}%`;
   const scaleUp = (n: number) =>
     prorated && row.days > 0 ? roundSalaryTaka((n * row.month_days) / row.days) : n;
   const fullHra = scaleUp(row.excess_hra);

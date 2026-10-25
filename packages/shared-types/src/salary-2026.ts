@@ -1257,6 +1257,16 @@ export function specialAllowanceRate(substantiveGrade: PayGrade): number {
   return substantiveGrade >= 10 ? 0.15 : 0.1;
 }
 
+/** Monthly special allowance at 15% is at least this amount. */
+export const SPECIAL_ALLOWANCE_MINIMUM = 1500;
+
+/** 15% of drawn basic, raised to {@link SPECIAL_ALLOWANCE_MINIMUM} when the percent is lower. 10% is unchanged. */
+export function specialAllowanceAmount(drawnBasic: number, specialRate: number): number {
+  const amount = Math.round(drawnBasic * specialRate);
+  if (Math.round(specialRate * 100) === 15 && amount < SPECIAL_ALLOWANCE_MINIMUM) return SPECIAL_ALLOWANCE_MINIMUM;
+  return amount;
+}
+
 /** Office staff arrear bills always deduct special allowance at 15%, whatever the grade. */
 export const STAFF_SPECIAL_RATE = 0.15;
 
@@ -1579,7 +1589,7 @@ function blendArrearSegment(
   const newBasic = basis.new_basic(phase);
   const drawnBasic = basis.next_step;
   const basicDifference = newBasic - drawnBasic;
-  const specialAllowance = Math.round(drawnBasic * specialRate);
+  const specialAllowance = specialAllowanceAmount(drawnBasic, specialRate);
   const specialRatePercent = Math.round(specialRate * 100);
   const hra = hraAdjustment(hraEligible, hraArea, entitlementBasic30_06, drawnBasic);
   const fullNet = toPaisa(basicDifference - specialAllowance - hra.excess_hra + hra.hra_protection);
@@ -1777,7 +1787,7 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
     special_rate_percent: Math.round(specialRateBefore * 100),
     special_rate_percent_after: payChange != null ? Math.round(specialRateAfter * 100) : null,
     special_rate_fixed: specialRateFixed,
-    special_allowance: Math.round(primary.next_step * specialRateBefore),
+    special_allowance: specialAllowanceAmount(primary.next_step, specialRateBefore),
     hra_eligible: hraEligible,
     hra_on_next_step: primaryHra.hra_drawn,
     hra_protection: primaryHra.hra_protection,
@@ -1787,7 +1797,7 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
       : 0,
     hra_rate_percent_old_pay: hraEntitlement?.rate_percent ?? 0,
     excess_hra: primaryHra.excess_hra,
-    monthly_deduction: toPaisa(Math.round(primary.next_step * specialRateBefore) + primaryHra.excess_hra),
+    monthly_deduction: toPaisa(specialAllowanceAmount(primary.next_step, specialRateBefore) + primaryHra.excess_hra),
     rows,
     increment,
     excess_rr: excessRr,

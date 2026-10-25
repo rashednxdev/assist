@@ -130,6 +130,7 @@ const salaryEn = {
   arrSpecialHead: 'Special allowance (monthly deduction)',
   arrSpecialCalc: (next: string, pct: string, grade: string, band: string) =>
     `${next} × ${pct}% — substantive Grade ${grade} (${band})`,
+  specialMin: (amount: string) => `minimum ৳ ${amount}`,
   arrBandHigh: 'grades 10–20',
   arrBandLow: 'grades 1–9',
   arrSpecialLast: (basic: string) => `${basic} is the last step, so the 30 June 2026 basic is used`,
@@ -272,6 +273,7 @@ const salaryBn: typeof salaryEn = {
   arrSelectMonth: 'অন্তত একটি মাস নির্বাচন করুন।',
   arrSpecialHead: 'বিশেষ ভাতা (মাসিক কর্তন)',
   arrSpecialCalc: (next, pct, grade, band) => `${next} × ${pct}% — মূল গ্রেড ${grade} (${band})`,
+  specialMin: (amount: string) => `সর্বনিম্ন ৳ ${amount}`,
   arrBandHigh: 'গ্রেড ১০–২০',
   arrBandLow: 'গ্রেড ১–৯',
   arrSpecialLast: (basic) => `${basic} সর্বশেষ ধাপ, তাই ৩০ জুন ২০২৬-এর মূল বেতন ধরা হয়েছে`,

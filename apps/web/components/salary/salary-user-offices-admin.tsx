@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Lock, LockOpen, Pencil, RotateCcw, Search, UserCog } from 'lucide-react';
+import { Lock, LockOpen, MessageCircle, Pencil, RotateCcw, Search, UserCog } from 'lucide-react';
 import {
   SALARY_EXTRA_USER_FREE_CALCS,
   SALARY_FREE_ARREARS_CALCS,
@@ -11,6 +11,7 @@ import {
   type SalaryUserOfficeAdminRow,
 } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
+import { phoneWhatsAppHref } from '@/lib/contact';
 import { OfficePicker, officeLabel } from '@/components/org/office-picker';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -251,12 +252,24 @@ function OfficeRow({ row, onChanged }: { row: SalaryUserOfficeAdminRow; onChange
     }
   }
 
+  const whatsapp = phoneWhatsAppHref(row.user.phone, `Hi ${row.user.full_name_en}, regarding your ProAssist salary bill.`);
+
   return (
     <div className="space-y-2 rounded-lg border border-border p-3 text-sm">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="font-semibold text-slate-900">{row.user.full_name_en}</p>
-          <p className="text-xs text-muted">{[row.user.phone, row.user.email].filter(Boolean).join(' · ')}</p>
+          <p className="flex flex-wrap items-center gap-2 text-xs text-muted">
+            <span>{[row.user.phone, row.user.email].filter(Boolean).join(' · ')}</span>
+            {whatsapp ? (
+              <Button asChild size="sm" variant="outline" className="h-7 gap-1 px-2">
+                <a href={whatsapp} target="_blank" rel="noreferrer" aria-label={`WhatsApp ${row.user.full_name_en}`}>
+                  <MessageCircle className="h-3.5 w-3.5 text-emerald-600" />
+                  WhatsApp
+                </a>
+              </Button>
+            ) : null}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           {row.is_other ? <Badge variant="warning">Others</Badge> : <Badge variant="secondary">{row.office_type ?? 'Listed'}</Badge>}

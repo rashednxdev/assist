@@ -450,6 +450,34 @@ export interface SalaryPrintReport {
   days: SalaryPrintDayRow[];
 }
 
+/** One user's prints: today, yesterday (Bangladesh dates), and every print since the start. */
+export interface SalaryUserPrintRow {
+  user_id: string;
+  name: string;
+  phone: string;
+  office: string;
+  today: number;
+  yesterday: number;
+  total: number;
+  /** Prints made with a free T.R. Form. */
+  free: number;
+  /** Prints charged to an approved bill allowance. */
+  approved: number;
+}
+
+export interface SalaryUserPrintReport {
+  /** Bangladesh date for the Today column. */
+  today: string;
+  /** Bangladesh date for the Yesterday column. */
+  yesterday: string;
+  rows: SalaryUserPrintRow[];
+  today_total: number;
+  yesterday_total: number;
+  all_time: number;
+  free_total: number;
+  approved_total: number;
+}
+
 export interface SalaryBillAccessStats {
   all_time: SalaryPrintStats;
   /** Since midnight, Bangladesh time. */

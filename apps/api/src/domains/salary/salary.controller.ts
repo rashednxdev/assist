@@ -282,6 +282,10 @@ export async function adminPrintReportHandler(req: AuthRequest, res: Response): 
   res.json({ data: await accessService.salaryPrintReport(req.query) });
 }
 
+export async function adminUserPrintReportHandler(_req: AuthRequest, res: Response): Promise<void> {
+  res.json({ data: await accessService.salaryUserPrintReport() });
+}
+
 export async function getSalaryBulkSizeHandler(_req: AuthRequest, res: Response): Promise<void> {
   res.json({ data: await accessService.getSalaryBulkSize() });
 }

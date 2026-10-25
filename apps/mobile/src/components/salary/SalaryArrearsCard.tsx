@@ -121,6 +121,9 @@ export function SalaryArrearsCard({
                   num(result.substantive_grade),
                   result.substantive_grade >= 10 ? t.arrBandHigh : t.arrBandLow,
                 )}
+                {result.special_allowance > Math.round((result.next_step * result.special_rate_percent) / 100)
+                  ? ` (${t.specialMin(amt(result.special_allowance))})`
+                  : ''}
               </Text>
               <Text style={styles.tiny}>
                 {result.next_step_is_last ? t.arrSpecialLast(tk(result.old_pay)) : t.arrSpecialNext(tk(result.old_pay))}

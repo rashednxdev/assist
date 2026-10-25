@@ -11,6 +11,7 @@ import {
   salaryPrintReportQuerySchema,
   type SalaryPrintDayRow,
   type SalaryPrintReport,
+  type SalaryUserPrintReport,
   type ConsumeSalaryBillDto,
   type ConsumeSalaryStaffBillDto,
   type RecordArrearsCalcDto,
@@ -707,6 +708,75 @@ export async function salaryPrintReport(query: unknown, userId?: string): Promis
     .map(({ row, users }) => ({ ...row, users: users.size }))
     .sort((a, b) => b.date.localeCompare(a.date));
   return { from, to, total: days.reduce((sum, d) => sum + d.total, 0), all_time: allTime, days };
+}
+
+/** Every user who has printed, with today, yesterday, and all-time counts (Bangladesh dates). */
+export async function salaryUserPrintReport(): Promise<SalaryUserPrintReport> {
+  const today = dhakaDateKey(new Date());
+  const yesterday = dhakaDateKey(new Date(Date.now() - DAY_MS));
+  const todayStart = dhakaDateStart(today);
+  const tomorrowStart = new Date(todayStart.getTime() + DAY_MS);
+  const yesterdayStart = dhakaDateStart(yesterday);
+  const groups = await SalaryBillUsage.aggregate<{
+    _id: mongoose.Types.ObjectId;
+    total: number;
+    today: number;
+    yesterday: number;
+    free: number;
+    approved: number;
+  }>([
+    { $match: { kind: { $in: PRINT_KINDS } } },
+    {
+      $group: {
+        _id: '$user_id',
+        total: { $sum: 1 },
+        today: {
+          $sum: {
+            $cond: [{ $and: [{ $gte: ['$created_at', todayStart] }, { $lt: ['$created_at', tomorrowStart] }] }, 1, 0],
+          },
+        },
+        yesterday: {
+          $sum: {
+            $cond: [{ $and: [{ $gte: ['$created_at', yesterdayStart] }, { $lt: ['$created_at', todayStart] }] }, 1, 0],
+          },
+        },
+        free: { $sum: { $cond: [{ $eq: ['$free', true] }, 1, 0] } },
+        approved: { $sum: { $cond: [{ $eq: ['$free', true] }, 0, 1] } },
+      },
+    },
+    { $sort: { today: -1, yesterday: -1, total: -1 } },
+  ]);
+  const ids = groups.map((g) => String(g._id));
+  const [users, offices] = await Promise.all([
+    User.find({ _id: { $in: ids } }).select('full_name_en phone'),
+    salaryOfficeLabels(ids),
+  ]);
+  const byId = new Map(users.map((u) => [String(u._id), u]));
+  const rows = groups.map((g) => {
+    const id = String(g._id);
+    const user = byId.get(id);
+    return {
+      user_id: id,
+      name: user?.full_name_en ?? '(deleted user)',
+      phone: user?.phone ?? '',
+      office: offices.get(id) ?? '',
+      today: g.today,
+      yesterday: g.yesterday,
+      total: g.total,
+      free: g.free,
+      approved: g.approved,
+    };
+  });
+  return {
+    today,
+    yesterday,
+    rows,
+    today_total: rows.reduce((sum, row) => sum + row.today, 0),
+    yesterday_total: rows.reduce((sum, row) => sum + row.yesterday, 0),
+    all_time: rows.reduce((sum, row) => sum + row.total, 0),
+    free_total: rows.reduce((sum, row) => sum + row.free, 0),
+    approved_total: rows.reduce((sum, row) => sum + row.approved, 0),
+  };
 }
 
 export async function myPrintReport(user: AuthUser, query: unknown): Promise<SalaryPrintReport> {

@@ -367,6 +367,8 @@ export function SalaryArrearsBill({
   onMonthsChange,
   extras,
   onExtrasChange,
+  deductStamp,
+  onDeductStampChange,
   onTrForm,
   accessReady,
   downloading,
@@ -385,6 +387,9 @@ export function SalaryArrearsBill({
   onMonthsChange: (months: string[]) => void;
   extras: ArrearExtras;
   onExtrasChange: (extras: ArrearExtras) => void;
+  /** Stamp duty ৳ 10 is deducted unless the user clears this. */
+  deductStamp: boolean;
+  onDeductStampChange: (deduct: boolean) => void;
   onTrForm: () => void;
   accessReady: boolean;
   downloading: boolean;
@@ -420,6 +425,8 @@ export function SalaryArrearsBill({
     }
   }, [grade, oldPay, substantiveGrade, joiningDate, exceptional, housingStatus, hraArea, months, extras, t]);
   const oneTime = result ? oneTimeDeductions(t, amt, result) : [];
+  const stamp = deductStamp ? 10 : 0;
+  const payable = result ? result.total_net_arrear - stamp : 0;
   const fromMonth = arrearPeriodStart(grade, oldPay, joiningDate, exceptional?.arrear_start_date)?.month;
 
   return (
@@ -441,6 +448,18 @@ export function SalaryArrearsBill({
               value={extras}
               onChange={onExtrasChange}
             />
+            <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm print:hidden">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 shrink-0 accent-amber-700"
+                checked={deductStamp}
+                onChange={(e) => onDeductStampChange(e.target.checked)}
+              />
+              <span>
+                <span className="block font-semibold text-amber-950">{t.stampDeduct}</span>
+                <span className="block text-xs text-amber-900/80">{t.stampDeductHint}</span>
+              </span>
+            </label>
 
             <section className="space-y-1.5">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">{t.billBasis}</h3>
@@ -640,15 +659,21 @@ export function SalaryArrearsBill({
                   </div>
                   <p className="whitespace-nowrap font-mono font-semibold text-rose-700">− {tk(result.total_deduction)}</p>
                 </div>
+                {stamp > 0 ? (
+                  <div className="flex items-center justify-between gap-4">
+                    <p className="font-semibold">{t.stampDeduct}</p>
+                    <p className="whitespace-nowrap font-mono font-semibold text-rose-700">− {tk(stamp)}</p>
+                  </div>
+                ) : null}
                 <div className="flex items-center justify-between gap-4 border-t-2 border-indigo-300 pt-2">
                   <p className="text-base font-bold">{t.arrMathNet}</p>
                   <p className="whitespace-nowrap font-mono text-lg font-bold text-indigo-900">
-                    ৳ {signed(result.total_net_arrear)}
+                    ৳ {signed(payable)}
                   </p>
                 </div>
               </div>
               <p className="mt-2 text-sm font-semibold text-indigo-900">
-                {t.inWords(takaInWords(locale, result.total_net_arrear))}
+                {t.inWords(takaInWords(locale, payable))}
               </p>
               {result.total_net_arrear < 0 ? (
                 <p className="text-[11px] text-indigo-900/80">{t.arrNegative}</p>

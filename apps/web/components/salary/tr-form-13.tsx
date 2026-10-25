@@ -65,20 +65,24 @@ export function TrForm13({
   hraArea,
   info,
   preparedOn,
+  stampDuty = STAMP_DUTY,
 }: {
   result: SalaryArrearResult;
   hraArea: HraArea;
   info: SalaryPrintInfo;
   preparedOn: string;
+  /** 0 when the user turns off stamp-duty deduction. */
+  stampDuty?: number;
 }) {
   const period = periodText(result.rows.map((r) => r.month));
+  const stamp = stampDuty;
   const payRows = PAY_ROWS.map((row, i) => (i === 0 ? { ...row, amount: result.total_net_arrear } : row));
   const deductionRows: FormRow[] = [
-    ...DEDUCTION_ROWS.map((row) => (row.code === STAMP_DUTY_CODE ? { ...row, amount: STAMP_DUTY } : row)),
+    ...DEDUCTION_ROWS.map((row) => (row.code === STAMP_DUTY_CODE ? { ...row, amount: stamp } : row)),
     { code: '', label: '' },
     { code: '', label: '' },
   ];
-  const payable = result.total_net_arrear - STAMP_DUTY;
+  const payable = result.total_net_arrear - stamp;
   const payableWords = takaInWords('bn', payable);
 
   return (
@@ -172,7 +176,7 @@ export function TrForm13({
             {deductionRows.map((row, i) => (
               <CodeRow key={`d${i}`} row={row} />
             ))}
-            <TotalRow label="কর্তন ও পরিশোধ বাবদ মোট আদায় (খ)" amount={STAMP_DUTY} />
+            <TotalRow label="কর্তন ও পরিশোধ বাবদ মোট আদায় (খ)" amount={stamp} />
             <CodeRow row={{ code: '৮১৭২১০৮', label: 'প্রদেয় বিল (ক-খ)', amount: payable }} />
             <tr>
               <td colSpan={7} className="tr-words">
@@ -254,6 +258,7 @@ export function TrForm13({
         preparedOn={preparedOn}
         payable={payable}
         payableWords={payableWords}
+        stampDuty={stamp}
         signatory={info.signature ? { name: info.employee, post: info.designation, office: info.office } : null}
       />
     </div>

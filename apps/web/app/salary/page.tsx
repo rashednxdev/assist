@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   LogOut,
   ReceiptText,
+  UserRound,
   Share2,
   Users,
 } from 'lucide-react';
@@ -79,6 +80,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
 import { NO_ARREAR_EXTRAS, SalaryArrearsBill, type ArrearExtras } from '@/components/salary/salary-arrears-bill';
+import { STAMP_DUTY } from '@/components/salary/tr-form-parts';
 import { SalaryStaffBill } from '@/components/salary/salary-staff-bill';
 import { TrForm13 } from '@/components/salary/tr-form-13';
 import {
@@ -630,6 +632,7 @@ export default function SalaryOn2026Page() {
   const [billError, setBillError] = useState('');
   const [bulkDialog, setBulkDialog] = useState(false);
   const [arrearsDialog, setArrearsDialog] = useState(false);
+  const [deductStamp, setDeductStamp] = useState(true);
   const [calcBlocked, setCalcBlocked] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -638,7 +641,10 @@ export default function SalaryOn2026Page() {
   const [scrollRequest, setScrollRequest] = useState<{ ref: React.RefObject<HTMLDivElement | null> } | null>(null);
 
   const router = useRouter();
-  const salaryOnly = isSalaryOnlyUser(useSalaryUser());
+  const me = useSalaryUser();
+  const salaryOnly = isSalaryOnlyUser(me);
+  const userName =
+    locale === 'bn' && me?.full_name_bn?.trim() ? me.full_name_bn.trim() : (me?.full_name_en ?? '');
   const t = salaryCopy(locale);
   const ctx: Ctx = { t, locale };
   const num = (v: string | number) => localNum(locale, v);
@@ -1076,10 +1082,18 @@ export default function SalaryOn2026Page() {
             {t.heroBadge}
           </p>
           {shareNote ? <p className="mt-2 text-xs text-emerald-100 print:hidden">{shareNote}</p> : null}
-          <p className="mx-auto mt-3 flex w-fit max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-full bg-white/10 px-3 py-1 text-xs text-emerald-50 ring-1 ring-white/20 print:hidden">
-            <Building2 className="h-3.5 w-3.5 shrink-0" />
-            <span className="font-semibold">{t.officeYour}:</span>
-            <span className="min-w-0 truncate">{salaryOffice?.label ?? t.officeNotSet}</span>
+          <p className="mx-auto mt-3 flex w-fit max-w-full flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-full bg-white/10 px-3 py-1.5 text-xs text-emerald-50 ring-1 ring-white/20 print:hidden">
+            <span className="inline-flex min-w-0 items-center gap-1.5">
+              <UserRound className="h-3.5 w-3.5 shrink-0" />
+              <span className="font-semibold">{t.userYour}:</span>
+              <span className="min-w-0 truncate font-medium">{userName || '—'}</span>
+            </span>
+            <span className="hidden h-3 w-px bg-white/30 sm:inline" aria-hidden />
+            <span className="inline-flex min-w-0 items-center gap-1.5">
+              <Building2 className="h-3.5 w-3.5 shrink-0" />
+              <span className="font-semibold">{t.officeYour}:</span>
+              <span className="min-w-0 truncate">{salaryOffice?.label ?? t.officeNotSet}</span>
+            </span>
             {canChangeOffice ? (
               <button type="button" onClick={changeOffice} className="font-semibold underline underline-offset-2 hover:text-white">
                 {t.officeChange}
@@ -1475,6 +1489,8 @@ export default function SalaryOn2026Page() {
               onMonthsChange={setArrearMonths}
               extras={arrearExtras}
               onExtrasChange={setArrearExtras}
+              deductStamp={deductStamp}
+              onDeductStampChange={setDeductStamp}
               onTrForm={() => (billAccess?.can_bill ? setPrintDialog('trform') : setBulkDialog(true))}
               accessReady={Boolean(billAccess)}
               downloading={downloading}
@@ -1562,9 +1578,21 @@ export default function SalaryOn2026Page() {
 
       {arrearResult ? (
         trFormNo === 15 ? (
-          <TrForm15 result={arrearResult} hraArea={calcHraArea} info={printInfo} preparedOn={preparedStampBn()} />
+          <TrForm15
+            result={arrearResult}
+            hraArea={calcHraArea}
+            info={printInfo}
+            preparedOn={preparedStampBn()}
+            stampDuty={deductStamp ? STAMP_DUTY : 0}
+          />
         ) : (
-          <TrForm13 result={arrearResult} hraArea={calcHraArea} info={printInfo} preparedOn={preparedStampBn()} />
+          <TrForm13
+            result={arrearResult}
+            hraArea={calcHraArea}
+            info={printInfo}
+            preparedOn={preparedStampBn()}
+            stampDuty={deductStamp ? STAMP_DUTY : 0}
+          />
         )
       ) : null}
 

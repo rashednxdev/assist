@@ -170,6 +170,7 @@ export function TrAttachment({
   payable,
   payableWords,
   signatory,
+  stampDuty = STAMP_DUTY,
 }: {
   formNo: 13 | 15;
   result: SalaryArrearResult;
@@ -179,6 +180,8 @@ export function TrAttachment({
   payable: number;
   payableWords: string;
   signatory: TrSignatory | null;
+  /** Amount deducted; 0 when stamp duty is turned off. */
+  stampDuty?: number;
 }) {
   const t = salaryCopy('bn');
   const fmt: Fmt = {
@@ -439,7 +442,9 @@ export function TrAttachment({
         </tbody>
       </table>
       <p className="tr-attach-total">
-        স্ট্যাম্প ডিউটি বাদে প্রদেয়: (৳ {taka(result.total_net_arrear)} − ৳ {taka(STAMP_DUTY)}) = ৳ {taka(payable)}
+        {stampDuty > 0
+          ? `স্ট্যাম্প ডিউটি বাদে প্রদেয়: (৳ ${taka(result.total_net_arrear)} − ৳ ${taka(stampDuty)}) = ৳ ${taka(payable)}`
+          : `প্রদেয়: ৳ ${taka(payable)}`}
       </p>
       <p className="tr-attach-words">{t.inWords(payableWords)}</p>
       </FitBody>

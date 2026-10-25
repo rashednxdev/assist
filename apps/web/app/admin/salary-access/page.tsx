@@ -210,6 +210,7 @@ function AccessDialog({
   const suggested = row.request.pending ? row.bills_used + (row.request.requested_bills ?? 0) : row.bill_limit;
   const suggestedCharge = row.billing.suggested_charge ?? (row.request.pending && bulkPrice > 0 ? (row.request.requested_bulks ?? 0) * bulkPrice : 0);
   const [limit, setLimit] = useState(String(suggested));
+  const [moreBills, setMoreBills] = useState(String(row.request.requested_bills || bulkSize));
   const [charge, setCharge] = useState(String(suggestedCharge || ''));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -225,8 +226,8 @@ function AccessDialog({
     setLocalRow(row);
   }, [row]);
 
-  async function saveLimit() {
-    const value = Number(limit);
+  async function saveLimit(nextLimit?: number) {
+    const value = nextLimit ?? Number(limit);
     if (!Number.isInteger(value) || value < 0) {
       setError('Enter a whole number (0 or more).');
       return;
@@ -249,6 +250,15 @@ function AccessDialog({
     } finally {
       setBusy(false);
     }
+  }
+
+  async function addMoreApproval() {
+    const extra = Number(moreBills);
+    if (!Number.isInteger(extra) || extra < 1) {
+      setError('Enter how many more bills to add (1 or more).');
+      return;
+    }
+    await saveLimit(row.bill_limit + extra);
   }
 
   async function reject() {
@@ -444,6 +454,33 @@ function AccessDialog({
                 </Button>
               ) : null}
             </div>
+            {row.bill_limit > 0 ? (
+              <div className="flex flex-wrap items-end gap-2 rounded-md border border-emerald-200 bg-emerald-50/70 p-2.5">
+                <div className="w-40 space-y-1">
+                  <Label htmlFor={`more-${row.user.id}`} className="text-xs">
+                    Additional bills
+                  </Label>
+                  <Input
+                    id={`more-${row.user.id}`}
+                    type="number"
+                    min={1}
+                    inputMode="numeric"
+                    value={moreBills}
+                    onChange={(e) => setMoreBills(e.target.value)}
+                  />
+                </div>
+                <Button type="button" onClick={() => void addMoreApproval()} disabled={busy}>
+                  More approval
+                </Button>
+                <p className="text-xs text-emerald-950">
+                  Adds to the current allowance ({row.bill_limit}
+                  {Number.isInteger(Number(moreBills)) && Number(moreBills) > 0
+                    ? ` → ${row.bill_limit + Number(moreBills)}`
+                    : ''}
+                  ). Price above is charged again if it is more than 0.
+                </p>
+              </div>
+            ) : null}
             <p className="text-xs text-muted">
               1 bulk = {plural(bulkSize, 'bill')}. Total includes bills already used ({row.bills_used}). Price is added to
               this user&apos;s charged total (admin only). Leave price 0 to change bills without charging.

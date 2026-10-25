@@ -313,13 +313,17 @@ export function TrForm15({
   hraArea,
   info,
   preparedOn,
+  stampDuty = STAMP_DUTY,
 }: {
   result: SalaryArrearResult;
   hraArea: HraArea;
   info: SalaryPrintInfo;
   preparedOn: string;
+  /** 0 when the user turns off stamp-duty deduction. */
+  stampDuty?: number;
 }) {
-  const payable = result.total_net_arrear - STAMP_DUTY;
+  const stamp = stampDuty;
+  const payable = result.total_net_arrear - stamp;
   const payableWords = takaInWords('bn', payable);
 
   return (
@@ -328,7 +332,7 @@ export function TrForm15({
         months={result.rows.map((r) => r.month)}
         office={info.office}
         netTotal={result.total_net_arrear}
-        stamp={STAMP_DUTY}
+        stamp={stamp}
         payable={payable}
         payableWords={payableWords}
         headBox={
@@ -353,6 +357,7 @@ export function TrForm15({
         preparedOn={preparedOn}
         payable={payable}
         payableWords={payableWords}
+        stampDuty={stamp}
         signatory={info.signature ? { name: info.employee, post: info.designation, office: info.office } : null}
       />
     </div>
@@ -405,7 +410,7 @@ const SCHEDULE_ROWS_PER_SHEET = 15;
 const SCHEDULE_DATA_COLS = new Set([0, 1, 2, 18, 25, 26]);
 
 /** Columns 1, 2, 3, 19, 26 and 27 of the establishment pay bill schedule (0-based indexes). */
-function scheduleCells(serial: number, s: TrStaffEntry): React.ReactNode[] {
+function scheduleCells(serial: number, s: TrStaffEntry, stampEach: number): React.ReactNode[] {
   const cells: React.ReactNode[] = Array.from({ length: SCHEDULE_COLS }, () => null);
   const net = s.result.total_net_arrear;
   cells[0] = toBanglaDigits(serial);
@@ -417,9 +422,9 @@ function scheduleCells(serial: number, s: TrStaffEntry): React.ReactNode[] {
     </>
   );
   cells[2] = taka(net);
-  cells[18] = taka(STAMP_DUTY);
-  cells[25] = taka(STAMP_DUTY);
-  cells[26] = taka(net - STAMP_DUTY);
+  cells[18] = taka(stampEach);
+  cells[25] = taka(stampEach);
+  cells[26] = taka(net - stampEach);
   return cells;
 }
 
@@ -481,15 +486,17 @@ function TrStaffSchedule({
   months,
   office,
   groups,
+  stampEach = STAMP_DUTY,
 }: {
   staff: TrStaffEntry[];
   months: string[];
   office: string;
   groups?: TrStaffOfficeGroup[];
+  stampEach?: number;
 }) {
   const period = periodText(months);
   const netTotal = staff.reduce((sum, s) => sum + s.result.total_net_arrear, 0);
-  const stamp = STAMP_DUTY * staff.length;
+  const stamp = stampEach * staff.length;
   const payable = netTotal - stamp;
   const officeGroups: TrStaffOfficeGroup[] =
     groups && groups.length > 0 ? groups.filter((g) => g.staff.length > 0) : [{ groupName: office, staff }];
@@ -577,7 +584,7 @@ function TrStaffSchedule({
                     </tr>
                   ) : (
                     <tr key={line.entry.id}>
-                      {scheduleCells(line.serial, line.entry).map((cell, c) => (
+                      {scheduleCells(line.serial, line.entry, stampEach).map((cell, c) => (
                         <td
                           key={c}
                           className={[
@@ -637,15 +644,17 @@ function StaffTrBlock({
   office,
   groups,
   signatory = null,
+  stampEach = STAMP_DUTY,
 }: {
   staff: TrStaffEntry[];
   months: string[];
   office: string;
   groups?: TrStaffOfficeGroup[];
   signatory?: TrSignatory | null;
+  stampEach?: number;
 }) {
   const netTotal = staff.reduce((total, s) => total + s.result.total_net_arrear, 0);
-  const stamp = STAMP_DUTY * staff.length;
+  const stamp = stampEach * staff.length;
   const payable = netTotal - stamp;
   return (
     <>
@@ -668,7 +677,7 @@ function StaffTrBlock({
           </>
         }
       />
-      <TrStaffSchedule staff={staff} months={months} office={office} groups={groups} />
+      <TrStaffSchedule staff={staff} months={months} office={office} groups={groups} stampEach={stampEach} />
     </>
   );
 }
@@ -685,14 +694,16 @@ export const TrForm15Staff = forwardRef<
     signatory: TrSignatory | null;
     /** When set, one summary sheet grouped by office; still one T.R. Form 15 for all. */
     groups?: TrStaffOfficeGroup[];
+    /** Per employee; 0 when stamp duty is turned off. */
+    stampEach?: number;
   }
->(function TrForm15Staff({ staff, months, office, preparedOn, signatory, groups }, ref) {
+>(function TrForm15Staff({ staff, months, office, preparedOn, signatory, groups, stampEach = STAMP_DUTY }, ref) {
   const officeGroups: TrStaffOfficeGroup[] =
     groups && groups.length > 0 ? groups : [{ groupName: office, staff }];
   const allStaff = officeGroups.flatMap((g) => g.staff);
   const sum = (pick: (r: SalaryArrearResult) => number) => allStaff.reduce((total, s) => total + pick(s.result), 0);
   const netTotal = sum((r) => r.total_net_arrear);
-  const stamp = STAMP_DUTY * allStaff.length;
+  const stamp = stampEach * allStaff.length;
   const payable = netTotal - stamp;
   const payableWords = takaInWords('bn', payable);
   const multi = officeGroups.length > 1;
@@ -706,6 +717,7 @@ export const TrForm15Staff = forwardRef<
         office={office}
         groups={officeGroups}
         signatory={signatory}
+        stampEach={stampEach}
       />
 
       <section className="tr-page tr-attach-page tr-autofit">
@@ -785,8 +797,8 @@ export const TrForm15Staff = forwardRef<
                         <td className="tr-num">{taka(r.total_basic_difference + r.total_hra_protection)}</td>
                         <td className="tr-num">{taka(r.total_deduction)}</td>
                         <td className="tr-num">{taka(r.total_net_arrear)}</td>
-                        <td className="tr-num">{taka(STAMP_DUTY)}</td>
-                        <td className="tr-num">{taka(r.total_net_arrear - STAMP_DUTY)}</td>
+                        <td className="tr-num">{taka(stampEach)}</td>
+                        <td className="tr-num">{taka(r.total_net_arrear - stampEach)}</td>
                       </tr>
                     );
                   })}
@@ -817,8 +829,9 @@ export const TrForm15Staff = forwardRef<
           </tbody>
         </table>
         <p className="tr-attach-total">
-          স্ট্যাম্প ডিউটি বাদে প্রদেয়: (৳ {taka(netTotal)} − ৳ {taka(STAMP_DUTY)} × {toBanglaDigits(allStaff.length)}) = ৳{' '}
-          {taka(payable)}
+          {stampEach > 0
+            ? `স্ট্যাম্প ডিউটি বাদে প্রদেয়: (৳ ${taka(netTotal)} − ৳ ${taka(stampEach)} × ${toBanglaDigits(allStaff.length)}) = ৳ ${taka(payable)}`
+            : `প্রদেয়: ৳ ${taka(payable)}`}
         </p>
         <p className="tr-attach-words">টাকা (কথায়) : {payableWords}</p>
         </FitBody>
@@ -829,7 +842,7 @@ export const TrForm15Staff = forwardRef<
       {officeGroups.flatMap((g) => {
         const sheetOffice = g.groupName.trim() || office;
         return g.staff.map((s) => {
-          const each = s.result.total_net_arrear - STAMP_DUTY;
+          const each = s.result.total_net_arrear - stampEach;
           /** Like single TR 13/15: signature block uses this sheet’s officer (employee) + their group office. */
           const sheetSignatory = signatory
             ? { name: s.name, post: s.post, office: sheetOffice }
@@ -850,6 +863,7 @@ export const TrForm15Staff = forwardRef<
               preparedOn={preparedOn}
               payable={each}
               payableWords={takaInWords('bn', each)}
+              stampDuty={stampEach}
               signatory={sheetSignatory}
             />
           );

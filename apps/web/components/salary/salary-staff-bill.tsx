@@ -766,6 +766,7 @@ export function SalaryStaffBill({
   const [error, setError] = useState('');
   const [downloading, setDownloading] = useState(false);
   const [sign, setSign] = useState<StaffSignInput>({ enabled: true, name: '', post: '' });
+  const [deductStamp, setDeductStamp] = useState(true);
   const [capture, setCapture] = useState<{
     office: string;
     entries: TrStaffEntry[];
@@ -831,7 +832,8 @@ export function SalaryStaffBill({
   const totalArrears = valid.reduce((s, r) => s + r.result.total_basic_difference + r.result.total_hra_protection, 0);
   const totalDeduction = valid.reduce((s, r) => s + r.result.total_deduction, 0);
   const totalNet = valid.reduce((s, r) => s + r.result.total_net_arrear, 0);
-  const stamp = STAMP_DUTY * valid.length;
+  const stampEach = deductStamp ? STAMP_DUTY : 0;
+  const stamp = stampEach * valid.length;
   const remaining = access?.remaining ?? 0;
   const unlimited = Boolean(access?.unlimited);
   const canAddEmployee = unlimited || remaining > 0 || Boolean(access && access.bill_limit <= 0 && access.can_calculate);
@@ -1253,14 +1255,25 @@ export function SalaryStaffBill({
                     </tr>
                     <tr className="border-t border-border">
                       <td className="px-3 py-2" colSpan={7}>
-                        {t.staffStamp(num(valid.length))}
+                        <label className="inline-flex cursor-pointer items-start gap-2">
+                          <input
+                            type="checkbox"
+                            className="mt-0.5 h-4 w-4 shrink-0 accent-amber-700 print:hidden"
+                            checked={deductStamp}
+                            onChange={(e) => setDeductStamp(e.target.checked)}
+                          />
+                          <span>
+                            <span className="block font-semibold">{deductStamp ? t.staffStamp(num(valid.length)) : t.stampDeduct}</span>
+                            <span className="block text-xs font-normal text-muted print:hidden">{t.stampDeductHint}</span>
+                          </span>
+                        </label>
                       </td>
-                      <td className="px-3 py-2 text-right font-mono text-rose-700">− {amt(stamp)}</td>
+                      <td className="px-3 py-2 text-right font-mono text-rose-700">{stamp > 0 ? `− ${amt(stamp)}` : '—'}</td>
                       <td />
                     </tr>
                     <tr className="border-t-2 border-amber-300 bg-amber-100/70 font-bold">
                       <td className="px-3 py-2.5 text-amber-950" colSpan={7}>
-                        {t.staffPayable}
+                        {stamp > 0 ? t.staffPayable : t.staffPayableOpen}
                       </td>
                       <td className="px-3 py-2.5 text-right font-mono text-lg text-amber-950">৳ {signed(totalNet - stamp)}</td>
                       <td />
@@ -1408,6 +1421,7 @@ export function SalaryStaffBill({
           office={capture.office}
           preparedOn={capture.preparedOn}
           signatory={capture.signatory}
+          stampEach={stampEach}
         />
       ) : null}
     </Card>

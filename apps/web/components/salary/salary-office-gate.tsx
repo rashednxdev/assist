@@ -66,10 +66,7 @@ function OfficeForm({
   const [circle, setCircle] = useState<OfficeOption | null>(initial?.circle ?? null);
   const [office, setOffice] = useState<OfficeOption | null>(initial?.office ?? null);
   const initialOthers = addBangla || (othersAllowed && Boolean(initial && !initial.office));
-  /** First visit: GOB or Statutory, then the office name. No accounts circle. */
-  const simpleNew = !initial && !addBangla && !accountingOnly && othersAllowed;
   const [path, setPath] = useState<OfficePath | null>(() => {
-    if (simpleNew) return 'others';
     if (accountingOnly) return null;
     if (addBangla || (initial && !initial.office && initial.other_office_name)) return 'others';
     if (initial?.office) return 'accounts';
@@ -90,14 +87,12 @@ function OfficeForm({
   const showPathChoice = othersAllowed && !addBangla && !accountingOnly && path == null;
   const showAccountsFields = !accountingOnly && !addBangla && (path === 'accounts' || (!othersAllowed && path !== 'others'));
   const showOthersFields = others && !accountingOnly;
-  /** For Others: GOB/Statutory first; only then circle, names, and bill-pass. */
+  /** Others: GOB or Statutory, then the office name. No circle and no bill-passing office. */
   const othersKindChosen = otherKind != null;
   const needsAccounting =
-    accountingOnly ||
-    (others
-      ? salaryNeedsAccountingOffice({ is_other: true, office_type: null, other_office_kind: otherKind })
-      : office != null && salaryNeedsAccountingOffice({ is_other: false, office_type: office.type_short ?? null }));
-  const namesStarted = otherName.trim().length > 0 && otherNameBn.trim().length > 0;
+    !others &&
+    (accountingOnly ||
+      (office != null && salaryNeedsAccountingOffice({ is_other: false, office_type: office.type_short ?? null })));
   const picked = suggestions.some(
     (s) => s.other_office_name === otherName.trim() && s.other_office_name_bn === otherNameBn.trim(),
   );
@@ -137,6 +132,7 @@ function OfficeForm({
       setOtherNameBn('');
       setAccounting(null);
     } else {
+      setCircle(null);
       setOffice(null);
       setOtherKind(null);
       setAccounting(null);
@@ -166,7 +162,7 @@ function OfficeForm({
         : await apiFetch<{ data: SalaryOfficeRecord }>('/salary/office', {
             method: 'PUT',
             body: JSON.stringify({
-              circle_id: circle?.id ?? null,
+              circle_id: others ? null : (circle?.id ?? null),
               office_id: others ? null : (office?.id ?? null),
               other_office_name: others ? name : '',
               other_office_name_bn: others ? nameBn : '',
@@ -197,13 +193,11 @@ function OfficeForm({
                   ? t.officeAccountingNeeded
                   : addBangla
                     ? t.officeAddBangla
-                    : simpleNew
-                      ? t.officeNewIntro
-                      : showPathChoice
-                        ? t.officeGateIntro
-                        : path === 'others'
-                          ? t.officePathHintOthers
-                          : t.officeGateIntroListed}
+                    : showPathChoice
+                      ? t.officeGateIntro
+                      : path === 'others'
+                        ? t.officePathHintOthers
+                        : t.officeGateIntroListed}
               </p>
             </div>
           </div>
@@ -255,7 +249,7 @@ function OfficeForm({
             </div>
           ) : null}
 
-          {path != null && !simpleNew && showPathChoice === false && othersAllowed && !addBangla && !accountingOnly ? (
+          {path != null && showPathChoice === false && othersAllowed && !addBangla && !accountingOnly ? (
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-semibold text-emerald-900">
                 {path === 'accounts' ? t.officePathAccounts : t.officePathOthers}
@@ -356,25 +350,6 @@ function OfficeForm({
 
               {othersKindChosen || addBangla ? (
                 <>
-                  {!addBangla && !simpleNew ? (
-                    <div className="space-y-1.5">
-                      <Label htmlFor="salary-office-circle-others">
-                        {t.officeCircle} <span className="font-normal text-muted">{t.officeOptional}</span>
-                      </Label>
-                      <OfficePicker
-                        id="salary-office-circle-others"
-                        topLevel
-                        allowClear
-                        value={circle}
-                        placeholder={t.officeCirclePlaceholder}
-                        onChange={(c) => {
-                          setCircle(c);
-                          setError('');
-                        }}
-                      />
-                    </div>
-                  ) : null}
-
                   <p className="rounded-md border border-yellow-400 bg-gradient-to-r from-yellow-200 via-yellow-50 to-white px-3 py-2 text-xs font-semibold text-amber-950">
                     {t.officeOthersNotice}
                   </p>
@@ -447,9 +422,8 @@ function OfficeForm({
             </div>
           ) : null}
 
-          {/* Bill-passing (pass) office — after GOB/Statutory for others, or when listed office needs it */}
-          {needsAccounting &&
-          (accountingOnly || !others || addBangla || (othersKindChosen && (!simpleNew || namesStarted))) ? (
+          {/* Bill-passing office only for a listed office that is not an accounts office. */}
+          {needsAccounting ? (
             <div className="space-y-1.5 rounded-lg border border-emerald-300 bg-emerald-50/60 p-3">
               <Label htmlFor="salary-office-accounting">{t.officeAccounting}</Label>
               <OfficePicker

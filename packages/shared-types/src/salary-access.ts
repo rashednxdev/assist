@@ -43,21 +43,20 @@ function typeIn(list: readonly string[], officeType: string | null | undefined):
   return list.includes((officeType ?? '').trim().toUpperCase());
 }
 
-/** Others office nature: GOB must name a bill-passing office; autonomous may skip it. */
+/** Others office nature: GOB or Statutory. Neither asks for a bill-passing office. */
 export const SALARY_OTHER_OFFICE_KINDS = ['gob', 'autonomous'] as const;
 export type SalaryOtherOfficeKind = (typeof SALARY_OTHER_OFFICE_KINDS)[number];
 
 /**
- * Listed non-accounts offices and GOB “Others” must name a bill-passing office.
- * Autonomous “Others” do not.
+ * A listed office that is not itself an accounts office must name a bill-passing office.
+ * GOB and Statutory “Others” offices do not.
  */
 export function salaryNeedsAccountingOffice(office: {
   is_other: boolean;
   office_type: string | null;
-  /** For Others only; null/legacy Others are treated as GOB (accounts office required). */
   other_office_kind?: SalaryOtherOfficeKind | null;
 }): boolean {
-  if (office.is_other) return office.other_office_kind !== 'autonomous';
+  if (office.is_other) return false;
   return !typeIn(SALARY_ACCOUNTS_OFFICE_TYPES, office.office_type);
 }
 
@@ -161,7 +160,7 @@ export const saveSalaryOfficeSchema = z
     other_office_name_bn: otherNameBn,
     /** Required for Others: সরকারি (GOB) or স্বায়ত্তশাসিত. */
     other_office_kind: z.enum(SALARY_OTHER_OFFICE_KINDS).nullable().default(null),
-    /** Bill-passing office; required for GOB Others and listed non-accounts offices. */
+    /** Bill-passing office; required only for a listed office that is not an accounts office. */
     accounting_office_id: officeId.nullable().default(null),
   })
   .superRefine((v, ctx) => {
@@ -179,11 +178,8 @@ export const saveSalaryOfficeSchema = z
         ctx.addIssue({
           code: 'custom',
           path: ['other_office_kind'],
-          message: 'Choose whether the office is GOB or autonomous',
+          message: 'Choose whether the office is GOB or Statutory',
         });
-      }
-      if (v.other_office_kind !== 'autonomous' && !v.accounting_office_id) {
-        ctx.addIssue({ code: 'custom', path: ['accounting_office_id'], message: 'Select your bill-passing office' });
       }
     }
   });

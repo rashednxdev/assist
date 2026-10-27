@@ -1,52 +1,56 @@
-import { useMemo, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
   Share,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { Stack } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import {
+  NO_EXCEPTIONAL_ISSUES,
   NPS_2015,
   NPS_2026,
   PAY_GRADES,
-  calculateEmployeeGross,
+  asksJoiningDate,
+  asksSubstantiveGrade,
   calculateSalary2026AllPhases,
   formatTaka,
   isFixedPayGrade,
+  isIsoDate,
   salaryConversionRate,
-  type ChargeType,
-  type EducationChildren,
-  type EmployeeGrossResult,
+  substantiveGradeOptions,
+  type SalaryExceptionalIssues,
   type HousingStatus,
+  type SalaryArrearResult,
   type HraArea,
   type PayGrade,
   type Salary2026Result,
   type SubstantiveGrade,
 } from '@ibas/shared-types';
+import { BookEmpty } from '@/components/books/BookStates';
 import { LocaleToggle } from '@/components/calc/LocaleToggle';
 import { SalaryArrearsCard } from '@/components/salary/SalaryArrearsCard';
 import { PickerSheet, SelectField } from '@/components/ui/PickerSheet';
 import { TextField } from '@/components/ui/TextField';
+import { apiFetch } from '@/lib/api';
+import { useAuth } from '@/lib/auth-context';
 import type { CalcLocale } from '@/lib/calc-i18n';
+import { canReadAnyModule } from '@/lib/module-access';
 import { webUrl } from '@/lib/web-href';
-import {
-  STAGE_COLOR,
-  allowancesTotal,
-  parseAmountInput,
-  stage3Basics,
-  trackSalaryCalculate,
-} from '@/lib/salary-api';
+import { STAGE_COLOR, stage3Basics, trackSalaryCalculate } from '@/lib/salary-api';
+import { shareSalaryTrForm } from '@/lib/salary-tr-pdf';
 import {
   HRA_AREAS,
-  allowanceText,
-  housingText,
   hraAreaText,
   localNum,
   localTaka,
@@ -61,11 +65,9 @@ const GREEN = '#047857';
 const TEAL = '#0f766e';
 const MONO = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
 
-const EDUCATION_VALUES: EducationChildren[] = [0, 1, 2];
-const SUBSTANTIVE: SubstantiveGrade[] = [11, 12, 13, 14, 15];
 const STAGE_NO: Record<Salary2026Result['phase'], number> = { '2026-07-01': 1, '2027-01-01': 2, '2027-07-01': 3 };
 
-type PickerKind = 'grade' | 'oldPay' | 'substantive' | 'hra' | 'education';
+type PickerKind = 'grade' | 'oldPay' | 'substantive' | 'hra';
 
 interface Ctx {
   t: SalaryCopy;
@@ -114,49 +116,7 @@ function Stat({ label, value, emphasize }: { label: string; value: string; empha
   );
 }
 
-function AllowanceSummary({ ctx, basic, allowances, gpf }: { ctx: Ctx; basic: number; allowances: number; gpf: number }) {
-  const { t, locale } = ctx;
-  const tk = (n: number) => localTaka(locale, n);
-  const total = basic + allowances;
-  return (
-    <View style={styles.summary}>
-      <View style={styles.summaryRow}>
-        <View style={[styles.summaryBox, styles.flex]}>
-          <Text style={styles.statLabel}>{t.basic}</Text>
-          <Text style={styles.summaryValue}>{tk(basic)}</Text>
-          <Text style={styles.tiny}>{t.basicNote}</Text>
-        </View>
-        <View style={[styles.summaryBox, styles.summaryTeal, styles.flex]}>
-          <Text style={[styles.statLabel, { color: '#134e4a' }]}>{t.totalAllowance}</Text>
-          <Text style={styles.summaryValue}>{tk(allowances)}</Text>
-          <Text style={styles.tiny}>{t.fixedOnBasic}</Text>
-        </View>
-      </View>
-      <View style={[styles.summaryBox, styles.summaryGreen]}>
-        <Text style={[styles.statLabel, { color: '#064e3b' }]}>{t.basicPlusAllowance}</Text>
-        <Text style={styles.summaryValue}>{tk(total)}</Text>
-        <Text style={styles.tiny}>
-          {tk(basic)} + {tk(allowances)}
-        </Text>
-      </View>
-      {gpf > 0 ? (
-        <View style={styles.summaryRow}>
-          <View style={[styles.summaryBox, styles.summaryRose, styles.flex]}>
-            <Text style={[styles.statLabel, { color: '#9f1239' }]}>{t.gpfDeduction}</Text>
-            <Text style={[styles.summaryValue, { color: '#9f1239' }]}>− {tk(gpf)}</Text>
-          </View>
-          <View style={[styles.summaryBox, styles.summarySlate, styles.flex]}>
-            <Text style={styles.statLabel}>{t.netPayable}</Text>
-            <Text style={styles.summaryValue}>{tk(total - gpf)}</Text>
-            <Text style={styles.tiny}>{t.netFormula}</Text>
-          </View>
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
-function StageCard({ ctx, result, allowances, gpf }: { ctx: Ctx; result: Salary2026Result; allowances: number; gpf: number }) {
+function StageCard({ ctx, result }: { ctx: Ctx; result: Salary2026Result }) {
   const { t, locale } = ctx;
   const tk = (n: number) => localTaka(locale, n);
   const color = STAGE_COLOR[result.phase];
@@ -216,7 +176,19 @@ function StageCard({ ctx, result, allowances, gpf }: { ctx: Ctx; result: Salary2
           </View>
         ) : null}
 
-        <AllowanceSummary ctx={ctx} basic={stage3 ? to : result.new_pay} allowances={allowances} gpf={gpf} />
+        {result.pay_change_effective_date && result.new_pay_before_pay_change != null ? (
+          <View style={styles.statGrid}>
+            <Stat
+              label={t.basicBefore(localNum(locale, result.pay_change_effective_date.split('-').reverse().join('-')))}
+              value={tk(result.new_pay_before_pay_change)}
+            />
+            <Stat
+              label={t.basicAfter(localNum(locale, result.pay_change_effective_date.split('-').reverse().join('-')))}
+              value={tk(stage3 ? to : result.new_pay)}
+              emphasize
+            />
+          </View>
+        ) : null}
 
         {result.increment_skipped && !result.fixed ? (
           <Text style={styles.warnText}>{result.increment_withheld ? t.withheldWarn : t.lastStageWarn}</Text>
@@ -226,70 +198,8 @@ function StageCard({ ctx, result, allowances, gpf }: { ctx: Ctx; result: Salary2
   );
 }
 
-function LineTable({
-  ctx,
-  head,
-  tone,
-  rows,
-}: {
-  ctx: Ctx;
-  head: string;
-  tone: string;
-  rows: Array<{ key: string; label: string; note?: string; amount: number; muted?: boolean }>;
-}) {
-  return (
-    <View style={styles.table}>
-      <View style={[styles.tableHead, { backgroundColor: tone }]}>
-        <Text style={styles.tableHeadText}>{head}</Text>
-        <Text style={styles.tableHeadText}>{ctx.t.amount}</Text>
-      </View>
-      {rows.map((row) => (
-        <View key={row.key} style={[styles.tableRow, row.muted && styles.tableRowMuted]}>
-          <View style={styles.flex}>
-            <Text style={styles.stepLabel}>{row.label}</Text>
-            {row.note ? <Text style={styles.tiny}>{row.note}</Text> : null}
-          </View>
-          <Text style={styles.stepAmount}>{localNum(ctx.locale, formatTaka(row.amount))}</Text>
-        </View>
-      ))}
-    </View>
-  );
-}
-
-function GrossCard({ ctx, gross }: { ctx: Ctx; gross: EmployeeGrossResult }) {
-  const { t, locale } = ctx;
-  const lines = gross.monthly_lines.filter((row) => row.code !== 'basic');
-  const toRow = (row: EmployeeGrossResult['monthly_lines'][number]) => {
-    const text = allowanceText(locale, row, gross);
-    return { key: row.code, label: text.label, note: text.note, amount: row.amount };
-  };
-  return (
-    <View style={[styles.card, { borderColor: '#99f6e4' }]}>
-      <View style={[styles.cardBar, styles.cardBarColumn, { backgroundColor: TEAL }]}>
-        <Text style={styles.cardBarTitle}>{t.totalAllowance}</Text>
-        <Text style={styles.cardBarSub}>{t.grossSub(localNum(locale, gross.grade), housingText(locale, gross))}</Text>
-      </View>
-      <View style={styles.cardBody}>
-        <View style={styles.totalRow}>
-          <Text style={styles.totalLabel}>{t.totalAllowance}</Text>
-          <Text style={styles.totalValue}>{localTaka(locale, allowancesTotal(gross))}</Text>
-        </View>
-        <LineTable
-          ctx={ctx}
-          head={t.component}
-          tone="#f8fafc"
-          rows={[
-            { key: 'basic', label: t.basicShown, note: t.basicRef, amount: gross.basic, muted: true },
-            ...lines.map(toRow),
-          ]}
-        />
-        <LineTable ctx={ctx} head={t.annualHead} tone="#fffbeb" rows={gross.annual_lines.map(toRow)} />
-      </View>
-    </View>
-  );
-}
-
 export default function SalaryOn2026Screen() {
+  const { user } = useAuth();
   const scrollRef = useRef<ScrollView>(null);
   const inputsY = useRef(0);
   const [locale, setLocale] = useState<CalcLocale>('bn');
@@ -297,16 +207,21 @@ export default function SalaryOn2026Screen() {
   const [oldPay, setOldPay] = useState<number>(NPS_2015[5][5]!);
   const [housingStatus, setHousingStatus] = useState<HousingStatus>('hra_eligible');
   const [hraArea, setHraArea] = useState<HraArea>('dhaka');
-  const [educationChildren, setEducationChildren] = useState<EducationChildren>(0);
-  const [washingAllowance, setWashingAllowance] = useState(false);
-  const [chargeType, setChargeType] = useState<ChargeType>('regular');
   const [substantiveGrade, setSubstantiveGrade] = useState<SubstantiveGrade | null>(null);
-  const [gpfInput, setGpfInput] = useState('');
+  const [joiningDate, setJoiningDate] = useState('');
+  const [issues, setIssues] = useState<SalaryExceptionalIssues>(NO_EXCEPTIONAL_ISSUES);
   const [results, setResults] = useState<Salary2026Result[] | null>(null);
-  const [gross, setGross] = useState<EmployeeGrossResult | null>(null);
+  const [showArrears, setShowArrears] = useState(false);
   const [error, setError] = useState('');
+  const [downloading, setDownloading] = useState(false);
+  const [trDraft, setTrDraft] = useState<{ result: SalaryArrearResult; stamp: number; formNo: 13 | 15 } | null>(null);
+  const [trName, setTrName] = useState('');
+  const [trPost, setTrPost] = useState('');
+  const [trOffice, setTrOffice] = useState('');
+  const [trNid, setTrNid] = useState('');
   const [picker, setPicker] = useState<PickerKind | null>(null);
 
+  const allowed = canReadAnyModule(user, ['SALARY']);
   const t = salaryCopy(locale);
   const ctx: Ctx = { t, locale };
   const num = (v: string | number) => localNum(locale, v);
@@ -317,8 +232,6 @@ export default function SalaryOn2026Screen() {
   const fixed = isFixedPayGrade(grade);
   const rate2026 = Math.round(salaryConversionRate(grade, '2026-07-01') * 100);
   const rate2027 = Math.round(salaryConversionRate(grade, '2027-01-01') * 100);
-  const gpf = useMemo(() => parseAmountInput(gpfInput), [gpfInput]);
-  const allowances = allowancesTotal(gross);
   const oldIdx = oldStages.indexOf(oldPay);
 
   function stageSuffix(i: number): string {
@@ -331,7 +244,6 @@ export default function SalaryOn2026Screen() {
 
   function clearResults() {
     setResults(null);
-    setGross(null);
     setError('');
   }
 
@@ -345,7 +257,6 @@ export default function SalaryOn2026Screen() {
   function onGradeChange(next: PayGrade) {
     setGrade(next);
     setOldPay(NPS_2015[next][0]!);
-    setChargeType('regular');
     setSubstantiveGrade(null);
     clearResults();
   }
@@ -353,16 +264,13 @@ export default function SalaryOn2026Screen() {
   function calculate() {
     setError('');
     try {
-      setResults(calculateSalary2026AllPhases({ grade, old_pay: oldPay }));
-      setGross(
-        calculateEmployeeGross({
+      setResults(
+        calculateSalary2026AllPhases({
           grade,
-          basic: oldPay,
-          housing_status: housingStatus,
-          hra_area: hraArea,
-          education_children: educationChildren,
-          washing_allowance: washingAllowance,
-          charge_type: chargeType,
+          old_pay: oldPay,
+          joining_date: isIsoDate(joiningDate) ? joiningDate : null,
+          increment_exempt: Boolean(issues.increment_exempt),
+          pay_change: issues.pay_change,
           substantive_grade: substantiveGrade,
         }),
       );
@@ -375,6 +283,39 @@ export default function SalaryOn2026Screen() {
 
   function editInputs() {
     scrollRef.current?.scrollTo({ y: Math.max(0, inputsY.current - spacing.sm), animated: true });
+  }
+
+  async function confirmTr() {
+    if (!trDraft) return;
+    if (!trName.trim()) {
+      Alert.alert(t.nameRequired);
+      return;
+    }
+    setDownloading(true);
+    try {
+      await apiFetch('/salary/bills', {
+        method: 'POST',
+        body: JSON.stringify({
+          kind: trDraft.formNo === 15 ? 'tr_form_15' : 'tr_form_13',
+          grade,
+          old_pay: oldPay,
+          months: trDraft.result.rows.map((row) => row.month),
+          net_total: trDraft.result.total_net_arrear,
+        }),
+      });
+      await shareSalaryTrForm({
+        formNo: trDraft.formNo,
+        result: trDraft.result,
+        hraArea,
+        stamp: trDraft.stamp,
+        info: { employee: trName.trim(), designation: trPost.trim(), office: trOffice.trim(), nid: trNid.trim() },
+      });
+      setTrDraft(null);
+    } catch (err) {
+      Alert.alert(err instanceof Error ? err.message : t.calcError);
+    } finally {
+      setDownloading(false);
+    }
   }
 
   function shareLink() {
@@ -406,7 +347,7 @@ export default function SalaryOn2026Screen() {
           value: substantiveGrade != null ? String(substantiveGrade) : '',
           options: [
             { value: '', label: t.substantiveNA },
-            ...SUBSTANTIVE.map((g) => ({ value: String(g), label: `${t.grade} ${num(g)}` })),
+            ...substantiveGradeOptions(grade).map((g) => ({ value: String(g), label: `${t.grade} ${num(g)}` })),
           ],
           onSelect: (v: string) => update(setSubstantiveGrade)(v === '' ? null : (Number(v) as SubstantiveGrade)),
         };
@@ -417,17 +358,19 @@ export default function SalaryOn2026Screen() {
           options: HRA_AREAS.map((a) => ({ value: a, label: hraAreaText(locale, a) })),
           onSelect: (v: string) => update(setHraArea)(v as HraArea),
         };
-      case 'education':
-        return {
-          title: t.education,
-          value: String(educationChildren),
-          options: EDUCATION_VALUES.map((e) => ({ value: String(e), label: t.educationOptions[e]! })),
-          onSelect: (v: string) => update(setEducationChildren)(Number(v) as EducationChildren),
-        };
       default:
         return null;
     }
   })();
+
+  if (!allowed) {
+    return (
+      <BookEmpty
+        title="Salary On 2026"
+        subtitle="This opens when you have access to Salary On 2026 & Calculations."
+      />
+    );
+  }
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -450,38 +393,69 @@ export default function SalaryOn2026Screen() {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
-        {results && gross ? (
+        {showArrears || results ? (
           <View style={styles.results}>
-            <View style={styles.resultHead}>
-              <View style={styles.flex}>
-                <Text style={styles.resultKicker}>{t.resultKicker}</Text>
-                <Text style={styles.resultSummary}>{t.resultSummary(num(grade), tk(oldPay))}</Text>
-              </View>
-              <Pressable onPress={editInputs} style={({ pressed }) => [styles.editBtn, pressed && styles.pressed]}>
-                <Ionicons name="create-outline" size={15} color={GREEN} />
-                <Text style={styles.editBtnText}>{t.editInputs}</Text>
-              </Pressable>
-            </View>
+            {showArrears ? (
+              <SalaryArrearsCard
+                locale={locale}
+                grade={grade}
+                oldPay={oldPay}
+                substantiveGrade={substantiveGrade}
+                housingStatus={housingStatus}
+                hraArea={hraArea}
+                joiningDate={joiningDate}
+                onJoiningDate={setJoiningDate}
+                issues={issues}
+                onIssues={setIssues}
+                downloading={downloading}
+                onDownloadTr={(payload) => {
+                  setTrName('');
+                  setTrDraft(payload);
+                }}
+              />
+            ) : null}
 
-            <GrossCard ctx={ctx} gross={gross} />
-
-            {results.map((result) => (
-              <StageCard key={result.phase} ctx={ctx} result={result} allowances={allowances} gpf={gpf} />
-            ))}
-
-            <SalaryArrearsCard
-              locale={locale}
-              grade={grade}
-              oldPay={oldPay}
-              substantiveGrade={substantiveGrade}
-              housingStatus={housingStatus}
-              hraArea={hraArea}
-            />
-
-            <View style={styles.draft}>
-              <Ionicons name="alert-circle-outline" size={18} color="#92400e" />
-              <Text style={styles.draftText}>{t.draft}</Text>
-            </View>
+            {results ? (
+              <>
+                <View style={styles.resultHead}>
+                  <View style={styles.flex}>
+                    <Text style={styles.resultKicker}>{t.summaryTitle}</Text>
+                    <Text style={styles.resultSummary}>{t.summarySub(num(grade), tk(oldPay))}</Text>
+                  </View>
+                  <Pressable onPress={editInputs} style={({ pressed }) => [styles.editBtn, pressed && styles.pressed]}>
+                    <Ionicons name="create-outline" size={15} color={GREEN} />
+                    <Text style={styles.editBtnText}>{t.editInputs}</Text>
+                  </Pressable>
+                </View>
+                <View style={styles.statGrid}>
+                  {results.map((result) => (
+                    <Stat
+                      key={result.phase}
+                      label={t.stageTitle(STAGE_NO[result.phase], num(result.phase_label))}
+                      value={tk(result.phase === '2027-07-01' ? result.basic_on_2027_07 ?? result.new_pay : result.new_pay)}
+                      emphasize={result.phase === '2026-07-01'}
+                    />
+                  ))}
+                </View>
+                <View style={styles.scale}>
+                  <Text style={styles.scaleText}>
+                    <Text style={styles.bold}>{t.scaleDetails} · {t.nps2015}</Text>
+                    {num(oldStages.join('–'))}
+                  </Text>
+                  <Text style={styles.scaleText}>
+                    <Text style={styles.bold}>{t.nps2026}</Text>
+                    {num(newStages.join('–'))}
+                  </Text>
+                </View>
+                {results.map((result) => (
+                  <StageCard key={result.phase} ctx={ctx} result={result} />
+                ))}
+                <View style={styles.draft}>
+                  <Ionicons name="alert-circle-outline" size={18} color="#92400e" />
+                  <Text style={styles.draftText}>{t.draft}</Text>
+                </View>
+              </>
+            ) : null}
           </View>
         ) : null}
 
@@ -510,6 +484,20 @@ export default function SalaryOn2026Screen() {
           <Text style={styles.cardTitle}>{t.currentPay}</Text>
 
           <SelectField label={t.grade} display={gradeLabel(grade)} onPress={() => setPicker('grade')} />
+          {asksJoiningDate(grade, oldPay) ? (
+            <TextField
+              label={t.joiningDate}
+              hint={t.joiningHint}
+              value={joiningDate}
+              onChangeText={(v) => {
+                setJoiningDate(v);
+                clearResults();
+              }}
+              placeholder="2026-03-01"
+              autoCapitalize="none"
+            />
+          ) : null}
+
           <SelectField
             label={t.basicJune}
             display={`${tk(oldPay)}${oldIdx >= 0 ? stageSuffix(oldIdx) : ''}`}
@@ -535,22 +523,7 @@ export default function SalaryOn2026Screen() {
           </View>
 
           <View style={styles.grossBox}>
-            <Text style={[styles.kicker, { color: '#115e59' }]}>{t.confirmGross}</Text>
-            <Text style={styles.cardTitle}>{t.allowancesWithBasic}</Text>
-
-            {grade >= 2 && grade <= 10 ? (
-              <View style={styles.group}>
-                <Text style={styles.groupLabel}>{t.postType}</Text>
-                <Radio label={t.regular} selected={chargeType === 'regular'} onPress={() => update(setChargeType)('regular')} />
-                <Radio
-                  label={t.currentCharge}
-                  selected={chargeType === 'current_charge'}
-                  onPress={() => update(setChargeType)('current_charge')}
-                />
-              </View>
-            ) : null}
-
-            {grade >= 7 && grade <= 10 ? (
+            {asksSubstantiveGrade(grade) ? (
               <SelectField
                 label={t.substantive}
                 display={substantiveGrade != null ? `${t.grade} ${num(substantiveGrade)}` : t.substantiveNA}
@@ -576,40 +549,27 @@ export default function SalaryOn2026Screen() {
             {housingStatus === 'hra_eligible' ? (
               <SelectField label={t.hraArea} display={hraAreaText(locale, hraArea)} onPress={() => setPicker('hra')} />
             ) : null}
-
-            <SelectField
-              label={t.education}
-              display={t.educationOptions[educationChildren]!}
-              onPress={() => setPicker('education')}
-            />
-
-            <View style={styles.group}>
-              <Text style={styles.groupLabel}>{t.washing}</Text>
-              <Radio label={t.no} selected={!washingAllowance} onPress={() => update(setWashingAllowance)(false)} />
-              <Radio label={t.washingYes} selected={washingAllowance} onPress={() => update(setWashingAllowance)(true)} />
-            </View>
-
-            <TextField
-              label={t.gpf}
-              placeholder={t.gpfPlaceholder}
-              keyboardType="numeric"
-              value={gpfInput}
-              onChangeText={setGpfInput}
-              hint={t.gpfHint(gpf > 0 ? tk(gpf) : null)}
-            />
-
-            <Text style={styles.grossNote}>{t.grossNote}</Text>
           </View>
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
+          <Pressable
+            onPress={() => {
+              setShowArrears(true);
+              requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: 0, animated: true }));
+            }}
+            style={({ pressed }) => [styles.primaryBtn, { backgroundColor: '#4338ca' }, pressed && styles.pressed]}
+          >
+            <Ionicons name="receipt-outline" size={18} color={colors.white} />
+            <Text style={styles.primaryBtnText}>{t.calcArrears}</Text>
+          </Pressable>
           <Pressable onPress={calculate} style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed]}>
             <Ionicons name="calculator-outline" size={18} color={colors.white} />
             <Text style={styles.primaryBtnText}>{t.calculate}</Text>
           </Pressable>
         </View>
 
-        {results && gross ? (
+        {showArrears || results ? (
           <>
             <View style={styles.thanks}>
               <View style={styles.thanksIcon}>
@@ -629,6 +589,33 @@ export default function SalaryOn2026Screen() {
         ) : null}
       </ScrollView>
 
+      <Modal visible={trDraft != null} transparent animationType="fade" onRequestClose={() => setTrDraft(null)}>
+        <Pressable style={styles.backdrop} onPress={() => setTrDraft(null)}>
+          <Pressable style={styles.dialog} onPress={() => undefined}>
+            <Text style={styles.cardTitle}>{trDraft ? t.trFormDetails(num(trDraft.formNo)) : ''}</Text>
+            <Text style={styles.tiny}>{t.printHint}</Text>
+            <TextInput value={trName} onChangeText={setTrName} placeholder={t.employeeName} placeholderTextColor={colors.textMuted} style={styles.dialogInput} />
+            <TextInput value={trPost} onChangeText={setTrPost} placeholder={t.designation} placeholderTextColor={colors.textMuted} style={styles.dialogInput} />
+            <TextInput value={trOffice} onChangeText={setTrOffice} placeholder={t.officeName} placeholderTextColor={colors.textMuted} style={styles.dialogInput} />
+            <TextInput
+              value={trNid}
+              onChangeText={setTrNid}
+              placeholder={t.nid}
+              placeholderTextColor={colors.textMuted}
+              keyboardType="number-pad"
+              style={styles.dialogInput}
+            />
+            <View style={styles.dialogActions}>
+              <Pressable style={styles.editBtn} onPress={() => setTrDraft(null)}>
+                <Text style={styles.editBtnText}>Cancel</Text>
+              </Pressable>
+              <Pressable style={[styles.primaryBtn, styles.dialogSave]} disabled={downloading} onPress={() => void confirmTr()}>
+                {downloading ? <ActivityIndicator color={colors.white} /> : <Text style={styles.primaryBtnText}>{t.downloadNow}</Text>}
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
       {pickerConfig ? (
         <PickerSheet
           visible
@@ -748,6 +735,19 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   primaryBtnText: { color: colors.white, fontWeight: '700', fontSize: 15 },
+  backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', padding: spacing.lg },
+  dialog: { backgroundColor: colors.surface, borderRadius: 16, padding: spacing.md, gap: 8 },
+  dialogInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: colors.text,
+  },
+  dialogActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8 },
+  dialogSave: { paddingHorizontal: 16, paddingVertical: 10 },
 
   card: {
     backgroundColor: colors.surface,

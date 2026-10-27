@@ -46,6 +46,7 @@ import {
   searchOtherOfficesHandler,
   trackSalaryPdfHandler,
   recordSalaryPaymentHandler,
+  updateSalaryBillingHandler,
   updateBillAccessHandler,
   updateBillAccessNoteHandler,
   getBillAccessStatsHandler,
@@ -103,6 +104,7 @@ salaryRouter.get('/admin/print-report/users', authenticate, requireAdmin, asyncH
 salaryRouter.put('/admin/access/:userId', authenticate, requireAdmin, asyncHandler(updateBillAccessHandler));
 salaryRouter.put('/admin/access/:userId/note', authenticate, requireAdmin, asyncHandler(updateBillAccessNoteHandler));
 salaryRouter.post('/admin/access/:userId/payment', authenticate, requireAdmin, asyncHandler(recordSalaryPaymentHandler));
+salaryRouter.put('/admin/access/:userId/billing', authenticate, requireAdmin, asyncHandler(updateSalaryBillingHandler));
 salaryRouter.post('/admin/access/:userId/reject', authenticate, requireAdmin, asyncHandler(rejectBillRequestHandler));
 salaryRouter.get('/admin/access/:userId/usage', authenticate, requireAdmin, asyncHandler(listBillUsageHandler));
 salaryRouter.get('/admin/contacts', authenticate, requireAdmin, asyncHandler(getSalaryContactsHandler));

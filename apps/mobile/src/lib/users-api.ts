@@ -77,6 +77,7 @@ export const MOBILE_MODULE_CODES = [
   'ANSWER_PDF',
   'QUESTION_EDIT',
   'LIVE_STREAM',
+  'SALARY',
   'USER',
 ] as const;
 

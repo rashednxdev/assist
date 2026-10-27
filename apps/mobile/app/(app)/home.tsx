@@ -25,6 +25,7 @@ import { isModuleWelcomeTipsPending } from '@/lib/module-welcome-tips';
 import { useAuth } from '@/lib/auth-context';
 import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
 import { useModuleOpener } from '@/hooks/useModuleOpener';
+import { isPlatformAdminUser } from '@/lib/module-access';
 import { canManageUsers } from '@/lib/users-api';
 import { canReadAnyModule } from '@/lib/module-access';
 import { CIRCULAR_MODULE_CODES } from '@/lib/circulars-api';
@@ -135,6 +136,7 @@ const OFFICE_TOOLS: Array<{
     icon: 'calculator-outline',
     color: '#047857',
     href: '/(app)/calculations' as Href,
+    codes: ['SALARY', 'PENSION'],
   },
 ];
 
@@ -294,6 +296,25 @@ export default function HomeScreen() {
                     <View style={styles.menuItemText}>
                       <Text style={styles.menuItemTitle}>Verify a colleague</Text>
                       <Text style={styles.menuItemSub}>Open contacts with their 8-digit code</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+                  </Pressable>
+                </>
+              ) : null}
+              {isPlatformAdminUser(user) ? (
+                <>
+                  <View style={styles.menuDivider} />
+                  <Pressable
+                    style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
+                    onPress={() => {
+                      setMenuOpen(false);
+                      router.push('/(app)/salary-access' as Href);
+                    }}
+                  >
+                    <Ionicons name="wallet-outline" size={20} color={colors.primary} />
+                    <View style={styles.menuItemText}>
+                      <Text style={styles.menuItemTitle}>Salary bill access</Text>
+                      <Text style={styles.menuItemSub}>Approve arrears bills and message users</Text>
                     </View>
                     <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
                   </Pressable>

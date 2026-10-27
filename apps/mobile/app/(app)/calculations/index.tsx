@@ -6,8 +6,19 @@ import { AccessRequiredScreen } from '@/components/home/AccessRequiredScreen';
 import { useAuth } from '@/lib/auth-context';
 import { useModuleOpener } from '@/hooks/useModuleOpener';
 import { isModuleEffectivelyStopped } from '@/lib/api';
-import { PENSION_TOOLS } from '@/lib/home-modules';
+import { PENSION_TOOLS, type GatedModule } from '@/lib/home-modules';
+import { isPlatformAdminUser } from '@/lib/module-access';
 import { colors, spacing } from '@/theme';
+
+const SALARY_MODULE: GatedModule = {
+  id: 'salary',
+  code: 'SALARY',
+  title: 'Salary On 2026',
+  subtitle: 'Basic on proposed pay scale 2026',
+  icon: 'cash-outline',
+  color: '#047857',
+  href: '/(app)/salary' as Href,
+};
 
 const DETAILS: Record<string, { icon: keyof typeof Ionicons.glyphMap; points: string[] }> = {
   pension: {
@@ -42,9 +53,18 @@ export default function CalculationsHubScreen() {
           icon="cash-outline"
           color="#047857"
           title="Salary On 2026"
-          subtitle="Basic on proposed pay scale 2026"
-          points={['Stage-wise basic & allowances', 'বাংলা ও English']}
-          onPress={() => router.push('/(app)/salary' as Href)}
+          subtitle="Arrears calculated on the phone. No office and no T.R. Form download."
+          points={['Stage-wise basic & allowances', 'Arrear bill up to the calculated total']}
+          locked={
+            !isPlatformAdminUser(user) &&
+            (!canAccess(SALARY_MODULE.code) ||
+              isModuleEffectivelyStopped(user?.module_stops ?? [], user?.module_access ?? [], SALARY_MODULE.code))
+          }
+          checking={checkingModuleId === SALARY_MODULE.id}
+          onPress={() => {
+            if (isPlatformAdminUser(user)) router.push('/(app)/salary' as Href);
+            else void openModule(SALARY_MODULE);
+          }}
         />
 
         {PENSION_TOOLS.map((m) => {

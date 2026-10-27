@@ -388,6 +388,17 @@ export const recordSalaryPaymentSchema = z.object({
 });
 export type RecordSalaryPaymentDto = z.infer<typeof recordSalaryPaymentSchema>;
 
+/** Set the charged total and the received total for one user (admin-only). */
+export const updateSalaryBillingSchema = z
+  .object({
+    charged_total: z.number().int().min(0).max(10_000_000).optional(),
+    received_total: z.number().int().min(0).max(10_000_000).optional(),
+  })
+  .refine((value) => value.charged_total != null || value.received_total != null, {
+    message: 'Enter a charged total or a received total',
+  });
+export type UpdateSalaryBillingDto = z.infer<typeof updateSalaryBillingSchema>;
+
 export interface SalaryPaymentRecord {
   id: string;
   amount: number;

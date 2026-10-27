@@ -27,6 +27,7 @@ import {
   type SalaryPrintStats,
   type UpdateSalaryAdminNoteDto,
   type RecordSalaryPaymentDto,
+  type UpdateSalaryBillingDto,
   type SalaryAccessBilling,
   type SalaryBillUsageRecord,
   type SalaryBulkSizeRecord,
@@ -38,7 +39,7 @@ import {
 import type { AuthUser } from '../../middleware/auth.js';
 import { AppError, badRequest, forbidden, notFound } from '../../shared/errors/AppError.js';
 import { User } from '../users/models/User.model.js';
-import { SalaryBillAccess, type ISalaryBillAccess } from './models/SalaryBillAccess.model.js';
+import { SalaryBillAccess, type ISalaryBillAccess, type ISalaryPayment } from './models/SalaryBillAccess.model.js';
 import { SalaryBillUsage } from './models/SalaryBillUsage.model.js';
 import { SalaryCalcUsage, type ISalaryCalcUsage } from './models/SalaryCalcUsage.model.js';
 import { SalarySettings } from './models/SalarySettings.model.js';
@@ -542,6 +543,42 @@ export async function recordSalaryPayment(
     { new: true },
   );
   if (!doc) throw notFound('No bill access record for this user. Approve bills first.');
+  const [row] = await toAdminRows([doc]);
+  return row!;
+}
+
+/** Sets the charged total and, when received changes, the received total. Bill allowance is left as it is. */
+export async function updateSalaryBilling(userId: string, dto: UpdateSalaryBillingDto): Promise<SalaryBillAccessAdminRow> {
+  if (!mongoose.isValidObjectId(userId)) throw notFound('User not found');
+  const doc = await SalaryBillAccess.findOne({ user_id: userId });
+  if (!doc) throw notFound('No bill access record for this user. Approve bills first.');
+
+  if (dto.charged_total != null) doc.charged_total = dto.charged_total;
+  if (dto.received_total != null) {
+    const current = (doc.payments ?? []).reduce((sum, payment) => sum + payment.amount, 0);
+    const next = dto.received_total;
+    if (next !== current) {
+      if (next > current) {
+        doc.payments.push({
+          amount: next - current,
+          received_at: dhakaTodayKey(),
+          note: 'Added',
+        } as ISalaryPayment);
+      } else if (next === 0) {
+        doc.payments = [];
+      } else {
+        doc.payments = [
+          {
+            amount: next,
+            received_at: dhakaTodayKey(),
+            note: 'Updated received total',
+          } as ISalaryPayment,
+        ];
+      }
+    }
+  }
+  doc.updated_at = new Date();
+  await doc.save();
   const [row] = await toAdminRows([doc]);
   return row!;
 }

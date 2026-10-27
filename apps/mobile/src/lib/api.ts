@@ -87,6 +87,7 @@ export const LEARNING_MODULE_CODES = [
   'EXAM_WEEK',
   'ANSWER_PDF',
   'LIVE_STREAM',
+  'SALARY',
 ] as const;
 
 export type LearningModuleCode = (typeof LEARNING_MODULE_CODES)[number];

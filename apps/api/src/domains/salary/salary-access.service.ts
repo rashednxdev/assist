@@ -497,27 +497,28 @@ export async function updateBillAccess(
   if (!user) throw notFound('User not found');
 
   const now = new Date();
-  const set: Record<string, unknown> = {
-    bill_limit: dto.bill_limit,
-    status: dto.bill_limit > 0 ? 'approved' : 'rejected',
-    request_pending: false,
-    approved_by: new mongoose.Types.ObjectId(adminId),
-    approved_at: now,
-    updated_at: now,
-  };
-  if (dto.bills_used != null) set.bills_used = dto.bills_used;
-  if (dto.admin_note != null) set.admin_note = dto.admin_note;
-
-  const update: Record<string, unknown> = { $set: set, $setOnInsert: { user_id: user._id } };
-  if (dto.charge_amount != null && dto.charge_amount > 0) {
-    update.$inc = { charged_total: dto.charge_amount };
+  const userObjectId = new mongoose.Types.ObjectId(userId);
+  let doc = await SalaryBillAccess.findOne({ user_id: userObjectId });
+  if (!doc) {
+    doc = new SalaryBillAccess({
+      user_id: userObjectId,
+      bills_used: 0,
+      charged_total: 0,
+      payments: [],
+    });
   }
-
-  const doc = await SalaryBillAccess.findOneAndUpdate({ user_id: userId }, update, {
-    upsert: true,
-    new: true,
-    setDefaultsOnInsert: true,
-  });
+  doc.bill_limit = dto.bill_limit;
+  doc.status = dto.bill_limit > 0 ? 'approved' : 'rejected';
+  doc.request_pending = false;
+  doc.approved_by = new mongoose.Types.ObjectId(adminId);
+  doc.approved_at = now;
+  doc.updated_at = now;
+  // More approval only raises the allowance. Bills already used stay as they are.
+  if (dto.admin_note != null) doc.admin_note = dto.admin_note;
+  if (dto.charge_amount != null && dto.charge_amount > 0) {
+    doc.charged_total = Math.max(0, doc.charged_total ?? 0) + dto.charge_amount;
+  }
+  await doc.save();
   const [row] = await toAdminRows([doc]);
   return row!;
 }

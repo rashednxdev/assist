@@ -188,28 +188,29 @@ export function TrForm13({
         <p className="tr-footnote">
           * প্রতিষ্ঠানের ক্ষেত্রে ০৬ ডিজিট এবং বিশেষ কার্যক্রম/ প্রজেক্ট/ স্কিম -এর ক্ষেত্রে সাত (০৭) ডিজিটের কোড ব্যবহার করতে হবে।
         </p>
+        <div className="tr13-close">
+          <div className="tr-p2-row">
+            বাহক/ ব্যাংক/ এজেন্টের নামঃ <Dots width="110mm" />
+          </div>
+          <div className="tr-p2-officer">
+            <div>
+              তারিখঃ <Dots width="34mm" />
+            </div>
+            <Signature title="কর্মকর্তার স্বাক্ষর" lines={['সিল']} />
+            <div className="tr-stamp-wrap">
+              <div className="tr-stamp">
+                রাজস্ব
+                <br />
+                স্ট্যাম্প
+              </div>
+              <div className="tr-small">[অপর পৃষ্ঠা দ্রষ্টব্য]</div>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section className="tr-page tr13-page tr13-p2 tr-fit">
         <div className="tr-page-no">২</div>
-        <div className="tr-p2-row">
-          বাহক/ ব্যাংক/ এজেন্টের নামঃ <Dots width="110mm" />
-        </div>
-        <div className="tr-p2-officer">
-          <div>
-            তারিখঃ <Dots width="34mm" />
-          </div>
-          <Signature title="কর্মকর্তার স্বাক্ষর" lines={['সিল']} />
-          <div className="tr-stamp-wrap">
-            <div className="tr-stamp">
-              রাজস্ব
-              <br />
-              স্ট্যাম্প
-            </div>
-            <div className="tr-small">[অপর পৃষ্ঠা দ্রষ্টব্য]</div>
-          </div>
-        </div>
-
         <div className="tr-p2-heading">হিসাবরক্ষণ অফিসে ব্যবহারের জন্য</div>
         <div className="tr-p2-row">
           প্রদানের জন্য পাস করা হল, টাকা <Dots width="48mm" /> কথায় <Dots width="78mm" />

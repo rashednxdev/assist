@@ -807,7 +807,7 @@ body {
   padding-left: 4mm;
 }
 
-/* T.R. Form 13 sheets: larger text, rows tightened so page 1 (up to the * footnote) stays one A4 sheet. */
+/* T.R. Form 13 sheets: larger text, with page 1 tightened through "[অপর পৃষ্ঠা দ্রষ্টব্য]". */
 .salary-tr-form .tr13-page {
   font-size: 10.1pt;
   line-height: 1.2;
@@ -861,7 +861,8 @@ body {
 }
 
 /*
- * Page 1 sized to fill A4 down to the * footnote (measured: ends ~286mm on the 297mm sheet).
+ * Page 1 matches the printed bill through "[অপর পৃষ্ঠা দ্রষ্টব্য]".
+ * Rows are shortened so that line still ends on the same A4 sheet.
  * The ভবিষ্য তহবিল line has ~2mm to spare at 11.9pt with 10mm side margins; larger text wraps it.
  */
 .salary-tr-form .tr13-p1 {
@@ -887,19 +888,53 @@ body {
 
 .salary-tr-form .tr13-p1 .tr-grid th,
 .salary-tr-form .tr13-p1 .tr-grid td {
-  line-height: 1.08;
+  line-height: 1.05;
   padding-top: 0;
   padding-bottom: 0;
-  height: 5.45mm;
+  height: 4.55mm;
+}
+
+.salary-tr-form .tr13-p1 .tr-words {
+  height: auto;
+  min-height: 4.55mm;
 }
 
 .salary-tr-form .tr13-p1 .tr-footnote {
+  margin-top: 0.8mm;
+  margin-bottom: 0;
   font-size: 10pt;
+}
+
+.salary-tr-form .tr13-p1 .tr13-close {
+  margin-top: 0.4mm;
+}
+
+.salary-tr-form .tr13-p1 .tr13-close .tr-p2-row,
+.salary-tr-form .tr13-p1 .tr13-close .tr-p2-officer {
+  margin-top: 0.6mm;
+}
+
+.salary-tr-form .tr13-p1 .tr13-close .tr-stamp {
+  width: 28mm;
+  height: 12.5mm;
+}
+
+.salary-tr-form .tr13-p1 .tr13-close .tr-sign > div + div {
+  margin-top: 0.4mm;
+}
+
+.salary-tr-form .tr13-p1 .tr13-close .tr-small {
+  margin-top: 0.6mm;
+  margin-bottom: 0;
 }
 
 .salary-tr-form .tr13-p2 {
   font-size: 12.4pt;
   page: tr-tuned;
+}
+
+.salary-tr-form .tr13-p2 > .tr-page-no + .tr-p2-heading {
+  margin-top: 2mm;
 }
 
 .salary-tr-form .tr13-p2 .tr-p2-heading {

@@ -28,7 +28,7 @@ import {
   calculateSalary2026AllPhases,
   calculateEmployeeGross,
   calculateSalaryArrears,
-  defaultArrearMonths,
+  openingArrearMonths,
   formatTaka,
   PAY_GRADES,
   isFixedPayGrade,
@@ -47,6 +47,7 @@ import {
   type PayGrade,
   type Salary2026Result,
   type SalaryBillAccessRecord,
+  type SalaryBillDuration,
   type SalaryBillKind,
   SALARY_BILL_LIMIT_CODE,
   SALARY_FREE_TR_NID,
@@ -620,7 +621,8 @@ export default function SalaryOn2026Page() {
   const [gross, setGross] = useState<EmployeeGrossResult | null>(null);
   const [showArrears, setShowArrears] = useState(false);
   const [showStaff, setShowStaff] = useState(false);
-  const [arrearMonths, setArrearMonths] = useState<string[]>(() => defaultArrearMonths());
+  const [arrearMonths, setArrearMonths] = useState<string[]>(() => openingArrearMonths());
+  const [billDuration, setBillDuration] = useState<SalaryBillDuration | null>(null);
   const [arrearExtras, setArrearExtras] = useState<ArrearExtras>(NO_ARREAR_EXTRAS);
   const [exceptional, setExceptional] = useState<ExceptionalDraft>(EMPTY_EXCEPTIONAL_DRAFT);
   const [printDialog, setPrintDialog] = useState<PrintTarget | null>(null);
@@ -670,6 +672,7 @@ export default function SalaryOn2026Page() {
         housing_status: housingStatus,
         hra_area: calcHraArea,
         months: arrearMonths,
+        duration: billDuration,
         joining_date: joiningDate,
         exceptional: exceptionalIssues,
         ...arrearExtras,
@@ -686,6 +689,7 @@ export default function SalaryOn2026Page() {
     housingStatus,
     calcHraArea,
     arrearMonths,
+    billDuration,
     joiningDate,
     exceptionalIssues,
     arrearExtras,
@@ -811,6 +815,7 @@ export default function SalaryOn2026Page() {
         housing_status: v.housingStatus,
         hra_area: v.hraArea || 'other',
         months,
+        duration: billDuration,
         joining_date: v.joiningDate,
         exceptional: issues,
       }).total_net_arrear;
@@ -1487,6 +1492,8 @@ export default function SalaryOn2026Page() {
               hraArea={calcHraArea}
               months={arrearMonths}
               onMonthsChange={setArrearMonths}
+              duration={billDuration}
+              onDurationChange={setBillDuration}
               extras={arrearExtras}
               onExtrasChange={setArrearExtras}
               deductStamp={deductStamp}
@@ -1522,6 +1529,8 @@ export default function SalaryOn2026Page() {
               locale={locale}
               months={arrearMonths}
               onMonthsChange={setArrearMonths}
+              duration={billDuration}
+              onDurationChange={setBillDuration}
               access={billAccess}
               onAccessChange={setBillAccess}
               officeLabel={billOfficeName || (salaryOffice?.label ?? '')}

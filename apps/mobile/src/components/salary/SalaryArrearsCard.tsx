@@ -10,9 +10,15 @@ import {
   asksSubstantiveGrade,
   calculateSalaryArrears,
   defaultArrearMonths,
+  durationIncludingMonth,
   formatTaka,
+  isoDateOf,
+  isBillDuration,
   isIsoDate,
   isPayGrade,
+  monthsCoveringDuration,
+  ARREAR_FIRST_DATE,
+  openingArrearMonths,
   roundSalaryTaka,
   salaryArrearTrGrade,
   salaryTrFormNo,
@@ -23,11 +29,13 @@ import {
   type PayGrade,
   type SalaryArrearMonthRow,
   type SalaryArrearResult,
+  type SalaryBillDuration,
   type SalaryExceptionalIssues,
   type SubstantiveGrade,
 } from '@ibas/shared-types';
 import type { CalcLocale } from '@/lib/calc-i18n';
 import { takaInWords } from '@/lib/amount-words';
+import { toBanglaDigits } from '@/lib/bangla-format';
 import { hraAreaText, localNum, localTaka, monthRowLabel, monthText, salaryCopy, type SalaryCopy } from '@/lib/salary-i18n';
 import { PickerSheet } from '@/components/ui/PickerSheet';
 import { colors, spacing } from '@/theme';
@@ -36,6 +44,12 @@ const INDIGO = '#4338ca';
 const ROSE = '#be123c';
 const MONO = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
 const STAGE_NUMBER = { '2026-07-01': 1, '2027-01-01': 2, '2027-07-01': 3 } as const;
+
+function userDateToIso(value: string): string | null {
+  const dotted = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(value.trim());
+  const iso = dotted ? `${dotted[3]}-${dotted[2]}-${dotted[1]}` : value.trim();
+  return isIsoDate(iso) ? iso : null;
+}
 
 export function SalaryArrearsCard({
   locale,
@@ -80,7 +94,12 @@ export function SalaryArrearsCard({
     () => arrearMonthOptions().filter((month) => !fromMonth || month >= fromMonth),
     [fromMonth],
   );
-  const [selected, setSelected] = useState<string[]>(() => defaultArrearMonths());
+  const [selected, setSelected] = useState<string[]>(() => openingArrearMonths());
+  const [duration, setDuration] = useState<SalaryBillDuration | null>(null);
+  const [durationOpen, setDurationOpen] = useState(false);
+  const [fromDraft, setFromDraft] = useState(ARREAR_FIRST_DATE);
+  const [toDraft, setToDraft] = useState(() => isoDateOf());
+  const [durationError, setDurationError] = useState('');
   const [deductStamp, setDeductStamp] = useState(true);
   const [extras, setExtras] = useState({ excess_rr: false, excess_puja: false });
   const [picker, setPicker] = useState<'payGrade' | 'payBasic' | 'paySub' | null>(null);
@@ -102,6 +121,7 @@ export function SalaryArrearsCard({
           housing_status: housingStatus,
           hra_area: hraArea,
           months,
+          duration,
           joining_date: isIsoDate(joiningDate) ? joiningDate : null,
           exceptional: issues,
           excess_rr: extras.excess_rr,
@@ -112,11 +132,37 @@ export function SalaryArrearsCard({
     } catch (err) {
       return { result: null, error: err instanceof Error ? err.message : t.calcError };
     }
-  }, [grade, oldPay, substantiveGrade, housingStatus, hraArea, selected, fromMonth, joiningDate, issues, extras, pay, t]);
+  }, [grade, oldPay, substantiveGrade, housingStatus, hraArea, selected, duration, fromMonth, joiningDate, issues, extras, pay, t]);
 
   function toggle(key: string) {
     setSelected((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key].sort()));
+    setDuration((current) => (current && !selected.includes(key) ? durationIncludingMonth(current, key) : current));
   }
+
+  function chooseMonths(next: string[]) {
+    setDuration(null);
+    setSelected(next);
+  }
+
+  function applyDuration() {
+    const from = userDateToIso(fromDraft);
+    const to = userDateToIso(toDraft);
+    if (!from || !to || !isBillDuration(from, to)) {
+      setDurationError(t.arrDurationInvalid);
+      return;
+    }
+    const covered = monthsCoveringDuration(from, to).filter((month) => !fromMonth || month >= fromMonth);
+    setDurationError('');
+    setDuration({ from, to });
+    if (covered.length > 0) setSelected(covered);
+    setDurationOpen(false);
+  }
+
+  const showDate = (iso: string) => {
+    const [year, month, day] = iso.split('-');
+    const text = `${day}.${month}.${year}`;
+    return locale === 'bn' ? toBanglaDigits(text) : text;
+  };
 
   return (
     <View style={styles.card}>
@@ -129,21 +175,66 @@ export function SalaryArrearsCard({
           <Text style={styles.groupLabel}>{t.arrMonths}</Text>
           <View style={styles.quickRow}>
             {[
-              { label: t.arrPast, onPress: () => setSelected(defaultArrearMonths()) },
-              { label: t.arrAll, onPress: () => setSelected(monthOptions) },
-              { label: t.arrClear, onPress: () => setSelected([]) },
+              { label: t.arrPast, red: false, onPress: () => chooseMonths(defaultArrearMonths().filter((month) => !fromMonth || month >= fromMonth)) },
+              { label: t.arrAll, red: false, onPress: () => chooseMonths(monthOptions) },
+              { label: t.arrClear, red: false, onPress: () => chooseMonths([]) },
+              {
+                label: t.arrDuration,
+                red: true,
+                onPress: () => {
+                  setFromDraft(duration?.from ?? ARREAR_FIRST_DATE);
+                  setToDraft(duration?.to ?? isoDateOf());
+                  setDurationError('');
+                  setDurationOpen((open) => !open);
+                },
+              },
             ].map((b) => (
               <Pressable
                 key={b.label}
                 onPress={b.onPress}
                 hitSlop={4}
-                style={({ pressed }) => [styles.quickBtn, pressed && styles.pressed]}
+                style={({ pressed }) => [styles.quickBtn, b.red && styles.quickBtnRed, pressed && styles.pressed]}
               >
-                <Text style={styles.quickBtnText}>{b.label}</Text>
+                <Text style={[styles.quickBtnText, b.red && styles.quickBtnTextRed]}>{b.label}</Text>
               </Pressable>
             ))}
           </View>
         </View>
+        {durationOpen ? (
+          <View style={styles.durationBox}>
+            <Text style={styles.tiny}>{t.arrDurationHint}</Text>
+            <Text style={styles.groupLabel}>{t.arrDurationFrom}</Text>
+            <TextInput
+              value={fromDraft}
+              onChangeText={setFromDraft}
+              placeholder="2026-07-01"
+              placeholderTextColor={colors.textMuted}
+              autoCapitalize="none"
+              style={styles.input}
+            />
+            <Text style={styles.groupLabel}>{t.arrDurationTo}</Text>
+            <TextInput
+              value={toDraft}
+              onChangeText={setToDraft}
+              placeholder="2026-09-30"
+              placeholderTextColor={colors.textMuted}
+              autoCapitalize="none"
+              style={styles.input}
+            />
+            {durationError ? <Text style={styles.durationError}>{durationError}</Text> : null}
+            <Pressable onPress={applyDuration} style={({ pressed }) => [styles.applyBtn, pressed && styles.pressed]}>
+              <Text style={styles.applyBtnText}>{t.arrDurationApply}</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        {duration ? (
+          <View style={styles.durationActive}>
+            <Text style={styles.durationActiveText}>{t.arrDurationActive(showDate(duration.from), showDate(duration.to))}</Text>
+            <Pressable onPress={() => setDuration(null)} hitSlop={4}>
+              <Text style={styles.quickBtnText}>{t.arrDurationClear}</Text>
+            </Pressable>
+          </View>
+        ) : null}
         <View style={styles.chips}>
           {monthOptions.map((key) => {
             const on = selected.includes(key);
@@ -654,7 +745,7 @@ const styles = StyleSheet.create({
 
   monthHead: { gap: 6 },
   groupLabel: { fontSize: 14, fontWeight: '600', color: colors.text },
-  quickRow: { flexDirection: 'row', gap: 6 },
+  quickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   quickBtn: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -663,7 +754,26 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   quickBtnText: { fontSize: 12, fontWeight: '600', color: colors.text },
+  quickBtnRed: { backgroundColor: '#dc2626', borderColor: '#dc2626' },
+  quickBtnTextRed: { color: colors.white },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  durationBox: { gap: 6, borderWidth: 1, borderColor: '#c7d2fe', backgroundColor: '#eef2ff', borderRadius: 12, padding: spacing.sm },
+  durationError: { fontSize: 12, fontWeight: '700', color: ROSE },
+  applyBtn: { alignSelf: 'flex-start', backgroundColor: INDIGO, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
+  applyBtnText: { color: colors.white, fontWeight: '800', fontSize: 13 },
+  durationActive: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#c7d2fe',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  durationActiveText: { flex: 1, fontSize: 13, fontWeight: '700', color: '#312e81' },
   chip: {
     borderWidth: 1,
     borderColor: colors.border,

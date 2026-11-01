@@ -1,13 +1,18 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Download, Loader2 } from 'lucide-react';
 import {
+  ARREAR_FIRST_DATE,
   arrearPeriodStart,
   arrearMonthOptions,
   calculateSalaryArrears,
   defaultArrearMonths,
+  durationIncludingMonth,
   formatTaka,
+  isoDateOf,
+  isBillDuration,
+  monthsCoveringDuration,
   roundSalaryTaka,
   specialAllowanceAmount,
   salaryArrearTrGrade,
@@ -17,6 +22,7 @@ import {
   type PayGrade,
   type SalaryArrearMonthRow,
   type SalaryArrearResult,
+  type SalaryBillDuration,
   type SalaryExceptionalIssues,
   type SubstantiveGrade,
 } from '@ibas/shared-types';
@@ -34,6 +40,7 @@ import {
   type SalaryLocale,
 } from '@/lib/salary-i18n';
 import { takaInWords } from '@/lib/amount-words';
+import { toBanglaDigits } from '@/lib/bangla-format';
 
 const STAGE_NUMBER = { '2026-07-01': 1, '2027-01-01': 2, '2027-07-01': 3 } as const;
 
@@ -292,20 +299,29 @@ export function ArrearExtraDeductions({
   );
 }
 
-/** Arrear month chips with Past / All / Clear shortcuts. */
+/** Arrear month chips with Past / All / Clear shortcuts and an optional day window. */
 export function ArrearMonthPicker({
   locale,
   months,
   onMonthsChange,
   fromMonth,
+  duration,
+  onDurationChange,
 }: {
   locale: SalaryLocale;
   months: string[];
   onMonthsChange: (months: string[]) => void;
   /** Month of joining when the arrears start after July 2026; earlier months are hidden. */
   fromMonth?: string;
+  duration: SalaryBillDuration | null;
+  onDurationChange: (duration: SalaryBillDuration | null) => void;
 }) {
   const t = salaryCopy(locale);
+  const today = isoDateOf();
+  const [open, setOpen] = useState(false);
+  const [fromDraft, setFromDraft] = useState(duration?.from ?? ARREAR_FIRST_DATE);
+  const [toDraft, setToDraft] = useState(duration?.to ?? today);
+  const [durationError, setDurationError] = useState('');
   const monthOptions = useMemo(
     () => arrearMonthOptions().filter((m) => !fromMonth || m >= fromMonth),
     [fromMonth],
@@ -314,27 +330,105 @@ export function ArrearMonthPicker({
     const past = defaultArrearMonths().filter((m) => !fromMonth || m >= fromMonth);
     return past.length > 0 ? past : monthOptions;
   };
+  const showDate = (iso: string) => {
+    const [year, month, day] = iso.split('-');
+    const text = `${day}.${month}.${year}`;
+    return locale === 'bn' ? toBanglaDigits(text) : text;
+  };
 
   function toggle(key: string) {
-    onMonthsChange(months.includes(key) ? months.filter((k) => k !== key) : [...months, key].sort());
+    const removing = months.includes(key);
+    onMonthsChange(removing ? months.filter((k) => k !== key) : [...months, key].sort());
+    if (!removing && duration) onDurationChange(durationIncludingMonth(duration, key));
+  }
+
+  function chooseMonths(next: string[]) {
+    onDurationChange(null);
+    onMonthsChange(next);
+  }
+
+  function applyDuration() {
+    if (!isBillDuration(fromDraft, toDraft)) {
+      setDurationError(t.arrDurationInvalid);
+      return;
+    }
+    setDurationError('');
+    const covered = monthsCoveringDuration(fromDraft, toDraft).filter((m) => !fromMonth || m >= fromMonth);
+    onDurationChange({ from: fromDraft, to: toDraft });
+    if (covered.length > 0) onMonthsChange(covered);
+    setOpen(false);
   }
 
   return (
     <div className="space-y-2 print:hidden">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-medium text-slate-800">{t.arrMonths}</p>
-        <div className="flex gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={() => onMonthsChange(pastMonths())}>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={() => chooseMonths(pastMonths())}>
             {t.arrPast}
           </Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => onMonthsChange(monthOptions)}>
+          <Button type="button" variant="outline" size="sm" onClick={() => chooseMonths(monthOptions)}>
             {t.arrAll}
           </Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => onMonthsChange([])}>
+          <Button type="button" variant="outline" size="sm" onClick={() => chooseMonths([])}>
             {t.arrClear}
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            onClick={() => {
+              setFromDraft(duration?.from ?? ARREAR_FIRST_DATE);
+              setToDraft(duration?.to ?? today);
+              setDurationError('');
+              setOpen((value) => !value);
+            }}
+          >
+            {t.arrDuration}
           </Button>
         </div>
       </div>
+      {open ? (
+        <div className="space-y-2 rounded-xl border border-indigo-200 bg-indigo-50/70 p-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="space-y-1 text-sm">
+              <span className="block font-medium text-slate-800">{t.arrDurationFrom}</span>
+              <input
+                type="date"
+                min={ARREAR_FIRST_DATE}
+                max={toDraft || today}
+                value={fromDraft}
+                onChange={(e) => setFromDraft(e.target.value)}
+                className="flex h-10 rounded-md border border-indigo-300 bg-white px-3 text-sm"
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="block font-medium text-slate-800">{t.arrDurationTo}</span>
+              <input
+                type="date"
+                min={fromDraft || ARREAR_FIRST_DATE}
+                max={today}
+                value={toDraft}
+                onChange={(e) => setToDraft(e.target.value)}
+                className="flex h-10 rounded-md border border-indigo-300 bg-white px-3 text-sm"
+              />
+            </label>
+            <Button type="button" size="sm" onClick={applyDuration}>
+              {t.arrDurationApply}
+            </Button>
+          </div>
+          <p className="text-xs text-slate-600">{t.arrDurationHint}</p>
+          {durationError ? <p className="text-xs font-medium text-rose-700">{durationError}</p> : null}
+        </div>
+      ) : null}
+      {duration ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm">
+          <span className="font-medium text-indigo-950">{t.arrDurationActive(showDate(duration.from), showDate(duration.to))}</span>
+          <Button type="button" variant="outline" size="sm" onClick={() => onDurationChange(null)}>
+            {t.arrDurationClear}
+          </Button>
+        </div>
+      ) : null}
       <div className="flex flex-wrap gap-2">
         {monthOptions.map((key) => {
           const on = months.includes(key);
@@ -370,6 +464,8 @@ export function SalaryArrearsBill({
   hraArea,
   months,
   onMonthsChange,
+  duration,
+  onDurationChange,
   extras,
   onExtrasChange,
   deductStamp,
@@ -390,6 +486,8 @@ export function SalaryArrearsBill({
   hraArea: HraArea;
   months: string[];
   onMonthsChange: (months: string[]) => void;
+  duration: SalaryBillDuration | null;
+  onDurationChange: (duration: SalaryBillDuration | null) => void;
   extras: ArrearExtras;
   onExtrasChange: (extras: ArrearExtras) => void;
   /** Stamp duty ৳ 10 is deducted unless the user clears this. */
@@ -421,6 +519,7 @@ export function SalaryArrearsBill({
           months,
           joining_date: joiningDate,
           exceptional,
+          duration,
           ...extras,
         }),
         error: '',
@@ -428,7 +527,7 @@ export function SalaryArrearsBill({
     } catch (err) {
       return { result: null, error: err instanceof Error ? err.message : t.calcError };
     }
-  }, [grade, oldPay, substantiveGrade, joiningDate, exceptional, housingStatus, hraArea, months, extras, t]);
+  }, [grade, oldPay, substantiveGrade, joiningDate, exceptional, housingStatus, hraArea, months, duration, extras, t]);
   const oneTime = result ? oneTimeDeductions(t, amt, result) : [];
   const stamp = deductStamp ? 10 : 0;
   const payable = result ? result.total_net_arrear - stamp : 0;
@@ -440,7 +539,14 @@ export function SalaryArrearsBill({
         <div className="text-sm font-bold">{t.billTitle}</div>
       </div>
       <CardContent className="space-y-4 p-4 sm:p-5">
-        <ArrearMonthPicker locale={locale} months={months} onMonthsChange={onMonthsChange} fromMonth={fromMonth} />
+        <ArrearMonthPicker
+          locale={locale}
+          months={months}
+          onMonthsChange={onMonthsChange}
+          fromMonth={fromMonth}
+          duration={duration}
+          onDurationChange={onDurationChange}
+        />
 
         {error ? <Alert variant="error">{error}</Alert> : null}
 

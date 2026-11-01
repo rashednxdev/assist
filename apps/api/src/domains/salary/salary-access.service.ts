@@ -267,7 +267,11 @@ export async function consumeStaffBill(user: AuthUser, dto: ConsumeSalaryStaffBi
   if (staff.length === 0) throw badRequest('Add at least one employee first.');
   const results = staff.map((s) => {
     try {
-      return calculateStaffArrears(s, dto.months);
+      return calculateStaffArrears(
+        s,
+        dto.months,
+        dto.bill_from && dto.bill_to ? { from: dto.bill_from, to: dto.bill_to } : null,
+      );
     } catch (err) {
       throw badRequest(`${s.name}: ${err instanceof Error ? err.message : 'Invalid details'}`);
     }

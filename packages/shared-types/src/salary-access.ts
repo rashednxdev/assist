@@ -738,6 +738,9 @@ const staffOfficeKey = officeId.nullable();
 export const consumeSalaryStaffBillSchema = z
   .object({
     months: z.array(arrearMonth).min(1).max(60),
+    /** Inclusive arrears window. Both dates, or neither. */
+    bill_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    bill_to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     /** One office (null = the user's own office). Ignored when `staff_office_ids` is set. */
     staff_office_id: staffOfficeKey.optional(),
     /** Consolidated print: one dedicated T.R. Form 15 per checked office. */
@@ -746,6 +749,9 @@ export const consumeSalaryStaffBillSchema = z
   .superRefine((v, ctx) => {
     if (v.staff_office_ids == null && v.staff_office_id === undefined) {
       ctx.addIssue({ code: 'custom', path: ['staff_office_id'], message: 'Choose an office' });
+    }
+    if ((v.bill_from == null) !== (v.bill_to == null)) {
+      ctx.addIssue({ code: 'custom', path: ['bill_from'], message: 'Enter both the from date and the to date' });
     }
   });
 export type ConsumeSalaryStaffBillDto = z.infer<typeof consumeSalaryStaffBillSchema>;

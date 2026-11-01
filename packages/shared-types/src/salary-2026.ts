@@ -1248,6 +1248,73 @@ export function defaultArrearMonths(today: Date = new Date()): string[] {
   return past.length > 0 ? past : all;
 }
 
+/** First day arrears can cover. */
+export const ARREAR_FIRST_DATE = `${ARREAR_START_MONTH}-01`;
+
+const OPENING_ARREAR_MONTHS = ['2026-07', '2026-08', '2026-09'] as const;
+
+/** July, August and September 2026, dropping any month that has not started yet. */
+export function openingArrearMonths(today: Date = new Date()): string[] {
+  const available = new Set(arrearMonthOptions(today));
+  const keys = OPENING_ARREAR_MONTHS.filter((key) => available.has(key));
+  return keys.length > 0 ? [...keys] : arrearMonthOptions(today);
+}
+
+/** Local calendar date as YYYY-MM-DD. */
+export function isoDateOf(date: Date = new Date()): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+export interface SalaryBillDuration {
+  from: string;
+  to: string;
+}
+
+/** Months that overlap a from–to range, limited to months available through `today`. */
+export function monthsCoveringDuration(from: string, to: string, today: Date = new Date()): string[] {
+  return arrearMonthOptions(today).filter((key) => {
+    const last = String(daysInMonth(key)).padStart(2, '0');
+    return from <= `${key}-${last}` && to >= `${key}-01`;
+  });
+}
+
+/** Both dates are real, in order, and fall on or between 01-07-2026 and `today`. */
+export function isBillDuration(from: string, to: string, today: Date = new Date()): boolean {
+  return isIsoDate(from) && isIsoDate(to) && from >= ARREAR_FIRST_DATE && to <= isoDateOf(today) && from <= to;
+}
+
+/** Extends a duration so a newly ticked month is inside it, without going past today. */
+export function durationIncludingMonth(
+  duration: SalaryBillDuration,
+  month: string,
+  today: Date = new Date(),
+): SalaryBillDuration {
+  const todayIso = isoDateOf(today);
+  const last = String(daysInMonth(month)).padStart(2, '0');
+  const start = `${month}-01` < ARREAR_FIRST_DATE ? ARREAR_FIRST_DATE : `${month}-01`;
+  let end = `${month}-${last}`;
+  if (end > todayIso) end = todayIso;
+  if (end < start) return duration;
+  return {
+    from: start < duration.from ? start : duration.from,
+    to: end > duration.to ? end : duration.to,
+  };
+}
+
+function durationClip(
+  month: string,
+  monthDays: number,
+  duration: SalaryBillDuration | null,
+): { from: number; to: number } | null {
+  if (!duration) return { from: 1, to: monthDays };
+  const first = `${month}-01`;
+  const last = `${month}-${String(monthDays).padStart(2, '0')}`;
+  if (duration.to < first || duration.from > last) return null;
+  const from = duration.from.slice(0, 7) === month ? Number(duration.from.slice(8, 10)) : 1;
+  const to = duration.to.slice(0, 7) === month ? Number(duration.to.slice(8, 10)) : monthDays;
+  return from <= to ? { from, to } : null;
+}
+
 export function arrearPhaseForMonth(key: string): SalaryPhase {
   return key >= ARREAR_STAGE2_MONTH ? '2027-01-01' : '2026-07-01';
 }
@@ -1280,6 +1347,8 @@ export interface SalaryArrearInput {
   hra_area: HraArea;
   /** Month keys (YYYY-MM), July 2026 or later. */
   months: string[];
+  /** Inclusive day window. Months outside it are skipped; the first and last months are prorated. */
+  duration?: SalaryBillDuration | null;
   /** Overrides the substantive-grade special allowance rate (fraction, e.g. 0.15). */
   special_rate?: number;
   /** Excess Rest & Recreation allowance drawn: one NPS 2015 increment is deducted once. */
@@ -1656,6 +1725,13 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
   const incrementExempt = Boolean(exceptional.increment_exempt);
   const payChange = assertPayChange(exceptional.pay_change);
   const periodStart = arrearPeriodStart(grade, oldPay, input.joining_date, exceptional.arrear_start_date);
+  const duration = input.duration ?? null;
+  if (duration && (!isIsoDate(duration.from) || !isIsoDate(duration.to) || duration.from > duration.to)) {
+    throw new Error('Bill duration dates are not valid');
+  }
+  if (duration && duration.from < ARREAR_FIRST_DATE) {
+    throw new Error('Bill duration cannot start before 01-07-2026');
+  }
 
   const months = [...new Set(input.months)]
     .filter((k) => isArrearMonthKey(k) && (!periodStart || k >= periodStart.month))
@@ -1715,7 +1791,11 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
   for (const month of months) {
     const phase = arrearPhaseForMonth(month);
     const monthDays = daysInMonth(month);
-    const startDay = periodStart && month === periodStart.month ? periodStart.day : 1;
+    const clip = durationClip(month, monthDays, duration);
+    if (!clip) continue;
+    const startDay = Math.max(periodStart && month === periodStart.month ? periodStart.day : 1, clip.from);
+    const endDay = clip.to;
+    if (startDay > endDay) continue;
     const changeDay =
       payChange && month === payChange.effective_date.slice(0, 7)
         ? Number(payChange.effective_date.slice(8, 10))
@@ -1724,13 +1804,13 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
     type Seg = { basis: ArrearBasisAmounts; from: number; to: number };
     const segs: Seg[] = [];
     if (!changed || !payChange || month < payChange.effective_date.slice(0, 7)) {
-      segs.push({ basis: primary, from: startDay, to: monthDays });
+      segs.push({ basis: primary, from: startDay, to: endDay });
     } else if (month > payChange.effective_date.slice(0, 7)) {
-      segs.push({ basis: changed, from: startDay, to: monthDays });
+      segs.push({ basis: changed, from: startDay, to: endDay });
     } else {
       const split = Math.max(startDay, changeDay!);
-      if (split > startDay) segs.push({ basis: primary, from: startDay, to: split - 1 });
-      if (split <= monthDays) segs.push({ basis: changed, from: split, to: monthDays });
+      if (split > startDay) segs.push({ basis: primary, from: startDay, to: Math.min(split - 1, endDay) });
+      if (split <= endDay) segs.push({ basis: changed, from: Math.max(split, startDay), to: endDay });
     }
 
     for (const s of segs) {
@@ -1759,6 +1839,10 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
         ...blend,
       });
     }
+  }
+
+  if (rows.length === 0) {
+    throw new Error('Select at least one month inside the bill duration');
   }
 
   const sum = (pick: (r: SalaryArrearMonthRow) => number) => toPaisa(rows.reduce((s, r) => s + pick(r), 0));
@@ -1824,6 +1908,7 @@ export function calculateStaffArrears(
     exceptional?: SalaryExceptionalIssues | null;
   },
   months: string[],
+  duration?: SalaryBillDuration | null,
 ): SalaryArrearResult {
   return calculateSalaryArrears({
     grade: staff.grade as PayGrade,
@@ -1831,6 +1916,7 @@ export function calculateStaffArrears(
     housing_status: staff.housing_status,
     hra_area: staff.hra_area,
     months,
+    duration,
     special_rate: STAFF_SPECIAL_RATE,
     excess_rr: staff.excess_rr,
     excess_puja: staff.excess_puja,

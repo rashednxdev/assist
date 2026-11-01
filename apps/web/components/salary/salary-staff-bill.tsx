@@ -18,6 +18,7 @@ import {
   type PayGrade,
   type SalaryArrearResult,
   type SalaryBillAccessRecord,
+  type SalaryBillDuration,
   type SalaryStaffDto,
   type SalaryStaffOfficeRecord,
   type SalaryStaffRecord,
@@ -728,6 +729,8 @@ export function SalaryStaffBill({
   locale,
   months,
   onMonthsChange,
+  duration,
+  onDurationChange,
   access,
   onAccessChange,
   officeLabel,
@@ -738,6 +741,8 @@ export function SalaryStaffBill({
   locale: SalaryLocale;
   months: string[];
   onMonthsChange: (months: string[]) => void;
+  duration: SalaryBillDuration | null;
+  onDurationChange: (duration: SalaryBillDuration | null) => void;
   access: SalaryBillAccessRecord | null;
   onAccessChange: (access: SalaryBillAccessRecord) => void;
   officeLabel: string;
@@ -819,13 +824,13 @@ export function SalaryStaffBill({
     return staff.map((s) => {
       let result: SalaryArrearResult | null = null;
       try {
-        result = calculateStaffArrears(s, months);
+        result = calculateStaffArrears(s, months, duration);
       } catch {
         result = null;
       }
       return { staff: s, result };
     });
-  }, [staff, months]);
+  }, [staff, months, duration]);
 
   const valid = rows?.filter((r): r is { staff: SalaryStaffRecord; result: SalaryArrearResult } => r.result != null) ?? [];
   const count = staff?.length ?? 0;
@@ -931,6 +936,7 @@ export function SalaryStaffBill({
     JSON.stringify({
       offices: [...officeIds].map((id) => id ?? 'own').sort(),
       months: [...months].sort(),
+      duration,
       staff: list.map((s) => [s.id, s.updated_at]),
     });
 
@@ -952,7 +958,7 @@ export function SalaryStaffBill({
       const list = activeStaff.filter((s) => (s.staff_office_id ?? null) === officeId);
       return list.map((s) => {
         try {
-          return { staff: s, result: calculateStaffArrears(s, months), officeId };
+          return { staff: s, result: calculateStaffArrears(s, months, duration), officeId };
         } catch {
           return null;
         }
@@ -976,8 +982,8 @@ export function SalaryStaffBill({
       try {
         const body =
           consol
-            ? { months, staff_office_ids: officeIds }
-            : { months, staff_office_id: activeOffice };
+            ? { months, staff_office_ids: officeIds, bill_from: duration?.from, bill_to: duration?.to }
+            : { months, staff_office_id: activeOffice, bill_from: duration?.from, bill_to: duration?.to };
         const res = await apiFetch<{ data: SalaryBillAccessRecord }>('/salary/staff/bill', {
           method: 'POST',
           body: JSON.stringify(body),
@@ -1070,7 +1076,13 @@ export function SalaryStaffBill({
         <p className="mt-0.5 text-xs text-amber-50/90">{t.staffHint}</p>
       </div>
       <CardContent className="space-y-4 p-4 sm:p-5">
-        <ArrearMonthPicker locale={locale} months={months} onMonthsChange={onMonthsChange} />
+        <ArrearMonthPicker
+          locale={locale}
+          months={months}
+          onMonthsChange={onMonthsChange}
+          duration={duration}
+          onDurationChange={onDurationChange}
+        />
         {months.length === 0 ? <Alert variant="error">{t.arrSelectMonth}</Alert> : null}
 
         <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50/60 p-3">

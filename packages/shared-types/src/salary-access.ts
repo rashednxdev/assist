@@ -4,7 +4,11 @@ import {
   NPS_2015,
   asksJoiningDate,
   asksSubstantiveGrade,
+  continuingDrawnBasic,
   isIsoDate,
+  isNps2015Basic,
+  isPayGrade,
+  payChangeDrawnBasics,
   substantiveGradeOptions,
   type PayGrade,
 } from './salary-2026.js';
@@ -313,8 +317,24 @@ export interface SalaryOfficeRecord {
   needs_accounting_office: boolean;
   /** The admin made this user a contact for the offices whose bills their office passes. */
   office_admin: boolean;
+  /**
+   * Institutional / operation code for T.R. forms. Others users keep the value they set once;
+   * empty until entered.
+   */
+  operation_code: string;
   updated_at: string;
 }
+
+/** Optional institutional / operation code (up to 7 digits) printed on T.R. Form 13 / 15. */
+export const updateSalaryOperationCodeSchema = z.object({
+  operation_code: z
+    .string()
+    .trim()
+    .max(7, 'At most 7 digits')
+    .regex(/^\d*$/, 'Use digits only')
+    .default(''),
+});
+export type UpdateSalaryOperationCodeDto = z.infer<typeof updateSalaryOperationCodeSchema>;
 
 export const salaryContactSchema = z.object({
   label: z.string().trim().max(80).default(''),
@@ -631,6 +651,11 @@ const staffPayChangeSchema = z
     grade: z.number().int().min(1).max(20),
     old_pay: z.number().int().min(1),
     substantive_grade: z.number().int().min(1).max(20).nullable().optional(),
+    /**
+     * True = re-fixed on NPS 2015 of the new grade; false = continuing benefits.
+     * Missing on older records is treated as true.
+     */
+    nps_2015_fixed: z.boolean().optional(),
   })
   .nullable()
   .default(null);
@@ -702,14 +727,33 @@ export const salaryStaffSchema = z
           message: 'Pay change must be on or after 01-07-2026',
         });
       }
-      if (!NPS_2015[ex.pay_change.grade as PayGrade]?.includes(ex.pay_change.old_pay)) {
+      const promoGrade = ex.pay_change.grade as PayGrade;
+      const fromGrade = v.grade as PayGrade;
+      if (!isPayGrade(promoGrade) || promoGrade >= fromGrade) {
         ctx.addIssue({
           code: 'custom',
-          path: ['exceptional', 'pay_change', 'old_pay'],
-          message: 'Choose a basic from the pay-change grade scale',
+          path: ['exceptional', 'pay_change', 'grade'],
+          message: 'Promotion / higher scale must be an upper grade of the previous grade',
         });
       }
-      const promoGrade = ex.pay_change.grade as PayGrade;
+      const fixedOn2015 = ex.pay_change.nps_2015_fixed !== false;
+      if (fixedOn2015) {
+        const previousBasic = continuingDrawnBasic(
+          fromGrade,
+          v.old_pay,
+          v.joining_date,
+          Boolean(ex.increment_exempt),
+        );
+        const allowed = payChangeDrawnBasics(promoGrade, previousBasic, true);
+        if (!allowed.includes(ex.pay_change.old_pay)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['exceptional', 'pay_change', 'old_pay'],
+            message: 'Choose a basic equal or next higher than the previous basic on the new grade scale',
+          });
+        }
+      }
+      // Fixation No: drawn basic is continuing benefits — calculated from the main grade/basic.
       const postSub = ex.pay_change.substantive_grade;
       if (
         asksSubstantiveGrade(promoGrade) &&

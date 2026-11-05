@@ -5,7 +5,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { AuthScreenShell } from '@/components/auth/AuthScreenShell';
 import { TextField } from '@/components/ui/TextField';
 import { Button } from '@/components/ui/Button';
-import { TermsViewerModal } from '@/components/auth/TermsViewerModal';
 import { register } from '@/lib/auth-api';
 import { markModuleWelcomeTipsPending } from '@/lib/module-welcome-tips';
 import { useAuth } from '@/lib/auth-context';
@@ -25,7 +24,6 @@ export default function RegisterScreen() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
-  const [termsVisible, setTermsVisible] = useState(false);
 
   function setField<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -54,7 +52,7 @@ export default function RegisterScreen() {
       return;
     }
     if (!acceptedTerms) {
-      setError('You must accept the Terms & Conditions to register.');
+      setError('অফিসের সকলের বা অন্তত ৫ জনের বিল ফরম ডাউনলোডের সম্মতি দিন।');
       return;
     }
     setLoading(true);
@@ -144,10 +142,7 @@ export default function RegisterScreen() {
           color={acceptedTerms ? colors.primary : colors.textMuted}
         />
         <Text style={styles.termsText}>
-          I agree to the{' '}
-          <Text style={styles.termsLink} onPress={() => setTermsVisible(true)}>
-            Terms &amp; Conditions
-          </Text>
+          আমি আমার অফিসের সকলের বা অন্তত ৫ জনের বিল ফরম ডাউনলোড করতে চাই
         </Text>
       </Pressable>
 
@@ -158,8 +153,6 @@ export default function RegisterScreen() {
         loading={loading}
         disabled={!acceptedTerms}
       />
-
-      <TermsViewerModal visible={termsVisible} onClose={() => setTermsVisible(false)} />
     </AuthScreenShell>
   );
 }
@@ -167,19 +160,16 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
   termsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 8,
     marginTop: spacing.xs,
   },
   termsText: {
     flex: 1,
     fontSize: 14,
-    color: colors.text,
+    fontWeight: '600',
+    color: '#b71c1c',
     lineHeight: 19,
-  },
-  termsLink: {
-    color: colors.primary,
-    fontWeight: '700',
   },
   error: {
     color: colors.error,

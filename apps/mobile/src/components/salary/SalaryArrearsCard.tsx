@@ -2,8 +2,6 @@ import { useMemo, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  NPS_2015,
-  PAY_GRADES,
   arrearMonthOptions,
   arrearPeriodStart,
   asksJoiningDate,
@@ -15,10 +13,15 @@ import {
   isoDateOf,
   isBillDuration,
   isIsoDate,
+  isPayChangeUpperGrade,
   isPayGrade,
   monthsCoveringDuration,
   ARREAR_FIRST_DATE,
+  continuingDrawnBasic,
   openingArrearMonths,
+  payChangeDrawnBasics,
+  payChangeGradeOptions,
+  payChangeNps2015Fixed,
   roundSalaryTaka,
   salaryArrearTrGrade,
   salaryTrFormNo,
@@ -105,7 +108,10 @@ export function SalaryArrearsCard({
   const [picker, setPicker] = useState<'payGrade' | 'payBasic' | 'paySub' | null>(null);
   const pay = issues.pay_change ?? null;
   const payGrade = pay && isPayGrade(pay.grade) ? pay.grade : grade;
-  const payBasics = NPS_2015[payGrade];
+  const continuingBasic = continuingDrawnBasic(grade, oldPay, isIsoDate(joiningDate) ? joiningDate : null, Boolean(issues.increment_exempt));
+  const nps2015Fixed = payChangeNps2015Fixed(pay);
+  const promoGrades = payChangeGradeOptions(grade);
+  const payBasics = payChangeDrawnBasics(payGrade, continuingBasic, nps2015Fixed);
 
   const { result, error } = useMemo(() => {
     const months = selected.filter((month) => !fromMonth || month >= fromMonth);
@@ -275,22 +281,76 @@ export function SalaryArrearsCard({
           <CheckRow
             label={t.exPay}
             value={pay != null}
-            onChange={(on) =>
+            onChange={(on) => {
+              if (!on) {
+                onIssues({ ...issues, pay_change: null });
+                return;
+              }
+              const nextGrade =
+                pay != null && isPayChangeUpperGrade(grade, pay.grade as PayGrade)
+                  ? (pay.grade as PayGrade)
+                  : promoGrades[0];
+              if (nextGrade == null) return;
+              const fixed = pay != null ? payChangeNps2015Fixed(pay) : true;
+              const basics = payChangeDrawnBasics(nextGrade, continuingBasic, fixed);
               onIssues({
                 ...issues,
-                pay_change: on
-                  ? {
-                      effective_date: pay?.effective_date ?? '',
-                      grade: payGrade,
-                      old_pay: pay?.old_pay && payBasics.includes(pay.old_pay) ? pay.old_pay : payBasics[0]!,
-                      substantive_grade: asksSubstantiveGrade(payGrade) ? payGrade : null,
-                    }
-                  : null,
-              })
-            }
+                pay_change: {
+                  effective_date: pay?.effective_date ?? '',
+                  grade: nextGrade,
+                  old_pay:
+                    fixed && pay?.old_pay && basics.includes(pay.old_pay)
+                      ? pay.old_pay
+                      : fixed
+                        ? basics[0]!
+                        : continuingBasic > 0
+                          ? continuingBasic
+                          : basics[0]!,
+                  substantive_grade: asksSubstantiveGrade(nextGrade) ? nextGrade : null,
+                  nps_2015_fixed: fixed,
+                },
+              });
+            }}
           />
           {pay ? (
             <View style={styles.exFields}>
+              <Text style={styles.tiny}>{t.exPayFixedTitle}</Text>
+              <View style={styles.fixedRow}>
+                <Pressable
+                  onPress={() => {
+                    const basics = payChangeDrawnBasics(payGrade, continuingBasic, true);
+                    const keep =
+                      pay.old_pay && basics.includes(pay.old_pay) ? pay.old_pay : basics[0]!;
+                    onIssues({
+                      ...issues,
+                      pay_change: { ...pay, nps_2015_fixed: true, old_pay: keep },
+                    });
+                  }}
+                  style={[styles.fixedChip, nps2015Fixed && styles.fixedChipOn]}
+                >
+                  <Text style={[styles.fixedChipText, nps2015Fixed && styles.fixedChipTextOn]}>
+                    {t.exPayFixedYes}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() =>
+                    onIssues({
+                      ...issues,
+                      pay_change: {
+                        ...pay,
+                        nps_2015_fixed: false,
+                        old_pay: continuingBasic > 0 ? continuingBasic : pay.old_pay,
+                      },
+                    })
+                  }
+                  style={[styles.fixedChip, !nps2015Fixed && styles.fixedChipOn]}
+                >
+                  <Text style={[styles.fixedChipText, !nps2015Fixed && styles.fixedChipTextOn]}>
+                    {t.exPayFixedNo}
+                  </Text>
+                </Pressable>
+              </View>
+              <Text style={styles.tiny}>{nps2015Fixed ? t.exPayGradeUpperOnly : t.exPayFixedHintNo}</Text>
               <Text style={styles.tiny}>{t.exPayDate}</Text>
               <TextInput
                 value={pay.effective_date}
@@ -300,14 +360,21 @@ export function SalaryArrearsCard({
                 autoCapitalize="none"
                 style={styles.input}
               />
-              <Pressable onPress={() => setPicker('payGrade')} style={styles.pick}>
+              <Pressable
+                onPress={() => promoGrades.length > 0 && setPicker('payGrade')}
+                style={styles.pick}
+              >
                 <Text style={styles.pickLabel}>{t.exPayGrade}</Text>
-                <Text style={styles.pickValue}>{num(payGrade)}</Text>
+                <Text style={styles.pickValue}>
+                  {isPayChangeUpperGrade(grade, payGrade) ? num(payGrade) : '—'}
+                </Text>
               </Pressable>
-              <Pressable onPress={() => setPicker('payBasic')} style={styles.pick}>
-                <Text style={styles.pickLabel}>{t.exPayBasic}</Text>
-                <Text style={styles.pickValue}>{tk(pay.old_pay)}</Text>
-              </Pressable>
+              {nps2015Fixed ? (
+                <Pressable onPress={() => setPicker('payBasic')} style={styles.pick}>
+                  <Text style={styles.pickLabel}>{t.exPayBasic}</Text>
+                  <Text style={styles.pickValue}>{tk(pay.old_pay)}</Text>
+                </Pressable>
+              ) : null}
               {asksSubstantiveGrade(payGrade) ? (
                 <Pressable onPress={() => setPicker('paySub')} style={styles.pick}>
                   <Text style={styles.pickLabel}>{t.exPaySub}</Text>
@@ -363,7 +430,15 @@ export function SalaryArrearsCard({
       </View>
       <PickerSheet
         visible={picker != null}
-        title={picker === 'payGrade' ? t.exPayGrade : picker === 'paySub' ? t.exPaySub : t.exPayBasic}
+        title={
+          picker === 'payGrade'
+            ? t.exPayGrade
+            : picker === 'paySub'
+              ? t.exPaySub
+              : nps2015Fixed
+                ? t.exPayBasic
+                : t.exPayBasicOngoing
+        }
         value={
           picker === 'payGrade'
             ? String(payGrade)
@@ -373,7 +448,7 @@ export function SalaryArrearsCard({
         }
         options={
           picker === 'payGrade'
-            ? PAY_GRADES.map((g) => ({ value: String(g), label: `${t.grade} ${num(g)}` }))
+            ? promoGrades.map((g) => ({ value: String(g), label: `${t.grade} ${num(g)}` }))
             : picker === 'paySub'
               ? substantiveGradeOptions(payGrade).map((g) => ({ value: String(g), label: `${t.grade} ${num(g)}` }))
               : payBasics.map((amt) => ({ value: String(amt), label: tk(amt) }))
@@ -383,14 +458,23 @@ export function SalaryArrearsCard({
           if (!pay) return;
           if (picker === 'payGrade') {
             const next = Number(option.value) as PayGrade;
-            const basics = NPS_2015[next];
+            if (!isPayChangeUpperGrade(grade, next)) return;
+            const fixed = payChangeNps2015Fixed(pay);
+            const basics = payChangeDrawnBasics(next, continuingBasic, fixed);
             onIssues({
               ...issues,
               pay_change: {
                 ...pay,
                 grade: next,
-                old_pay: basics[0]!,
+                old_pay: fixed
+                  ? pay.old_pay && basics.includes(pay.old_pay)
+                    ? pay.old_pay
+                    : basics[0]!
+                  : continuingBasic > 0
+                    ? continuingBasic
+                    : pay.old_pay,
                 substantive_grade: asksSubstantiveGrade(next) ? next : null,
+                nps_2015_fixed: fixed,
               },
             });
           } else if (picker === 'payBasic') {
@@ -856,6 +940,18 @@ const styles = StyleSheet.create({
   downloadText: { color: colors.white, fontWeight: '800', fontSize: 14 },
   exBox: { gap: 8, borderWidth: 1, borderColor: '#fde68a', backgroundColor: '#fffbeb', borderRadius: 12, padding: spacing.sm },
   exFields: { gap: 6 },
+  fixedRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  fixedChip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: colors.surface,
+  },
+  fixedChipOn: { backgroundColor: INDIGO, borderColor: INDIGO },
+  fixedChipText: { fontSize: 13, fontWeight: '700', color: colors.text },
+  fixedChipTextOn: { color: colors.white },
   checkRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   checkLabel: { flex: 1, fontSize: 13, fontWeight: '600', color: colors.text },
   input: {

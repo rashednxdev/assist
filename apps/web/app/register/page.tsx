@@ -10,7 +10,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FormField } from '@/components/shared/form-field';
 import { Alert } from '@/components/ui/alert';
 import { LoginShowcasePanel } from '@/components/auth/login-showcase-panel';
-import { TermsViewerModal } from '@/components/auth/terms-viewer-modal';
 import { registerRequest, setAccessToken } from '@/lib/auth';
 import { WEB_REGISTRATION_OPEN } from '@/lib/registration';
 
@@ -34,7 +33,6 @@ function RegisterForm() {
     confirm_password: '',
   });
   const [acceptedTerms, setAcceptedTerms] = useState(false);
-  const [termsOpen, setTermsOpen] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -46,7 +44,7 @@ function RegisterForm() {
       return;
     }
     if (!acceptedTerms) {
-      setError('You must accept the Terms & Conditions to register');
+      setError('অফিসের সকলের বা অন্তত ৫ জনের বিল ফরম ডাউনলোডের সম্মতি দিন');
       return;
     }
     setLoading(true);
@@ -147,15 +145,8 @@ function RegisterForm() {
                   checked={acceptedTerms}
                   onChange={(e) => setAcceptedTerms(e.target.checked)}
                 />
-                <span>
-                  I agree to the{' '}
-                  <button
-                    type="button"
-                    onClick={() => setTermsOpen(true)}
-                    className="font-medium text-primary hover:underline"
-                  >
-                    Terms &amp; Conditions
-                  </button>
+                <span className="font-medium text-[#b71c1c]">
+                  আমি আমার অফিসের সকলের বা অন্তত ৫ জনের বিল ফরম ডাউনলোড করতে চাই
                 </span>
               </label>
               {error && <Alert variant="error">{error}</Alert>}
@@ -172,7 +163,6 @@ function RegisterForm() {
           </CardContent>
         </Card>
       </div>
-      <TermsViewerModal open={termsOpen} onClose={() => setTermsOpen(false)} />
     </div>
   );
 }

@@ -86,6 +86,7 @@ const CERTIFICATES = [
 function TrForm15Pages({
   months,
   office,
+  operationCode = '',
   netTotal,
   stamp,
   payable,
@@ -95,6 +96,7 @@ function TrForm15Pages({
 }: {
   months: string[];
   office: string;
+  operationCode?: string;
   netTotal: number;
   stamp: number;
   payable: number;
@@ -128,7 +130,7 @@ function TrForm15Pages({
               প্রাতিষ্ঠানিক/ অপারেশন কোড *{' '}
               <span className="tr-code-boxes">
                 {Array.from({ length: 7 }, (_, i) => (
-                  <span key={i} />
+                  <span key={i}>{operationCode[i] ? toBanglaDigits(operationCode[i]!) : ''}</span>
                 ))}
               </span>
             </div>
@@ -331,6 +333,7 @@ export function TrForm15({
       <TrForm15Pages
         months={result.rows.map((r) => r.month)}
         office={info.office}
+        operationCode={info.operationCode}
         netTotal={result.total_net_arrear}
         stamp={stamp}
         payable={payable}
@@ -485,12 +488,14 @@ function TrStaffSchedule({
   staff,
   months,
   office,
+  operationCode = '',
   groups,
   stampEach = STAMP_DUTY,
 }: {
   staff: TrStaffEntry[];
   months: string[];
   office: string;
+  operationCode?: string;
   groups?: TrStaffOfficeGroup[];
   stampEach?: number;
 }) {
@@ -522,7 +527,7 @@ function TrStaffSchedule({
                 প্রাতিষ্ঠানিক/ অপারেশন কোড *{' '}
                 <span className="tr-code-boxes">
                   {Array.from({ length: 7 }, (_, i) => (
-                    <span key={i} />
+                    <span key={i}>{operationCode[i] ? toBanglaDigits(operationCode[i]!) : ''}</span>
                   ))}
                 </span>
               </span>
@@ -642,6 +647,7 @@ function StaffTrBlock({
   staff,
   months,
   office,
+  operationCode = '',
   groups,
   signatory = null,
   stampEach = STAMP_DUTY,
@@ -649,6 +655,7 @@ function StaffTrBlock({
   staff: TrStaffEntry[];
   months: string[];
   office: string;
+  operationCode?: string;
   groups?: TrStaffOfficeGroup[];
   signatory?: TrSignatory | null;
   stampEach?: number;
@@ -661,6 +668,7 @@ function StaffTrBlock({
       <TrForm15Pages
         months={months}
         office={office}
+        operationCode={operationCode}
         netTotal={netTotal}
         stamp={stamp}
         payable={payable}
@@ -677,7 +685,14 @@ function StaffTrBlock({
           </>
         }
       />
-      <TrStaffSchedule staff={staff} months={months} office={office} groups={groups} stampEach={stampEach} />
+      <TrStaffSchedule
+        staff={staff}
+        months={months}
+        office={office}
+        operationCode={operationCode}
+        groups={groups}
+        stampEach={stampEach}
+      />
     </>
   );
 }
@@ -690,6 +705,7 @@ export const TrForm15Staff = forwardRef<
     months: string[];
     /** Office name on the single T.R. Form 15 (user-entered for consolidated). */
     office: string;
+    operationCode?: string;
     preparedOn: string;
     signatory: TrSignatory | null;
     /** When set, one summary sheet grouped by office; still one T.R. Form 15 for all. */
@@ -697,7 +713,10 @@ export const TrForm15Staff = forwardRef<
     /** Per employee; 0 when stamp duty is turned off. */
     stampEach?: number;
   }
->(function TrForm15Staff({ staff, months, office, preparedOn, signatory, groups, stampEach = STAMP_DUTY }, ref) {
+>(function TrForm15Staff(
+  { staff, months, office, operationCode = '', preparedOn, signatory, groups, stampEach = STAMP_DUTY },
+  ref,
+) {
   const officeGroups: TrStaffOfficeGroup[] =
     groups && groups.length > 0 ? groups : [{ groupName: office, staff }];
   const allStaff = officeGroups.flatMap((g) => g.staff);
@@ -715,6 +734,7 @@ export const TrForm15Staff = forwardRef<
         staff={allStaff}
         months={months}
         office={office}
+        operationCode={operationCode}
         groups={officeGroups}
         signatory={signatory}
         stampEach={stampEach}
@@ -858,6 +878,7 @@ export const TrForm15Staff = forwardRef<
                 employee: s.name,
                 designation: s.post,
                 nid: s.nid,
+                operationCode,
                 signature: Boolean(signatory),
               }}
               preparedOn={preparedOn}

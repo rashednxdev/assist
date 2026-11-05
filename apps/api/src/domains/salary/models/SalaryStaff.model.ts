@@ -6,6 +6,8 @@ export interface ISalaryStaffPayChange {
   grade: number;
   old_pay: number;
   substantive_grade?: number | null;
+  /** True when re-fixed on NPS 2015 of the new grade; false when benefits continue. */
+  nps_2015_fixed?: boolean;
 }
 
 export interface ISalaryStaffExceptional {
@@ -43,6 +45,7 @@ const payChangeSchema = new Schema<ISalaryStaffPayChange>(
     grade: { type: Number, required: true, min: 1, max: 20 },
     old_pay: { type: Number, required: true, min: 1 },
     substantive_grade: { type: Number, min: 1, max: 20, default: null },
+    nps_2015_fixed: { type: Boolean, default: true },
   },
   { _id: false },
 );

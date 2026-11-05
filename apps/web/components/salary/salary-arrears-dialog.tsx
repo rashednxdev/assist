@@ -9,6 +9,7 @@ import {
   formatTaka,
   asksJoiningDate,
   asksSubstantiveGrade,
+  continuingDrawnBasic,
   salaryTrFormNo,
   substantiveGradeOptions,
   type HousingStatus,
@@ -93,7 +94,11 @@ export function SalaryArrearsDialog({
       : isChosenSubstantive(v.grade, v.substantiveGrade)
         ? v.substantiveGrade
         : null;
-  const payChange = exceptionalToIssues(v.exceptional)?.pay_change ?? null;
+  const continuingBasic =
+    v.grade && v.oldPay > 0
+      ? continuingDrawnBasic(v.grade, v.oldPay, v.joiningDate, Boolean(v.exceptional.incrementExempt))
+      : 0;
+  const payChange = exceptionalToIssues(v.exceptional, continuingBasic)?.pay_change ?? null;
   const trGrade = payChange?.substantive_grade ?? substantive;
   const formNo = trGrade != null ? salaryTrFormNo(trGrade) : null;
   const askJoining = v.grade != null && asksJoiningDate(v.grade, v.oldPay);
@@ -206,6 +211,12 @@ export function SalaryArrearsDialog({
           <SalaryExceptionalIssuesField
             locale={locale}
             value={v.exceptional}
+            continuingBasic={
+              v.grade && v.oldPay > 0
+                ? continuingDrawnBasic(v.grade, v.oldPay, v.joiningDate, Boolean(v.exceptional.incrementExempt))
+                : 0
+            }
+            currentGrade={v.grade}
             onChange={(exceptional) => {
               setError('');
               setV((prev) => ({ ...prev, exceptional }));

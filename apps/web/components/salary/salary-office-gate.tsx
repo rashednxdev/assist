@@ -27,12 +27,15 @@ interface SalaryOfficeContextValue {
   /** Only admins change their own office here; for everyone else the admin changes it. */
   canChange: boolean;
   changeOffice: () => void;
+  /** Updates the cached office (e.g. after saving the operation code). */
+  setOffice: (office: SalaryOfficeRecord | null) => void;
 }
 
 const SalaryOfficeContext = createContext<SalaryOfficeContextValue>({
   office: null,
   canChange: false,
   changeOffice: () => undefined,
+  setOffice: () => undefined,
 });
 
 const BANGLA_SCRIPT = /[\u0980-\u09FF]/;
@@ -540,6 +543,8 @@ export function SalaryOfficeGate({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <SalaryOfficeContext.Provider value={{ office, canChange: exempt, changeOffice }}>{children}</SalaryOfficeContext.Provider>
+    <SalaryOfficeContext.Provider value={{ office, canChange: exempt, changeOffice, setOffice }}>
+      {children}
+    </SalaryOfficeContext.Provider>
   );
 }

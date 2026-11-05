@@ -17,6 +17,8 @@ export interface ISalaryUserOffice extends Document {
   accounting_office_id: Types.ObjectId | null;
   /** Admin made this user a contact for the offices whose bills their listed office passes. */
   office_admin: boolean;
+  /** Institutional / operation code for T.R. forms (Others users keep the last value). */
+  operation_code: string;
   updated_at: Date;
 }
 
@@ -31,6 +33,7 @@ const schema = new Schema<ISalaryUserOffice>(
     office_name_editable: { type: Boolean, default: false },
     accounting_office_id: { type: Schema.Types.ObjectId, ref: 'Office', default: null },
     office_admin: { type: Boolean, default: false },
+    operation_code: { type: String, default: '' },
     updated_at: { type: Date, default: Date.now },
   },
   { timestamps: false },

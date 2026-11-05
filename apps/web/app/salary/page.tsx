@@ -36,6 +36,7 @@ import {
   arrearMonthOptions,
   asksJoiningDate,
   asksSubstantiveGrade,
+  continuingDrawnBasic,
   isIsoDate,
   substantiveGradeOptions,
   type EducationChildren,
@@ -48,6 +49,7 @@ import {
   type Salary2026Result,
   type SalaryBillAccessRecord,
   type SalaryBillDuration,
+  type SalaryOfficeRecord,
   type SalaryBillKind,
   SALARY_BILL_LIMIT_CODE,
   SALARY_FREE_TR_NID,
@@ -601,9 +603,11 @@ function SalarySummaryCard({
 
 export default function SalaryOn2026Page() {
   const [locale, setLocale] = useState<SalaryLocale>('bn');
-  const { office: salaryOffice, canChange: canChangeOffice, changeOffice } = useSalaryOffice();
+  const { office: salaryOffice, canChange: canChangeOffice, changeOffice, setOffice: setSalaryOffice } =
+    useSalaryOffice();
   const billOfficeName = salaryOffice?.bill_office_name ?? '';
   const lockedOfficeName = salaryOffice?.bill_office_editable ? '' : billOfficeName;
+  const isOthersOffice = Boolean(salaryOffice && !salaryOffice.office);
   const [grade, setGrade] = useState<PayGrade | null>(null);
   const [oldPay, setOldPay] = useState(0);
   const [housingStatus, setHousingStatus] = useState<HousingStatus>('hra_eligible');
@@ -656,7 +660,14 @@ export default function SalaryOn2026Page() {
   const stepNo = grade && oldPay > 0 ? NPS_2015[grade].indexOf(oldPay) + 1 : 0;
   const askJoining = grade != null && asksJoiningDate(grade, oldPay);
   const joiningDate = askJoining ? joiningDateInput : '';
-  const exceptionalIssues = useMemo(() => exceptionalToIssues(exceptional), [exceptional]);
+  const continuingBasicForEx =
+    grade && oldPay > 0
+      ? continuingDrawnBasic(grade, oldPay, joiningDate, Boolean(exceptional.incrementExempt))
+      : 0;
+  const exceptionalIssues = useMemo(
+    () => exceptionalToIssues(exceptional, continuingBasicForEx),
+    [exceptional, continuingBasicForEx],
+  );
   /** The calculators read the area only for house rent, which cannot run until an area is chosen. */
   const calcHraArea: HraArea = hraArea || 'other';
   const allowancesTotal = gross
@@ -798,7 +809,11 @@ export default function SalaryOn2026Page() {
 
   async function applyArrearsInputs(v: ArrearsInputs): Promise<string | null> {
     if (!v.grade) return t.gradeRequired;
-    const issues = exceptionalToIssues(v.exceptional);
+    const continuing =
+      v.oldPay > 0
+        ? continuingDrawnBasic(v.grade, v.oldPay, v.joiningDate, Boolean(v.exceptional.incrementExempt))
+        : 0;
+    const issues = exceptionalToIssues(v.exceptional, continuing);
     const start = arrearPeriodStart(v.grade, v.oldPay, v.joiningDate, issues?.arrear_start_date);
     let months = arrearMonths;
     if (start) {
@@ -957,10 +972,27 @@ export default function SalaryOn2026Page() {
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, []);
 
+  useEffect(() => {
+    const code = salaryOffice?.operation_code?.trim() ?? '';
+    if (!code) return;
+    setPrintInfo((prev) => (prev.operationCode ? prev : { ...prev, operationCode: code }));
+  }, [salaryOffice?.operation_code]);
+
   async function confirmPrint(info: SalaryPrintInfo) {
     const target = printDialog;
     setPrintInfo(info);
     setPrintDialog(null);
+    if (isOthersOffice && info.operationCode !== (salaryOffice?.operation_code ?? '')) {
+      try {
+        const res = await apiFetch<{ data: SalaryOfficeRecord }>(`/salary/office/operation-code`, {
+          method: 'PUT',
+          body: JSON.stringify({ operation_code: info.operationCode }),
+        });
+        if (res.data) setSalaryOffice(res.data);
+      } catch {
+        // Keep the typed code on this bill even if saving for next bills fails.
+      }
+    }
     if (target === 'arrears' || target === 'trform') {
       if (!arrearResult || !grade) return;
       const kind: SalaryBillKind =
@@ -1193,6 +1225,8 @@ export default function SalaryOn2026Page() {
                 <SalaryExceptionalIssuesField
                   locale={locale}
                   value={exceptional}
+                  continuingBasic={continuingBasicForEx}
+                  currentGrade={grade}
                   onChange={(next) => {
                     setExceptional(next);
                     resetResults();
@@ -1535,6 +1569,7 @@ export default function SalaryOn2026Page() {
               onAccessChange={setBillAccess}
               officeLabel={billOfficeName || (salaryOffice?.label ?? '')}
               officeLocked={Boolean(lockedOfficeName)}
+              operationCode={printInfo.operationCode || salaryOffice?.operation_code || ''}
               accessPanel={
                 <SalaryBillAccessPanel
                   locale={locale}

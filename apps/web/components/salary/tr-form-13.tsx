@@ -106,7 +106,7 @@ export function TrForm13({
               প্রাতিষ্ঠানিক/ অপারেশন কোড *{' '}
               <span className="tr-code-boxes">
                 {Array.from({ length: 7 }, (_, i) => (
-                  <span key={i} />
+                  <span key={i}>{info.operationCode[i] ? toBanglaDigits(info.operationCode[i]!) : ''}</span>
                 ))}
               </span>
             </div>

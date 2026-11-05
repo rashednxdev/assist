@@ -5,10 +5,14 @@ import { AlertTriangle, MessageCircle, X } from 'lucide-react';
 import {
   NPS_2015,
   NO_EXCEPTIONAL_ISSUES,
-  PAY_GRADES,
   asksSubstantiveGrade,
   formatTaka,
   isIsoDate,
+  isNps2015Basic,
+  isPayChangeUpperGrade,
+  payChangeDrawnBasics,
+  payChangeGradeOptions,
+  payChangeNps2015Fixed,
   substantiveGradeOptions,
   type PayGrade,
   type SalaryExceptionalIssues,
@@ -29,6 +33,11 @@ export type ExceptionalDraft = {
   payChangeOldPay: number;
   /** Substantive grade after promotion — separate from the main-form (pre) substantive. */
   payChangeSubstantive: SubstantiveGrade | null;
+  /**
+   * Yes = re-fixed on NPS 2015 of the new grade (prior behaviour).
+   * No = continuing benefits / current dual-mode eligibility.
+   */
+  payChangeNps2015Fixed: boolean;
   customStartOn: boolean;
   arrearStartDate: string;
 };
@@ -41,6 +50,7 @@ export const EMPTY_EXCEPTIONAL_DRAFT: ExceptionalDraft = {
   payChangeGrade: null,
   payChangeOldPay: 0,
   payChangeSubstantive: null,
+  payChangeNps2015Fixed: true,
   customStartOn: false,
   arrearStartDate: '',
 };
@@ -65,6 +75,7 @@ export function exceptionalFromIssues(issues: SalaryExceptionalIssues | null | u
     payChangeGrade: promoGrade,
     payChangeOldPay: pay?.old_pay ?? 0,
     payChangeSubstantive: postSub,
+    payChangeNps2015Fixed: payChangeNps2015Fixed(pay),
     customStartOn: Boolean(start && start > '2026-07-01'),
     arrearStartDate: start && start > '2026-07-01' ? start : '',
   };
@@ -79,16 +90,39 @@ function resolvePostSubstantive(
   return chosen != null && substantiveGradeOptions(grade).includes(chosen) ? chosen : null;
 }
 
-export function exceptionalToIssues(draft: ExceptionalDraft): SalaryExceptionalIssues | null {
+function pickDrawnBasic(
+  grade: PayGrade | null,
+  preferred: number,
+  continuingBasic: number,
+  nps2015Fixed: boolean,
+): number {
+  if (!nps2015Fixed) return continuingBasic > 0 ? continuingBasic : 0;
+  if (grade == null) return 0;
+  const basics = payChangeDrawnBasics(grade, continuingBasic || null, true);
+  if (preferred > 0 && basics.includes(preferred)) return preferred;
+  return basics[0] ?? 0;
+}
+
+export function exceptionalToIssues(
+  draft: ExceptionalDraft,
+  continuingBasic = 0,
+): SalaryExceptionalIssues | null {
   if (!draft.enabled) return null;
   const postSub = resolvePostSubstantive(draft.payChangeGrade, draft.payChangeSubstantive);
+  const fixed = draft.payChangeNps2015Fixed;
+  const drawn = fixed ? draft.payChangeOldPay : continuingBasic > 0 ? continuingBasic : draft.payChangeOldPay;
   const pay_change: SalaryPayChange | null =
-    draft.payChangeOn && draft.payChangeGrade && draft.payChangeOldPay > 0 && isIsoDate(draft.payChangeDate) && postSub != null
+    draft.payChangeOn &&
+    draft.payChangeGrade &&
+    drawn > 0 &&
+    isIsoDate(draft.payChangeDate) &&
+    postSub != null
       ? {
           effective_date: draft.payChangeDate,
           grade: draft.payChangeGrade,
-          old_pay: draft.payChangeOldPay,
+          old_pay: drawn,
           substantive_grade: postSub,
+          nps_2015_fixed: fixed,
         }
       : null;
   const arrear_start_date =
@@ -104,17 +138,21 @@ export function exceptionalToIssues(draft: ExceptionalDraft): SalaryExceptionalI
 }
 
 /** Staff DTO shape: always present, never undefined optionals. */
-export function exceptionalToStaffDto(draft: ExceptionalDraft): {
+export function exceptionalToStaffDto(
+  draft: ExceptionalDraft,
+  continuingBasic = 0,
+): {
   increment_exempt: boolean;
   pay_change: {
     effective_date: string;
     grade: number;
     old_pay: number;
     substantive_grade: number | null;
+    nps_2015_fixed: boolean;
   } | null;
   arrear_start_date: string | null;
 } {
-  const issues = exceptionalToIssues(draft);
+  const issues = exceptionalToIssues(draft, continuingBasic);
   return {
     increment_exempt: Boolean(issues?.increment_exempt),
     pay_change: issues?.pay_change
@@ -123,6 +161,7 @@ export function exceptionalToStaffDto(draft: ExceptionalDraft): {
           grade: issues.pay_change.grade,
           old_pay: issues.pay_change.old_pay,
           substantive_grade: issues.pay_change.substantive_grade ?? null,
+          nps_2015_fixed: payChangeNps2015Fixed(issues.pay_change),
         }
       : null,
     arrear_start_date: issues?.arrear_start_date ?? null,
@@ -132,7 +171,12 @@ export function exceptionalToStaffDto(draft: ExceptionalDraft): {
 const gradeSelectClass =
   'flex h-11 w-full rounded-md border-2 border-emerald-400 bg-emerald-50/60 px-3 text-base font-semibold ring-2 ring-emerald-200 focus:border-emerald-500 focus:outline-none focus:ring-emerald-300 disabled:cursor-not-allowed disabled:border-border disabled:bg-slate-100 disabled:ring-0';
 
-function validateDraft(draft: ExceptionalDraft, t: ReturnType<typeof salaryCopy>): string | null {
+function validateDraft(
+  draft: ExceptionalDraft,
+  t: ReturnType<typeof salaryCopy>,
+  continuingBasic: number,
+  currentGrade: PayGrade | null,
+): string | null {
   if (!draft.enabled) return null;
   if (!draft.incrementExempt && !draft.payChangeOn && !draft.customStartOn) {
     return t.exNeedOne;
@@ -141,7 +185,13 @@ function validateDraft(draft: ExceptionalDraft, t: ReturnType<typeof salaryCopy>
     if (!isIsoDate(draft.payChangeDate)) return t.exPayDateRequired;
     if (draft.payChangeDate < '2026-07-01') return t.exPayDateMin;
     if (!draft.payChangeGrade) return t.gradeRequired;
-    if (!NPS_2015[draft.payChangeGrade].includes(draft.payChangeOldPay)) {
+    if (currentGrade == null || !isPayChangeUpperGrade(currentGrade, draft.payChangeGrade)) {
+      return t.exPayGradeUpperRequired;
+    }
+    if (draft.payChangeNps2015Fixed) {
+      const allowed = payChangeDrawnBasics(draft.payChangeGrade, continuingBasic || null, true);
+      if (!allowed.includes(draft.payChangeOldPay)) return t.basicRequired;
+    } else if (!(continuingBasic > 0 && isNps2015Basic(continuingBasic))) {
       return t.basicRequired;
     }
     if (resolvePostSubstantive(draft.payChangeGrade, draft.payChangeSubstantive) == null) {
@@ -160,33 +210,76 @@ export function SalaryExceptionalIssuesField({
   locale,
   value,
   onChange,
+  continuingBasic = 0,
+  currentGrade = null,
 }: {
   locale: SalaryLocale;
   value: ExceptionalDraft;
   onChange: (next: ExceptionalDraft) => void;
+  /** Drawn basic that usually continues when 2015 was not re-fixed after promotion. */
+  continuingBasic?: number;
+  /** Pre-promotion grade — promotion / higher scale must be an upper grade of this. */
+  currentGrade?: PayGrade | null;
 }) {
   const t = salaryCopy(locale);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
   const [error, setError] = useState('');
   const num = (v: string | number) => localNum(locale, v);
-  const summary = exceptionalToIssues(value);
+  const summary = exceptionalToIssues(value, continuingBasic);
+  const promoGrades = currentGrade != null ? payChangeGradeOptions(currentGrade) : [];
   const postOptions =
     draft.payChangeGrade != null ? substantiveGradeOptions(draft.payChangeGrade) : [];
   const asksPostSubstantive =
     draft.payChangeGrade != null && asksSubstantiveGrade(draft.payChangeGrade);
   const postValue = resolvePostSubstantive(draft.payChangeGrade, draft.payChangeSubstantive);
+  const nps2015Fixed = draft.payChangeNps2015Fixed;
+  const drawnBasics =
+    nps2015Fixed && draft.payChangeGrade != null
+      ? payChangeDrawnBasics(draft.payChangeGrade, continuingBasic || null, true)
+      : [];
 
   useEffect(() => {
     if (open) {
-      setDraft(value.enabled ? value : { ...EMPTY_EXCEPTIONAL_DRAFT, enabled: true });
+      const base = value.enabled ? value : { ...EMPTY_EXCEPTIONAL_DRAFT, enabled: true };
+      const gradeOk =
+        base.payChangeGrade != null &&
+        currentGrade != null &&
+        isPayChangeUpperGrade(currentGrade, base.payChangeGrade);
+      const nextGrade = gradeOk ? base.payChangeGrade : null;
+      const nextBasic = !base.payChangeNps2015Fixed
+        ? continuingBasic > 0
+          ? continuingBasic
+          : base.payChangeOldPay
+        : pickDrawnBasic(nextGrade, base.payChangeOldPay, continuingBasic, true);
+      setDraft({
+        ...base,
+        payChangeGrade: nextGrade,
+        payChangeOldPay: nextBasic,
+        payChangeSubstantive:
+          nextGrade != null && !asksSubstantiveGrade(nextGrade)
+            ? nextGrade
+            : nextGrade != null &&
+                base.payChangeSubstantive != null &&
+                substantiveGradeOptions(nextGrade).includes(base.payChangeSubstantive)
+              ? base.payChangeSubstantive
+              : null,
+      });
       setError('');
     }
-  }, [open, value]);
+  }, [open, value, continuingBasic, currentGrade]);
 
   function apply() {
-    const next = { ...draft, enabled: true };
-    const message = validateDraft(next, t);
+    const next = {
+      ...draft,
+      enabled: true,
+      payChangeOldPay: draft.payChangeNps2015Fixed
+        ? draft.payChangeOldPay
+        : continuingBasic > 0
+          ? continuingBasic
+          : draft.payChangeOldPay,
+    };
+    const message = validateDraft(next, t, continuingBasic, currentGrade);
     if (message) {
       setError(message);
       return;
@@ -225,11 +318,17 @@ export function SalaryExceptionalIssuesField({
           {summary.pay_change ? (
             <p>
               ·{' '}
-              {t.exPaySummary(
-                num(summary.pay_change.effective_date.split('-').reverse().join('-')),
-                num(summary.pay_change.grade),
-                num(formatTaka(summary.pay_change.old_pay)),
-              )}
+              {payChangeNps2015Fixed(summary.pay_change)
+                ? t.exPaySummaryFixed(
+                    num(summary.pay_change.effective_date.split('-').reverse().join('-')),
+                    num(summary.pay_change.grade),
+                    num(formatTaka(summary.pay_change.old_pay)),
+                    true,
+                  )
+                : t.exPaySummaryNo(
+                    num(summary.pay_change.effective_date.split('-').reverse().join('-')),
+                    num(summary.pay_change.grade),
+                  )}
               {summary.pay_change.substantive_grade != null &&
               summary.pay_change.substantive_grade !== summary.pay_change.grade
                 ? ` · ${t.exPaySubstantiveShort} ${num(summary.pay_change.substantive_grade)}`
@@ -309,6 +408,47 @@ export function SalaryExceptionalIssuesField({
                 </label>
                 {draft.payChangeOn ? (
                   <div className="space-y-3 pl-6">
+                    <fieldset className="space-y-2 rounded-md border border-emerald-200 bg-emerald-50/40 p-3">
+                      <legend className="px-1 text-sm font-bold text-slate-900">{t.exPayFixedTitle}</legend>
+                      <div className="flex flex-wrap gap-4">
+                        <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
+                          <input
+                            type="radio"
+                            name="ex-pay-nps-fixed"
+                            checked={nps2015Fixed}
+                            onChange={() =>
+                              setDraft((d) => ({
+                                ...d,
+                                payChangeNps2015Fixed: true,
+                                payChangeOldPay: pickDrawnBasic(
+                                  d.payChangeGrade,
+                                  d.payChangeOldPay,
+                                  continuingBasic,
+                                  true,
+                                ),
+                              }))
+                            }
+                          />
+                          {t.exPayFixedYes}
+                        </label>
+                        <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
+                          <input
+                            type="radio"
+                            name="ex-pay-nps-fixed"
+                            checked={!nps2015Fixed}
+                            onChange={() =>
+                              setDraft((d) => ({
+                                ...d,
+                                payChangeNps2015Fixed: false,
+                                payChangeOldPay: continuingBasic > 0 ? continuingBasic : 0,
+                              }))
+                            }
+                          />
+                          {t.exPayFixedNo}
+                        </label>
+                      </div>
+                      <p className="text-xs text-muted">{nps2015Fixed ? t.exPayFixedHintYes : t.exPayFixedHintNo}</p>
+                    </fieldset>
                     <div className="space-y-1">
                       <Label htmlFor="ex-pay-date" className="text-sm font-bold">
                         {t.exPayDate}
@@ -322,7 +462,13 @@ export function SalaryExceptionalIssuesField({
                         onChange={(e) => setDraft((d) => ({ ...d, payChangeDate: e.target.value }))}
                       />
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+                    <div
+                      className={
+                        nps2015Fixed
+                          ? 'grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]'
+                          : 'grid gap-3'
+                      }
+                    >
                       <div className="space-y-1.5">
                         <Label htmlFor="ex-pay-grade" className="text-sm font-bold">
                           {t.grade}
@@ -330,13 +476,19 @@ export function SalaryExceptionalIssuesField({
                         <select
                           id="ex-pay-grade"
                           className={gradeSelectClass}
+                          disabled={promoGrades.length === 0}
                           value={draft.payChangeGrade ?? ''}
                           onChange={(e) => {
                             const g = e.target.value ? (Number(e.target.value) as PayGrade) : null;
                             setDraft((d) => ({
                               ...d,
                               payChangeGrade: g,
-                              payChangeOldPay: 0,
+                              payChangeOldPay: pickDrawnBasic(
+                                g,
+                                d.payChangeOldPay,
+                                continuingBasic,
+                                d.payChangeNps2015Fixed,
+                              ),
                               payChangeSubstantive:
                                 g != null && !asksSubstantiveGrade(g)
                                   ? g
@@ -348,35 +500,55 @@ export function SalaryExceptionalIssuesField({
                             }));
                           }}
                         >
-                          <option value="">{t.gradePlaceholder}</option>
-                          {PAY_GRADES.map((g) => (
+                          <option value="">
+                            {currentGrade == null
+                              ? t.gradeFirst
+                              : promoGrades.length === 0
+                                ? t.exPayGradeUpperRequired
+                                : t.gradePlaceholder}
+                          </option>
+                          {promoGrades.map((g) => (
                             <option key={g} value={g}>
                               {`${t.grade} ${num(g)}`}
                             </option>
                           ))}
                         </select>
+                        <p className="text-xs text-muted">{t.exPayGradeUpperOnly}</p>
                       </div>
-                      <div className="space-y-1.5">
-                        <Label htmlFor="ex-pay-basic" className="text-sm font-bold">
-                          {t.exPayBasic}
-                        </Label>
-                        <select
-                          id="ex-pay-basic"
-                          disabled={!draft.payChangeGrade}
-                          className={`${gradeSelectClass} tabular-nums`}
-                          value={draft.payChangeOldPay > 0 ? draft.payChangeOldPay : ''}
-                          onChange={(e) => setDraft((d) => ({ ...d, payChangeOldPay: Number(e.target.value) || 0 }))}
-                        >
-                          <option value="">{draft.payChangeGrade ? t.basicPlaceholder : t.gradeFirst}</option>
-                          {draft.payChangeGrade
-                            ? NPS_2015[draft.payChangeGrade].map((amount, i) => (
+                      {nps2015Fixed ? (
+                        <div className="space-y-1.5">
+                          <Label htmlFor="ex-pay-basic" className="text-sm font-bold">
+                            {t.exPayBasic}
+                          </Label>
+                          <select
+                            id="ex-pay-basic"
+                            disabled={!draft.payChangeGrade}
+                            className={`${gradeSelectClass} tabular-nums`}
+                            value={draft.payChangeOldPay > 0 ? draft.payChangeOldPay : ''}
+                            onChange={(e) =>
+                              setDraft((d) => ({ ...d, payChangeOldPay: Number(e.target.value) || 0 }))
+                            }
+                          >
+                            <option value="">{draft.payChangeGrade ? t.basicPlaceholder : t.gradeFirst}</option>
+                            {drawnBasics.map((amount) => {
+                              const step =
+                                draft.payChangeGrade != null
+                                  ? NPS_2015[draft.payChangeGrade].indexOf(amount) + 1
+                                  : 0;
+                              return (
                                 <option key={amount} value={amount}>
-                                  {`${num(formatTaka(amount))} — ${t.stepOption(num(i + 1))}${i === 0 ? ` (${t.initialBasic})` : ''}`}
+                                  {`${num(formatTaka(amount))}${
+                                    step > 0
+                                      ? ` — ${t.stepOption(num(step))}${step === 1 ? ` (${t.initialBasic})` : ''}`
+                                      : ''
+                                  }`}
                                 </option>
-                              ))
-                            : null}
-                        </select>
-                      </div>
+                              );
+                            })}
+                          </select>
+                          <p className="text-xs text-muted">{t.exPayBasicUpperHint}</p>
+                        </div>
+                      ) : null}
                     </div>
                     {draft.payChangeGrade && !asksPostSubstantive ? (
                       <p className="text-xs text-muted">

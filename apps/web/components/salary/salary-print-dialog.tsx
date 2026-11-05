@@ -14,11 +14,20 @@ export interface SalaryPrintInfo {
   employee: string;
   designation: string;
   nid: string;
+  /** Institutional / operation code for T.R. Form boxes (optional, up to 7 digits). */
+  operationCode: string;
   /** Print "স্বাক্ষর ও তারিখ" with the name, designation and office on the attachment. */
   signature: boolean;
 }
 
-export const EMPTY_PRINT_INFO: SalaryPrintInfo = { office: '', employee: '', designation: '', nid: '', signature: true };
+export const EMPTY_PRINT_INFO: SalaryPrintInfo = {
+  office: '',
+  employee: '',
+  designation: '',
+  nid: '',
+  operationCode: '',
+  signature: true,
+};
 
 const NID_LENGTHS = [10, 13, 17];
 
@@ -55,10 +64,18 @@ export function SalaryPrintDialog({
   }));
   const [nameError, setNameError] = useState(false);
   const [nidError, setNidError] = useState(false);
-  const set = (key: 'office' | 'employee' | 'designation' | 'nid') => (e: React.ChangeEvent<HTMLInputElement>) => {
+  const set = (key: 'office' | 'employee' | 'designation' | 'nid' | 'operationCode') => (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     if (key === 'employee') setNameError(false);
     if (key === 'nid') setNidError(false);
-    const value = key === 'nid' ? toEnglishDigits(e.target.value).replace(/\D/g, '').slice(0, 17) : e.target.value;
+    const raw = e.target.value;
+    const value =
+      key === 'nid'
+        ? toEnglishDigits(raw).replace(/\D/g, '').slice(0, 17)
+        : key === 'operationCode'
+          ? toEnglishDigits(raw).replace(/\D/g, '').slice(0, 7)
+          : raw;
     setInfo((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -75,6 +92,7 @@ export function SalaryPrintDialog({
       employee: info.employee.trim(),
       designation: info.designation.trim(),
       nid,
+      operationCode: info.operationCode.trim(),
       signature: info.signature,
     });
   }
@@ -149,6 +167,19 @@ export function SalaryPrintDialog({
               }`}
             />
             {nidError ? <p className="text-xs font-medium text-destructive">{t.nidInvalid}</p> : null}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="print-operation-code">{t.operationCode}</Label>
+            <Input
+              id="print-operation-code"
+              value={info.operationCode}
+              onChange={set('operationCode')}
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder={t.operationCodePlaceholder}
+              className="tabular-nums"
+            />
+            <p className="text-xs text-muted">{t.operationCodeHint}</p>
           </div>
           {signatureOption ? (
             <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border bg-slate-50 px-3 py-2.5 text-sm">

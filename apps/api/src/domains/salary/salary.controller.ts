@@ -24,6 +24,7 @@ import {
   updateSalaryFreeCalcsSchema,
   updateSalaryFreeTrFormSchema,
   updateSalaryOfficeSettingsSchema,
+  updateSalaryOperationCodeSchema,
 } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
 import { parsePagination } from '../../shared/pagination.js';
@@ -86,6 +87,11 @@ export async function saveMySalaryOfficeHandler(req: AuthRequest, res: Response)
 export async function setMyAccountingOfficeHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = parseBody(setSalaryAccountingOfficeSchema, req.body);
   res.json({ data: await officeService.setMyAccountingOffice(authUser(req), dto) });
+}
+
+export async function saveMyOperationCodeHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = parseBody(updateSalaryOperationCodeSchema, req.body);
+  res.json({ data: await officeService.saveMyOperationCode(authUser(req), dto) });
 }
 
 export async function searchBillPassingOfficesHandler(req: AuthRequest, res: Response): Promise<void> {

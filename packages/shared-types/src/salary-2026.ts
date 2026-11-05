@@ -278,6 +278,12 @@ export interface SalaryPayChange {
    * Used for post-promotion special allowance and T.R. Form; pre-promotion uses the main `substantive_grade`.
    */
   substantive_grade?: number | null;
+  /**
+   * True when pay was re-fixed on NPS 2015 of the new grade (drawn basic from that scale).
+   * False when existing benefits continue and arrears adjust new eligibility against them.
+   * Missing on older records is treated as true.
+   */
+  nps_2015_fixed?: boolean;
 }
 
 /** Optional exceptional inputs that alter fixation and arrears (web “Exceptional issues” dialog). */
@@ -723,7 +729,24 @@ export function salaryPhaseForDate(iso: string): SalaryPhase {
  * - Later phases → single revised (after) basic only
  */
 function applyPayChangeToSalaryResult(result: Salary2026Result, input: Salary2026Input): Salary2026Result {
-  const payChange = assertPayChange(input.pay_change);
+  const incrementExempt = Boolean(input.increment_exempt);
+  const previousBasic = continuingDrawnBasic(
+    result.grade,
+    result.old_pay,
+    input.joining_date,
+    incrementExempt,
+  );
+  const payChange = assertPayChange(
+    withResolvedPayChangeDrawn(
+      input.pay_change,
+      result.grade,
+      result.old_pay,
+      input.joining_date,
+      incrementExempt,
+    ),
+    result.grade,
+    previousBasic,
+  );
   if (!payChange) return result;
 
   const changePhase = salaryPhaseForDate(payChange.effective_date);
@@ -1199,25 +1222,105 @@ export function arrearPeriodStart(
   return custom.date > join.date ? custom : join;
 }
 
-function assertPayChange(change: SalaryPayChange | null | undefined): SalaryPayChange | null {
+/** True when the amount is a stage on any NPS 2015 grade (including continuing benefits after promotion). */
+export function isNps2015Basic(amount: number): boolean {
+  const basic = Math.round(Number(amount));
+  return PAY_GRADES.some((g) => NPS_2015[g].includes(basic));
+}
+
+/** Whether promotion / higher scale was re-fixed on NPS 2015 (default true for older records). */
+export function payChangeNps2015Fixed(change: Pick<SalaryPayChange, 'nps_2015_fixed'> | null | undefined): boolean {
+  return change?.nps_2015_fixed !== false;
+}
+
+/**
+ * Grades allowed for promotion / higher scale: strictly upper scales of the previous grade
+ * (lower grade number in NPS, e.g. Grade 10 → Grade 1–9).
+ */
+export function payChangeGradeOptions(fromGrade: PayGrade): PayGrade[] {
+  return PAY_GRADES.filter((g) => g < fromGrade);
+}
+
+/** True when `toGrade` is an upper scale of `fromGrade` (promotion / higher scale). */
+export function isPayChangeUpperGrade(fromGrade: PayGrade, toGrade: PayGrade): boolean {
+  return toGrade < fromGrade;
+}
+
+/**
+ * Stages offered after promotion / higher scale when fixation is Yes (new grade’s NPS 2015).
+ * Only equal or next-higher stages of the previous basic — never a lower amount.
+ * When fixation is No, drawn basic is continuing benefits — no stage list is needed.
+ */
+export function payChangeDrawnBasics(
+  promoGrade: PayGrade,
+  previousBasic?: number | null,
+  nps2015Fixed = true,
+): number[] {
+  if (!nps2015Fixed) {
+    const drawn = previousBasic != null && isNps2015Basic(previousBasic) ? [Math.round(previousBasic)] : [];
+    return drawn;
+  }
+  const scale = NPS_2015[promoGrade];
+  if (previousBasic == null || previousBasic <= 0) return [...scale];
+  const min = Math.round(previousBasic);
+  const upper = scale.filter((amount) => amount >= min);
+  return upper.length > 0 ? upper : [scale[scale.length - 1]!];
+}
+
+/**
+ * When fixation is No, drawn basic is the continuing benefits on the pre-promotion grade —
+ * ignore any stored old_pay and compute from the main form.
+ */
+function withResolvedPayChangeDrawn(
+  change: SalaryPayChange | null | undefined,
+  originGrade: PayGrade,
+  originOldPay: number,
+  joiningDate: string | null | undefined,
+  incrementExempt: boolean,
+): SalaryPayChange | null | undefined {
+  if (!change || payChangeNps2015Fixed(change)) return change;
+  return {
+    ...change,
+    old_pay: continuingDrawnBasic(originGrade, originOldPay, joiningDate, incrementExempt),
+  };
+}
+
+function assertPayChange(
+  change: SalaryPayChange | null | undefined,
+  originGrade?: PayGrade | null,
+  previousBasic?: number | null,
+): SalaryPayChange | null {
   if (!change) return null;
   if (!isIsoDate(change.effective_date)) throw new Error('Enter the pay-change effective date');
   if (change.effective_date < `${ARREAR_START_MONTH}-01`) {
     throw new Error('Pay change must be on or after 01-07-2026');
   }
   if (!isPayGrade(change.grade)) throw new Error('Pay-change grade must be between 1 and 20');
-  const scale = NPS_2015[change.grade];
-  const basic = Math.round(Number(change.old_pay));
-  if (!scale.includes(basic)) {
-    throw new Error(`Basic ${basic} is not a stage on Grade ${change.grade} of NPS 2015`);
-  }
   const promoGrade = change.grade as PayGrade;
+  if (originGrade != null && isPayGrade(originGrade) && !isPayChangeUpperGrade(originGrade, promoGrade)) {
+    throw new Error('Promotion / higher scale must be an upper grade of the previous grade');
+  }
+  const basic = Math.round(Number(change.old_pay));
+  const nps2015Fixed = payChangeNps2015Fixed(change);
+  if (nps2015Fixed) {
+    const allowed = payChangeDrawnBasics(promoGrade, previousBasic ?? null, true);
+    if (!allowed.includes(basic)) {
+      throw new Error(
+        previousBasic != null && previousBasic > 0
+          ? `Basic after promotion must be equal or next higher than the previous basic (${previousBasic})`
+          : `Basic ${basic} is not a stage on Grade ${promoGrade} of NPS 2015`,
+      );
+    }
+  } else if (!isNps2015Basic(basic)) {
+    throw new Error(`Basic ${basic} is not a stage on NPS 2015`);
+  }
   const substantive = effectiveSubstantiveGrade(promoGrade, change.substantive_grade);
   return {
     effective_date: change.effective_date,
     grade: promoGrade,
     old_pay: basic,
     substantive_grade: substantive,
+    nps_2015_fixed: nps2015Fixed,
   };
 }
 
@@ -1470,6 +1573,16 @@ export interface SalaryArrearResult {
 }
 
 /** NPS 2015 stage after the 30/06/2026 basic (annual increment on 01/07/2026), or the basic itself when withheld/last. */
+/** Drawn NPS 2015 basic after the usual 01-07-2026 increment (or the same basic when withheld). */
+export function continuingDrawnBasic(
+  grade: PayGrade,
+  oldPay: number,
+  joiningDate?: string | null,
+  incrementExempt = false,
+): number {
+  return nps2015AfterIncrement(grade, oldPay, joiningDate, incrementExempt).next_step;
+}
+
 function nps2015AfterIncrement(
   grade: PayGrade,
   oldPay: number,
@@ -1567,7 +1680,8 @@ function primaryArrearBasis(
 
 /**
  * After promotion: admissible new basic = original stage new_pay + (matched − originFixed) × rate%.
- * Exception dialog grade/basic only set drawn basic (and thus HRA / special on that drawn amount).
+ * Drawn basic is the ongoing benefits received (often unchanged when 2015 was not re-fixed);
+ * arrears = new eligibility from the effective date, less those ongoing benefits.
  */
 function promotedArrearBasis(
   originGrade: PayGrade,
@@ -1723,7 +1837,12 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
 
   const exceptional = input.exceptional ?? NO_EXCEPTIONAL_ISSUES;
   const incrementExempt = Boolean(exceptional.increment_exempt);
-  const payChange = assertPayChange(exceptional.pay_change);
+  const previousBasic = continuingDrawnBasic(grade, oldPay, input.joining_date, incrementExempt);
+  const payChange = assertPayChange(
+    withResolvedPayChangeDrawn(exceptional.pay_change, grade, oldPay, input.joining_date, incrementExempt),
+    grade,
+    previousBasic,
+  );
   const periodStart = arrearPeriodStart(grade, oldPay, input.joining_date, exceptional.arrear_start_date);
   const duration = input.duration ?? null;
   if (duration && (!isIsoDate(duration.from) || !isIsoDate(duration.to) || duration.from > duration.to)) {

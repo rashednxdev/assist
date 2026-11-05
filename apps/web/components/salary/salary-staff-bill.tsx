@@ -12,6 +12,7 @@ import {
   formatTaka,
   isIncrementWithheld,
   asksJoiningDate,
+  continuingDrawnBasic,
   salaryStaffNameChangeTooLarge,
   type HousingStatus,
   type HraArea,
@@ -154,7 +155,17 @@ function StaffDialog({
       hra_area: v.hraArea || 'other',
       ...v.extras,
       joining_date: askJoining ? v.joiningDate : null,
-      exceptional: exceptionalToStaffDto(v.exceptional),
+      exceptional: exceptionalToStaffDto(
+        v.exceptional,
+        v.grade && v.oldPay > 0
+          ? continuingDrawnBasic(
+              v.grade,
+              v.oldPay,
+              askJoining ? v.joiningDate : null,
+              Boolean(v.exceptional.incrementExempt),
+            )
+          : 0,
+      ),
     });
     setSaving(false);
     if (message) setError(message);
@@ -262,6 +273,17 @@ function StaffDialog({
           <SalaryExceptionalIssuesField
             locale={locale}
             value={v.exceptional}
+            continuingBasic={
+              v.grade && v.oldPay > 0
+                ? continuingDrawnBasic(
+                    v.grade,
+                    v.oldPay,
+                    askJoining ? v.joiningDate : null,
+                    Boolean(v.exceptional.incrementExempt),
+                  )
+                : 0
+            }
+            currentGrade={v.grade}
             onChange={(exceptional) => setV((p) => ({ ...p, exceptional }))}
           />
           <fieldset className="space-y-2">
@@ -735,6 +757,7 @@ export function SalaryStaffBill({
   onAccessChange,
   officeLabel,
   officeLocked,
+  operationCode = '',
   accessPanel,
   contactsPanel,
 }: {
@@ -748,6 +771,7 @@ export function SalaryStaffBill({
   officeLabel: string;
   /** The office name comes from the user's "Others" office and cannot be edited on the form. */
   officeLocked: boolean;
+  operationCode?: string;
   accessPanel: React.ReactNode;
   contactsPanel: React.ReactNode;
 }) {
@@ -1431,6 +1455,7 @@ export function SalaryStaffBill({
           groups={capture.groups}
           months={months}
           office={capture.office}
+          operationCode={operationCode}
           preparedOn={capture.preparedOn}
           signatory={capture.signatory}
           stampEach={stampEach}

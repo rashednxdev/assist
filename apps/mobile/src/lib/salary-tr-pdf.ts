@@ -14,6 +14,7 @@ export interface TrPrintInfo {
   designation: string;
   office: string;
   nid: string;
+  operationCode?: string;
 }
 
 const PAY_13 = [
@@ -113,6 +114,7 @@ function buildHtml(params: {
   <div class="ref">টি, আর, ফরম নং ${toBanglaDigits(formNo)}<br/>[এস, আর, ${formNo === 13 ? '১৩৯ (১)' : '১৫২'} দ্রষ্টব্য]</div>
   <h1>${title}</h1>
   <div class="line">দপ্তর: <strong>${esc(info.office || '........................')}</strong></div>
+  <div class="line">প্রাতিষ্ঠানিক/ অপারেশন কোড: <strong>${esc(info.operationCode ? toBanglaDigits(info.operationCode) : '........................')}</strong></div>
   <div class="line">নাম: <strong>${esc(info.employee)}</strong> &nbsp; পদবি: <strong>${esc(info.designation || '........................')}</strong> &nbsp; এনআইডি: <strong>${esc(info.nid ? toBanglaDigits(info.nid) : '........................')}</strong></div>
   <table>
     <thead><tr><th>অর্থনৈতিক কোড</th><th>বিবরণ</th><th>টাকা</th><th>পয়সা</th></tr></thead>

@@ -219,6 +219,7 @@ export default function SalaryOn2026Screen() {
   const [trPost, setTrPost] = useState('');
   const [trOffice, setTrOffice] = useState('');
   const [trNid, setTrNid] = useState('');
+  const [trOpCode, setTrOpCode] = useState('');
   const [picker, setPicker] = useState<PickerKind | null>(null);
 
   const allowed = canReadAnyModule(user, ['SALARY']);
@@ -308,8 +309,24 @@ export default function SalaryOn2026Screen() {
         result: trDraft.result,
         hraArea,
         stamp: trDraft.stamp,
-        info: { employee: trName.trim(), designation: trPost.trim(), office: trOffice.trim(), nid: trNid.trim() },
+        info: {
+          employee: trName.trim(),
+          designation: trPost.trim(),
+          office: trOffice.trim(),
+          nid: trNid.trim(),
+          operationCode: trOpCode.replace(/\D/g, '').slice(0, 7),
+        },
       });
+      if (trOpCode.replace(/\D/g, '')) {
+        try {
+          await apiFetch('/salary/office/operation-code', {
+            method: 'PUT',
+            body: JSON.stringify({ operation_code: trOpCode.replace(/\D/g, '').slice(0, 7) }),
+          });
+        } catch {
+          // Listed offices cannot save the code; the PDF still uses the typed value.
+        }
+      }
       setTrDraft(null);
     } catch (err) {
       Alert.alert(err instanceof Error ? err.message : t.calcError);
@@ -411,6 +428,12 @@ export default function SalaryOn2026Screen() {
                 onDownloadTr={(payload) => {
                   setTrName('');
                   setTrDraft(payload);
+                  void apiFetch<{ data: { operation_code?: string } | null }>('/salary/office')
+                    .then((res) => {
+                      const code = res.data?.operation_code?.trim() ?? '';
+                      if (code) setTrOpCode(code);
+                    })
+                    .catch(() => undefined);
                 }}
               />
             ) : null}
@@ -605,6 +628,15 @@ export default function SalaryOn2026Screen() {
               keyboardType="number-pad"
               style={styles.dialogInput}
             />
+            <TextInput
+              value={trOpCode}
+              onChangeText={(value) => setTrOpCode(value.replace(/\D/g, '').slice(0, 7))}
+              placeholder={t.operationCodePlaceholder}
+              placeholderTextColor={colors.textMuted}
+              keyboardType="number-pad"
+              style={styles.dialogInput}
+            />
+            <Text style={styles.tiny}>{t.operationCode}</Text>
             <View style={styles.dialogActions}>
               <Pressable style={styles.editBtn} onPress={() => setTrDraft(null)}>
                 <Text style={styles.editBtnText}>Cancel</Text>

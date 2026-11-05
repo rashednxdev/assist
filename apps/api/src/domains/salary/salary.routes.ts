@@ -14,6 +14,7 @@ import {
   myPrintReportHandler,
   searchBillPassingOfficesHandler,
   setMyAccountingOfficeHandler,
+  saveMyOperationCodeHandler,
   getSalaryFreeCalcsHandler,
   updateSalaryFreeCalcsHandler,
   adminUpdateOtherOfficeHandler,
@@ -82,6 +83,7 @@ salaryRouter.get('/office/others', authenticate, asyncHandler(searchOtherOffices
 salaryRouter.put('/office', authenticate, publicLimit, asyncHandler(saveMySalaryOfficeHandler));
 salaryRouter.get('/office/bill-passing', authenticate, asyncHandler(searchBillPassingOfficesHandler));
 salaryRouter.put('/office/accounting', authenticate, publicLimit, asyncHandler(setMyAccountingOfficeHandler));
+salaryRouter.put('/office/operation-code', authenticate, publicLimit, asyncHandler(saveMyOperationCodeHandler));
 salaryRouter.get('/access', authenticate, asyncHandler(getMyBillAccessHandler));
 salaryRouter.get('/my-downloads', authenticate, asyncHandler(myPrintReportHandler));
 salaryRouter.post('/access/request', authenticate, publicLimit, asyncHandler(requestBillsHandler));

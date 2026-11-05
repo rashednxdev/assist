@@ -38,6 +38,7 @@ function toRecord(doc: ISalaryStaff): SalaryStaffRecord {
             grade: ex.pay_change.grade,
             old_pay: ex.pay_change.old_pay,
             substantive_grade: ex.pay_change.substantive_grade ?? null,
+            nps_2015_fixed: ex.pay_change.nps_2015_fixed !== false,
           }
         : null,
       arrear_start_date: ex?.arrear_start_date ?? null,

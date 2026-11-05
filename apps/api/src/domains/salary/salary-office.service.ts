@@ -20,6 +20,7 @@ import {
   type SetSalaryAccountingOfficeDto,
   type UpdateSalaryFreeCalcsDto,
   type UpdateSalaryOfficeSettingsDto,
+  type UpdateSalaryOperationCodeDto,
 } from '@ibas/shared-types';
 import type { AuthUser } from '../../middleware/auth.js';
 import { AppError, badRequest, forbidden, notFound } from '../../shared/errors/AppError.js';
@@ -126,6 +127,7 @@ function toRecord(
       accounting_office: needsAccounting ? accounting : null,
       needs_accounting_office: needsAccounting && !accounting,
       office_admin: Boolean(doc.office_admin) && isSalaryBillPassingType(officeType),
+      operation_code: doc.operation_code ?? '',
       updated_at: doc.updated_at.toISOString(),
     };
   }
@@ -149,6 +151,7 @@ function toRecord(
     accounting_office: needsAccounting ? accounting : null,
     needs_accounting_office: needsAccounting && !accounting,
     office_admin: false,
+    operation_code: doc.operation_code ?? '',
     updated_at: doc.updated_at.toISOString(),
   };
 }
@@ -215,6 +218,24 @@ export async function saveMySalaryOffice(user: AuthUser, dto: SaveSalaryOfficeDt
     },
     { upsert: true, new: true, setDefaultsOnInsert: true },
   );
+  return toRecord(map, types, doc)!;
+}
+
+/** Others users keep the institutional / operation code for the next T.R. forms. */
+export async function saveMyOperationCode(
+  user: AuthUser,
+  dto: UpdateSalaryOperationCodeDto,
+): Promise<SalaryOfficeRecord> {
+  const current = await getMySalaryOffice(user.id);
+  if (!current) throw badRequest('Select your office first.');
+  if (current.office) throw forbidden('Operation code is saved only for Others offices.');
+  const [map, types] = await Promise.all([officeIndex(), officeTypeShorts()]);
+  const doc = await SalaryUserOffice.findOneAndUpdate(
+    { user_id: user.id },
+    { $set: { operation_code: dto.operation_code, updated_at: new Date() } },
+    { new: true },
+  );
+  if (!doc) throw notFound('Office not found');
   return toRecord(map, types, doc)!;
 }
 

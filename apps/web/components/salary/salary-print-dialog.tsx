@@ -98,10 +98,17 @@ export function SalaryPrintDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 print:hidden" role="dialog" aria-modal="true">
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4 print:hidden"
+      role="dialog"
+      aria-modal="true"
+    >
       <button type="button" aria-label={t.cancel} className="absolute inset-0 bg-slate-900/50" onClick={onCancel} />
-      <form onSubmit={submit} className="relative w-full max-w-md rounded-2xl bg-surface shadow-xl">
-        <div className="flex items-start justify-between gap-3 border-b border-border p-5">
+      <form
+        onSubmit={submit}
+        className="relative flex max-h-[92dvh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl bg-surface shadow-xl sm:rounded-2xl"
+      >
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border p-5">
           <div>
             <h2 className="flex items-center gap-2 text-lg font-bold">
               <FileDown className="h-5 w-5 text-primary" />
@@ -113,7 +120,7 @@ export function SalaryPrintDialog({
             <X className="h-5 w-5" />
           </button>
         </div>
-        <div className="space-y-3 p-5">
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-5">
           <p className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
             <span>{t.printPrivacyNote}</span>
@@ -196,7 +203,7 @@ export function SalaryPrintDialog({
             </label>
           ) : null}
         </div>
-        <div className="flex justify-end gap-2 border-t border-border p-4">
+        <div className="flex shrink-0 justify-end gap-2 border-t border-border bg-surface p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <Button type="button" variant="outline" onClick={onCancel}>
             {t.cancel}
           </Button>

@@ -4,6 +4,8 @@
 **Schema:** v3.2 — [`planning/ibas_unified_mongodb_schema.md`](../planning/ibas_unified_mongodb_schema.md)  
 **Reference UI:** [`ibas_task_admin_builder.html`](../ibas_task_admin_builder.html) (workflow admin + run guide)
 
+> **Later work (not current deploy):** Auth SMS login confirmation, hardened password recovery, LMS-shaped learning gaps, Module J details beyond Phase 7 checklists, and infra drawbacks are captured in **[GAPS_AND_ROADMAP.md](./GAPS_AND_ROADMAP.md)**. Prefer that doc for post-MVP planning; this file remains the original phased plan (some Phase 0–4 items are already shipped in the monorepo).
+
 ---
 
 ## 1. Goals & scope

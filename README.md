@@ -52,7 +52,13 @@ pnpm dev
 ```
 apps/api/     Express REST API
 apps/web/     Next.js + ShadCN UI
+apps/mobile/  Expo (React Native)
 packages/     shared-constants, shared-types
-docs/         Architecture & implementation plans
-planning/     MongoDB schema v3.2
+docs/         Architecture & guides
 ```
+
+**Single sequential developer doc (all parts merged):** **[docs/DEVELOPER_HANDBOOK.md](docs/DEVELOPER_HANDBOOK.md)**  
+
+Learning / LMS-style **what it serves + every user step:** Handbook **Part VI-A**.  
+
+Satellite docs (also folded into the handbook): [PROJECT_GUIDE](docs/PROJECT_GUIDE.md) · [GAPS_AND_ROADMAP](docs/GAPS_AND_ROADMAP.md) · [USER_OPTIONS_AND_OPPORTUNITIES](docs/USER_OPTIONS_AND_OPPORTUNITIES.md)

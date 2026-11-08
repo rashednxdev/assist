@@ -615,36 +615,43 @@ export default function SalaryOn2026Screen() {
       <Modal visible={trDraft != null} transparent animationType="fade" onRequestClose={() => setTrDraft(null)}>
         <Pressable style={styles.backdrop} onPress={() => setTrDraft(null)}>
           <Pressable style={styles.dialog} onPress={() => undefined}>
-            <Text style={styles.cardTitle}>{trDraft ? t.trFormDetails(num(trDraft.formNo)) : ''}</Text>
-            <Text style={styles.tiny}>{t.printHint}</Text>
-            <TextInput value={trName} onChangeText={setTrName} placeholder={t.employeeName} placeholderTextColor={colors.textMuted} style={styles.dialogInput} />
-            <TextInput value={trPost} onChangeText={setTrPost} placeholder={t.designation} placeholderTextColor={colors.textMuted} style={styles.dialogInput} />
-            <TextInput value={trOffice} onChangeText={setTrOffice} placeholder={t.officeName} placeholderTextColor={colors.textMuted} style={styles.dialogInput} />
-            <TextInput
-              value={trNid}
-              onChangeText={setTrNid}
-              placeholder={t.nid}
-              placeholderTextColor={colors.textMuted}
-              keyboardType="number-pad"
-              style={styles.dialogInput}
-            />
-            <TextInput
-              value={trOpCode}
-              onChangeText={(value) => setTrOpCode(value.replace(/\D/g, '').slice(0, 7))}
-              placeholder={t.operationCodePlaceholder}
-              placeholderTextColor={colors.textMuted}
-              keyboardType="number-pad"
-              style={styles.dialogInput}
-            />
-            <Text style={styles.tiny}>{t.operationCode}</Text>
-            <View style={styles.dialogActions}>
-              <Pressable style={styles.editBtn} onPress={() => setTrDraft(null)}>
-                <Text style={styles.editBtnText}>Cancel</Text>
-              </Pressable>
-              <Pressable style={[styles.primaryBtn, styles.dialogSave]} disabled={downloading} onPress={() => void confirmTr()}>
-                {downloading ? <ActivityIndicator color={colors.white} /> : <Text style={styles.primaryBtnText}>{t.downloadNow}</Text>}
-              </Pressable>
-            </View>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              bounces={false}
+              style={styles.dialogScroll}
+              contentContainerStyle={styles.dialogScrollContent}
+            >
+              <Text style={styles.cardTitle}>{trDraft ? t.trFormDetails(num(trDraft.formNo)) : ''}</Text>
+              <Text style={styles.tiny}>{t.printHint}</Text>
+              <TextInput value={trName} onChangeText={setTrName} placeholder={t.employeeName} placeholderTextColor={colors.textMuted} style={styles.dialogInput} />
+              <TextInput value={trPost} onChangeText={setTrPost} placeholder={t.designation} placeholderTextColor={colors.textMuted} style={styles.dialogInput} />
+              <TextInput value={trOffice} onChangeText={setTrOffice} placeholder={t.officeName} placeholderTextColor={colors.textMuted} style={styles.dialogInput} />
+              <TextInput
+                value={trNid}
+                onChangeText={setTrNid}
+                placeholder={t.nid}
+                placeholderTextColor={colors.textMuted}
+                keyboardType="number-pad"
+                style={styles.dialogInput}
+              />
+              <TextInput
+                value={trOpCode}
+                onChangeText={(value) => setTrOpCode(value.replace(/\D/g, '').slice(0, 7))}
+                placeholder={t.operationCodePlaceholder}
+                placeholderTextColor={colors.textMuted}
+                keyboardType="number-pad"
+                style={styles.dialogInput}
+              />
+              <Text style={styles.tiny}>{t.operationCode}</Text>
+              <View style={styles.dialogActions}>
+                <Pressable style={styles.editBtn} onPress={() => setTrDraft(null)}>
+                  <Text style={styles.editBtnText}>Cancel</Text>
+                </Pressable>
+                <Pressable style={[styles.primaryBtn, styles.dialogSave]} disabled={downloading} onPress={() => void confirmTr()}>
+                  {downloading ? <ActivityIndicator color={colors.white} /> : <Text style={styles.primaryBtnText}>{t.downloadNow}</Text>}
+                </Pressable>
+              </View>
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
@@ -768,7 +775,14 @@ const styles = StyleSheet.create({
   },
   primaryBtnText: { color: colors.white, fontWeight: '700', fontSize: 15 },
   backdrop: { flex: 1, backgroundColor: 'rgba(15,23,42,0.45)', justifyContent: 'center', padding: spacing.lg },
-  dialog: { backgroundColor: colors.surface, borderRadius: 16, padding: spacing.md, gap: 8 },
+  dialog: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    maxHeight: '90%',
+    overflow: 'hidden',
+  },
+  dialogScroll: { maxHeight: '100%' },
+  dialogScrollContent: { padding: spacing.md, gap: 8, paddingBottom: spacing.lg },
   dialogInput: {
     borderWidth: 1,
     borderColor: colors.border,

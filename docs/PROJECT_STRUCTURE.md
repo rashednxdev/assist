@@ -22,6 +22,7 @@ assist/
 | Doc | Purpose |
 |-----|---------|
 | [DEVELOPER_HANDBOOK.md](./DEVELOPER_HANDBOOK.md) | **One file** — sequential for developers |
+| [LEARNING_EXAM_PREP_MODULE.md](./LEARNING_EXAM_PREP_MODULE.md) | Exam-prep: every form field → learner view/input |
 | [PROJECT_GUIDE.md](./PROJECT_GUIDE.md) | Architecture (merged into handbook) |
 | [GAPS_AND_ROADMAP.md](./GAPS_AND_ROADMAP.md) | Build-later gaps (merged into handbook Part IX) |
 | [USER_OPTIONS_AND_OPPORTUNITIES.md](./USER_OPTIONS_AND_OPPORTUNITIES.md) | PM options (merged into handbook Part VIII) |

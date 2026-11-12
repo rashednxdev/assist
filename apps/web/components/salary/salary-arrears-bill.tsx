@@ -12,6 +12,7 @@ import {
   formatTaka,
   isoDateOf,
   isBillDuration,
+  isIsoDate,
   monthsCoveringDuration,
   roundSalaryTaka,
   specialAllowanceAmount,
@@ -52,9 +53,27 @@ export interface Fmt {
   signed: (n: number) => string;
 }
 
-/** YYYY-MM-DD → DD-MM-YYYY. */
+/** YYYY-MM-DD → DD-MM-YYYY (hyphen; used on bill basis rows). */
 export function isoToDmy(iso: string): string {
   return iso.split('-').reverse().join('-');
+}
+
+/** YYYY-MM-DD → dd/mm/yyyy for arrear bill duration pickers. */
+function isoToDdMmYyyy(iso: string): string {
+  const [year, month, day] = iso.split('-');
+  if (!year || !month || !day) return iso;
+  return `${day}/${month}/${year}`;
+}
+
+/** Accept dd/mm/yyyy, dd-mm-yyyy, dd.mm.yyyy, or YYYY-MM-DD → YYYY-MM-DD. */
+function parseUserArrearDate(value: string): string | null {
+  const trimmed = value.trim();
+  const dmy = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(trimmed);
+  if (dmy) {
+    const iso = `${dmy[3]}-${dmy[2]!.padStart(2, '0')}-${dmy[1]!.padStart(2, '0')}`;
+    return isIsoDate(iso) ? iso : null;
+  }
+  return isIsoDate(trimmed) ? trimmed : null;
 }
 
 function BasisRow({ label, value }: { label: string; value: string }) {
@@ -319,8 +338,8 @@ export function ArrearMonthPicker({
   const t = salaryCopy(locale);
   const today = isoDateOf();
   const [open, setOpen] = useState(false);
-  const [fromDraft, setFromDraft] = useState(duration?.from ?? ARREAR_FIRST_DATE);
-  const [toDraft, setToDraft] = useState(duration?.to ?? today);
+  const [fromDraft, setFromDraft] = useState(() => isoToDdMmYyyy(duration?.from ?? ARREAR_FIRST_DATE));
+  const [toDraft, setToDraft] = useState(() => isoToDdMmYyyy(duration?.to ?? today));
   const [durationError, setDurationError] = useState('');
   const monthOptions = useMemo(
     () => arrearMonthOptions().filter((m) => !fromMonth || m >= fromMonth),
@@ -331,8 +350,7 @@ export function ArrearMonthPicker({
     return past.length > 0 ? past : monthOptions;
   };
   const showDate = (iso: string) => {
-    const [year, month, day] = iso.split('-');
-    const text = `${day}.${month}.${year}`;
+    const text = isoToDdMmYyyy(iso);
     return locale === 'bn' ? toBanglaDigits(text) : text;
   };
 
@@ -348,13 +366,17 @@ export function ArrearMonthPicker({
   }
 
   function applyDuration() {
-    if (!isBillDuration(fromDraft, toDraft)) {
+    const from = parseUserArrearDate(fromDraft);
+    const to = parseUserArrearDate(toDraft);
+    if (!from || !to || !isBillDuration(from, to)) {
       setDurationError(t.arrDurationInvalid);
       return;
     }
     setDurationError('');
-    const covered = monthsCoveringDuration(fromDraft, toDraft).filter((m) => !fromMonth || m >= fromMonth);
-    onDurationChange({ from: fromDraft, to: toDraft });
+    setFromDraft(isoToDdMmYyyy(from));
+    setToDraft(isoToDdMmYyyy(to));
+    const covered = monthsCoveringDuration(from, to).filter((m) => !fromMonth || m >= fromMonth);
+    onDurationChange({ from, to });
     if (covered.length > 0) onMonthsChange(covered);
     setOpen(false);
   }
@@ -378,8 +400,8 @@ export function ArrearMonthPicker({
             variant="destructive"
             size="sm"
             onClick={() => {
-              setFromDraft(duration?.from ?? ARREAR_FIRST_DATE);
-              setToDraft(duration?.to ?? today);
+              setFromDraft(isoToDdMmYyyy(duration?.from ?? ARREAR_FIRST_DATE));
+              setToDraft(isoToDdMmYyyy(duration?.to ?? today));
               setDurationError('');
               setOpen((value) => !value);
             }}
@@ -394,23 +416,23 @@ export function ArrearMonthPicker({
             <label className="space-y-1 text-sm">
               <span className="block font-medium text-slate-800">{t.arrDurationFrom}</span>
               <input
-                type="date"
-                min={ARREAR_FIRST_DATE}
-                max={toDraft || today}
+                type="text"
+                inputMode="numeric"
+                placeholder="dd/mm/yyyy"
                 value={fromDraft}
                 onChange={(e) => setFromDraft(e.target.value)}
-                className="flex h-10 rounded-md border border-indigo-300 bg-white px-3 text-sm"
+                className="flex h-10 w-[11.5rem] rounded-md border border-indigo-300 bg-white px-3 text-sm tabular-nums"
               />
             </label>
             <label className="space-y-1 text-sm">
               <span className="block font-medium text-slate-800">{t.arrDurationTo}</span>
               <input
-                type="date"
-                min={fromDraft || ARREAR_FIRST_DATE}
-                max={today}
+                type="text"
+                inputMode="numeric"
+                placeholder="dd/mm/yyyy"
                 value={toDraft}
                 onChange={(e) => setToDraft(e.target.value)}
-                className="flex h-10 rounded-md border border-indigo-300 bg-white px-3 text-sm"
+                className="flex h-10 w-[11.5rem] rounded-md border border-indigo-300 bg-white px-3 text-sm tabular-nums"
               />
             </label>
             <Button type="button" size="sm" onClick={applyDuration}>

@@ -48,10 +48,22 @@ const ROSE = '#be123c';
 const MONO = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
 const STAGE_NUMBER = { '2026-07-01': 1, '2027-01-01': 2, '2027-07-01': 3 } as const;
 
+/** YYYY-MM-DD → dd/mm/yyyy for arrear bill duration pickers. */
+function isoToDdMmYyyy(iso: string): string {
+  const [year, month, day] = iso.split('-');
+  if (!year || !month || !day) return iso;
+  return `${day}/${month}/${year}`;
+}
+
+/** Accept dd/mm/yyyy, dd-mm-yyyy, dd.mm.yyyy, or YYYY-MM-DD → YYYY-MM-DD. */
 function userDateToIso(value: string): string | null {
-  const dotted = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(value.trim());
-  const iso = dotted ? `${dotted[3]}-${dotted[2]}-${dotted[1]}` : value.trim();
-  return isIsoDate(iso) ? iso : null;
+  const trimmed = value.trim();
+  const dmy = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(trimmed);
+  if (dmy) {
+    const iso = `${dmy[3]}-${dmy[2]!.padStart(2, '0')}-${dmy[1]!.padStart(2, '0')}`;
+    return isIsoDate(iso) ? iso : null;
+  }
+  return isIsoDate(trimmed) ? trimmed : null;
 }
 
 export function SalaryArrearsCard({
@@ -100,8 +112,8 @@ export function SalaryArrearsCard({
   const [selected, setSelected] = useState<string[]>(() => openingArrearMonths());
   const [duration, setDuration] = useState<SalaryBillDuration | null>(null);
   const [durationOpen, setDurationOpen] = useState(false);
-  const [fromDraft, setFromDraft] = useState(ARREAR_FIRST_DATE);
-  const [toDraft, setToDraft] = useState(() => isoDateOf());
+  const [fromDraft, setFromDraft] = useState(() => isoToDdMmYyyy(ARREAR_FIRST_DATE));
+  const [toDraft, setToDraft] = useState(() => isoToDdMmYyyy(isoDateOf()));
   const [durationError, setDurationError] = useState('');
   const [deductStamp, setDeductStamp] = useState(true);
   const [extras, setExtras] = useState({ excess_rr: false, excess_puja: false });
@@ -159,14 +171,15 @@ export function SalaryArrearsCard({
     }
     const covered = monthsCoveringDuration(from, to).filter((month) => !fromMonth || month >= fromMonth);
     setDurationError('');
+    setFromDraft(isoToDdMmYyyy(from));
+    setToDraft(isoToDdMmYyyy(to));
     setDuration({ from, to });
     if (covered.length > 0) setSelected(covered);
     setDurationOpen(false);
   }
 
   const showDate = (iso: string) => {
-    const [year, month, day] = iso.split('-');
-    const text = `${day}.${month}.${year}`;
+    const text = isoToDdMmYyyy(iso);
     return locale === 'bn' ? toBanglaDigits(text) : text;
   };
 
@@ -188,8 +201,8 @@ export function SalaryArrearsCard({
                 label: t.arrDuration,
                 red: true,
                 onPress: () => {
-                  setFromDraft(duration?.from ?? ARREAR_FIRST_DATE);
-                  setToDraft(duration?.to ?? isoDateOf());
+                  setFromDraft(isoToDdMmYyyy(duration?.from ?? ARREAR_FIRST_DATE));
+                  setToDraft(isoToDdMmYyyy(duration?.to ?? isoDateOf()));
                   setDurationError('');
                   setDurationOpen((open) => !open);
                 },
@@ -213,18 +226,20 @@ export function SalaryArrearsCard({
             <TextInput
               value={fromDraft}
               onChangeText={setFromDraft}
-              placeholder="2026-07-01"
+              placeholder="dd/mm/yyyy"
               placeholderTextColor={colors.textMuted}
               autoCapitalize="none"
+              keyboardType="numbers-and-punctuation"
               style={styles.input}
             />
             <Text style={styles.groupLabel}>{t.arrDurationTo}</Text>
             <TextInput
               value={toDraft}
               onChangeText={setToDraft}
-              placeholder="2026-09-30"
+              placeholder="dd/mm/yyyy"
               placeholderTextColor={colors.textMuted}
               autoCapitalize="none"
+              keyboardType="numbers-and-punctuation"
               style={styles.input}
             />
             {durationError ? <Text style={styles.durationError}>{durationError}</Text> : null}

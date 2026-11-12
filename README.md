@@ -59,6 +59,8 @@ docs/         Architecture & guides
 
 **Single sequential developer doc (all parts merged):** **[docs/DEVELOPER_HANDBOOK.md](docs/DEVELOPER_HANDBOOK.md)**  
 
-Learning / LMS-style **what it serves + every user step:** Handbook **Part VI-A**.  
+Learning / Exam-prep **what it serves + every user step:** Handbook **Part VI-A**.  
+
+**Field-level Exam-prep docs (admin forms → learner views/inputs):** **[docs/LEARNING_EXAM_PREP_MODULE.md](docs/LEARNING_EXAM_PREP_MODULE.md)**  
 
 Satellite docs (also folded into the handbook): [PROJECT_GUIDE](docs/PROJECT_GUIDE.md) · [GAPS_AND_ROADMAP](docs/GAPS_AND_ROADMAP.md) · [USER_OPTIONS_AND_OPPORTUNITIES](docs/USER_OPTIONS_AND_OPPORTUNITIES.md)

@@ -279,9 +279,8 @@ export interface SalaryPayChange {
    */
   substantive_grade?: number | null;
   /**
-   * True when pay was re-fixed on NPS 2015 of the new grade (drawn basic from that scale).
-   * False when existing benefits continue and arrears adjust new eligibility against them.
-   * Missing on older records is treated as true.
+   * True (default): re-fixed on NPS 2015 of the new grade — arrears convert that basic (previous rule).
+   * False: benefits continue; arrears use matched NPS 2026 overlay on the origin fixation.
    */
   nps_2015_fixed?: boolean;
 }
@@ -721,8 +720,11 @@ export function salaryPhaseForDate(iso: string): SalaryPhase {
 }
 
 /**
- * After fixation: add promotion / higher-scale increase
- * (matched NPS 2026 − origin fixed 01-07-2026) × phase rate on the substantive grade.
+ * After fixation: apply promotion / higher scale.
+ *
+ * - Yes (NPS 2015 re-fixed): from the effective date, revise basic by converting the new
+ *   grade’s NPS 2015 drawn basic (no second 01-07-2026 fact increment).
+ * - No (continuing benefits): add (matched NPS 2026 − origin fixed 01-07-2026) × phase rate.
  *
  * - Phase that contains the effective date → Before + After basics
  * - Earlier phases → fixation only (no promo overlay)
@@ -763,9 +765,113 @@ function applyPayChangeToSalaryResult(result: Salary2026Result, input: Salary202
     };
   }
 
-  /** Promotion % uses the post-promotion substantive grade (selected with the pay change). */
+  const promoGrade = payChange.grade as PayGrade;
+  const fromDate = payChangeDateLabel(payChange.effective_date);
+  /** Only the phase that contains the effective date shows Before + After. */
+  const showBeforeAfter = resultIdx === changeIdx;
+  const fixedOn2015 = payChangeNps2015Fixed(payChange);
+
+  /** Yes: re-fix on the new grade’s NPS 2015 drawn basic (previous exceptional rule). */
+  if (fixedOn2015) {
+    const revised = calculateSalary2026Base({
+      grade: promoGrade,
+      old_pay: payChange.old_pay,
+      phase: result.phase,
+      increment_exempt: true,
+    });
+    const note = `Re-fixed on NPS 2015 Grade ${promoGrade} basic ${formatTaka(payChange.old_pay)}`;
+    if (result.phase === '2027-07-01') {
+      const before2026 = result.basic_on_2026_07 ?? result.new_pay;
+      const before2027 = result.basic_on_2027_07 ?? result.new_pay;
+      const after2026 = revised.basic_on_2026_07 ?? revised.new_pay;
+      const after2027 = revised.basic_on_2027_07 ?? revised.new_pay;
+      const increase = toPaisa(after2027 - before2027);
+      const n = result.steps.length;
+      return {
+        ...result,
+        new_pay: after2027,
+        basic_on_2026_07: after2026,
+        basic_on_2027_07: after2027,
+        pay_change_increase: increase,
+        pay_change_effective_date: payChange.effective_date,
+        new_pay_before_pay_change: showBeforeAfter ? before2027 : null,
+        basic_on_2026_07_before_pay_change: showBeforeAfter ? before2026 : null,
+        basic_on_2027_07_before_pay_change: showBeforeAfter ? before2027 : null,
+        steps: showBeforeAfter
+          ? [
+              ...result.steps,
+              {
+                step: n + 1,
+                label: `Basic before promotion / higher scale (before ${fromDate})`,
+                calculation: formatTaka(before2027),
+                value: before2027,
+                note: `Applies until the day before ${fromDate}`,
+              },
+              {
+                step: n + 2,
+                label: `Basic after promotion / higher scale (from ${fromDate})`,
+                calculation: formatTaka(after2027),
+                value: after2027,
+                note,
+              },
+            ]
+          : [
+              ...result.steps,
+              {
+                step: n + 1,
+                label: 'Revised basic after promotion / higher scale',
+                calculation: formatTaka(after2027),
+                value: after2027,
+                note,
+              },
+            ],
+      };
+    }
+
+    const before = result.new_pay;
+    const after = revised.new_pay;
+    const increase = toPaisa(after - before);
+    const n = result.steps.length;
+    return {
+      ...result,
+      new_pay: after,
+      pay_change_increase: increase,
+      pay_change_effective_date: payChange.effective_date,
+      new_pay_before_pay_change: showBeforeAfter ? before : null,
+      steps: showBeforeAfter
+        ? [
+            ...result.steps,
+            {
+              step: n + 1,
+              label: `Basic before promotion / higher scale (before ${fromDate})`,
+              calculation: formatTaka(before),
+              value: before,
+              note: `Applies until the day before ${fromDate}`,
+            },
+            {
+              step: n + 2,
+              label: `Basic after promotion / higher scale (from ${fromDate})`,
+              calculation: formatTaka(after),
+              value: after,
+              note,
+            },
+          ]
+        : [
+            ...result.steps,
+            {
+              step: n + 1,
+              label: 'Revised basic after promotion / higher scale',
+              calculation: formatTaka(after),
+              value: after,
+              note,
+            },
+          ],
+    };
+  }
+
+  /** No: continuing benefits — overlay matched NPS 2026 increase on the origin fixation. */
   const substantive = effectiveSubstantiveGrade(
-    payChange.grade as PayGrade,
+    promoGrade,
     payChange.substantive_grade ?? input.substantive_grade,
   );
   const originFixed = originFixedBasic2026(
@@ -774,13 +880,10 @@ function applyPayChangeToSalaryResult(result: Salary2026Result, input: Salary202
     input.joining_date,
     Boolean(input.increment_exempt),
   );
-  const matched = promotedMatchedBasic2026(originFixed, payChange.grade as PayGrade);
+  const matched = promotedMatchedBasic2026(originFixed, promoGrade);
   const scaleDiff = matched - originFixed;
   const ratePct = Math.round(promotionIncreaseRate(substantive, result.phase) * 100);
-  const fromDate = payChangeDateLabel(payChange.effective_date);
-  const note = `Matched NPS 2026 ${formatTaka(matched)} − fixed 01-07-2026 ${formatTaka(originFixed)} (Grade ${payChange.grade})`;
-  /** Only the phase that contains the effective date shows Before + After. */
-  const showBeforeAfter = resultIdx === changeIdx;
+  const note = `Matched NPS 2026 ${formatTaka(matched)} − fixed 01-07-2026 ${formatTaka(originFixed)} (Grade ${promoGrade})`;
 
   if (result.phase === '2027-07-01') {
     const before2026 = result.basic_on_2026_07 ?? result.new_pay;
@@ -1679,9 +1782,10 @@ function primaryArrearBasis(
 }
 
 /**
- * After promotion: admissible new basic = original stage new_pay + (matched − originFixed) × rate%.
- * Drawn basic is the ongoing benefits received (often unchanged when 2015 was not re-fixed);
- * arrears = new eligibility from the effective date, less those ongoing benefits.
+ * After promotion / higher scale:
+ * - Yes (NPS 2015 re-fixed): convert the new grade’s drawn NPS 2015 basic (previous rule).
+ * - No (continuing benefits): origin new_pay + (matched − originFixed) × rate%.
+ * Drawn basic is always the dialog / continuing amount (no second annual increment).
  */
 function promotedArrearBasis(
   originGrade: PayGrade,
@@ -1696,7 +1800,7 @@ function promotedArrearBasis(
 ): ArrearBasisAmounts {
   const promoGrade = payChange.grade as PayGrade;
   const promoOldPay = payChange.old_pay;
-  const scaleDiff = matched2026 - originFixed2026;
+  const fixedOn2015 = payChangeNps2015Fixed(payChange);
   return {
     grade: promoGrade,
     old_pay: promoOldPay,
@@ -1706,6 +1810,21 @@ function promotedArrearBasis(
     withheld: false,
     pay_change_segment: true,
     new_basic: (phase) => {
+      if (fixedOn2015) {
+        const key = `y:${promoGrade}:${promoOldPay}:${phase}`;
+        let value = basicCache.get(key);
+        if (value == null) {
+          value = calculateSalary2026Base({
+            grade: promoGrade,
+            old_pay: promoOldPay,
+            phase,
+            increment_exempt: true,
+          }).new_pay;
+          basicCache.set(key, value);
+        }
+        return value;
+      }
+      const scaleDiff = matched2026 - originFixed2026;
       const key = `c:${originGrade}:${originOldPay}:${promoGrade}:${matched2026}:${phase}:${incrementExempt ? 1 : 0}:${joiningDate ?? ''}:${substantive}`;
       let value = basicCache.get(key);
       if (value == null) {
@@ -1823,8 +1942,9 @@ function segmentLabel(month: string, from: number, to: number, monthDays: number
  * + house rent protection.
  * House rent entitlement is always the amount applicable on the 30/06/2026 basic; any excess
  * drawn after promotion (or otherwise) is deducted as overpayment.
- * Promotion / higher scale: fix 01/07/2026 increment on the old grade, then match that step to
- * equal/next higher on NPS 2026 of the new grade; months split by the effective date are listed separately.
+ * Promotion / higher scale (months split by the effective date):
+ * - Yes: from that date, fix on the new grade’s NPS 2015 basic (previous rule).
+ * - No: fix 01/07/2026 on the old grade, match to NPS 2026 of the new grade, overlay the %.
  */
 export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearResult {
   const grade = input.grade;
@@ -1880,24 +2000,26 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
   const hraEntitlement = hraEligible ? calculateHouseRentAllowance(entitlementBasic30_06, input.hra_area) : null;
 
   const primary = primaryArrearBasis(grade, oldPay, input.joining_date, incrementExempt, basicCache);
-  const originFixed2026 =
-    payChange != null ? originFixedBasic2026(grade, oldPay, input.joining_date, incrementExempt) : null;
+  const overlayPromo = payChange != null && !payChangeNps2015Fixed(payChange);
+  const originFixed2026 = overlayPromo
+    ? originFixedBasic2026(grade, oldPay, input.joining_date, incrementExempt)
+    : null;
   const matchedPromo =
-    payChange != null && originFixed2026 != null
+    overlayPromo && originFixed2026 != null
       ? promotedMatchedBasic2026(originFixed2026, payChange.grade as PayGrade)
       : null;
   const scaleDiff =
     matchedPromo != null && originFixed2026 != null ? matchedPromo - originFixed2026 : null;
   const changed =
-    payChange && matchedPromo != null && originFixed2026 != null && substantiveAfter != null
+    payChange != null && substantiveAfter != null
       ? promotedArrearBasis(
           grade,
           oldPay,
           payChange,
           input.joining_date,
           incrementExempt,
-          originFixed2026,
-          matchedPromo,
+          originFixed2026 ?? 0,
+          matchedPromo ?? 0,
           substantiveAfter,
           basicCache,
         )

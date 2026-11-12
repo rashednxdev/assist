@@ -266,7 +266,9 @@ Books ↔ Questions ↔ Exams/Syllabus ↔ Papers → evaluation → Progress
 Access = grants + packages (`exam_prep` / `basic` / `live`), not course enrollment.  
 Timed MCQ paper UI: **mobile yes**, web no (yet). Saved/history: **device-local** on mobile.
 
-**Full step-by-step presentation for how Learning serves users:** → **Part VI-A** below.
+**Full step-by-step presentation for how Learning serves users:** → **Part VI-A** below.  
+
+**Field-level spec (admin forms → learner views/inputs):** → **[LEARNING_EXAM_PREP_MODULE.md](./LEARNING_EXAM_PREP_MODULE.md)**.
 
 ## VI.4 Billing packages
 
@@ -653,6 +655,8 @@ Learner          Web/Mobile           API                DB
 
 **Honest limit:** Exam-prep platform, **not** full LMS — certificates, enrollment paths, Module J portal, and web timed exam are **documented for later** (Part IX), not current deploy.
 
+**Every form field + every learner input:** [LEARNING_EXAM_PREP_MODULE.md](./LEARNING_EXAM_PREP_MODULE.md).
+
 ---
 
 # Part VII — Presentation (UI)
@@ -875,6 +879,7 @@ packages/shared-constants/index.ts
 packages/shared-types/src/index.ts
 packages/shared-types/src/salary-2026.ts
 docs/DEVELOPER_HANDBOOK.md          ← this file
+docs/LEARNING_EXAM_PREP_MODULE.md   ← Exam-prep: forms → learner views (field-level)
 docs/ADMIN_DATA_ENTRY_MANUAL.md     ← content ops
 docs/IMPLEMENTATION_PLAN.md         ← original phases / Module J checklists
 docs/render-deploy.md               ← deploy

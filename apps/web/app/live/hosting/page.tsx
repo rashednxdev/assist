@@ -16,6 +16,15 @@ interface HostingRow {
   scheduled_at: string;
   status: string;
   is_previous?: boolean;
+  exam_subject_name?: string;
+  host_name?: string;
+}
+
+interface HostProfile {
+  id: string;
+  display_name: string;
+  bio?: string;
+  is_active: boolean;
 }
 
 function openLiveRoom(sessionId: string) {
@@ -29,14 +38,31 @@ function statusClass(status: string) {
   return 'bg-sky-50 text-sky-800 border-sky-100';
 }
 
+function formatWhen(iso: string) {
+  return new Date(iso).toLocaleString(undefined, {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 export default function LiveHostingPage() {
   const [items, setItems] = useState<HostingRow[]>([]);
+  const [hostProfile, setHostProfile] = useState<HostProfile | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiFetch<{ data: HostingRow[] }>('/live-streams/hosting?video_platform=agora')
-      .then((res) => setItems(res.data))
+    apiFetch<{ data: HostingRow[]; meta?: { host_profile?: HostProfile | null } }>(
+      '/live-streams/hosting?video_platform=agora',
+    )
+      .then((res) => {
+        setItems(res.data);
+        setHostProfile(res.meta?.host_profile ?? null);
+      })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'))
       .finally(() => setLoading(false));
   }, []);
@@ -60,7 +86,10 @@ export default function LiveHostingPage() {
           </div>
           <div className="min-w-0 flex-1 space-y-1">
             <div className="font-semibold text-slate-900">{item.topic}</div>
-            <div className="text-sm text-slate-500">{new Date(item.scheduled_at).toLocaleString()}</div>
+            <div className="text-sm font-medium text-slate-700">{formatWhen(item.scheduled_at)}</div>
+            {item.exam_subject_name ? (
+              <div className="text-xs font-medium text-pink-800">{item.exam_subject_name}</div>
+            ) : null}
             <span
               className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${statusClass(item.status)}`}
             >
@@ -83,29 +112,47 @@ export default function LiveHostingPage() {
     );
   }
 
+  const isListedHost = Boolean(hostProfile);
+  const emptyMessage = isListedHost
+    ? 'You are a listed host, but no Agora classes are assigned to you yet. An admin can schedule a class with you as host.'
+    : 'No classes assigned to you as host yet. An admin can add you under Live hosts and assign you on a session.';
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Host live classes (Agora)"
-        description="Classes assigned to you as host. Open the control room to go live, share screen, manage guests, and messages."
+        description="Your hosting schedule. Open the control room to go live, share screen, manage guests, and messages."
       />
+
+      {hostProfile ? (
+        <Card className="border-pink-100">
+          <CardContent className="space-y-1 pt-6">
+            <div className="text-xs font-bold uppercase tracking-wide text-slate-500">Listed host</div>
+            <div className="text-lg font-semibold text-slate-900">{hostProfile.display_name}</div>
+            {hostProfile.bio ? <p className="text-sm text-slate-600">{hostProfile.bio}</p> : null}
+            {!hostProfile.is_active ? (
+              <p className="text-xs font-medium text-amber-700">
+                Your host profile is inactive — ask an admin to reactivate it for new assignments.
+              </p>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
+
       {error ? <Alert variant="error">{error}</Alert> : null}
       {loading ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
       {!loading && items.length === 0 ? (
         <Card>
           <CardContent className="flex items-start gap-3 pt-6 text-sm text-muted-foreground">
             <Video className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
-            <p>
-              No classes assigned to you as host yet. An admin can set you as the session host from
-              Live class admin.
-            </p>
+            <p>{emptyMessage}</p>
           </CardContent>
         </Card>
       ) : null}
 
       {active.length > 0 ? (
         <div className="space-y-3">
-          <h2 className="text-xs font-bold uppercase tracking-wide text-slate-500">Your classes</h2>
+          <h2 className="text-xs font-bold uppercase tracking-wide text-slate-500">Your schedule</h2>
           <div className="grid gap-3">
             {active.map((item) => (
               <HostCard key={item.id} item={item} />

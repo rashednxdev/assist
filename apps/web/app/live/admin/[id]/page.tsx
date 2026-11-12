@@ -50,10 +50,25 @@ interface SessionDetail {
   is_previous?: boolean;
   host_user_id?: string;
   host_name?: string;
+  exam_subject_id?: string;
+  exam_subject_name?: string;
   access_type?: 'free' | 'paid';
   video_platform?: 'agora' | 'zoom';
   auto_record_cloud?: boolean;
   recorded_contents?: LiveStreamRecordedContent[];
+}
+
+interface SubjectOption {
+  id: string;
+  name: string;
+  name_bn?: string;
+  label: string;
+}
+
+interface HostOption {
+  id: string;
+  user_id: string;
+  display_name: string;
 }
 
 interface SlideDraft {
@@ -126,6 +141,10 @@ export default function LiveStreamAdminDetailPage() {
   const [editDetails, setEditDetails] = useState('');
   const [editWhen, setEditWhen] = useState('');
   const [editAccessType, setEditAccessType] = useState<'free' | 'paid'>('free');
+  const [editSubjectId, setEditSubjectId] = useState('');
+  const [editHostUserId, setEditHostUserId] = useState('');
+  const [subjects, setSubjects] = useState<SubjectOption[]>([]);
+  const [hostOptions, setHostOptions] = useState<HostOption[]>([]);
   const [autoRecordCloud, setAutoRecordCloud] = useState(false);
   const [presentations, setPresentations] = useState<PresentationDraft[]>([]);
   const [recorded, setRecorded] = useState<RecordedDraft[]>([]);
@@ -148,6 +167,8 @@ export default function LiveStreamAdminDetailPage() {
       setEditDetails(s.data.details ?? '');
       setEditWhen(toDatetimeLocal(s.data.scheduled_at));
       setEditAccessType(s.data.access_type === 'paid' ? 'paid' : 'free');
+      setEditSubjectId(s.data.exam_subject_id ?? '');
+      setEditHostUserId(s.data.host_user_id ?? '');
       setAutoRecordCloud(Boolean(s.data.auto_record_cloud));
       const loadedPresentations =
         s.data.presentations && s.data.presentations.length > 0
@@ -206,6 +227,15 @@ export default function LiveStreamAdminDetailPage() {
   }, [load]);
 
   useEffect(() => {
+    apiFetch<{ data: SubjectOption[] }>('/users/exam-subject-options')
+      .then((res) => setSubjects(res.data))
+      .catch(() => setSubjects([]));
+    apiFetch<{ data: HostOption[] }>('/live-streams/admin/host-options')
+      .then((res) => setHostOptions(res.data))
+      .catch(() => setHostOptions([]));
+  }, []);
+
+  useEffect(() => {
     void loadUsers(query, page, paySort);
   }, [loadUsers, query, page, paySort]);
 
@@ -224,6 +254,8 @@ export default function LiveStreamAdminDetailPage() {
           details: editDetails.trim() || null,
           scheduled_at: new Date(editWhen).toISOString(),
           access_type: editAccessType,
+          exam_subject_id: editSubjectId || null,
+          ...(editHostUserId ? { host_user_id: editHostUserId } : {}),
           ...(session?.video_platform === 'zoom' ? { auto_record_cloud: autoRecordCloud } : {}),
           presentations: presentations.map((p, i) => ({
             title: p.title.trim() || `Presentation ${i + 1}`,
@@ -462,6 +494,49 @@ export default function LiveStreamAdminDetailPage() {
               value={editWhen}
               onChange={(e) => setEditWhen(e.target.value)}
             />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-subject">Exam subject</Label>
+            <select
+              id="edit-subject"
+              value={editSubjectId}
+              onChange={(e) => setEditSubjectId(e.target.value)}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">No subject</option>
+              {subjects.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label || s.name_bn || s.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-host">Host (listed)</Label>
+            <select
+              id="edit-host"
+              value={editHostUserId}
+              onChange={(e) => setEditHostUserId(e.target.value)}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              {editHostUserId && !hostOptions.some((h) => h.user_id === editHostUserId) ? (
+                <option value={editHostUserId}>
+                  {session.host_name || 'Current host'} (not in active list)
+                </option>
+              ) : null}
+              {hostOptions.map((h) => (
+                <option key={h.id} value={h.user_id}>
+                  {h.display_name}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted">
+              Manage listed hosts under{' '}
+              <Link href="/live/admin/hosts" className="underline">
+                Live hosts
+              </Link>
+              . Saving updates subject and host together.
+            </p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="edit-access">Access</Label>
@@ -961,85 +1036,52 @@ export default function LiveStreamAdminDetailPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Assign a user as host. After login they see this class under{' '}
+            Prefer assigning a listed host (also available in Edit class above). After login they see
+            this class under{' '}
             <Link
               href={session.video_platform === 'zoom' ? '/live/zoom/hosting' : '/live/hosting'}
               className="font-medium text-pink-700 underline-offset-2 hover:underline"
             >
               {session.video_platform === 'zoom' ? 'Host Zoom classes' : 'Host live classes'}
-            </Link>{' '}
-            and open the control room directly.
+            </Link>
+            .
           </p>
           <div className="rounded-xl border bg-slate-50 px-3 py-2.5 text-sm">
             <span className="text-slate-500">Current host: </span>
             <span className="font-semibold text-slate-900">
               {session.host_name || 'Not set'}
             </span>
+            {session.exam_subject_name ? (
+              <span className="text-slate-500"> · Subject: {session.exam_subject_name}</span>
+            ) : null}
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="host-search">Search user to assign as host</Label>
-            <Input
-              id="host-search"
-              value={query}
-              onChange={(e) => {
-                setPage(1);
-                setQuery(e.target.value);
-              }}
-              placeholder="Name, email, or phone"
-            />
-          </div>
-          <div className="max-h-56 overflow-y-auto rounded-xl border">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="px-3 py-2">Name</th>
-                  <th className="px-3 py-2">Contact</th>
-                  <th className="px-3 py-2">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {users.length === 0 ? (
-                  <tr>
-                    <td colSpan={3} className="px-3 py-6 text-center text-muted-foreground">
-                      No users found
-                    </td>
-                  </tr>
-                ) : (
-                  users.map((u) => {
-                    const isHost = session.host_user_id === u.id;
-                    return (
-                      <tr key={u.id} className="hover:bg-slate-50/80">
-                        <td className="px-3 py-2 font-medium">
-                          {u.full_name_bn?.trim() || u.full_name_en}
-                        </td>
-                        <td className="px-3 py-2 text-slate-600">
-                          {u.email}
-                          {u.phone ? ` · ${u.phone}` : ''}
-                        </td>
-                        <td className="px-3 py-2">
-                          {isHost ? (
-                            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800">
-                              Host
-                            </span>
-                          ) : (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              disabled={busy}
-                              onClick={() => void assignHost(u.id)}
-                            >
-                              Make host
-                            </Button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+          {hostOptions.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {hostOptions.map((h) => {
+                const isHost = session.host_user_id === h.user_id;
+                return (
+                  <Button
+                    key={h.id}
+                    type="button"
+                    size="sm"
+                    variant={isHost ? 'default' : 'outline'}
+                    disabled={busy || isHost}
+                    onClick={() => void assignHost(h.user_id)}
+                  >
+                    {isHost ? `Host: ${h.display_name}` : `Assign ${h.display_name}`}
+                  </Button>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No active listed hosts yet.{' '}
+              <Link href="/live/admin/hosts" className="font-medium text-pink-700 underline">
+                Add hosts
+              </Link>
+              .
+            </p>
+          )}
         </CardContent>
       </Card>
 

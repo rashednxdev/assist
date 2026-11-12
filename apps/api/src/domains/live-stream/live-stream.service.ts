@@ -1,8 +1,11 @@
 import mongoose from 'mongoose';
 import type {
+  CreateLiveHostDto,
   CreateLiveStreamDto,
   LiveClassAccessType,
   LiveClassPackageBrief,
+  LiveHostListItem,
+  LiveHostOption,
   LivePermissionStatus,
   LiveStreamGuestItem,
   LiveStreamGuestMessageItem,
@@ -10,16 +13,19 @@ import type {
   LiveStreamListItem,
   LiveStreamSlide,
   LiveVideoPlatform,
+  UpdateLiveHostDto,
   UpdateLiveStreamDto,
 } from '@ibas/shared-types';
 import { cleanLiveStreamSlides, PAID_LIVE_CLASS_UNPAID_MESSAGE, LIVE_PACKAGE_REQUIRED_MESSAGE, cleanLiveStreamRecordedContents, normalizeLiveStreamPresentations, flattenLiveStreamSlides } from '@ibas/shared-types';
 import { loadEntitlementSnapshot } from '../billing/entitlements.service.js';
 import { livePackageBriefs } from '../billing/billing.service.js';
 import { LiveStream } from './models/LiveStream.model.js';
+import { LiveHost } from './models/LiveHost.model.js';
 import { LiveStreamInvite } from './models/LiveStreamInvite.model.js';
 import { LiveStreamGuest } from './models/LiveStreamGuest.model.js';
 import { LiveStreamGuestMessage } from './models/LiveStreamGuestMessage.model.js';
 import { User } from '../users/models/User.model.js';
+import { ExamSubject } from '../exams/models/ExamSubject.model.js';
 import { agoraUidFromUserId, buildAgoraRtcToken } from './agora-token.js';
 import {
   buildZoomSdkSignature,
@@ -75,8 +81,88 @@ function zoomParticipantName(u: {
 
 async function resolveHostName(hostUserId: unknown): Promise<string | undefined> {
   if (!hostUserId) return undefined;
+  const listed = await LiveHost.findOne({ user_id: hostUserId }).select('display_name is_active');
+  if (listed?.display_name?.trim()) return listed.display_name.trim();
   const host = await User.findById(hostUserId).select('full_name_en full_name_bn email phone');
   return personDisplayName(host);
+}
+
+async function subjectNameMap(subjectIds: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(subjectIds.filter(Boolean))];
+  if (unique.length === 0) return new Map();
+  const subjects = await ExamSubject.find({ _id: { $in: unique } }).select('name name_bn');
+  return new Map(
+    subjects.map((s) => [String(s._id), s.name_bn?.trim() || s.name?.trim() || 'Subject']),
+  );
+}
+
+async function hostDisplayNameMap(hostUserIds: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(hostUserIds.filter(Boolean))];
+  if (unique.length === 0) return new Map();
+  const [listed, users] = await Promise.all([
+    LiveHost.find({ user_id: { $in: unique } }).select('user_id display_name'),
+    User.find({ _id: { $in: unique } }).select('full_name_en full_name_bn email phone'),
+  ]);
+  const fromListed = new Map<string, string>();
+  for (const h of listed) {
+    const name = h.display_name?.trim();
+    if (name) fromListed.set(String(h.user_id), name);
+  }
+  const fromUsers = new Map<string, string>();
+  for (const h of users) {
+    const name = personDisplayName(h)?.trim();
+    if (name) fromUsers.set(String(h._id), name);
+  }
+  const out = new Map<string, string>();
+  for (const id of unique) {
+    const name = fromListed.get(id) || fromUsers.get(id);
+    if (name) out.set(id, name);
+  }
+  return out;
+}
+
+/** Active listed host, or platform admin acting as host. */
+async function assertAssignableHost(hostUserId: string) {
+  const hostUser = await User.findOne({ _id: hostUserId, status: 'active' }).select(
+    '_id is_super_admin user_type',
+  );
+  if (!hostUser) throw badRequest('Host user not found or inactive.');
+  if (isPlatformAdmin(hostUser)) return hostUser;
+  const listed = await LiveHost.findOne({ user_id: hostUserId, is_active: true }).select('_id');
+  if (!listed) {
+    throw badRequest('Host must be an active listed live host (or a platform admin).');
+  }
+  return hostUser;
+}
+
+async function resolveExamSubjectId(raw?: string | null): Promise<mongoose.Types.ObjectId | undefined> {
+  if (raw == null || raw === '') return undefined;
+  const subject = await ExamSubject.findOne({ _id: raw, is_active: true }).select('_id');
+  if (!subject) throw badRequest('Exam subject not found or inactive.');
+  return subject._id as mongoose.Types.ObjectId;
+}
+
+function serializeLiveHost(
+  doc: InstanceType<typeof LiveHost>,
+  user?: {
+    full_name_en?: string | null;
+    full_name_bn?: string | null;
+    email?: string | null;
+    phone?: string | null;
+  } | null,
+): LiveHostListItem {
+  return {
+    id: String(doc._id),
+    user_id: String(doc.user_id),
+    display_name: doc.display_name,
+    bio: doc.bio || undefined,
+    is_active: Boolean(doc.is_active),
+    user_name: personDisplayName(user),
+    user_email: user?.email?.trim() || undefined,
+    user_phone: user?.phone?.trim() || undefined,
+    created_at: doc.created_at.toISOString(),
+    updated_at: doc.updated_at.toISOString(),
+  };
 }
 
 function isPaidClass(doc: { access_type?: string }) {
@@ -378,6 +464,7 @@ function serializeBase(doc: InstanceType<typeof LiveStream>, includeSlides = tru
   const presentations = serializePresentations(doc);
   const slides = flattenLiveStreamSlides({ presentations });
   const recorded = serializeRecordedContents(doc.recorded_contents);
+  const examSubjectId = doc.exam_subject_id ? String(doc.exam_subject_id) : undefined;
   return {
     id: String(doc._id),
     topic: doc.topic,
@@ -387,6 +474,7 @@ function serializeBase(doc: InstanceType<typeof LiveStream>, includeSlides = tru
     channel_name: doc.channel_name,
     video_platform: videoPlatformOf(doc),
     host_user_id: String(doc.host_user_id),
+    ...(examSubjectId ? { exam_subject_id: examSubjectId } : {}),
     created_at: doc.created_at.toISOString(),
     updated_at: doc.updated_at.toISOString(),
     started_at: doc.started_at?.toISOString(),
@@ -407,24 +495,29 @@ function serializeBase(doc: InstanceType<typeof LiveStream>, includeSlides = tru
 
 export async function listLiveStreamsForUser(
   user: { id: string; is_super_admin?: boolean; user_type?: string },
-  opts?: { video_platform?: string },
+  opts?: { video_platform?: string; exam_subject_id?: string },
 ): Promise<LiveStreamListItem[]> {
+  const subjectFilter =
+    opts?.exam_subject_id && mongoose.isValidObjectId(opts.exam_subject_id)
+      ? { exam_subject_id: opts.exam_subject_id }
+      : {};
   const items = await LiveStream.find({
     is_active: true,
     status: { $in: ['scheduled', 'live', 'paused', 'ended'] },
     ...liveStreamPlatformFilter(opts?.video_platform),
+    ...subjectFilter,
   })
     .sort({ scheduled_at: -1 })
     .limit(100);
 
   const hostIds = [...new Set(items.map((i) => String(i.host_user_id)))];
-  const hosts =
-    hostIds.length > 0
-      ? await User.find({ _id: { $in: hostIds } }).select('full_name_en full_name_bn email phone')
-      : [];
-  const hostName = new Map(
-    hosts.map((h) => [String(h._id), personDisplayName(h) ?? '']),
-  );
+  const subjectIds = items
+    .map((i) => (i.exam_subject_id ? String(i.exam_subject_id) : ''))
+    .filter(Boolean);
+  const [hostName, subjectName] = await Promise.all([
+    hostDisplayNameMap(hostIds),
+    subjectNameMap(subjectIds),
+  ]);
 
   const hasPaid = await userHasPaid(user);
   const owned = await ownedLivePackages(user);
@@ -441,6 +534,7 @@ export async function listLiveStreamsForUser(
     const viewPresentation =
       !payment.payment_blocked &&
       canViewPresentation(doc, user, perm.permission_status, hasPaid);
+    const examSubjectId = doc.exam_subject_id ? String(doc.exam_subject_id) : undefined;
     result.push({
       id: String(doc._id),
       topic: doc.topic,
@@ -450,6 +544,12 @@ export async function listLiveStreamsForUser(
       video_platform: videoPlatformOf(doc),
       host_user_id: String(doc.host_user_id),
       host_name: hostName.get(String(doc.host_user_id)) || undefined,
+      ...(examSubjectId
+        ? {
+            exam_subject_id: examSubjectId,
+            exam_subject_name: subjectName.get(examSubjectId),
+          }
+        : {}),
       permission_status: perm.permission_status,
       can_join: perm.can_join && doc.status === 'live' && !payment.payment_blocked,
       can_host: perm.can_host,
@@ -481,6 +581,8 @@ export async function getLiveStreamForUser(
   const doc = await LiveStream.findOne({ _id: id, is_active: true });
   if (!doc) throw notFound('Live session not found');
   const host_name = await resolveHostName(doc.host_user_id);
+  const examSubjectId = doc.exam_subject_id ? String(doc.exam_subject_id) : undefined;
+  const subjectNames = examSubjectId ? await subjectNameMap([examSubjectId]) : new Map();
   const hasPaid = await userHasPaid(user);
   const owned = await ownedLivePackages(user);
   const perm = await permissionFor(doc, user.id, user, hasPaid, owned);
@@ -503,6 +605,9 @@ export async function getLiveStreamForUser(
     recorded_content_count: recorded.length,
     can_view_presentation: viewPresentation,
     host_name,
+    ...(examSubjectId
+      ? { exam_subject_id: examSubjectId, exam_subject_name: subjectNames.get(examSubjectId) }
+      : {}),
     invite_count: inviteCount,
     permission_status: perm.permission_status,
     can_join: perm.can_join && doc.status === 'live' && !payment.payment_blocked,
@@ -528,25 +633,34 @@ export async function listAdminLiveStreams(limit: number, skip: number, opts?: {
   ]);
   const countMap = new Map(counts.map((c) => [String(c._id), c.count]));
   const hostIds = [...new Set(items.map((i) => String(i.host_user_id)))];
-  const hosts =
-    hostIds.length > 0
-      ? await User.find({ _id: { $in: hostIds } }).select('full_name_en full_name_bn email phone')
-      : [];
-  const hostName = new Map(
-    hosts.map((h) => [String(h._id), personDisplayName(h) ?? '']),
-  );
+  const subjectIds = items
+    .map((i) => (i.exam_subject_id ? String(i.exam_subject_id) : ''))
+    .filter(Boolean);
+  const [hostName, subjectName] = await Promise.all([
+    hostDisplayNameMap(hostIds),
+    subjectNameMap(subjectIds),
+  ]);
   return {
     total,
     items: sortByCurrentDateFirst(
-      items.map((doc) => ({
-        ...serializeBase(doc, false),
-        host_name: hostName.get(String(doc.host_user_id)) || undefined,
-        invite_count: countMap.get(String(doc._id)) ?? 0,
-        permission_status: 'host' as const,
-        can_join: true,
-        can_host: true,
-        can_view_presentation: true,
-      })),
+      items.map((doc) => {
+        const examSubjectId = doc.exam_subject_id ? String(doc.exam_subject_id) : undefined;
+        return {
+          ...serializeBase(doc, false),
+          host_name: hostName.get(String(doc.host_user_id)) || undefined,
+          ...(examSubjectId
+            ? {
+                exam_subject_id: examSubjectId,
+                exam_subject_name: subjectName.get(examSubjectId),
+              }
+            : {}),
+          invite_count: countMap.get(String(doc._id)) ?? 0,
+          permission_status: 'host' as const,
+          can_join: true,
+          can_host: true,
+          can_view_presentation: true,
+        };
+      }),
     ),
   };
 }
@@ -564,13 +678,17 @@ export async function listHostingLiveStreams(
     .sort({ scheduled_at: -1 })
     .limit(100);
 
-  const host = await User.findById(user.id).select('full_name_en full_name_bn email phone');
-  const hostName = personDisplayName(host);
+  const hostName = await resolveHostName(user.id);
+  const subjectIds = items
+    .map((i) => (i.exam_subject_id ? String(i.exam_subject_id) : ''))
+    .filter(Boolean);
+  const subjectName = await subjectNameMap(subjectIds);
 
   const result: LiveStreamListItem[] = items.map((doc) => {
     const presentations = serializePresentations(doc);
     const slides = flattenLiveStreamSlides({ presentations });
     const previous = isPreviousClass(doc);
+    const examSubjectId = doc.exam_subject_id ? String(doc.exam_subject_id) : undefined;
     return {
       id: String(doc._id),
       topic: doc.topic,
@@ -580,6 +698,12 @@ export async function listHostingLiveStreams(
       video_platform: videoPlatformOf(doc),
       host_user_id: String(doc.host_user_id),
       host_name: hostName,
+      ...(examSubjectId
+        ? {
+            exam_subject_id: examSubjectId,
+            exam_subject_name: subjectName.get(examSubjectId),
+          }
+        : {}),
       permission_status: 'host' as const,
       can_join: doc.status === 'live',
       can_host: true,
@@ -599,6 +723,67 @@ export async function listHostingLiveStreams(
   return sortByCurrentDateFirst(result);
 }
 
+export async function getMyLiveHostProfile(userId: string): Promise<LiveHostListItem | null> {
+  const doc = await LiveHost.findOne({ user_id: userId });
+  if (!doc) return null;
+  const user = await User.findById(userId).select('full_name_en full_name_bn email phone');
+  return serializeLiveHost(doc, user);
+}
+
+export async function listLiveHosts(): Promise<LiveHostListItem[]> {
+  const items = await LiveHost.find({}).sort({ display_name: 1 });
+  const userIds = items.map((i) => i.user_id);
+  const users =
+    userIds.length > 0
+      ? await User.find({ _id: { $in: userIds } }).select('full_name_en full_name_bn email phone')
+      : [];
+  const byId = new Map(users.map((u) => [String(u._id), u]));
+  return items.map((doc) => serializeLiveHost(doc, byId.get(String(doc.user_id))));
+}
+
+export async function listLiveHostOptions(): Promise<LiveHostOption[]> {
+  const items = await LiveHost.find({ is_active: true }).sort({ display_name: 1 });
+  return items.map((doc) => ({
+    id: String(doc._id),
+    user_id: String(doc.user_id),
+    display_name: doc.display_name,
+  }));
+}
+
+export async function createLiveHost(dto: CreateLiveHostDto): Promise<LiveHostListItem> {
+  const user = await User.findOne({ _id: dto.user_id, status: 'active' }).select(
+    'full_name_en full_name_bn email phone',
+  );
+  if (!user) throw badRequest('User not found or inactive.');
+  const existing = await LiveHost.findOne({ user_id: dto.user_id });
+  if (existing) throw badRequest('This user is already a listed live host.');
+  const doc = await LiveHost.create({
+    user_id: dto.user_id,
+    display_name: dto.display_name.trim(),
+    bio: dto.bio?.trim() || undefined,
+    is_active: dto.is_active !== false,
+  });
+  return serializeLiveHost(doc, user);
+}
+
+export async function updateLiveHost(id: string, dto: UpdateLiveHostDto): Promise<LiveHostListItem> {
+  const doc = await LiveHost.findById(id);
+  if (!doc) throw notFound('Live host not found');
+  if (dto.display_name !== undefined) doc.display_name = dto.display_name.trim();
+  if (dto.bio !== undefined) doc.bio = dto.bio?.trim() || undefined;
+  if (dto.is_active !== undefined) doc.is_active = dto.is_active;
+  await doc.save();
+  const user = await User.findById(doc.user_id).select('full_name_en full_name_bn email phone');
+  return serializeLiveHost(doc, user);
+}
+
+export async function deleteLiveHost(id: string) {
+  const doc = await LiveHost.findById(id);
+  if (!doc) throw notFound('Live host not found');
+  await doc.deleteOne();
+  return { id: String(doc._id), deleted: true };
+}
+
 export async function createLiveStream(dto: CreateLiveStreamDto, actorId: string) {
   if (dto.scheduled_at.getTime() < Date.now() - 60_000) {
     throw badRequest('Scheduled time must be in the future (or within the last minute).');
@@ -606,10 +791,14 @@ export async function createLiveStream(dto: CreateLiveStreamDto, actorId: string
 
   let hostUserId = actorId;
   if (dto.host_user_id) {
-    const hostUser = await User.findOne({ _id: dto.host_user_id, status: 'active' }).select('_id');
-    if (!hostUser) throw badRequest('Host user not found or inactive.');
+    const hostUser = await assertAssignableHost(dto.host_user_id);
     hostUserId = String(hostUser._id);
+  } else {
+    // Creating admin defaults as host (platform admin is always allowed).
+    await assertAssignableHost(actorId);
   }
+
+  const examSubjectId = await resolveExamSubjectId(dto.exam_subject_id);
 
   const tempId = new mongoose.Types.ObjectId();
   const platform = dto.video_platform === 'zoom' ? 'zoom' : 'agora';
@@ -629,6 +818,7 @@ export async function createLiveStream(dto: CreateLiveStreamDto, actorId: string
     channel_name: channelForId(String(tempId)),
     video_platform: platform,
     host_user_id: hostUserId,
+    ...(examSubjectId ? { exam_subject_id: examSubjectId } : {}),
     created_by: actorId,
     is_active: true,
     presentations,
@@ -675,10 +865,16 @@ export async function updateLiveStream(id: string, dto: UpdateLiveStreamDto) {
       await ensureZoomCloudRecording(doc.zoom_meeting_number, doc.auto_record_cloud);
     }
   }
-  if (dto.host_user_id !== undefined) {
-    const hostUser = await User.findOne({ _id: dto.host_user_id, status: 'active' }).select('_id');
-    if (!hostUser) throw badRequest('Host user not found or inactive.');
+  if (dto.host_user_id !== undefined && String(doc.host_user_id) !== dto.host_user_id) {
+    const hostUser = await assertAssignableHost(dto.host_user_id);
     doc.host_user_id = hostUser._id as typeof doc.host_user_id;
+  }
+  if (dto.exam_subject_id !== undefined) {
+    if (dto.exam_subject_id === null) {
+      doc.set('exam_subject_id', undefined);
+    } else {
+      doc.exam_subject_id = await resolveExamSubjectId(dto.exam_subject_id);
+    }
   }
   if (dto.access_type !== undefined) {
     doc.access_type = dto.access_type === 'paid' ? 'paid' : 'free';
@@ -698,9 +894,14 @@ export async function updateLiveStream(id: string, dto: UpdateLiveStreamDto) {
   }
   await doc.save();
   const host_name = await resolveHostName(doc.host_user_id);
+  const examSubjectId = doc.exam_subject_id ? String(doc.exam_subject_id) : undefined;
+  const subjectNames = examSubjectId ? await subjectNameMap([examSubjectId]) : new Map();
   return {
     ...serializeBase(doc, true),
     host_name,
+    ...(examSubjectId
+      ? { exam_subject_id: examSubjectId, exam_subject_name: subjectNames.get(examSubjectId) }
+      : {}),
     can_view_presentation: true,
     can_host: true,
     permission_status: 'host' as const,

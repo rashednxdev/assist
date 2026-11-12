@@ -106,7 +106,7 @@ const QUICK_GROUPS: Array<{ title: string; links: QuickLink[] }> = [
   {
     title: 'People & access',
     links: [
-      { href: '/admin/users', label: 'Users', desc: 'Accounts, module access, payments', icon: Users },
+      { href: '/admin/users', label: 'User manage', desc: 'Accounts, roles, per-user module grants', icon: Users },
       { href: '/admin/users/new', label: 'New user', desc: 'Create an account manually', icon: UserPlus },
       { href: '/notifications/admin', label: 'Send notification', desc: 'Broadcast to all or selected users', icon: Bell },
       { href: '/admin/schedule', label: 'Official schedule', desc: 'Meetings, bill dates, R&R rules, PDFs', icon: CalendarClock },
@@ -148,7 +148,7 @@ const QUICK_GROUPS: Array<{ title: string; links: QuickLink[] }> = [
   {
     title: 'Platform',
     links: [
-      { href: '/admin/setup/modules', label: 'Modules', desc: 'Stop / resume modules globally', icon: Layers },
+      { href: '/admin/setup/modules', label: 'Module access', desc: 'Stop / resume modules globally', icon: Layers },
       { href: '/admin/setup/geography', label: 'Geography', desc: 'Divisions, districts, thanas', icon: MapPin },
       { href: '/admin/setup/pension-leaves', label: 'Pension leave types', desc: 'Leave rules for the calculator', icon: Calculator },
       { href: '/admin/cache', label: 'Content cache', desc: 'Rebuild cached content', icon: Database },

@@ -75,8 +75,10 @@ export const createLiveStreamSchema = z.object({
   topic: z.string().trim().min(3).max(200),
   details: z.string().trim().max(5000).optional(),
   scheduled_at: z.coerce.date(),
-  /** Assigned class host (defaults to creating admin). */
+  /** Assigned class host (defaults to creating admin). Prefer a listed LiveHost. */
   host_user_id: mongoId.optional(),
+  /** Optional exam subject this class is scheduled under. */
+  exam_subject_id: mongoId.optional(),
   /** Optional invite list at create time. */
   invite_user_ids: inviteUserIds.optional(),
   /** @deprecated Prefer `presentations` — kept for older clients. */
@@ -99,8 +101,10 @@ export const updateLiveStreamSchema = z.object({
   details: z.string().trim().max(5000).optional().nullable(),
   scheduled_at: z.coerce.date().optional(),
   status: z.enum(LIVE_STREAM_STATUSES).optional(),
-  /** Reassign the class host (admin only). */
+  /** Reassign the class host (admin only). Prefer a listed LiveHost. */
   host_user_id: mongoId.optional(),
+  /** Set or clear the exam subject. */
+  exam_subject_id: mongoId.optional().nullable(),
   /** @deprecated Prefer `presentations`. */
   slides: liveStreamSlidesSchema.optional(),
   presentations: liveStreamPresentationsSchema.optional(),
@@ -109,6 +113,19 @@ export const updateLiveStreamSchema = z.object({
   auto_record_cloud: z.boolean().optional(),
   /** Previous-class YouTube links (download from Zoom cloud → upload to YouTube → paste here). */
   recorded_contents: liveStreamRecordedContentsSchema.optional(),
+});
+
+export const createLiveHostSchema = z.object({
+  user_id: mongoId,
+  display_name: z.string().trim().min(1).max(200),
+  bio: z.string().trim().max(2000).optional(),
+  is_active: z.boolean().optional().default(true),
+});
+
+export const updateLiveHostSchema = z.object({
+  display_name: z.string().trim().min(1).max(200).optional(),
+  bio: z.string().trim().max(2000).optional().nullable(),
+  is_active: z.boolean().optional(),
 });
 
 export const liveStreamInvitesSchema = z.object({
@@ -138,6 +155,8 @@ export const sendLiveStreamMessageSchema = z.object({
 
 export type CreateLiveStreamDto = z.infer<typeof createLiveStreamSchema>;
 export type UpdateLiveStreamDto = z.infer<typeof updateLiveStreamSchema>;
+export type CreateLiveHostDto = z.infer<typeof createLiveHostSchema>;
+export type UpdateLiveHostDto = z.infer<typeof updateLiveHostSchema>;
 export type LiveStreamInvitesDto = z.infer<typeof liveStreamInvitesSchema>;
 export type LiveStreamRevokeInvitesDto = z.infer<typeof liveStreamRevokeInvitesSchema>;
 export type JoinLiveStreamDto = z.infer<typeof joinLiveStreamSchema>;
@@ -147,6 +166,25 @@ export type SendLiveStreamMessageDto = z.infer<typeof sendLiveStreamMessageSchem
 export type LiveStreamSlide = z.infer<typeof liveStreamSlideSchema>;
 export type LiveStreamPresentation = z.infer<typeof liveStreamPresentationSchema>;
 export type LiveStreamRecordedContent = z.infer<typeof liveStreamRecordedContentSchema>;
+
+export interface LiveHostListItem {
+  id: string;
+  user_id: string;
+  display_name: string;
+  bio?: string;
+  is_active: boolean;
+  user_name?: string;
+  user_email?: string;
+  user_phone?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LiveHostOption {
+  id: string;
+  user_id: string;
+  display_name: string;
+}
 
 export function cleanLiveStreamSlide(slide: LiveStreamSlide): LiveStreamSlide | null {
   const title = (slide.title ?? '').trim();
@@ -396,6 +434,9 @@ export interface LiveStreamListItem {
   video_platform?: LiveVideoPlatform;
   host_user_id?: string;
   host_name?: string;
+  /** Optional exam subject this class is scheduled under. */
+  exam_subject_id?: string;
+  exam_subject_name?: string;
   invite_count?: number;
   permission_status: LivePermissionStatus;
   can_join: boolean;

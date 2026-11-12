@@ -1,213 +1,128 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   LayoutDashboard,
-  Inbox,
-  ListTodo,
-  PlayCircle,
-  Route,
-  Workflow,
   Users,
   Layers,
-  MapPin,
   Bell,
   ScrollText,
   BookOpen,
-  Library,
-  HelpCircle,
   GraduationCap,
   FileText,
   Settings,
-  Calculator,
-  Bookmark,
   Database,
-  Trash2,
   CalendarClock,
   MessageSquarePlus,
   FileCheck,
   Video,
-  Radio,
   MessageCircle,
   BarChart3,
-  CalendarDays,
-  Trophy,
-  Zap,
-  Search,
-  Briefcase,
-  Landmark,
-  Archive,
-  Link2,
-  ClipboardCheck,
   ShoppingBag,
   Wallet,
-  MessagesSquare,
-  ShieldAlert,
   Building2,
-  BookUser,
-  Droplet,
-  Receipt,
-  Tags,
-  UserCog,
+  Calculator,
+  Radio,
+  HelpCircle,
 } from 'lucide-react';
 
 export interface NavItem {
   href: string;
-  /** Fallback label when module name is unavailable */
   label: string;
   icon: LucideIcon;
-  /** Platform module code from setup/modules — menu shown when user has matching grant */
   moduleCode?: string;
-  /** Admin CRUD link — requires can_create (or can_update) on moduleCode */
   requireCreate?: boolean;
-  /** Workflow inbox / run guide — requires an active workflow_roles tag */
   requireWorkflowRole?: boolean;
-  /** Regulations and similar — only platform admins (not applicant/officer) */
   requirePlatformAdmin?: boolean;
-  /** Shown when the user can read any of these modules (used instead of moduleCode). */
   anyModuleCodes?: string[];
 }
 
 export interface NavGroup {
   title: string;
   items: NavItem[];
-  /** Legacy: super-admin-only sections; items still gated per moduleCode */
   adminOnly?: boolean;
 }
 
+/** Top nav when the user has Salary only (no Learning grant). */
+export const salaryPrimaryNav: NavItem[] = [
+  { href: '/salary', label: 'Salary On 2026', icon: Calculator },
+  { href: '/packages', label: 'Pricing', icon: ShoppingBag },
+  { href: '/settings/profile', label: 'Settings', icon: Settings },
+];
+
+/** Top nav when Learning is granted (Salary stays available). */
+export const learningPrimaryNav: NavItem[] = [
+  { href: '/learning', label: 'Learning', icon: LayoutDashboard },
+  { href: '/salary', label: 'Salary On 2026', icon: Calculator },
+  { href: '/progress', label: 'Progress', icon: BarChart3 },
+  { href: '/packages', label: 'Pricing', icon: ShoppingBag },
+  { href: '/settings/profile', label: 'Settings', icon: Settings },
+];
+
+/** Added only when canHostLive — not present otherwise. */
+export const hostLiveNavItem: NavItem = {
+  href: '/live/hosting',
+  label: 'Host live',
+  icon: Radio,
+  moduleCode: 'LIVE_STREAM',
+  requireCreate: true,
+};
+
+/**
+ * Composed into Administration only for platform/super admins (and USER grant for manage).
+ * Not listed in the base group then filtered — omitted from the array otherwise.
+ */
+export const userManageNavItem: NavItem = {
+  href: '/admin/users',
+  label: 'User manage',
+  icon: Users,
+  requirePlatformAdmin: true,
+};
+
+/** Global stop/resume modules — platform/super admin only. */
+export const moduleAccessNavItem: NavItem = {
+  href: '/admin/setup/modules',
+  label: 'Module access',
+  icon: Layers,
+  requirePlatformAdmin: true,
+};
+
+/** USER-grant staff who are not platform admins still get User manage. */
+export const userManageByGrantNavItem: NavItem = {
+  href: '/admin/users',
+  label: 'User manage',
+  icon: Users,
+  moduleCode: 'USER',
+};
+
+/**
+ * Admin menu: Learning content + platform admin only.
+ * Office / workflow / community are not in this shell.
+ * User manage / Module access are composed in `adminNavGroupsFor`.
+ */
 export const navGroups: NavGroup[] = [
   {
-    title: 'Overview',
-    items: [
-      { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-      { href: '/notifications', label: 'Notifications', icon: Bell },
-      { href: '/schedule', label: 'Schedule', icon: CalendarDays },
-      { href: '/community', label: 'Community', icon: MessagesSquare },
-      { href: '/community/blood-bank', label: 'Blood bank', icon: Droplet },
-      { href: '/contacts', label: 'Contacts', icon: BookUser },
-      { href: '/progress', label: 'My progress', icon: BarChart3 },
-      { href: '/search', label: 'Search', icon: Search },
-      { href: '/packages', label: 'Pricing', icon: ShoppingBag },
-    ],
-  },
-  {
-    title: 'iBAS++ & Policy',
-    items: [
-      { href: '/ibas', label: 'iBAS++ Workspace', icon: Briefcase },
-      { href: '/toolkit', label: 'Checklists & templates', icon: ClipboardCheck },
-      { href: '/policy', label: 'Policy library', icon: Landmark, anyModuleCodes: ['BOOKS', 'CIRCULARS'] },
-      { href: '/circulars', label: 'Circular archive', icon: Archive, anyModuleCodes: ['CIRCULARS', 'BOOKS'] },
-    ],
-  },
-  {
-    title: 'Learning',
-    items: [
-      { href: '/qotd', label: 'Questions of the Day', icon: CalendarDays, moduleCode: 'QOTD' },
-      { href: '/exam-routine', label: 'Exam routine', icon: CalendarClock, moduleCode: 'EXAM_ROUTINE' },
-      { href: '/exam-week', label: 'Exams of the week', icon: Trophy, moduleCode: 'EXAM_WEEK' },
-      { href: '/marathon', label: 'Marathon review', icon: Zap, moduleCode: 'QUESTIONS' },
-      { href: '/user-questions', label: 'Submit a question', icon: MessageSquarePlus, moduleCode: 'USER_QUESTIONS' },
-      { href: '/books', label: 'Rule library', icon: Library, moduleCode: 'BOOKS' },
-      { href: '/books/regulations', label: 'Regulations', icon: ScrollText, moduleCode: 'BOOKS', requirePlatformAdmin: true },
-      { href: '/exams', label: 'Exam programs', icon: GraduationCap, moduleCode: 'EXAM' },
-      { href: '/questions', label: 'Question bank', icon: HelpCircle, moduleCode: 'QUESTIONS' },
-      { href: '/papers', label: 'Exam papers', icon: FileText, moduleCode: 'PAPER' },
-      { href: '/live/zoom', label: 'Live class', icon: Video, moduleCode: 'LIVE_STREAM' },
-      { href: '/live/zoom/hosting', label: 'Host live', icon: Radio, moduleCode: 'LIVE_STREAM' },
-      { href: '/pension', label: 'Pension calculator', icon: Calculator, moduleCode: 'PENSION' },
-      { href: '/joining-period', label: 'Joining period', icon: Calculator, moduleCode: 'PENSION' },
-      { href: '/salary', label: 'Salary On 2026', icon: Calculator },
-    ],
-  },
-  {
-    title: 'Guided processes',
-    items: [
-      { href: '/guided-tasks', label: 'Process catalog', icon: Route, moduleCode: 'WORKFLOW' },
-      { href: '/guided-tasks/my-runs', label: 'My runs', icon: PlayCircle, moduleCode: 'WORKFLOW' },
-      {
-        href: '/workflow/inbox',
-        label: 'Action inbox',
-        icon: Inbox,
-        moduleCode: 'WORKFLOW',
-        requireWorkflowRole: true,
-      },
-      {
-        href: '/workflow/guide',
-        label: 'Run guide',
-        icon: ListTodo,
-        moduleCode: 'WORKFLOW',
-        requireWorkflowRole: true,
-      },
-    ],
-  },
-  {
-    title: 'Static Ref',
-    items: [
-      {
-        href: '/static-ref/jsi-2016-p',
-        label: 'JSI 2016 P',
-        icon: Bookmark,
-      },
-    ],
-  },
-  {
-    title: 'Account',
-    items: [{ href: '/settings/profile', label: 'Settings', icon: Settings }],
-  },
-  {
-    title: 'Workflow admin',
+    title: 'Learning admin',
     adminOnly: true,
     items: [
-      { href: '/workflow/inbox', label: 'Inbox', icon: Inbox, moduleCode: 'WORKFLOW', requireCreate: true },
-      {
-        href: '/workflow/notifications',
-        label: 'Notifications',
-        icon: Bell,
-        moduleCode: 'WORKFLOW',
-        requireCreate: true,
-      },
-      { href: '/workflow/tasks', label: 'Tasks', icon: ListTodo, moduleCode: 'WORKFLOW', requireCreate: true },
-      { href: '/workflow/guide', label: 'Run guide', icon: PlayCircle, moduleCode: 'WORKFLOW', requireCreate: true },
-      { href: '/workflow/admin', label: 'Workflow admin', icon: Workflow, moduleCode: 'WORKFLOW', requireCreate: true },
-      { href: '/workflow/admin/roles', label: 'Workflow roles', icon: UserCog, requirePlatformAdmin: true },
-    ],
-  },
-  {
-    title: 'Content admin',
-    adminOnly: true,
-    items: [
-      { href: '/books/admin', label: 'Book admin', icon: BookOpen, moduleCode: 'BOOKS', requireCreate: true },
-      { href: '/questions/new', label: 'New question', icon: HelpCircle, moduleCode: 'QUESTIONS', requireCreate: true },
-      { href: '/questions/trash', label: 'Question trash', icon: Trash2, moduleCode: 'QUESTIONS', requireCreate: true },
-      { href: '/exams/admin', label: 'Exam setup', icon: GraduationCap, moduleCode: 'EXAM', requireCreate: true },
-      { href: '/papers/new', label: 'New paper', icon: FileText, moduleCode: 'PAPER', requireCreate: true },
-      { href: '/qotd/admin', label: 'Questions of the Day', icon: HelpCircle, moduleCode: 'QOTD', requireCreate: true },
+      { href: '/books/admin', label: 'Books', icon: BookOpen, moduleCode: 'BOOKS', requireCreate: true },
+      { href: '/questions', label: 'Questions', icon: HelpCircle, moduleCode: 'QUESTIONS', requireCreate: true },
+      { href: '/exams/admin', label: 'Exams', icon: GraduationCap, moduleCode: 'EXAM', requireCreate: true },
+      { href: '/papers', label: 'Papers', icon: FileText, moduleCode: 'PAPER', requireCreate: true },
+      { href: '/qotd/admin', label: 'QOTD', icon: HelpCircle, moduleCode: 'QOTD', requireCreate: true },
       { href: '/exam-routine/admin', label: 'Exam Routine', icon: CalendarClock, moduleCode: 'EXAM_ROUTINE', requireCreate: true },
       { href: '/user-questions/admin', label: 'Submitted Questions', icon: MessageSquarePlus, moduleCode: 'USER_QUESTIONS', requireCreate: true },
-      { href: '/live/zoom/admin', label: 'Live class', icon: Video, moduleCode: 'LIVE_STREAM', requireCreate: true },
-      { href: '/admin/setup/pension-leaves', label: 'Pension leave types', icon: Calculator, moduleCode: 'SETUP', requireCreate: true },
-      { href: '/admin/circulars', label: 'Circular archive', icon: Archive, requirePlatformAdmin: true },
-      { href: '/admin/policy-library', label: 'Policy collections', icon: Landmark, requirePlatformAdmin: true },
-      { href: '/admin/archive-know', label: 'Know, Because you asked', icon: HelpCircle, requirePlatformAdmin: true },
-      { href: '/admin/ibas-areas', label: 'iBAS++ areas', icon: Layers, requirePlatformAdmin: true },
-      { href: '/admin/ibas-links', label: 'iBAS++ area links', icon: Link2, requirePlatformAdmin: true },
-      { href: '/admin/toolkit', label: 'Toolkit (checklists, templates)', icon: ClipboardCheck, requirePlatformAdmin: true },
-      { href: '/admin/toolkit/categories', label: 'Toolkit categories', icon: Tags, requirePlatformAdmin: true },
-      { href: '/admin/deductions', label: 'VAT, IT, Tax & Deductions', icon: Receipt, requirePlatformAdmin: true },
+      { href: '/live/admin', label: 'Live classes', icon: Video, moduleCode: 'LIVE_STREAM', requireCreate: true },
+      { href: '/live/admin/hosts', label: 'Live hosts', icon: Radio, moduleCode: 'LIVE_STREAM', requireCreate: true },
     ],
   },
   {
     title: 'Administration',
     adminOnly: true,
     items: [
-      { href: '/admin/users', label: 'Users', icon: Users, moduleCode: 'USER' },
       { href: '/admin/offices', label: 'Offices & designations', icon: Building2, requirePlatformAdmin: true },
       { href: '/admin/packages', label: 'Packages & payments', icon: Wallet, requirePlatformAdmin: true },
-      { href: '/admin/community', label: 'Community moderation', icon: ShieldAlert, requirePlatformAdmin: true },
-      { href: '/admin/setup/modules', label: 'Modules', icon: Layers, moduleCode: 'SETUP', requireCreate: true },
-      { href: '/admin/setup/geography', label: 'Geography', icon: MapPin, moduleCode: 'SETUP', requireCreate: true },
       { href: '/admin/cache', label: 'Content cache', icon: Database, moduleCode: 'SETUP', requireCreate: true },
       { href: '/admin/audit', label: 'Audit log', icon: ScrollText, moduleCode: 'AUDIT', requireCreate: true },
       { href: '/notifications/admin', label: 'Notifications', icon: Bell, moduleCode: 'NOTICE', requireCreate: true },
-      { href: '/admin/schedule', label: 'Schedule (official)', icon: CalendarClock, requirePlatformAdmin: true },
       { href: '/admin/terms', label: 'Terms & Conditions', icon: FileCheck, moduleCode: 'SETUP', requireCreate: true },
       {
         href: '/admin/unpaid-message',

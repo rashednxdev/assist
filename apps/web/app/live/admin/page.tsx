@@ -23,7 +23,21 @@ interface LiveRow {
   status: string;
   invite_count?: number;
   host_name?: string;
+  exam_subject_name?: string;
   access_type?: 'free' | 'paid';
+}
+
+interface SubjectOption {
+  id: string;
+  name: string;
+  name_bn?: string;
+  label: string;
+}
+
+interface HostOption {
+  id: string;
+  user_id: string;
+  display_name: string;
 }
 
 function formatWhen(iso: string) {
@@ -51,6 +65,10 @@ export default function LiveStreamAdminPage() {
   const [details, setDetails] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
   const [accessType, setAccessType] = useState<'free' | 'paid'>('free');
+  const [examSubjectId, setExamSubjectId] = useState('');
+  const [hostUserId, setHostUserId] = useState('');
+  const [subjects, setSubjects] = useState<SubjectOption[]>([]);
+  const [hosts, setHosts] = useState<HostOption[]>([]);
   const [creating, setCreating] = useState(false);
   const [showMarkupHelp, setShowMarkupHelp] = useState(false);
 
@@ -69,6 +87,12 @@ export default function LiveStreamAdminPage() {
 
   useEffect(() => {
     void load();
+    apiFetch<{ data: SubjectOption[] }>('/users/exam-subject-options')
+      .then((res) => setSubjects(res.data))
+      .catch(() => setSubjects([]));
+    apiFetch<{ data: HostOption[] }>('/live-streams/admin/host-options')
+      .then((res) => setHosts(res.data))
+      .catch(() => setHosts([]));
   }, []);
 
   async function createSession() {
@@ -86,11 +110,15 @@ export default function LiveStreamAdminPage() {
           details: details.trim() || undefined,
           scheduled_at: new Date(scheduledAt).toISOString(),
           access_type: accessType,
+          ...(examSubjectId ? { exam_subject_id: examSubjectId } : {}),
+          ...(hostUserId ? { host_user_id: hostUserId } : {}),
         }),
       });
       setTopic('');
       setDetails('');
       setScheduledAt('');
+      setExamSubjectId('');
+      setHostUserId('');
       await load();
       window.location.href = `/live/admin/${res.data.id}`;
     } catch (err) {
@@ -115,8 +143,13 @@ export default function LiveStreamAdminPage() {
     <div className="space-y-6">
       <PageHeader
         title="Live class"
-        description="Schedule sessions and invite users here. Open Control room in a new tab for mic, screen share, messages, guests, pause, and end."
+        description="Schedule sessions by subject and listed host. Open Control room in a new tab for mic, screen share, messages, guests, pause, and end."
       />
+      <div className="flex flex-wrap gap-2">
+        <Button asChild variant="outline" size="sm">
+          <Link href="/live/admin/hosts">Manage hosts</Link>
+        </Button>
+      </div>
 
       {error ? <Alert variant="error">{error}</Alert> : null}
       <MarkupInstructionsModal open={showMarkupHelp} onClose={() => setShowMarkupHelp(false)} />
@@ -143,6 +176,45 @@ export default function LiveStreamAdminPage() {
               value={scheduledAt}
               onChange={(e) => setScheduledAt(e.target.value)}
             />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="live-subject">Exam subject</Label>
+            <select
+              id="live-subject"
+              value={examSubjectId}
+              onChange={(e) => setExamSubjectId(e.target.value)}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">No subject</option>
+              {subjects.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label || s.name_bn || s.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="live-host">Host</Label>
+            <select
+              id="live-host"
+              value={hostUserId}
+              onChange={(e) => setHostUserId(e.target.value)}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">Me (admin)</option>
+              {hosts.map((h) => (
+                <option key={h.id} value={h.user_id}>
+                  {h.display_name}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted">
+              Listed hosts are managed under{' '}
+              <Link href="/live/admin/hosts" className="underline">
+                Live hosts
+              </Link>
+              .
+            </p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="live-access">Access</Label>
@@ -208,6 +280,7 @@ export default function LiveStreamAdminPage() {
                   <div className="text-sm text-slate-500">{formatWhen(item.scheduled_at)}</div>
                   <div className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-400">
                     {item.status}
+                    {item.exam_subject_name ? ` · ${item.exam_subject_name}` : ''}
                     {item.access_type === 'paid' ? ' · Paid class' : ' · Free class'}
                     {item.host_name ? ` · Host: ${item.host_name}` : ''}
                     {typeof item.invite_count === 'number' ? ` · ${item.invite_count} invited` : ''}

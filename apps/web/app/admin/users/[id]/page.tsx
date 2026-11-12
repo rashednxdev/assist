@@ -291,6 +291,50 @@ export default function EditUserPage() {
     }
   }
 
+  /** One-click Learning shell access: can_read on learner modules (web hub + mobile exam-prep). */
+  async function grantLearningReadAccess() {
+    const learningCodes = new Set([
+      'BOOKS',
+      'QUESTIONS',
+      'EXAM',
+      'PAPER',
+      'EXAM_WEEK',
+      'USER_QUESTIONS',
+      'ANSWER_PDF',
+      'QOTD',
+      'EXAM_ROUTINE',
+      'LIVE_STREAM',
+    ]);
+    const targets = modules.filter((m) => learningCodes.has(m.code));
+    if (targets.length === 0) {
+      setError('No Learning modules found to grant');
+      return;
+    }
+    setError('');
+    try {
+      for (const mod of targets) {
+        await apiFetch(`/users/${userId}/module-access`, {
+          method: 'POST',
+          body: JSON.stringify({
+            module_id: mod._id,
+            can_read: true,
+            can_create: false,
+            can_update: false,
+            can_delete: false,
+            can_grade: false,
+            can_publish: false,
+            bypass_stop: false,
+          }),
+        });
+      }
+      const res = await apiFetch<{ data: ModuleAccess[] }>(`/users/${userId}/module-access`);
+      setModuleAccess(res.data);
+      setMessage(`Learning access granted (${targets.length} modules · read)`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to grant Learning access');
+    }
+  }
+
   async function revokeAccess(moduleId: string) {
     try {
       await apiFetch(`/users/${userId}/module-access/${moduleId}`, { method: 'DELETE' });
@@ -751,15 +795,23 @@ export default function EditUserPage() {
           return (
             <div className="space-y-6">
               <Card>
-                <CardHeader>
+                <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0">
                   <CardTitle className="flex items-center gap-2">
-                    Mobile app access
+                    Learning / mobile access
                     <span className="rounded-full bg-primary-muted px-2 py-0.5 text-xs font-medium text-primary-dark">
                       {mobileModules.length}
                     </span>
                   </CardTitle>
+                  <Button type="button" size="sm" onClick={() => void grantLearningReadAccess()}>
+                    Grant Learning (read)
+                  </Button>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  <p className="text-xs text-muted">
+                    Salary is available to every signed-in user. Use <span className="font-semibold">Grant Learning (read)</span>{' '}
+                    to open the web Learning hub and mobile exam-prep modules. Add Live host create flags or list the user under{' '}
+                    <span className="font-semibold">Admin → Live hosts</span> for hosting.
+                  </p>
                   {mobileModules.length === 0 ? (
                     <p className="text-sm text-muted">No mobile modules found.</p>
                   ) : (

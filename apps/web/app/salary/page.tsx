@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { logoutRequest } from '@/lib/auth';
-import { isSalaryOnlyUser } from '@/lib/salary-only';
+import { hasLearningWebAccess, LEARNING_HOME } from '@/lib/learning-access';
 import { useSalaryUser } from '@/components/salary/salary-auth-gate';
 import { useSalaryOffice } from '@/components/salary/salary-office-gate';
 import {
@@ -648,7 +648,7 @@ export default function SalaryOn2026Page() {
 
   const router = useRouter();
   const me = useSalaryUser();
-  const salaryOnly = isSalaryOnlyUser(me);
+  const showLearningLink = hasLearningWebAccess(me);
   const userName =
     locale === 'bn' && me?.full_name_bn?.trim() ? me.full_name_bn.trim() : (me?.full_name_en ?? '');
   const t = salaryCopy(locale);
@@ -1087,15 +1087,15 @@ export default function SalaryOn2026Page() {
                 <span className="hidden sm:inline">{t.myDownloadsBtn}</span>
               </Link>
             ) : null}
-            {salaryOnly ? null : (
+            {showLearningLink ? (
               <Link
-                href="/dashboard"
+                href={LEARNING_HOME}
                 className="inline-flex h-8 items-center gap-1.5 rounded-md border border-white/30 bg-white/5 px-2.5 text-sm font-medium text-white hover:bg-white/15 print:hidden"
               >
                 <LayoutDashboard className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Dashboard</span>
+                <span className="hidden sm:inline">Learning</span>
               </Link>
-            )}
+            ) : null}
             <button
               type="button"
               onClick={() => void handleLogout()}

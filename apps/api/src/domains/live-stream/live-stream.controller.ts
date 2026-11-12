@@ -1,5 +1,6 @@
 import type { Response } from 'express';
 import {
+  createLiveHostSchema,
   createLiveStreamSchema,
   joinLiveStreamSchema,
   liveStreamInvitesSchema,
@@ -7,6 +8,7 @@ import {
   sendLiveStreamMessageSchema,
   updateGuestMessagesSchema,
   updateGuestSpeechSchema,
+  updateLiveHostSchema,
   updateLiveStreamSchema,
 } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
@@ -19,18 +21,27 @@ function platformFromQuery(req: AuthRequest): string | undefined {
   return undefined;
 }
 
+function examSubjectIdFromQuery(req: AuthRequest): string | undefined {
+  const raw = req.query.exam_subject_id;
+  return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined;
+}
+
 export async function listLiveStreamsHandler(req: AuthRequest, res: Response): Promise<void> {
   const data = await liveStreamService.listLiveStreamsForUser(req.user!, {
     video_platform: platformFromQuery(req),
+    exam_subject_id: examSubjectIdFromQuery(req),
   });
   res.json({ data });
 }
 
 export async function listHostingLiveStreamsHandler(req: AuthRequest, res: Response): Promise<void> {
-  const data = await liveStreamService.listHostingLiveStreams(req.user!, {
-    video_platform: platformFromQuery(req),
-  });
-  res.json({ data });
+  const [items, hostProfile] = await Promise.all([
+    liveStreamService.listHostingLiveStreams(req.user!, {
+      video_platform: platformFromQuery(req),
+    }),
+    liveStreamService.getMyLiveHostProfile(req.user!.id),
+  ]);
+  res.json({ data: items, meta: { host_profile: hostProfile } });
 }
 
 export async function getLiveStreamHandler(req: AuthRequest, res: Response): Promise<void> {
@@ -158,5 +169,32 @@ export async function revokeInvitesHandler(req: AuthRequest, res: Response): Pro
 
 export async function removeInviteHandler(req: AuthRequest, res: Response): Promise<void> {
   const data = await liveStreamService.removeInvite(String(req.params.id), String(req.params.userId));
+  res.json({ data });
+}
+
+export async function listLiveHostsHandler(_req: AuthRequest, res: Response): Promise<void> {
+  const data = await liveStreamService.listLiveHosts();
+  res.json({ data });
+}
+
+export async function listLiveHostOptionsHandler(_req: AuthRequest, res: Response): Promise<void> {
+  const data = await liveStreamService.listLiveHostOptions();
+  res.json({ data });
+}
+
+export async function createLiveHostHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = createLiveHostSchema.parse(req.body);
+  const data = await liveStreamService.createLiveHost(dto);
+  res.status(201).json({ data });
+}
+
+export async function updateLiveHostHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = updateLiveHostSchema.parse(req.body);
+  const data = await liveStreamService.updateLiveHost(String(req.params.id), dto);
+  res.json({ data });
+}
+
+export async function deleteLiveHostHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await liveStreamService.deleteLiveHost(String(req.params.id));
   res.json({ data });
 }

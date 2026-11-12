@@ -1,11 +1,15 @@
-import type { LucideIcon } from 'lucide-react';
-import { Route } from 'lucide-react';
 import { moduleAccessGroup } from '@ibas/shared-constants';
 import type { ModuleAccessGrant, ModuleStop } from '@ibas/shared-types';
 import type { MeUser } from '@/lib/auth';
 import type { NavGroup, NavItem } from '@/components/layout/nav-config';
+import {
+  moduleAccessNavItem,
+  navGroups,
+  userManageByGrantNavItem,
+  userManageNavItem,
+} from '@/components/layout/nav-config';
 
-/** iBAS office workflow modules (seeded in setup-data). */
+/** iBAS office workflow modules (seeded in setup-data). Kept for WORKFLOW nav checks only. */
 export const OFFICE_MODULE_CODES = [
   'BUDGET_PREP',
   'BUDGET_EXEC',
@@ -124,7 +128,14 @@ export function canSeeNavItem(
   if (!item.moduleCode) return true;
 
   // Users administration is never available to applicant accounts.
-  if (item.moduleCode === 'USER' && user.user_type === 'applicant') return false;
+  if (item.moduleCode === 'USER') {
+    if (user.user_type === 'applicant') return false;
+    if (isPlatformAdmin(user)) return true;
+    return (
+      hasModuleRead(grants, 'USER') ||
+      hasModuleCreate(grants, 'USER')
+    );
+  }
 
   if (item.requireCreate) {
     return hasModuleCreate(grants, item.moduleCode);
@@ -160,22 +171,12 @@ export function resolveNavLabel(item: NavItem, grants: ModuleAccessGrant[]): str
   return item.label;
 }
 
-function officeNavItem(grant: ModuleAccessGrant, icon: LucideIcon): NavItem {
-  return {
-    href: '/guided-tasks',
-    label: grant.module_name_en,
-    icon,
-    moduleCode: grant.module_code,
-  };
-}
-
 export function buildVisibleNav(
   user: MeUser,
   grants: ModuleAccessGrant[],
   groups: NavGroup[],
-  processIcon: LucideIcon = Route,
 ): NavGroup[] {
-  const staticGroups = groups
+  return groups
     .map((group) => {
       if (group.adminOnly && !isSuperAdmin(user)) {
         const items = group.items
@@ -192,27 +193,25 @@ export function buildVisibleNav(
       return { ...group, items };
     })
     .filter((g): g is NavGroup => g !== null);
+}
 
-  const officeItems: NavItem[] = [];
-  if (!isSuperAdmin(user)) {
-    for (const g of grants) {
-      if (!g.can_read || !OFFICE_MODULE_CODES.includes(g.module_code as OfficeModuleCode)) continue;
-      if (staticGroups.some((grp) => grp.items.some((i) => i.moduleCode === g.module_code))) continue;
-      officeItems.push(officeNavItem(g, processIcon));
+/** Compose admin nav: User manage + Module access only when the role warrants them. */
+export function adminNavGroupsFor(user: MeUser): NavGroup[] {
+  const grants = user.module_access ?? [];
+  const groups: NavGroup[] = navGroups.map((g) => ({
+    title: g.title,
+    adminOnly: g.adminOnly,
+    items: [...g.items],
+  }));
+  const adminGroup = groups.find((g) => g.title === 'Administration');
+  if (adminGroup) {
+    const head: NavItem[] = [];
+    if (isPlatformAdmin(user)) {
+      head.push(userManageNavItem, moduleAccessNavItem);
+    } else if (canSeeNavItem(user, grants, userManageByGrantNavItem)) {
+      head.push(userManageByGrantNavItem);
     }
+    adminGroup.items = [...head, ...adminGroup.items];
   }
-
-  if (officeItems.length === 0) return staticGroups;
-
-  const processesIdx = staticGroups.findIndex((g) => g.title === 'Guided processes');
-  if (processesIdx >= 0) {
-    const merged = [...staticGroups];
-    merged[processesIdx] = {
-      ...merged[processesIdx]!,
-      items: [...merged[processesIdx]!.items, ...officeItems],
-    };
-    return merged;
-  }
-
-  return [...staticGroups, { title: 'Office processes', items: officeItems }];
+  return buildVisibleNav(user, grants, groups);
 }

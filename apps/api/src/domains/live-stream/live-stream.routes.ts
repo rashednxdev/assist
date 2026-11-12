@@ -6,7 +6,9 @@ import { requireModuleAccess } from '../../middleware/requireModuleAccess.js';
 import { asyncHandler } from '../../shared/asyncHandler.js';
 import {
   addInvitesHandler,
+  createLiveHostHandler,
   createLiveStreamHandler,
+  deleteLiveHostHandler,
   deleteLiveStreamHandler,
   endLiveStreamHandler,
   getLiveStreamHandler,
@@ -16,6 +18,8 @@ import {
   listGuestsHandler,
   listHostingLiveStreamsHandler,
   listInvitesHandler,
+  listLiveHostOptionsHandler,
+  listLiveHostsHandler,
   listLiveStreamsHandler,
   pauseLiveStreamHandler,
   removeInviteHandler,
@@ -26,6 +30,7 @@ import {
   setGuestMessagesHandler,
   setGuestSpeechHandler,
   startLiveStreamHandler,
+  updateLiveHostHandler,
   updateLiveStreamHandler,
 } from './live-stream.controller.js';
 
@@ -34,6 +39,11 @@ export const liveStreamRouter = Router();
 liveStreamRouter.use(authenticate);
 
 liveStreamRouter.get('/admin', requireAdmin, asyncHandler(listAdminLiveStreamsHandler));
+liveStreamRouter.get('/admin/hosts', requireAdmin, asyncHandler(listLiveHostsHandler));
+liveStreamRouter.post('/admin/hosts', requireAdmin, asyncHandler(createLiveHostHandler));
+liveStreamRouter.patch('/admin/hosts/:id', requireAdmin, asyncHandler(updateLiveHostHandler));
+liveStreamRouter.delete('/admin/hosts/:id', requireAdmin, asyncHandler(deleteLiveHostHandler));
+liveStreamRouter.get('/admin/host-options', requireAdmin, asyncHandler(listLiveHostOptionsHandler));
 liveStreamRouter.post('/', requireAdmin, asyncHandler(createLiveStreamHandler));
 liveStreamRouter.patch('/:id', requireAdmin, asyncHandler(updateLiveStreamHandler));
 liveStreamRouter.delete('/:id', requireAdmin, asyncHandler(deleteLiveStreamHandler));

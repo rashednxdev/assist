@@ -107,8 +107,8 @@ export default function UsersPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Users"
-        description="Manage system users, workflow roles, and module access."
+        title="User manage"
+        description="Manage system users, workflow roles, and per-user module access."
         action={
           <div className="flex flex-wrap gap-2">
             <Button asChild variant="outline">

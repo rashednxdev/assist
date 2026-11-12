@@ -48,6 +48,8 @@ export interface ILiveStream extends Document {
   /** Previous-class videos: YouTube and/or Zoom recording links. */
   recorded_contents: ILiveStreamRecordedContent[];
   host_user_id: Types.ObjectId;
+  /** Optional exam subject this class is scheduled under. */
+  exam_subject_id?: Types.ObjectId;
   created_by: Types.ObjectId;
   is_active: boolean;
   started_at?: Date;
@@ -118,6 +120,7 @@ const schema = new Schema<ILiveStream>(
     auto_record_cloud: { type: Boolean, default: false },
     recorded_contents: { type: [recordedContentSchema], default: [] },
     host_user_id: { type: Schema.Types.ObjectId, required: true, ref: 'User' },
+    exam_subject_id: { type: Schema.Types.ObjectId, ref: 'ExamSubject' },
     created_by: { type: Schema.Types.ObjectId, required: true, ref: 'User' },
     is_active: { type: Boolean, default: true },
     started_at: { type: Date },
@@ -136,5 +139,6 @@ schema.index({ scheduled_at: -1, is_active: 1 });
 schema.index({ status: 1, is_active: 1 });
 schema.index({ video_platform: 1, is_active: 1 });
 schema.index({ package_ids: 1 });
+schema.index({ exam_subject_id: 1, is_active: 1 });
 
 export const LiveStream = mongoose.model<ILiveStream>('LiveStream', schema, 'live_streams');

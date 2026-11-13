@@ -56,7 +56,6 @@ import {
   type SalaryOfficeRecord,
   type SalaryBillKind,
   SALARY_BILL_LIMIT_CODE,
-  SALARY_FREE_TR_NID,
   type SalaryTrNotice,
   SALARY_CALC_LIMIT_CODE,
   SALARY_FREE_ARREARS_CALCS,
@@ -1615,7 +1614,6 @@ export default function SalaryOn2026Page() {
                     loadError={billAccessError}
                     onRetry={() => void loadBillAccess()}
                     onAccessChange={setBillAccess}
-                    onFreeTrForm={openFreeTrForm}
                   />
                   {billError ? (
                     <Alert variant="error" className="print:hidden">
@@ -1729,15 +1727,6 @@ export default function SalaryOn2026Page() {
           t={t}
           initial={{ ...printInfo, office: printInfo.office || billOfficeName || salaryOffice?.label || '' }}
           lockedOffice=""
-          fixedNid={
-            printDialog === 'trform' &&
-            billAccess &&
-            !billAccess.unlimited &&
-            billAccess.remaining <= 0 &&
-            billAccess.free_tr_form === 'available'
-              ? SALARY_FREE_TR_NID
-              : ''
-          }
           onCancel={() => setPrintDialog(null)}
           onConfirm={confirmPrint}
           {...(printDialog === 'trform'

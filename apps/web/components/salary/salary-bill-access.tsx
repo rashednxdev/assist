@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { FileDown, MessageCircle, Phone, Plus, X } from 'lucide-react';
+import { MessageCircle, Phone, Plus, X } from 'lucide-react';
 import { SALARY_MAX_BULKS_PER_REQUEST, type SalaryBillAccessRecord, type SalaryContactNumber } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { Button } from '@/components/ui/button';
@@ -18,7 +18,6 @@ function whatsappHref(number: string): string {
 
 function statusLabel(t: SalaryCopy, access: SalaryBillAccessRecord): string {
   if (access.unlimited || access.remaining > 0) return t.accessStatusApproved;
-  if (access.free_tr_form === 'available') return t.accessStatusFree;
   if (access.request.pending) return t.accessStatusPending;
   if (access.status === 'rejected') return t.accessStatusRejected;
   if (access.bill_limit > 0) return t.accessStatusUsedUp;
@@ -223,15 +222,12 @@ export function SalaryBillAccessPanel({
   loadError,
   onRetry,
   onAccessChange,
-  onFreeTrForm,
 }: {
   locale: SalaryLocale;
   access: SalaryBillAccessRecord | null;
   loadError: boolean;
   onRetry: () => void;
   onAccessChange: (access: SalaryBillAccessRecord) => void;
-  /** Starts a free T.R. Form download; the offer button is shown only when given. */
-  onFreeTrForm?: () => void;
 }) {
   const t = salaryCopy(locale);
   const num = (v: string | number) => localNum(locale, v);
@@ -263,7 +259,6 @@ export function SalaryBillAccessPanel({
 
   const pending = access.request.pending;
   const openLabel = pending ? t.requestUpdateBtn : t.newBulkBtn;
-  const freeOffer = access.free_tr_form === 'available' && access.remaining <= 0;
   const contactHint = contactHintOf(t, access);
 
   return (
@@ -320,39 +315,12 @@ export function SalaryBillAccessPanel({
         ) : null}
         {access.status === 'rejected' && !pending ? <p className="font-semibold text-red-700">{t.accessRejected}</p> : null}
         <p className="text-xs text-slate-500">{t.accessUseNote(num(access.bulk_size))}</p>
-        <p className="text-xs font-semibold text-amber-800">
-          {access.calc.free_used < access.calc.free_limit
-            ? t.calcFreeLeft(num(access.calc.free_limit - access.calc.free_used), num(access.calc.free_limit))
-            : access.calc.free_limit === 0 && access.remaining === 0 && access.free_tr_form !== 'available'
-              ? t.calcNoFree
-              : t.calcCounted(num(access.calc.unprinted), num(access.calc.per_bill))}
-        </p>
-        {access.free_tr_form === 'available' && !freeOffer ? (
-          <p className="text-xs font-semibold text-emerald-700">{t.freeTrAvailable(num(access.free_tr_left))}</p>
-        ) : access.free_tr_form === 'used' ? (
-          <p className="text-xs text-slate-500">{t.freeTrUsed}</p>
+        {access.calc.free_used >= access.calc.free_limit ? (
+          <p className="text-xs font-semibold text-amber-800">
+            {t.calcCounted(num(access.calc.unprinted), num(access.calc.per_bill))}
+          </p>
         ) : null}
       </div>
-
-      {freeOffer ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2.5">
-          <div className="min-w-0 flex-1">
-            <p className="font-bold text-emerald-800">{t.freeTrOfferTitle(num(access.free_tr_left))}</p>
-            <p className="text-xs text-emerald-900">{t.freeTrOfferHint}</p>
-          </div>
-          {onFreeTrForm ? (
-            <Button
-              type="button"
-              size="sm"
-              onClick={onFreeTrForm}
-              className="gap-1.5 bg-emerald-600 text-white shadow-sm hover:bg-emerald-700"
-            >
-              <FileDown className="h-4 w-4" />
-              {t.freeTrBtn}
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
 
       {sent ? (
         <Alert variant="success">

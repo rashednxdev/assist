@@ -14,7 +14,6 @@ import type {
 import {
   SALARY_DEFAULT_BULK_SIZE,
   SALARY_FREE_ARREARS_CALCS,
-  SALARY_FREE_TR_NID,
   SALARY_MAX_FREE_CALCS,
   SALARY_MAX_FREE_TR_COUNT,
 } from '@ibas/shared-types';
@@ -331,7 +330,7 @@ function FreeTrFormEditor() {
         <CardTitle className="text-base">Free single T.R. Form downloads</CardTitle>
         <CardDescription>
           While allowed, every user gets the set number of free T.R. Form 13 or 15 downloads for a single arrear bill. A
-          free download is used only when the user has no approved bill left, and prints the NID as {SALARY_FREE_TR_NID}.
+          free download is used only when the user has no approved bill left. The user types the NID, the same as an approved T.R. Form.
           When disabled, only users who registered while it was allowed keep theirs. The office staff bill is not
           included.
         </CardDescription>

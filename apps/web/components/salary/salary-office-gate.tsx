@@ -465,7 +465,7 @@ function OfficeForm({
   );
 }
 
-/** Ordinary users must name their office (a listed office in a circle, or Others) before using /salary. */
+/** The salary page opens without an office. The name is typed later on the T.R. Form and can be changed. */
 export function SalaryOfficeGate({ children }: { children: React.ReactNode }) {
   const me = useSalaryUser();
   const exempt = isPlatformAdmin(me);
@@ -523,16 +523,13 @@ export function SalaryOfficeGate({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const addBangla = !exempt && office != null && !office.office && !office.other_office_name_bn;
-  const addAccounting = !exempt && !addBangla && office != null && office.needs_accounting_office;
-
-  if (editing || addBangla || addAccounting || (!office && !exempt)) {
+  if (editing) {
     return (
       <OfficeForm
         initial={office}
         othersAllowed={othersAllowed}
-        addBangla={addBangla}
-        accountingOnly={addAccounting}
+        addBangla={false}
+        accountingOnly={false}
         onSaved={(saved) => {
           setOffice(saved);
           setEditing(false);

@@ -113,6 +113,7 @@ const QUICK_GROUPS: Array<{ title: string; links: QuickLink[] }> = [
       { href: '/admin/unpaid-message', label: 'Unpaid message', desc: 'Text shown on locked modules', icon: MessageCircle },
       { href: '/admin/salary-access', label: 'Salary bill access', desc: 'Approve arrears bills, contact numbers', icon: Wallet },
       { href: '/salary', label: 'Salary page', desc: 'Open the salary & arrears bill page', icon: Calculator },
+      { href: '/admin/salary-help', label: 'Salary help', desc: 'Questions, circulars, and calculation instructions', icon: HelpCircle },
       { href: '/admin/contact-verifications', label: 'Contact verifications', desc: 'Who verified whom for Contacts', icon: ShieldCheck },
     ],
   },

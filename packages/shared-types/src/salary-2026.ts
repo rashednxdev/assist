@@ -1557,7 +1557,7 @@ export interface SalaryArrearInput {
   duration?: SalaryBillDuration | null;
   /** Overrides the substantive-grade special allowance rate (fraction, e.g. 0.15). */
   special_rate?: number;
-  /** Excess Rest & Recreation allowance drawn: one NPS 2015 increment is deducted once. */
+  /** Kept for older bills. Rest & Recreation is no longer deducted. */
   excess_rr?: boolean;
   /** Excess Puja bonus drawn: two NPS 2015 increments are deducted once. */
   excess_puja?: boolean;
@@ -2088,7 +2088,8 @@ export function calculateSalaryArrears(input: SalaryArrearInput): SalaryArrearRe
 
   const sum = (pick: (r: SalaryArrearMonthRow) => number) => toPaisa(rows.reduce((s, r) => s + pick(r), 0));
   const increment = primary.next_step - oldPay;
-  const excessRr = input.excess_rr ? increment : 0;
+  // Rest & Recreation is no longer offered on the bill.
+  const excessRr = 0;
   const excessPuja = input.excess_puja ? increment * 2 : 0;
   const oneTime = excessRr + excessPuja;
   const primaryHra = hraAdjustment(hraEligible, input.hra_area, entitlementBasic30_06, primary.next_step);

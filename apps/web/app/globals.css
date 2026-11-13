@@ -155,6 +155,31 @@ body {
   @apply border-t border-amber-900/10 pt-4;
 }
 
+@media (min-width: 1280px) {
+  .salary-page-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 19.5rem;
+    column-gap: 1.5rem;
+    row-gap: 1.5rem;
+    align-items: start;
+  }
+
+  .salary-page-main > :not(.salary-help-rail) {
+    grid-column: 1;
+    min-width: 0;
+  }
+
+  .salary-page-main > .salary-help-rail {
+    grid-column: 2;
+    grid-row: 1 / span 80;
+    position: sticky;
+    top: 1rem;
+    align-self: start;
+    max-height: calc(100vh - 2rem);
+    overflow: auto;
+  }
+}
+
 /* Salary calculator — print / save as PDF */
 @media print {
   @page {
@@ -165,6 +190,10 @@ body {
   html,
   body {
     font-size: 11px;
+  }
+
+  .salary-page-main {
+    display: block !important;
   }
 
   .salary-print-root {
@@ -304,9 +333,9 @@ body {
     line-height: 1.35 !important;
   }
 
-  .salary-print-root .salary-print-hero .mt-4 {
-    margin-top: 6px !important;
-    padding: 3px 10px !important;
+  .salary-print-root .salary-print-hero .salary-hero-badge {
+    margin-top: 4px !important;
+    padding: 0 !important;
     font-size: 10px !important;
   }
 

@@ -10,7 +10,6 @@ import {
   SALARY_CALC_LIMIT_CODE,
   calculateStaffArrears,
   formatTaka,
-  isIncrementWithheld,
   asksJoiningDate,
   continuingDrawnBasic,
   salaryStaffNameChangeTooLarge,
@@ -29,12 +28,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  ArrearExtraDeductions,
-  ArrearMonthPicker,
-  NO_ARREAR_EXTRAS,
-  type ArrearExtras,
-} from '@/components/salary/salary-arrears-bill';
+import { ArrearMonthPicker } from '@/components/salary/salary-arrears-bill';
 import { missingSelectClass } from '@/components/salary/salary-arrears-dialog';
 import { SalaryBulkRequestDialog } from '@/components/salary/salary-bill-access';
 import { TrForm15Staff, type TrStaffEntry, type TrStaffOfficeGroup } from '@/components/salary/tr-form-15';
@@ -66,7 +60,6 @@ interface StaffForm {
   housingStatus: HousingStatus;
   /** '' until chosen; required for house rent. */
   hraArea: HraArea | '';
-  extras: ArrearExtras;
   joiningDate: string;
   exceptional: ExceptionalDraft;
 }
@@ -79,17 +72,9 @@ const EMPTY_FORM: StaffForm = {
   oldPay: 0,
   housingStatus: 'hra_eligible',
   hraArea: '',
-  extras: NO_ARREAR_EXTRAS,
   joiningDate: '',
   exceptional: EMPTY_EXCEPTIONAL_DRAFT,
 };
-
-function nextStage(grade: PayGrade, oldPay: number, joiningDate: string | null): number {
-  if (isIncrementWithheld(grade, oldPay, joiningDate)) return oldPay;
-  const scale = NPS_2015[grade];
-  const i = scale.indexOf(oldPay);
-  return i >= 0 && i < scale.length - 1 ? scale[i + 1]! : oldPay;
-}
 
 function toForm(s: SalaryStaffRecord): StaffForm {
   return {
@@ -100,9 +85,8 @@ function toForm(s: SalaryStaffRecord): StaffForm {
     oldPay: s.old_pay,
     housingStatus: s.housing_status,
     hraArea: s.hra_area,
-    extras: { excess_rr: Boolean(s.excess_rr), excess_puja: Boolean(s.excess_puja) },
     joiningDate: s.joining_date ?? '',
-    exceptional: exceptionalFromIssues(s.exceptional),
+    exceptional: exceptionalFromIssues(s.exceptional, Boolean(s.excess_puja)),
   };
 }
 
@@ -153,7 +137,8 @@ function StaffDialog({
       old_pay: v.oldPay,
       housing_status: v.housingStatus,
       hra_area: v.hraArea || 'other',
-      ...v.extras,
+      excess_rr: false,
+      excess_puja: v.exceptional.excessPuja,
       joining_date: askJoining ? v.joiningDate : null,
       exceptional: exceptionalToStaffDto(
         v.exceptional,
@@ -284,6 +269,8 @@ function StaffDialog({
                 : 0
             }
             currentGrade={v.grade}
+            oldPay={v.oldPay}
+            joiningDate={askJoining ? v.joiningDate : ''}
             onChange={(exceptional) => setV((p) => ({ ...p, exceptional }))}
           />
           <fieldset className="space-y-2">
@@ -336,15 +323,6 @@ function StaffDialog({
           <p className="rounded-md border border-border bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700">
             {t.staffSpecialNote}
           </p>
-          {v.grade && v.oldPay > 0 ? (
-            <ArrearExtraDeductions
-              locale={locale}
-              oldPay={v.oldPay}
-              nextStep={nextStage(v.grade, v.oldPay, askJoining ? v.joiningDate : null)}
-              value={v.extras}
-              onChange={(extras) => setV((p) => ({ ...p, extras }))}
-            />
-          ) : null}
           {error ? <Alert variant="error">{error}</Alert> : null}
         </div>
 

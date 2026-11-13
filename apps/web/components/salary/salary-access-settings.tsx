@@ -9,6 +9,7 @@ import type {
   SalaryFreeCalcsSettingsRecord,
   SalaryFreeTrFormSettingsRecord,
   SalaryOfficeSettingsRecord,
+  SalaryTrNotice,
 } from '@ibas/shared-types';
 import {
   SALARY_DEFAULT_BULK_SIZE,
@@ -190,6 +191,70 @@ function OfficeSettingsEditor() {
             </div>
             <Button type="button" variant={allowed ? 'outline' : 'default'} disabled={saving} onClick={() => void save(!allowed)}>
               {saving ? 'Saving…' : allowed ? 'Hide Others' : 'Show Others'}
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function TrNoticeVisibilityEditor() {
+  const [shown, setShown] = useState<boolean | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    apiFetch<{ data: SalaryTrNotice }>('/salary/admin/help/tr-notice')
+      .then((res) => setShown(res.data.shown !== false))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'));
+  }, []);
+
+  async function save(next: boolean) {
+    setSaving(true);
+    setStatus('');
+    setError('');
+    try {
+      const res = await apiFetch<{ data: SalaryTrNotice }>('/salary/admin/help/tr-notice/visibility', {
+        method: 'PUT',
+        body: JSON.stringify({ shown: next }),
+      });
+      setShown(res.data.shown !== false);
+      setStatus(
+        res.data.shown === false
+          ? 'Hidden. Free T.R. Form downloads go straight to the form details.'
+          : 'Shown. Free T.R. Form downloads open Before the T.R. Form first.',
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Before the T.R. Form</CardTitle>
+        <CardDescription>
+          Show or hide the notice after Download free T.R. Form. Approved T.R. downloads skip this notice. The text is
+          written under Salary help → T.R. Form notice.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {status ? <Alert variant="success">{status}</Alert> : null}
+        {error ? <Alert variant="error">{error}</Alert> : null}
+        {shown === null ? (
+          error ? null : <p className="text-sm text-muted">Loading…</p>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="font-medium">Free T.R. notice:</span>
+              {shown ? <Badge variant="success">Shown</Badge> : <Badge variant="secondary">Hidden</Badge>}
+            </div>
+            <Button type="button" variant={shown ? 'outline' : 'default'} disabled={saving} onClick={() => void save(!shown)}>
+              {saving ? 'Saving…' : shown ? 'Hide notice' : 'Show notice'}
             </Button>
           </div>
         )}
@@ -554,6 +619,7 @@ export function SalaryAccessSettings() {
       <BulkSizeEditor />
       <OfficeSettingsEditor />
       <FreeCalcsEditor />
+      <TrNoticeVisibilityEditor />
       <FreeTrFormEditor />
       <ContactsEditor />
     </div>

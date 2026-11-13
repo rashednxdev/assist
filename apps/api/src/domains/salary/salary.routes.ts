@@ -14,6 +14,7 @@ import {
   myPrintReportHandler,
   searchBillPassingOfficesHandler,
   setMyAccountingOfficeHandler,
+  saveMyBillOfficeNameHandler,
   saveMyOperationCodeHandler,
   getSalaryFreeCalcsHandler,
   updateSalaryFreeCalcsHandler,
@@ -56,6 +57,23 @@ import {
   updateSalaryFreeTrFormHandler,
   updateSalaryOfficeSettingsHandler,
 } from './salary.controller.js';
+import {
+  adminCreateSalaryCircularHandler,
+  adminCreateSalaryFaqHandler,
+  adminDeleteSalaryCircularHandler,
+  adminDeleteSalaryFaqHandler,
+  adminListSalaryCircularsHandler,
+  adminListSalaryFaqsHandler,
+  adminUpdateSalaryCircularHandler,
+  adminUpdateSalaryFaqHandler,
+  adminUpdateSalaryCalcGuideHandler,
+  adminSetSalaryTrNoticeShownHandler,
+  adminUpdateSalaryTrNoticeHandler,
+  askSalaryQuestionHandler,
+  getSalaryCalcGuideHandler,
+  getSalaryHelpHandler,
+  getSalaryTrNoticeHandler,
+} from './salary-help.controller.js';
 
 export const salaryRouter = Router();
 
@@ -75,6 +93,23 @@ salaryRouter.post('/calculate-all-phases', publicLimit, asyncHandler(calculateAl
 salaryRouter.post('/pdf', publicLimit, asyncHandler(trackSalaryPdfHandler));
 salaryRouter.get('/public/joined-offices', publicLimit, asyncHandler(salaryJoinedOfficesHandler));
 
+const askLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (_req, res, _next, options) => {
+    res.status(options.statusCode).json({
+      error: { code: 'RATE_LIMITED', message: 'Too many questions. Please wait and try again.' },
+    });
+  },
+});
+
+salaryRouter.get('/help', authenticate, asyncHandler(getSalaryHelpHandler));
+salaryRouter.get('/help/guide', authenticate, asyncHandler(getSalaryCalcGuideHandler));
+salaryRouter.get('/help/tr-notice', authenticate, asyncHandler(getSalaryTrNoticeHandler));
+salaryRouter.post('/help/questions', authenticate, askLimit, asyncHandler(askSalaryQuestionHandler));
+
 salaryRouter.get('/admin/stats', authenticate, requireAdmin, asyncHandler(getSalaryStatsHandler));
 
 salaryRouter.get('/office', authenticate, asyncHandler(getMySalaryOfficeHandler));
@@ -83,6 +118,7 @@ salaryRouter.get('/office/others', authenticate, asyncHandler(searchOtherOffices
 salaryRouter.put('/office', authenticate, publicLimit, asyncHandler(saveMySalaryOfficeHandler));
 salaryRouter.get('/office/bill-passing', authenticate, asyncHandler(searchBillPassingOfficesHandler));
 salaryRouter.put('/office/accounting', authenticate, publicLimit, asyncHandler(setMyAccountingOfficeHandler));
+salaryRouter.put('/office/bill-name', authenticate, publicLimit, asyncHandler(saveMyBillOfficeNameHandler));
 salaryRouter.put('/office/operation-code', authenticate, publicLimit, asyncHandler(saveMyOperationCodeHandler));
 salaryRouter.get('/access', authenticate, asyncHandler(getMyBillAccessHandler));
 salaryRouter.get('/my-downloads', authenticate, asyncHandler(myPrintReportHandler));
@@ -135,3 +171,27 @@ salaryRouter.put(
   asyncHandler(adminSetAccountingOfficeHandler),
 );
 salaryRouter.delete('/admin/offices/:userId', authenticate, requireAdmin, asyncHandler(adminResetSalaryOfficeHandler));
+
+salaryRouter.get('/admin/help/guide', authenticate, requireAdmin, asyncHandler(getSalaryCalcGuideHandler));
+salaryRouter.put('/admin/help/guide', authenticate, requireAdmin, asyncHandler(adminUpdateSalaryCalcGuideHandler));
+salaryRouter.get('/admin/help/tr-notice', authenticate, requireAdmin, asyncHandler(getSalaryTrNoticeHandler));
+salaryRouter.put('/admin/help/tr-notice', authenticate, requireAdmin, asyncHandler(adminUpdateSalaryTrNoticeHandler));
+salaryRouter.put(
+  '/admin/help/tr-notice/visibility',
+  authenticate,
+  requireAdmin,
+  asyncHandler(adminSetSalaryTrNoticeShownHandler),
+);
+salaryRouter.get('/admin/help/questions', authenticate, requireAdmin, asyncHandler(adminListSalaryFaqsHandler));
+salaryRouter.post('/admin/help/questions', authenticate, requireAdmin, asyncHandler(adminCreateSalaryFaqHandler));
+salaryRouter.put('/admin/help/questions/:id', authenticate, requireAdmin, asyncHandler(adminUpdateSalaryFaqHandler));
+salaryRouter.delete('/admin/help/questions/:id', authenticate, requireAdmin, asyncHandler(adminDeleteSalaryFaqHandler));
+salaryRouter.get('/admin/help/circulars', authenticate, requireAdmin, asyncHandler(adminListSalaryCircularsHandler));
+salaryRouter.post('/admin/help/circulars', authenticate, requireAdmin, asyncHandler(adminCreateSalaryCircularHandler));
+salaryRouter.put('/admin/help/circulars/:id', authenticate, requireAdmin, asyncHandler(adminUpdateSalaryCircularHandler));
+salaryRouter.delete(
+  '/admin/help/circulars/:id',
+  authenticate,
+  requireAdmin,
+  asyncHandler(adminDeleteSalaryCircularHandler),
+);

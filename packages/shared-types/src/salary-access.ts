@@ -326,6 +326,12 @@ export interface SalaryOfficeRecord {
 }
 
 /** Optional institutional / operation code (up to 7 digits) printed on T.R. Form 13 / 15. */
+/** Office name typed on the T.R. Form. Empty leaves the saved name unchanged. */
+export const saveSalaryBillOfficeNameSchema = z.object({
+  office_name: z.string().trim().max(200, 'Office name is too long').default(''),
+});
+export type SaveSalaryBillOfficeNameDto = z.infer<typeof saveSalaryBillOfficeNameSchema>;
+
 export const updateSalaryOperationCodeSchema = z.object({
   operation_code: z
     .string()

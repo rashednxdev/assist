@@ -266,58 +266,6 @@ export function oneTimeDeductions(
   return rows;
 }
 
-/** Tick boxes for the excess Rest & Recreation (1 increment) and Puja bonus (2 increments) deductions. */
-export function ArrearExtraDeductions({
-  locale,
-  oldPay,
-  nextStep,
-  value,
-  onChange,
-}: {
-  locale: SalaryLocale;
-  oldPay: number;
-  nextStep: number;
-  value: ArrearExtras;
-  onChange: (value: ArrearExtras) => void;
-}) {
-  const t = salaryCopy(locale);
-  const amt = (n: number) => localNum(locale, formatTaka(n));
-  const increment = nextStep - oldPay;
-  const options: Array<{ key: keyof ArrearExtras; label: string; rule: string }> = [
-    { key: 'excess_rr', label: t.arrExcessRr, rule: t.arrExcessRrRule(amt(increment)) },
-    { key: 'excess_puja', label: t.arrExcessPuja, rule: t.arrExcessPujaRule(amt(increment), amt(increment * 2)) },
-  ];
-  return (
-    <div className="space-y-2 rounded-xl border border-rose-200 bg-rose-50/60 px-3 py-2.5 print:hidden">
-      <p className="text-sm font-semibold text-rose-900">{t.arrExtraTitle}</p>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {options.map((o) => (
-          <label
-            key={o.key}
-            className={`flex cursor-pointer items-start gap-2 rounded-lg border bg-white px-3 py-2 text-sm ${
-              value[o.key] ? 'border-rose-400 ring-1 ring-rose-300' : 'border-rose-100'
-            }`}
-          >
-            <input
-              type="checkbox"
-              className="mt-0.5 h-4 w-4 shrink-0 accent-rose-600"
-              checked={value[o.key]}
-              onChange={(e) => onChange({ ...value, [o.key]: e.target.checked })}
-            />
-            <span>
-              <span className="block font-medium text-slate-800">{o.label}</span>
-              <span className="block font-mono text-xs text-rose-800">− {o.rule}</span>
-            </span>
-          </label>
-        ))}
-      </div>
-      <p className="text-xs text-slate-600">
-        {increment > 0 ? t.arrIncrementCalc(amt(nextStep), amt(oldPay), amt(increment)) : t.arrNoIncrement}
-      </p>
-    </div>
-  );
-}
-
 /** Arrear month chips with Past / All / Clear shortcuts and an optional day window. */
 export function ArrearMonthPicker({
   locale,
@@ -489,7 +437,6 @@ export function SalaryArrearsBill({
   duration,
   onDurationChange,
   extras,
-  onExtrasChange,
   deductStamp,
   onDeductStampChange,
   onTrForm,
@@ -511,7 +458,6 @@ export function SalaryArrearsBill({
   duration: SalaryBillDuration | null;
   onDurationChange: (duration: SalaryBillDuration | null) => void;
   extras: ArrearExtras;
-  onExtrasChange: (extras: ArrearExtras) => void;
   /** Stamp duty ৳ 10 is deducted unless the user clears this. */
   deductStamp: boolean;
   onDeductStampChange: (deduct: boolean) => void;
@@ -542,7 +488,8 @@ export function SalaryArrearsBill({
           joining_date: joiningDate,
           exceptional,
           duration,
-          ...extras,
+          excess_rr: false,
+          excess_puja: extras.excess_puja,
         }),
         error: '',
       };
@@ -574,13 +521,6 @@ export function SalaryArrearsBill({
 
         {result ? (
           <>
-            <ArrearExtraDeductions
-              locale={locale}
-              oldPay={result.old_pay}
-              nextStep={result.next_step}
-              value={extras}
-              onChange={onExtrasChange}
-            />
             <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm print:hidden">
               <input
                 type="checkbox"

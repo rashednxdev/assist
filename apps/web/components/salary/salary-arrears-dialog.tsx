@@ -217,6 +217,8 @@ export function SalaryArrearsDialog({
                 : 0
             }
             currentGrade={v.grade}
+            oldPay={v.oldPay}
+            joiningDate={v.joiningDate}
             onChange={(exceptional) => {
               setError('');
               setV((prev) => ({ ...prev, exceptional }));

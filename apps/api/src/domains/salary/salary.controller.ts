@@ -13,6 +13,7 @@ import {
   requestSalaryBillsSchema,
   salaryStaffOfficeSchema,
   salaryStaffSchema,
+  saveSalaryBillOfficeNameSchema,
   saveSalaryOfficeSchema,
   setSalaryAccountingOfficeSchema,
   recordSalaryPaymentSchema,
@@ -87,6 +88,11 @@ export async function saveMySalaryOfficeHandler(req: AuthRequest, res: Response)
 export async function setMyAccountingOfficeHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = parseBody(setSalaryAccountingOfficeSchema, req.body);
   res.json({ data: await officeService.setMyAccountingOffice(authUser(req), dto) });
+}
+
+export async function saveMyBillOfficeNameHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = parseBody(saveSalaryBillOfficeNameSchema, req.body);
+  res.json({ data: await officeService.saveMyBillOfficeName(authUser(req).id, dto) });
 }
 
 export async function saveMyOperationCodeHandler(req: AuthRequest, res: Response): Promise<void> {

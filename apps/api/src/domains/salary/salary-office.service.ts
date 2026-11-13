@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import {
-  SALARY_OFFICE_REQUIRED_CODE,
+  SALARY_OTHERS_FREE_CALCS,
   isSalaryBillPassingType,
   salaryFreeCalcsFor,
   salaryNeedsAccountingOffice,
@@ -16,6 +16,7 @@ import {
   type SalaryOtherOfficeSuggestion,
   type SalaryStaffOfficeDto,
   type SalaryUserOfficeAdminRow,
+  type SaveSalaryBillOfficeNameDto,
   type SaveSalaryOfficeDto,
   type SetSalaryAccountingOfficeDto,
   type UpdateSalaryFreeCalcsDto,
@@ -23,7 +24,7 @@ import {
   type UpdateSalaryOperationCodeDto,
 } from '@ibas/shared-types';
 import type { AuthUser } from '../../middleware/auth.js';
-import { AppError, badRequest, forbidden, notFound } from '../../shared/errors/AppError.js';
+import { badRequest, forbidden, notFound } from '../../shared/errors/AppError.js';
 import { OfficeType } from '../org/models/OfficeType.model.js';
 import { departmentOf, officeIndex, parentPath, type IndexedOffice } from '../org/org.service.js';
 import { User } from '../users/models/User.model.js';
@@ -121,7 +122,7 @@ function toRecord(
       other_office_name_bn: '',
       other_office_kind: null,
       label: officeName(office),
-      bill_office_name: '',
+      bill_office_name: doc.other_office_name_bn?.trim() || '',
       bill_office_editable: true,
       office_type: officeType,
       accounting_office: needsAccounting ? accounting : null,
@@ -146,7 +147,7 @@ function toRecord(
     other_office_kind: otherKind,
     label: doc.other_office_name,
     bill_office_name: doc.other_office_name_bn ?? '',
-    bill_office_editable: Boolean(doc.office_name_editable),
+    bill_office_editable: true,
     office_type: null,
     accounting_office: needsAccounting ? accounting : null,
     needs_accounting_office: needsAccounting && !accounting,
@@ -163,6 +164,43 @@ function needsBanglaName(rec: SalaryOfficeRecord | null): boolean {
 
 export async function getMySalaryOffice(userId: string): Promise<SalaryOfficeRecord | null> {
   const [map, types, doc] = await Promise.all([officeIndex(), officeTypeShorts(), SalaryUserOffice.findOne({ user_id: userId })]);
+  return toRecord(map, types, doc);
+}
+
+/**
+ * Saves the office name typed on a T.R. Form.
+ * The first name creates an Others office; a later name replaces it. A blank name does not clear it.
+ */
+export async function saveMyBillOfficeName(
+  userId: string,
+  dto: SaveSalaryBillOfficeNameDto,
+): Promise<SalaryOfficeRecord | null> {
+  const name = dto.office_name.trim();
+  const [map, types] = await Promise.all([officeIndex(), officeTypeShorts()]);
+  if (!name) {
+    return toRecord(map, types, await SalaryUserOffice.findOne({ user_id: userId }));
+  }
+  const doc = await SalaryUserOffice.findOneAndUpdate(
+    { user_id: userId },
+    {
+      $set: {
+        other_office_name: name,
+        other_office_name_bn: name,
+        office_name_editable: true,
+        updated_at: new Date(),
+      },
+      $setOnInsert: {
+        user_id: new mongoose.Types.ObjectId(userId),
+        circle_id: null,
+        office_id: null,
+        other_office_kind: null,
+        accounting_office_id: null,
+        office_admin: false,
+        operation_code: '',
+      },
+    },
+    { upsert: true, new: true, setDefaultsOnInsert: true },
+  );
   return toRecord(map, types, doc);
 }
 
@@ -307,14 +345,9 @@ export async function salaryOfficeContacts(
   };
 }
 
-export async function assertSalaryOfficeChosen(userId: string): Promise<void> {
-  const rec = await getMySalaryOffice(userId);
-  if (!rec) {
-    throw new AppError(403, SALARY_OFFICE_REQUIRED_CODE, 'Select your office on the salary page first.');
-  }
-  if (rec.needs_accounting_office) {
-    throw new AppError(403, SALARY_OFFICE_REQUIRED_CODE, 'Select your bill-passing office on the salary page first.');
-  }
+/** Office is optional. Users type it later on the T.R. Form, and can leave it blank. */
+export async function assertSalaryOfficeChosen(_userId: string): Promise<void> {
+  return;
 }
 
 /** Order among the users who chose the same listed office (1 = first); a reset office goes to the back. */
@@ -349,7 +382,7 @@ async function freeCalcsOf(
   rec: SalaryOfficeRecord | null,
   flat: number | null,
 ): Promise<{ rank: number | null; free: number }> {
-  if (!doc || !rec) return { rank: null, free: 0 };
+  if (!doc || !rec) return { rank: null, free: flat ?? SALARY_OTHERS_FREE_CALCS };
   const rank = await officeRank(doc);
   if (flat != null) return { rank, free: flat };
   return { rank, free: salaryFreeCalcsFor({ is_other: !rec.office, office_type: rec.office_type, rank: rank ?? 1 }) };

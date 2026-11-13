@@ -6,6 +6,7 @@ import {
   NPS_2015,
   NO_EXCEPTIONAL_ISSUES,
   asksSubstantiveGrade,
+  isIncrementWithheld,
   formatTaka,
   isIsoDate,
   isNps2015Basic,
@@ -40,6 +41,8 @@ export type ExceptionalDraft = {
   payChangeNps2015Fixed: boolean;
   customStartOn: boolean;
   arrearStartDate: string;
+  /** Excess festival (Puja) bonus: two NPS 2015 increments, deducted once. */
+  excessPuja: boolean;
 };
 
 export const EMPTY_EXCEPTIONAL_DRAFT: ExceptionalDraft = {
@@ -53,13 +56,17 @@ export const EMPTY_EXCEPTIONAL_DRAFT: ExceptionalDraft = {
   payChangeNps2015Fixed: true,
   customStartOn: false,
   arrearStartDate: '',
+  excessPuja: false,
 };
 
-export function exceptionalFromIssues(issues: SalaryExceptionalIssues | null | undefined): ExceptionalDraft {
+export function exceptionalFromIssues(
+  issues: SalaryExceptionalIssues | null | undefined,
+  excessPuja = false,
+): ExceptionalDraft {
   const ex = issues ?? NO_EXCEPTIONAL_ISSUES;
   const pay = ex.pay_change ?? null;
   const start = ex.arrear_start_date ?? '';
-  const hasAny = Boolean(ex.increment_exempt || pay || (start && start > '2026-07-01'));
+  const hasAny = Boolean(ex.increment_exempt || pay || (start && start > '2026-07-01') || excessPuja);
   const promoGrade = pay ? (pay.grade as PayGrade) : null;
   const postSub =
     pay && promoGrade != null && pay.substantive_grade != null
@@ -78,6 +85,7 @@ export function exceptionalFromIssues(issues: SalaryExceptionalIssues | null | u
     payChangeNps2015Fixed: payChangeNps2015Fixed(pay),
     customStartOn: Boolean(start && start > '2026-07-01'),
     arrearStartDate: start && start > '2026-07-01' ? start : '',
+    excessPuja,
   };
 }
 
@@ -129,7 +137,7 @@ export function exceptionalToIssues(
     draft.customStartOn && isIsoDate(draft.arrearStartDate) && draft.arrearStartDate > '2026-07-01'
       ? draft.arrearStartDate
       : null;
-  if (!draft.incrementExempt && !pay_change && !arrear_start_date) return null;
+  if (!draft.incrementExempt && !pay_change && !arrear_start_date && !draft.excessPuja) return null;
   return {
     increment_exempt: draft.incrementExempt,
     pay_change,
@@ -178,7 +186,7 @@ function validateDraft(
   currentGrade: PayGrade | null,
 ): string | null {
   if (!draft.enabled) return null;
-  if (!draft.incrementExempt && !draft.payChangeOn && !draft.customStartOn) {
+  if (!draft.incrementExempt && !draft.payChangeOn && !draft.customStartOn && !draft.excessPuja) {
     return t.exNeedOne;
   }
   if (draft.payChangeOn) {
@@ -205,13 +213,29 @@ function validateDraft(
   return null;
 }
 
-/** Checkbox that opens a dialog for increment exemption, pay change, and custom arrears start. */
+function festivalIncrementAmount(
+  grade: PayGrade | null,
+  oldPay: number,
+  joiningDate: string,
+  exempt: boolean,
+): number {
+  if (grade == null || oldPay <= 0 || exempt) return 0;
+  if (isIncrementWithheld(grade, oldPay, joiningDate || null)) return 0;
+  const scale = NPS_2015[grade];
+  const index = scale.indexOf(oldPay);
+  const next = index >= 0 && index < scale.length - 1 ? scale[index + 1]! : oldPay;
+  return Math.max(0, next - oldPay);
+}
+
+/** Checkbox that opens a dialog for increment exemption, pay change, festival bonus, and custom arrears start. */
 export function SalaryExceptionalIssuesField({
   locale,
   value,
   onChange,
   continuingBasic = 0,
   currentGrade = null,
+  oldPay = 0,
+  joiningDate = '',
 }: {
   locale: SalaryLocale;
   value: ExceptionalDraft;
@@ -220,6 +244,9 @@ export function SalaryExceptionalIssuesField({
   continuingBasic?: number;
   /** Pre-promotion grade — promotion / higher scale must be an upper grade of this. */
   currentGrade?: PayGrade | null;
+  /** NPS 2015 basic on 30-06-2026, used for the festival-bonus deduction. */
+  oldPay?: number;
+  joiningDate?: string;
 }) {
   const t = salaryCopy(locale);
   const [open, setOpen] = useState(false);
@@ -238,6 +265,11 @@ export function SalaryExceptionalIssuesField({
     nps2015Fixed && draft.payChangeGrade != null
       ? payChangeDrawnBasics(draft.payChangeGrade, continuingBasic || null, true)
       : [];
+  const festivalIncrement = festivalIncrementAmount(currentGrade, oldPay, joiningDate, draft.incrementExempt);
+  const festivalRule =
+    festivalIncrement > 0
+      ? t.arrExcessPujaRule(num(formatTaka(festivalIncrement)), num(formatTaka(festivalIncrement * 2)))
+      : t.arrNoIncrement;
 
   useEffect(() => {
     if (open) {
@@ -338,6 +370,7 @@ export function SalaryExceptionalIssuesField({
           {summary.arrear_start_date ? (
             <p>· {t.exStartSummary(num(summary.arrear_start_date.split('-').reverse().join('-')))}</p>
           ) : null}
+          {value.excessPuja ? <p>· {t.arrExcessPuja}</p> : null}
           <button type="button" className="font-medium text-primary hover:underline" onClick={() => setOpen(true)}>
             {t.exEdit}
           </button>
@@ -590,6 +623,19 @@ export function SalaryExceptionalIssuesField({
                   </div>
                 ) : null}
               </div>
+
+              <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border bg-slate-50/80 p-3 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={draft.excessPuja}
+                  onChange={(e) => setDraft((d) => ({ ...d, excessPuja: e.target.checked }))}
+                />
+                <span>
+                  <span className="font-semibold">{t.arrExcessPuja}</span>
+                  <span className="mt-0.5 block font-mono text-xs text-rose-800">− {festivalRule}</span>
+                </span>
+              </label>
 
               <div className="space-y-2 rounded-lg border border-border p-3">
                 <label className="flex cursor-pointer items-start gap-2 text-sm">

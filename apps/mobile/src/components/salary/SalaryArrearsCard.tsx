@@ -18,6 +18,8 @@ import {
   monthsCoveringDuration,
   ARREAR_FIRST_DATE,
   continuingDrawnBasic,
+  isIncrementWithheld,
+  NPS_2015,
   openingArrearMonths,
   payChangeDrawnBasics,
   payChangeGradeOptions,
@@ -142,7 +144,7 @@ export function SalaryArrearsCard({
           duration,
           joining_date: isIsoDate(joiningDate) ? joiningDate : null,
           exceptional: issues,
-          excess_rr: extras.excess_rr,
+          excess_rr: false,
           excess_puja: extras.excess_puja,
         }),
         error: '',
@@ -413,6 +415,11 @@ export function SalaryArrearsCard({
               style={styles.input}
             />
           ) : null}
+          <CheckRow
+            label={`${t.arrExcessPuja}\n− ${festivalBonusRule(t, amt, grade, oldPay, joiningDate, Boolean(issues.increment_exempt))}`}
+            value={extras.excess_puja}
+            onChange={(on) => setExtras({ excess_rr: false, excess_puja: on })}
+          />
         </View>
 
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -427,8 +434,6 @@ export function SalaryArrearsCard({
             tk={tk}
             result={result}
             hraArea={hraArea}
-            extras={extras}
-            onExtras={setExtras}
             deductStamp={deductStamp}
             onDeductStamp={setDeductStamp}
             downloading={Boolean(downloading)}
@@ -522,6 +527,23 @@ function sameMath(a: SalaryArrearMonthRow, b: SalaryArrearMonthRow): boolean {
   );
 }
 
+function festivalBonusRule(
+  t: SalaryCopy,
+  amt: (n: number) => string,
+  grade: PayGrade,
+  oldPay: number,
+  joiningDate: string,
+  exempt: boolean,
+): string {
+  if (exempt || isIncrementWithheld(grade, oldPay, isIsoDate(joiningDate) ? joiningDate : null)) return t.arrNoIncrement;
+  const scale = NPS_2015[grade];
+  const index = scale.indexOf(oldPay);
+  const next = index >= 0 && index < scale.length - 1 ? scale[index + 1]! : oldPay;
+  const increment = Math.max(0, next - oldPay);
+  if (increment <= 0) return t.arrNoIncrement;
+  return t.arrExcessPujaRule(amt(increment), amt(increment * 2));
+}
+
 function BillBody({
   locale,
   t,
@@ -531,8 +553,6 @@ function BillBody({
   tk,
   result,
   hraArea,
-  extras,
-  onExtras,
   deductStamp,
   onDeductStamp,
   downloading,
@@ -546,8 +566,6 @@ function BillBody({
   tk: (n: number) => string;
   result: SalaryArrearResult;
   hraArea: HraArea;
-  extras: { excess_rr: boolean; excess_puja: boolean };
-  onExtras: (next: { excess_rr: boolean; excess_puja: boolean }) => void;
   deductStamp: boolean;
   onDeductStamp: (next: boolean) => void;
   downloading: boolean;
@@ -555,7 +573,6 @@ function BillBody({
 }) {
   const stamp = deductStamp ? 10 : 0;
   const payable = result.total_net_arrear - stamp;
-  const increment = result.next_step - result.old_pay;
   const groups: Array<{ lead: SalaryArrearMonthRow; same: SalaryArrearMonthRow[] }> = [];
   for (const row of result.rows) {
     const last = groups[groups.length - 1];
@@ -624,19 +641,6 @@ function BillBody({
 
   return (
     <>
-      <View style={styles.exBox}>
-        <Text style={styles.groupLabel}>{t.arrExtraTitle}</Text>
-        <CheckRow
-          label={`${t.arrExcessRr}\n− ${increment > 0 ? t.arrExcessRrRule(amt(increment)) : t.arrNoIncrement}`}
-          value={extras.excess_rr}
-          onChange={(on) => onExtras({ ...extras, excess_rr: on })}
-        />
-        <CheckRow
-          label={`${t.arrExcessPuja}\n− ${increment > 0 ? t.arrExcessPujaRule(amt(increment), amt(increment * 2)) : t.arrNoIncrement}`}
-          value={extras.excess_puja}
-          onChange={(on) => onExtras({ ...extras, excess_puja: on })}
-        />
-      </View>
       <View style={styles.exBox}>
         <CheckRow label={t.stampDeduct} value={deductStamp} onChange={onDeductStamp} />
         <Text style={styles.tiny}>{t.stampDeductHint}</Text>

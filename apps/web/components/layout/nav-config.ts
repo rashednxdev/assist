@@ -48,6 +48,14 @@ export const salaryPrimaryNav: NavItem[] = [
   { href: '/settings/profile', label: 'Settings', icon: Settings },
 ];
 
+/** Top-bar link for platform admins, same level as Learning. */
+export const salaryBillAccessNavItem: NavItem = {
+  href: '/admin/salary-access',
+  label: 'Salary bill access',
+  icon: Wallet,
+  requirePlatformAdmin: true,
+};
+
 /** Top nav when Learning is granted (Salary stays available). */
 export const learningPrimaryNav: NavItem[] = [
   { href: '/learning', label: 'Learning', icon: LayoutDashboard },
@@ -132,6 +140,7 @@ export const navGroups: NavGroup[] = [
         requireCreate: true,
       },
       { href: '/admin/salary-access', label: 'Salary bill access', icon: Wallet, requirePlatformAdmin: true },
+      { href: '/admin/salary-help', label: 'Salary help', icon: HelpCircle, requirePlatformAdmin: true },
     ],
   },
 ];

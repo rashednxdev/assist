@@ -136,7 +136,11 @@ export function SalaryPrintDialog({
               autoFocus={!lockedOffice}
               className={lockedOffice ? 'cursor-not-allowed bg-slate-100' : undefined}
             />
-            {lockedOffice ? <p className="text-xs text-muted">{t.officeFixedOnBill}</p> : null}
+            {lockedOffice ? (
+              <p className="text-xs text-muted">{t.officeFixedOnBill}</p>
+            ) : (
+              <p className="text-xs text-muted">{t.officeOptionalHint}</p>
+            )}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="print-employee">

@@ -4,16 +4,16 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowRight,
-  Building2,
   Calculator,
   ChevronDown,
   Download,
   HeartHandshake,
+  CircleHelp,
   History,
   LayoutDashboard,
   LogOut,
+  Wallet,
   ReceiptText,
-  UserRound,
   Share2,
   Users,
 } from 'lucide-react';
@@ -21,6 +21,10 @@ import { useRouter } from 'next/navigation';
 import { logoutRequest } from '@/lib/auth';
 import { hasLearningWebAccess, LEARNING_HOME } from '@/lib/learning-access';
 import { useSalaryUser } from '@/components/salary/salary-auth-gate';
+import { SalaryHelpRail } from '@/components/salary/salary-help-rail';
+import { SalaryTrNoticeDialog, trNoticeIsActive } from '@/components/salary/salary-tr-notice-dialog';
+import { readSalaryLocale, writeSalaryLocale } from '@/lib/salary-locale';
+import { isPlatformAdmin } from '@/lib/capabilities';
 import { useSalaryOffice } from '@/components/salary/salary-office-gate';
 import {
   NPS_2015,
@@ -53,6 +57,7 @@ import {
   type SalaryBillKind,
   SALARY_BILL_LIMIT_CODE,
   SALARY_FREE_TR_NID,
+  type SalaryTrNotice,
   SALARY_CALC_LIMIT_CODE,
   SALARY_FREE_ARREARS_CALCS,
   salaryCanSeeDownloads,
@@ -82,7 +87,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
-import { NO_ARREAR_EXTRAS, SalaryArrearsBill, type ArrearExtras } from '@/components/salary/salary-arrears-bill';
+import { SalaryArrearsBill } from '@/components/salary/salary-arrears-bill';
 import { STAMP_DUTY } from '@/components/salary/tr-form-parts';
 import { SalaryStaffBill } from '@/components/salary/salary-staff-bill';
 import { TrForm13 } from '@/components/salary/tr-form-13';
@@ -603,11 +608,9 @@ function SalarySummaryCard({
 
 export default function SalaryOn2026Page() {
   const [locale, setLocale] = useState<SalaryLocale>('bn');
-  const { office: salaryOffice, canChange: canChangeOffice, changeOffice, setOffice: setSalaryOffice } =
-    useSalaryOffice();
+  const { office: salaryOffice, setOffice: setSalaryOffice } = useSalaryOffice();
   const billOfficeName = salaryOffice?.bill_office_name ?? '';
   const lockedOfficeName = salaryOffice?.bill_office_editable ? '' : billOfficeName;
-  const isOthersOffice = Boolean(salaryOffice && !salaryOffice.office);
   const [grade, setGrade] = useState<PayGrade | null>(null);
   const [oldPay, setOldPay] = useState(0);
   const [housingStatus, setHousingStatus] = useState<HousingStatus>('hra_eligible');
@@ -627,9 +630,10 @@ export default function SalaryOn2026Page() {
   const [showStaff, setShowStaff] = useState(false);
   const [arrearMonths, setArrearMonths] = useState<string[]>(() => openingArrearMonths());
   const [billDuration, setBillDuration] = useState<SalaryBillDuration | null>(null);
-  const [arrearExtras, setArrearExtras] = useState<ArrearExtras>(NO_ARREAR_EXTRAS);
   const [exceptional, setExceptional] = useState<ExceptionalDraft>(EMPTY_EXCEPTIONAL_DRAFT);
   const [printDialog, setPrintDialog] = useState<PrintTarget | null>(null);
+  const [trNotice, setTrNotice] = useState<SalaryTrNotice | null>(null);
+  const [trNoticeOpen, setTrNoticeOpen] = useState(false);
   const [printMode, setPrintMode] = useState<PrintTarget | null>(null);
   const [printInfo, setPrintInfo] = useState<SalaryPrintInfo>(EMPTY_PRINT_INFO);
   const [shareNote, setShareNote] = useState('');
@@ -649,8 +653,7 @@ export default function SalaryOn2026Page() {
   const router = useRouter();
   const me = useSalaryUser();
   const showLearningLink = hasLearningWebAccess(me);
-  const userName =
-    locale === 'bn' && me?.full_name_bn?.trim() ? me.full_name_bn.trim() : (me?.full_name_en ?? '');
+  const showBillAccessLink = isPlatformAdmin(me);
   const t = salaryCopy(locale);
   const ctx: Ctx = { t, locale };
   const num = (v: string | number) => localNum(locale, v);
@@ -667,6 +670,10 @@ export default function SalaryOn2026Page() {
   const exceptionalIssues = useMemo(
     () => exceptionalToIssues(exceptional, continuingBasicForEx),
     [exceptional, continuingBasicForEx],
+  );
+  const arrearExtras = useMemo(
+    () => ({ excess_rr: false, excess_puja: exceptional.excessPuja }),
+    [exceptional.excessPuja],
   );
   /** The calculators read the area only for house rent, which cannot run until an area is chosen. */
   const calcHraArea: HraArea = hraArea || 'other';
@@ -732,6 +739,21 @@ export default function SalaryOn2026Page() {
   function scrollTo(ref: React.RefObject<HTMLDivElement | null>) {
     setScrollRequest({ ref });
   }
+
+  function changeLocale(next: SalaryLocale) {
+    setLocale(next);
+    writeSalaryLocale(next);
+  }
+
+  useEffect(() => {
+    setLocale(readSalaryLocale());
+  }, []);
+
+  useEffect(() => {
+    apiFetch<{ data: SalaryTrNotice }>('/salary/help/tr-notice')
+      .then((res) => setTrNotice(res.data))
+      .catch(() => setTrNotice(null));
+  }, []);
 
   useEffect(() => {
     if (!scrollRequest) return;
@@ -833,6 +855,8 @@ export default function SalaryOn2026Page() {
         duration: billDuration,
         joining_date: v.joiningDate,
         exceptional: issues,
+        excess_rr: false,
+        excess_puja: v.exceptional.excessPuja,
       }).total_net_arrear;
     } catch (err) {
       return err instanceof Error ? err.message : t.calcError;
@@ -867,7 +891,6 @@ export default function SalaryOn2026Page() {
     if (changed) {
       setResults(null);
       setGross(null);
-      setArrearExtras(NO_ARREAR_EXTRAS);
     }
     setGrade(v.grade);
     setOldPay(v.oldPay);
@@ -978,11 +1001,59 @@ export default function SalaryOn2026Page() {
     setPrintInfo((prev) => (prev.operationCode ? prev : { ...prev, operationCode: code }));
   }, [salaryOffice?.operation_code]);
 
+  function isFreeTrDownload(): boolean {
+    return Boolean(
+      billAccess &&
+        !billAccess.unlimited &&
+        billAccess.remaining <= 0 &&
+        billAccess.free_tr_form === 'available',
+    );
+  }
+
+  function openApprovedTrForm() {
+    if (!billAccess?.can_bill) {
+      setBulkDialog(true);
+      return;
+    }
+    if (isFreeTrDownload()) {
+      openFreeTrForm();
+      return;
+    }
+    setPrintDialog('trform');
+  }
+
+  function openFreeTrForm() {
+    if (trNoticeIsActive(trNotice, locale)) {
+      setTrNoticeOpen(true);
+      return;
+    }
+    setPrintDialog('trform');
+  }
+
   async function confirmPrint(info: SalaryPrintInfo) {
     const target = printDialog;
     setPrintInfo(info);
     setPrintDialog(null);
-    if (isOthersOffice && info.operationCode !== (salaryOffice?.operation_code ?? '')) {
+    let currentOffice = salaryOffice;
+    if (target === 'trform') {
+      const typedOffice = info.office.trim();
+      const savedOffice = (currentOffice?.bill_office_name || currentOffice?.label || '').trim();
+      if (typedOffice && typedOffice !== savedOffice) {
+        try {
+          const res = await apiFetch<{ data: SalaryOfficeRecord | null }>('/salary/office/bill-name', {
+            method: 'PUT',
+            body: JSON.stringify({ office_name: typedOffice }),
+          });
+          if (res.data) {
+            currentOffice = res.data;
+            setSalaryOffice(res.data);
+          }
+        } catch {
+          // This bill still prints the typed name if saving it for next time fails.
+        }
+      }
+    }
+    if (currentOffice && !currentOffice.office && info.operationCode !== (currentOffice.operation_code ?? '')) {
       try {
         const res = await apiFetch<{ data: SalaryOfficeRecord }>(`/salary/office/operation-code`, {
           method: 'PUT',
@@ -1059,13 +1130,20 @@ export default function SalaryOn2026Page() {
       }`}
     >
       <header className="border-b border-emerald-900/10 bg-[#0b3d2e] text-white">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
+        <div className="mx-auto flex max-w-[88rem] items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <Link href="/salary" className="min-w-0">
             <div className="text-sm font-bold tracking-wide">ProAssist</div>
             <div className="text-[11px] text-emerald-100/80">{t.brandSub}</div>
           </Link>
           <div className="flex items-center gap-2">
-            <SalaryLocaleToggle value={locale} onChange={setLocale} />
+            <SalaryLocaleToggle value={locale} onChange={changeLocale} />
+            <Link
+              href="/salary/questions"
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-white/30 bg-white/5 px-2.5 text-sm font-medium text-white hover:bg-white/15 print:hidden"
+            >
+              <CircleHelp className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">{locale === 'bn' ? 'প্রশ্ন' : 'Questions'}</span>
+            </Link>
             <Button
               type="button"
               variant="outline"
@@ -1096,6 +1174,17 @@ export default function SalaryOn2026Page() {
                 <span className="hidden sm:inline">Learning</span>
               </Link>
             ) : null}
+            {showBillAccessLink ? (
+              <Link
+                href="/admin/salary-access"
+                aria-label="Salary bill access"
+                title="Salary bill access"
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-white/30 bg-white/5 px-2.5 text-sm font-medium text-white hover:bg-white/15 print:hidden"
+              >
+                <Wallet className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Salary bill access</span>
+              </Link>
+            ) : null}
             <button
               type="button"
               onClick={() => void handleLogout()}
@@ -1110,40 +1199,22 @@ export default function SalaryOn2026Page() {
       </header>
 
       <div className="salary-print-hero border-b border-emerald-200 bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-600">
-        <div className="mx-auto max-w-5xl px-4 py-8 text-center sm:px-6 sm:py-10">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-100/90">{t.heroKicker}</p>
-          <h1 className="mt-2 text-balance text-2xl font-extrabold leading-snug text-white sm:text-3xl">
-            {t.heroTitle}
-          </h1>
-          <p className="mx-auto mt-4 block w-fit max-w-full rounded-2xl bg-gradient-to-br from-red-600 via-rose-600 to-red-900 px-4 py-1.5 text-sm font-extrabold text-white shadow-md ring-2 ring-white/70">
-            {t.heroBadge}
-          </p>
-          {shareNote ? <p className="mt-2 text-xs text-emerald-100 print:hidden">{shareNote}</p> : null}
-          <p className="mx-auto mt-3 flex w-fit max-w-full flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-full bg-white/10 px-3 py-1.5 text-xs text-emerald-50 ring-1 ring-white/20 print:hidden">
-            <span className="inline-flex min-w-0 items-center gap-1.5">
-              <UserRound className="h-3.5 w-3.5 shrink-0" />
-              <span className="font-semibold">{t.userYour}:</span>
-              <span className="min-w-0 truncate font-medium">{userName || '—'}</span>
-            </span>
-            <span className="hidden h-3 w-px bg-white/30 sm:inline" aria-hidden />
-            <span className="inline-flex min-w-0 items-center gap-1.5">
-              <Building2 className="h-3.5 w-3.5 shrink-0" />
-              <span className="font-semibold">{t.officeYour}:</span>
-              <span className="min-w-0 truncate">{salaryOffice?.label ?? t.officeNotSet}</span>
-            </span>
-            {canChangeOffice ? (
-              <button type="button" onClick={changeOffice} className="font-semibold underline underline-offset-2 hover:text-white">
-                {t.officeChange}
-              </button>
-            ) : null}
-          </p>
+        <div className="mx-auto max-w-[88rem] px-4 py-3 text-center sm:px-6 sm:py-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-100/90">{t.heroKicker}</p>
+          <h1 className="mt-1 text-balance text-lg font-extrabold leading-snug text-white sm:text-xl">{t.heroTitle}</h1>
+          <p className="salary-hero-badge mx-auto mt-1.5 max-w-3xl text-xs font-semibold text-emerald-50 sm:text-sm">{t.heroBadge}</p>
+          {shareNote ? <p className="mt-1 text-xs text-emerald-100 print:hidden">{shareNote}</p> : null}
         </div>
       </div>
 
-      <main className="mx-auto w-full max-w-5xl flex-1 space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+      <main className="salary-page-main mx-auto w-full max-w-[88rem] flex-1 space-y-6 px-4 py-6 sm:px-6 sm:py-8 xl:space-y-0">
         <SalaryPrintMeta t={t} info={printInfo} preparedOn={preparedOn} />
 
-        <Card className="salary-print-hide shadow-sm">
+        <aside className="salary-help-rail salary-print-hide">
+          <SalaryHelpRail locale={locale} isAdmin={isPlatformAdmin(me)} />
+        </aside>
+
+        <Card id="salary-calculator" className="salary-print-hide scroll-mt-4 shadow-sm">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">{t.currentPay}</CardTitle>
           </CardHeader>
@@ -1227,6 +1298,8 @@ export default function SalaryOn2026Page() {
                   value={exceptional}
                   continuingBasic={continuingBasicForEx}
                   currentGrade={grade}
+                  oldPay={oldPay}
+                  joiningDate={joiningDate}
                   onChange={(next) => {
                     setExceptional(next);
                     resetResults();
@@ -1529,10 +1602,9 @@ export default function SalaryOn2026Page() {
               duration={billDuration}
               onDurationChange={setBillDuration}
               extras={arrearExtras}
-              onExtrasChange={setArrearExtras}
               deductStamp={deductStamp}
               onDeductStampChange={setDeductStamp}
-              onTrForm={() => (billAccess?.can_bill ? setPrintDialog('trform') : setBulkDialog(true))}
+              onTrForm={openApprovedTrForm}
               accessReady={Boolean(billAccess)}
               downloading={downloading}
               accessPanel={
@@ -1543,7 +1615,7 @@ export default function SalaryOn2026Page() {
                     loadError={billAccessError}
                     onRetry={() => void loadBillAccess()}
                     onAccessChange={setBillAccess}
-                    onFreeTrForm={() => setPrintDialog('trform')}
+                    onFreeTrForm={openFreeTrForm}
                   />
                   {billError ? (
                     <Alert variant="error" className="print:hidden">
@@ -1607,7 +1679,7 @@ export default function SalaryOn2026Page() {
       </main>
 
       <footer className="mt-auto border-t border-emerald-900/10 bg-[#0b3d2e] text-emerald-50">
-        <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-5 text-center sm:flex-row sm:items-center sm:justify-between sm:text-left sm:px-6">
+        <div className="mx-auto flex max-w-[88rem] flex-col gap-2 px-4 py-5 text-center sm:flex-row sm:items-center sm:justify-between sm:text-left sm:px-6">
           <div>
             <div className="text-sm font-bold text-white">ProAssist</div>
             <div className="text-xs text-emerald-100/75">{t.footerTagline}</div>
@@ -1640,11 +1712,23 @@ export default function SalaryOn2026Page() {
         )
       ) : null}
 
+      {trNoticeOpen && trNotice ? (
+        <SalaryTrNoticeDialog
+          locale={locale}
+          notice={trNotice}
+          onCancel={() => setTrNoticeOpen(false)}
+          onContinue={() => {
+            setTrNoticeOpen(false);
+            setPrintDialog('trform');
+          }}
+        />
+      ) : null}
+
       {printDialog ? (
         <SalaryPrintDialog
           t={t}
-          initial={{ ...printInfo, office: printInfo.office || billOfficeName }}
-          lockedOffice={lockedOfficeName}
+          initial={{ ...printInfo, office: printInfo.office || billOfficeName || salaryOffice?.label || '' }}
+          lockedOffice=""
           fixedNid={
             printDialog === 'trform' &&
             billAccess &&

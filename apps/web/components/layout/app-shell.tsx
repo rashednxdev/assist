@@ -21,6 +21,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   hostLiveNavItem,
   learningPrimaryNav,
+  salaryBillAccessNavItem,
   salaryPrimaryNav,
   type NavItem,
 } from './nav-config';
@@ -56,9 +57,15 @@ function TopLink({
 
 function primaryNavFor(me: MeUser | null): NavItem[] {
   if (!me) return salaryPrimaryNav;
-  if (!hasLearningWebAccess(me)) return salaryPrimaryNav;
-  if (canHostLive(me)) return [...learningPrimaryNav, hostLiveNavItem];
-  return learningPrimaryNav;
+  const base = !hasLearningWebAccess(me)
+    ? salaryPrimaryNav
+    : canHostLive(me)
+      ? [...learningPrimaryNav, hostLiveNavItem]
+      : [...learningPrimaryNav];
+  if (!isPlatformAdmin(me) || base.some((item) => item.href === salaryBillAccessNavItem.href)) return base;
+  const salaryAt = base.findIndex((item) => item.href === '/salary');
+  const at = salaryAt >= 0 ? salaryAt + 1 : base.length;
+  return [...base.slice(0, at), salaryBillAccessNavItem, ...base.slice(at)];
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {

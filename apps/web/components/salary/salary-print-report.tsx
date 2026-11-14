@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Download } from 'lucide-react';
-import type { SalaryPrintReport, SalaryUserPrintReport, SalaryUserPrintRow } from '@ibas/shared-types';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { ChevronRight, Download } from 'lucide-react';
+import type { SalaryPrintDayDetail, SalaryPrintReport, SalaryUserPrintReport, SalaryUserPrintRow } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { localNum, salaryCopy, type SalaryLocale } from '@/lib/salary-i18n';
 import { Alert } from '@/components/ui/alert';
@@ -23,6 +23,14 @@ type PrintSort = 'total' | 'free' | 'approved';
 function csvCell(value: string | number): string {
   const text = String(value);
   return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function variationLabel(current: number, previous: number): { text: string; tone: 'up' | 'down' | 'flat' } {
+  if (previous === 0 && current === 0) return { text: '0%', tone: 'flat' };
+  if (previous === 0) return { text: 'New', tone: 'up' };
+  const pct = Math.round(((current - previous) / previous) * 100);
+  if (pct === 0) return { text: '0%', tone: 'flat' };
+  return { text: `${pct > 0 ? '+' : ''}${pct}%`, tone: pct > 0 ? 'up' : 'down' };
 }
 
 function downloadCsv(filename: string, header: string[], rows: Array<Array<string | number>>) {
@@ -187,11 +195,18 @@ export function SalaryPrintReportView({
   const [report, setReport] = useState<SalaryPrintReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [openDate, setOpenDate] = useState<string | null>(null);
+  const [details, setDetails] = useState<Record<string, SalaryPrintDayDetail>>({});
+  const [detailLoading, setDetailLoading] = useState('');
+  const [detailError, setDetailError] = useState('');
 
   const load = useCallback(
     async (f: string, tt: string) => {
       setLoading(true);
       setError('');
+      setOpenDate(null);
+      setDetails({});
+      setDetailError('');
       try {
         const params = new URLSearchParams({ from: f, to: tt });
         const res = await apiFetch<{ data: SalaryPrintReport }>(`${path}?${params.toString()}`);
@@ -204,6 +219,26 @@ export function SalaryPrintReportView({
     },
     [path, t.reportLoadError],
   );
+
+  async function toggleDay(date: string) {
+    if (!showUsers) return;
+    if (openDate === date) {
+      setOpenDate(null);
+      return;
+    }
+    setOpenDate(date);
+    setDetailError('');
+    if (details[date]) return;
+    setDetailLoading(date);
+    try {
+      const res = await apiFetch<{ data: SalaryPrintDayDetail }>(`${path}/day?date=${encodeURIComponent(date)}`);
+      setDetails((prev) => ({ ...prev, [date]: res.data }));
+    } catch (err) {
+      setDetailError(err instanceof Error ? err.message : t.reportLoadError);
+    } finally {
+      setDetailLoading('');
+    }
+  }
 
   useEffect(() => {
     void load(dhakaDate(29), dhakaDate());
@@ -247,10 +282,20 @@ export function SalaryPrintReportView({
             if (!report) return;
             downloadCsv(
               `salary-prints-${report.from}-to-${report.to}.csv`,
-              ['Date', 'T.R. Form 13', 'T.R. Form 15', 'Staff T.R. Form 15', 'Arrears PDF', 'Users', 'Total'],
+              ['Date', 'Free', 'Other', 'T.R. Form 13', 'T.R. Form 15', 'Staff T.R. Form 15', 'Arrears PDF', 'Users', 'Total'],
               [
-                ...report.days.map((d) => [d.date, d.tr_form_13, d.tr_form_15, d.staff_tr_form_15, d.arrears_pdf, d.users, d.total]),
-                ['Total', sum('tr_form_13'), sum('tr_form_15'), sum('staff_tr_form_15'), sum('arrears_pdf'), '', report.total],
+                ...report.days.map((d) => [
+                  d.date,
+                  d.free,
+                  d.approved,
+                  d.tr_form_13,
+                  d.tr_form_15,
+                  d.staff_tr_form_15,
+                  d.arrears_pdf,
+                  d.users,
+                  d.total,
+                ]),
+                ['Total', report.free, report.approved, sum('tr_form_13'), sum('tr_form_15'), sum('staff_tr_form_15'), sum('arrears_pdf'), report.users, report.total],
               ],
             );
           }}
@@ -264,18 +309,40 @@ export function SalaryPrintReportView({
 
       {report ? (
         <>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-              <p className="text-xs font-semibold text-emerald-900">
-                {t.reportRangeTotal} ({showDate(report.from)} – {showDate(report.to)})
-              </p>
-              <p className="text-2xl font-bold tabular-nums text-emerald-800">{num(report.total)}</p>
-            </div>
-            <div className="rounded-xl border border-border bg-surface p-3">
-              <p className="text-xs font-semibold text-muted">{t.reportAllTime}</p>
-              <p className="text-2xl font-bold tabular-nums text-slate-900">{num(report.all_time)}</p>
-            </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {(
+              [
+                [t.reportTotal, report.total, report.previous_total, 'border-slate-200 bg-slate-50 text-slate-900'],
+                [t.reportFree, report.free, report.previous_free, 'border-emerald-200 bg-emerald-50 text-emerald-900'],
+                [t.reportOther, report.approved, report.previous_approved, 'border-amber-200 bg-amber-50 text-amber-950'],
+              ] as const
+            ).map(([label, current, previous, tone]) => {
+              const change = variationLabel(current, previous);
+              return (
+                <div key={label} className={`rounded-xl border p-3 ${tone}`}>
+                  <p className="text-xs font-semibold">
+                    {label}
+                    <span className="mt-0.5 block font-normal opacity-70">
+                      {showDate(report.from)} – {showDate(report.to)}
+                    </span>
+                  </p>
+                  <p className="mt-1 text-2xl font-bold tabular-nums">{num(current)}</p>
+                  <p
+                    className={`text-xs font-semibold tabular-nums ${
+                      change.tone === 'up' ? 'text-emerald-700' : change.tone === 'down' ? 'text-rose-700' : 'text-slate-500'
+                    }`}
+                  >
+                    {change.text} {t.reportVsPrevious}
+                  </p>
+                </div>
+              );
+            })}
           </div>
+          <p className="text-xs text-muted">
+            {t.reportAllTime}: <span className="font-semibold tabular-nums text-slate-700">{num(report.all_time)}</span>
+            {showUsers ? ` · ${t.reportUsers}: ${num(report.users)}` : ''}
+            {showUsers ? ` · ${t.reportDayHint}` : ''}
+          </p>
 
           {report.days.length === 0 ? (
             <p className="text-sm text-muted">{t.reportNone}</p>
@@ -285,35 +352,95 @@ export function SalaryPrintReportView({
                 <thead className="bg-slate-50 text-left text-xs font-semibold text-slate-600">
                   <tr>
                     <th className="px-3 py-2">{t.reportDate}</th>
-                    <th className="px-3 py-2 text-right">{t.reportTr13}</th>
-                    <th className="px-3 py-2 text-right">{t.reportTr15}</th>
-                    <th className="px-3 py-2 text-right">{t.reportStaff}</th>
-                    {showPdf ? <th className="px-3 py-2 text-right">{t.reportPdf}</th> : null}
+                    <th className="px-3 py-2 text-right">{t.reportFree}</th>
+                    <th className="px-3 py-2 text-right">{t.reportOther}</th>
+                    {!showUsers ? <th className="px-3 py-2 text-right">{t.reportTr13}</th> : null}
+                    {!showUsers ? <th className="px-3 py-2 text-right">{t.reportTr15}</th> : null}
+                    {!showUsers ? <th className="px-3 py-2 text-right">{t.reportStaff}</th> : null}
+                    {!showUsers && showPdf ? <th className="px-3 py-2 text-right">{t.reportPdf}</th> : null}
                     {showUsers ? <th className="px-3 py-2 text-right">{t.reportUsers}</th> : null}
                     <th className="px-3 py-2 text-right">{t.reportTotal}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {report.days.map((d) => (
-                    <tr key={d.date} className="border-t border-border">
-                      <td className="px-3 py-2 font-medium tabular-nums">{showDate(d.date)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{num(d.tr_form_13)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{num(d.tr_form_15)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{num(d.staff_tr_form_15)}</td>
-                      {showPdf ? <td className="px-3 py-2 text-right tabular-nums">{num(d.arrears_pdf)}</td> : null}
-                      {showUsers ? <td className="px-3 py-2 text-right tabular-nums">{num(d.users)}</td> : null}
-                      <td className="px-3 py-2 text-right font-bold tabular-nums">{num(d.total)}</td>
-                    </tr>
-                  ))}
+                  {report.days.map((d) => {
+                    const open = showUsers && openDate === d.date;
+                    const detail = details[d.date];
+                    return (
+                      <Fragment key={d.date}>
+                        <tr className={`border-t border-border ${showUsers ? 'cursor-pointer hover:bg-slate-50' : ''}`}>
+                          <td className="px-3 py-2 font-medium tabular-nums">
+                            {showUsers ? (
+                              <button type="button" className="inline-flex items-center gap-1" onClick={() => void toggleDay(d.date)}>
+                                <ChevronRight className={`h-4 w-4 text-slate-400 transition-transform ${open ? 'rotate-90' : ''}`} />
+                                {showDate(d.date)}
+                              </button>
+                            ) : (
+                              showDate(d.date)
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums text-emerald-800">{num(d.free)}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{num(d.approved)}</td>
+                          {!showUsers ? <td className="px-3 py-2 text-right tabular-nums">{num(d.tr_form_13)}</td> : null}
+                          {!showUsers ? <td className="px-3 py-2 text-right tabular-nums">{num(d.tr_form_15)}</td> : null}
+                          {!showUsers ? <td className="px-3 py-2 text-right tabular-nums">{num(d.staff_tr_form_15)}</td> : null}
+                          {!showUsers && showPdf ? <td className="px-3 py-2 text-right tabular-nums">{num(d.arrears_pdf)}</td> : null}
+                          {showUsers ? <td className="px-3 py-2 text-right tabular-nums">{num(d.users)}</td> : null}
+                          <td className="px-3 py-2 text-right font-bold tabular-nums">{num(d.total)}</td>
+                        </tr>
+                        {open ? (
+                          <tr key={`${d.date}-detail`} className="border-t border-border bg-slate-50/80">
+                            <td colSpan={5} className="px-3 py-3">
+                              {detailLoading === d.date ? (
+                                <p className="text-xs text-muted">…</p>
+                              ) : detailError && !detail ? (
+                                <p className="text-xs text-destructive">{detailError}</p>
+                              ) : !detail || detail.users.length === 0 ? (
+                                <p className="text-xs text-muted">{t.reportDayEmpty}</p>
+                              ) : (
+                                <table className="w-full text-xs">
+                                  <thead className="text-left font-semibold text-slate-500">
+                                    <tr>
+                                      <th className="py-1 pr-2">{t.reportUser}</th>
+                                      <th className="py-1 pr-2">{t.officeYour}</th>
+                                      <th className="py-1 text-right">{t.reportFree}</th>
+                                      <th className="py-1 text-right">{t.reportOther}</th>
+                                      <th className="py-1 text-right">{t.reportTotal}</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {detail.users.map((user) => (
+                                      <tr key={user.user_id} className="border-t border-slate-200">
+                                        <td className="py-1.5 pr-2">
+                                          <span className="block font-semibold text-slate-900">{user.name}</span>
+                                          {user.phone ? <span className="block text-muted">{user.phone}</span> : null}
+                                        </td>
+                                        <td className="py-1.5 pr-2 text-slate-600">{user.office || '—'}</td>
+                                        <td className="py-1.5 text-right tabular-nums text-emerald-800">{num(user.free)}</td>
+                                        <td className="py-1.5 text-right tabular-nums">{num(user.approved)}</td>
+                                        <td className="py-1.5 text-right font-bold tabular-nums">{num(user.total)}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                            </td>
+                          </tr>
+                        ) : null}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
                 <tfoot className="border-t-2 border-border bg-slate-50 font-bold">
                   <tr>
                     <td className="px-3 py-2">{t.reportTotal}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{num(sum('tr_form_13'))}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{num(sum('tr_form_15'))}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{num(sum('staff_tr_form_15'))}</td>
-                    {showPdf ? <td className="px-3 py-2 text-right tabular-nums">{num(sum('arrears_pdf'))}</td> : null}
-                    {showUsers ? <td className="px-3 py-2" /> : null}
+                    <td className="px-3 py-2 text-right tabular-nums">{num(report.free)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{num(report.approved)}</td>
+                    {!showUsers ? <td className="px-3 py-2 text-right tabular-nums">{num(sum('tr_form_13'))}</td> : null}
+                    {!showUsers ? <td className="px-3 py-2 text-right tabular-nums">{num(sum('tr_form_15'))}</td> : null}
+                    {!showUsers ? <td className="px-3 py-2 text-right tabular-nums">{num(sum('staff_tr_form_15'))}</td> : null}
+                    {!showUsers && showPdf ? <td className="px-3 py-2 text-right tabular-nums">{num(sum('arrears_pdf'))}</td> : null}
+                    {showUsers ? <td className="px-3 py-2 text-right tabular-nums">{num(report.users)}</td> : null}
                     <td className="px-3 py-2 text-right tabular-nums">{num(report.total)}</td>
                   </tr>
                 </tfoot>

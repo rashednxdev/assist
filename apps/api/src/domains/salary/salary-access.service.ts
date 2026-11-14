@@ -8,7 +8,9 @@ import {
   SALARY_PRINT_REPORT_MAX_DAYS,
   calculateStaffArrears,
   salaryCanSeeDownloads,
+  salaryPrintDayQuerySchema,
   salaryPrintReportQuerySchema,
+  type SalaryPrintDayDetail,
   type SalaryPrintDayRow,
   type SalaryPrintReport,
   type SalaryUserPrintReport,
@@ -716,40 +718,131 @@ export async function salaryPrintReport(query: unknown, userId?: string): Promis
 
   const base: Record<string, unknown> = { kind: { $in: PRINT_KINDS } };
   if (userId) base.user_id = new mongoose.Types.ObjectId(userId);
-  const [groups, allTime] = await Promise.all([
-    SalaryBillUsage.aggregate<{ _id: { day: string; kind: SalaryBillKind }; n: number; users: mongoose.Types.ObjectId[] }>([
+  const span = end.getTime() - start.getTime();
+  const [groups, allTime, previousRows] = await Promise.all([
+    SalaryBillUsage.aggregate<{
+      _id: { day: string; kind: SalaryBillKind };
+      n: number;
+      free: number;
+      users: mongoose.Types.ObjectId[];
+    }>([
       { $match: { ...base, created_at: { $gte: start, $lt: end } } },
       {
         $group: {
           _id: { day: { $dateToString: { format: '%Y-%m-%d', date: '$created_at', timezone: '+06:00' } }, kind: '$kind' },
           n: { $sum: 1 },
+          free: { $sum: { $cond: [{ $eq: ['$free', true] }, 1, 0] } },
           users: { $addToSet: '$user_id' },
         },
       },
     ]),
     SalaryBillUsage.countDocuments(base),
+    SalaryBillUsage.aggregate<{ total: number; free: number }>([
+      { $match: { ...base, created_at: { $gte: new Date(start.getTime() - span), $lt: start } } },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          free: { $sum: { $cond: [{ $eq: ['$free', true] }, 1, 0] } },
+        },
+      },
+    ]),
   ]);
 
   const byDay = new Map<string, { row: SalaryPrintDayRow; users: Set<string> }>();
+  const rangeUsers = new Set<string>();
   for (const g of groups) {
     let day = byDay.get(g._id.day);
     if (!day) {
       day = {
-        row: { date: g._id.day, total: 0, tr_form_13: 0, tr_form_15: 0, staff_tr_form_15: 0, arrears_pdf: 0, users: 0 },
+        row: {
+          date: g._id.day,
+          total: 0,
+          free: 0,
+          approved: 0,
+          tr_form_13: 0,
+          tr_form_15: 0,
+          staff_tr_form_15: 0,
+          arrears_pdf: 0,
+          users: 0,
+        },
         users: new Set(),
       };
       byDay.set(g._id.day, day);
     }
     day.row.total += g.n;
+    day.row.free += g.free;
+    day.row.approved += g.n - g.free;
     if (g._id.kind === 'tr_form_13' || g._id.kind === 'tr_form_15' || g._id.kind === 'staff_tr_form_15' || g._id.kind === 'arrears_pdf') {
       day.row[g._id.kind] += g.n;
     }
-    for (const u of g.users) day.users.add(String(u));
+    for (const u of g.users) {
+      const id = String(u);
+      day.users.add(id);
+      rangeUsers.add(id);
+    }
   }
   const days = [...byDay.values()]
     .map(({ row, users }) => ({ ...row, users: users.size }))
     .sort((a, b) => b.date.localeCompare(a.date));
-  return { from, to, total: days.reduce((sum, d) => sum + d.total, 0), all_time: allTime, days };
+  const previous = previousRows[0] ?? { total: 0, free: 0 };
+  const total = days.reduce((sum, d) => sum + d.total, 0);
+  const free = days.reduce((sum, d) => sum + d.free, 0);
+  return {
+    from,
+    to,
+    total,
+    free,
+    approved: total - free,
+    users: rangeUsers.size,
+    previous_total: previous.total,
+    previous_free: previous.free,
+    previous_approved: previous.total - previous.free,
+    all_time: allTime,
+    days,
+  };
+}
+
+/** Users who downloaded on one Bangladesh date, with free and other counts. */
+export async function salaryPrintDayDetail(query: unknown): Promise<SalaryPrintDayDetail> {
+  const parsed = salaryPrintDayQuerySchema.safeParse(query);
+  if (!parsed.success) throw badRequest(parsed.error.issues.map((i) => i.message).join('; '));
+  const date = parsed.data.date;
+  const start = dhakaDateStart(date);
+  const end = new Date(start.getTime() + DAY_MS);
+  const groups = await SalaryBillUsage.aggregate<{ _id: mongoose.Types.ObjectId; total: number; free: number }>([
+    { $match: { kind: { $in: PRINT_KINDS }, created_at: { $gte: start, $lt: end } } },
+    {
+      $group: {
+        _id: '$user_id',
+        total: { $sum: 1 },
+        free: { $sum: { $cond: [{ $eq: ['$free', true] }, 1, 0] } },
+      },
+    },
+    { $sort: { total: -1 } },
+  ]);
+  const ids = groups.map((g) => String(g._id));
+  const [users, offices] = await Promise.all([
+    User.find({ _id: { $in: ids } }).select('full_name_en phone'),
+    salaryOfficeLabels(ids),
+  ]);
+  const byId = new Map(users.map((u) => [String(u._id), u]));
+  const rows = groups.map((g) => {
+    const id = String(g._id);
+    const user = byId.get(id);
+    return {
+      user_id: id,
+      name: user?.full_name_en ?? '(deleted user)',
+      phone: user?.phone ?? '',
+      office: offices.get(id) ?? '',
+      total: g.total,
+      free: g.free,
+      approved: g.total - g.free,
+    };
+  });
+  const total = rows.reduce((sum, row) => sum + row.total, 0);
+  const free = rows.reduce((sum, row) => sum + row.free, 0);
+  return { date, total, free, approved: total - free, users: rows };
 }
 
 /** Every user who has printed, with today, yesterday, and all-time counts (Bangladesh dates). */

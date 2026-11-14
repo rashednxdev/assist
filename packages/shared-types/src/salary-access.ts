@@ -464,6 +464,10 @@ export const SALARY_PRINT_REPORT_MAX_DAYS = 366;
 export interface SalaryPrintDayRow {
   date: string;
   total: number;
+  /** Free single T.R. Form downloads that day. */
+  free: number;
+  /** Downloads charged to an approved allowance, or otherwise not free. */
+  approved: number;
   tr_form_13: number;
   tr_form_15: number;
   staff_tr_form_15: number;
@@ -477,11 +481,43 @@ export interface SalaryPrintReport {
   to: string;
   /** Downloads in the range. */
   total: number;
+  free: number;
+  approved: number;
+  /** Distinct users who downloaded in the range. */
+  users: number;
+  /** The same number of days immediately before `from`. */
+  previous_total: number;
+  previous_free: number;
+  previous_approved: number;
   /** Downloads since the start. */
   all_time: number;
   /** Dates with downloads, newest first. */
   days: SalaryPrintDayRow[];
 }
+
+/** One user's downloads on a single Bangladesh date. */
+export interface SalaryPrintDayUserRow {
+  user_id: string;
+  name: string;
+  phone: string;
+  office: string;
+  total: number;
+  free: number;
+  approved: number;
+}
+
+export interface SalaryPrintDayDetail {
+  date: string;
+  total: number;
+  free: number;
+  approved: number;
+  users: SalaryPrintDayUserRow[];
+}
+
+export const salaryPrintDayQuerySchema = z.object({
+  date: reportDate,
+});
+export type SalaryPrintDayQuery = z.infer<typeof salaryPrintDayQuerySchema>;
 
 /** One user's prints: today, yesterday (Bangladesh dates), and every print since the start. */
 export interface SalaryUserPrintRow {

@@ -9,6 +9,7 @@ import {
   adminSetOfficeNameEditableHandler,
   adminSetAccountingOfficeHandler,
   adminSetOfficeAdminHandler,
+  adminPrintDayHandler,
   adminPrintReportHandler,
   adminUserPrintReportHandler,
   myPrintReportHandler,
@@ -138,6 +139,7 @@ salaryRouter.delete('/staff/:staffId', authenticate, publicLimit, asyncHandler(d
 salaryRouter.get('/admin/access', authenticate, requireAdmin, asyncHandler(listBillAccessHandler));
 salaryRouter.get('/admin/access-stats', authenticate, requireAdmin, asyncHandler(getBillAccessStatsHandler));
 salaryRouter.get('/admin/print-report', authenticate, requireAdmin, asyncHandler(adminPrintReportHandler));
+salaryRouter.get('/admin/print-report/day', authenticate, requireAdmin, asyncHandler(adminPrintDayHandler));
 salaryRouter.get('/admin/print-report/users', authenticate, requireAdmin, asyncHandler(adminUserPrintReportHandler));
 salaryRouter.put('/admin/access/:userId', authenticate, requireAdmin, asyncHandler(updateBillAccessHandler));
 salaryRouter.put('/admin/access/:userId/note', authenticate, requireAdmin, asyncHandler(updateBillAccessNoteHandler));

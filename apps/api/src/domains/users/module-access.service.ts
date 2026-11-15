@@ -1,9 +1,17 @@
 import mongoose from 'mongoose';
+import { EXAM_PREP_MODULE_CODES } from '@ibas/shared-constants';
 import type { UpsertModuleAccessDto } from '@ibas/shared-types';
 import { UserModuleAccess } from './models/UserModuleAccess.model.js';
 import { Module } from '../setup/models/Module.model.js';
 import { User } from './models/User.model.js';
 import { notFound } from '../../shared/errors/AppError.js';
+import { logger } from '../../shared/logger.js';
+import { PROASSIST_SUPPORT_PHONE, sendSms } from '../../shared/sms.js';
+
+/** Shell codes that open the Learning module. A package purchase is not one of these rows. */
+const LEARNING_SHELL_CODES = [...EXAM_PREP_MODULE_CODES, 'QOTD', 'EXAM_ROUTINE'];
+
+const LEARNING_OPENED_SMS = `Dear ProAssist User, your Learning portal is now unlocked! Select a package to prepare with expert mentors & curated resources. Thank you for using ProAssist! Support: ${PROASSIST_SUPPORT_PHONE}`;
 
 function serializeAccess(doc: InstanceType<typeof UserModuleAccess>) {
   return {
@@ -62,6 +70,16 @@ export async function upsertModuleAccess(userId: string, dto: UpsertModuleAccess
   const mod = await Module.findById(dto.module_id);
   if (!mod) throw notFound('Module not found');
 
+  const openingLearning =
+    dto.can_read &&
+    LEARNING_SHELL_CODES.includes(mod.code as (typeof LEARNING_SHELL_CODES)[number]) &&
+    !(await UserModuleAccess.exists({
+      user_id: userId,
+      is_active: true,
+      can_read: true,
+      module_code: { $in: LEARNING_SHELL_CODES },
+    }));
+
   const permissions: string[] = [];
   if (dto.can_read) permissions.push('read');
   if (dto.can_create) permissions.push('create');
@@ -93,7 +111,18 @@ export async function upsertModuleAccess(userId: string, dto: UpsertModuleAccess
     { upsert: true, new: true },
   );
 
+  if (openingLearning) await textLearningOpened(user.phone);
   return serializeAccess(doc);
+}
+
+/** One text when an admin first opens Learning. A failed text does not undo the grant. */
+async function textLearningOpened(phone: string | undefined): Promise<void> {
+  if (!phone || !/^01[3-9]\d{8}$/.test(phone)) return;
+  try {
+    await sendSms(phone, LEARNING_OPENED_SMS);
+  } catch (err) {
+    logger.error({ err: err instanceof Error ? err.message : 'sms failed' }, 'Learning access SMS failed');
+  }
 }
 
 /** True if the user has an active grant for moduleCode with the given permission flag set. */

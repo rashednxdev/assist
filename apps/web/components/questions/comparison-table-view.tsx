@@ -15,15 +15,15 @@ export function ComparisonTableView({
   if (!visible) return null;
 
   return (
-    <section className="space-y-3 rounded-xl border border-primary/30 bg-primary-muted/20 p-4">
+    <section className="space-y-3 rounded-[14px] border border-[#e2e8f0] bg-white p-4">
       {label ? (
-        <div className="text-xs font-semibold uppercase tracking-wide text-primary">{label}</div>
+        <div className="text-xs font-bold uppercase tracking-wide text-[#0f5c8c]">{label}</div>
       ) : null}
       <div className="overflow-x-auto rounded-lg border border-border bg-white">
         <table className="min-w-full border-collapse text-sm">
           <thead>
             {visible.title?.trim() && (
-              <tr className="bg-slate-100">
+              <tr className="bg-[#eef4f8]">
                 <th
                   colSpan={visible.columns.length + 1}
                   className="border-b border-border px-3 py-2.5 text-center font-semibold text-foreground"
@@ -32,7 +32,7 @@ export function ComparisonTableView({
                 </th>
               </tr>
             )}
-            <tr className="bg-slate-50">
+            <tr className="bg-[#eef4f8] text-[#0f5c8c]">
               <th className="border-b border-border px-3 py-2.5 text-left font-semibold text-foreground">
                 <MarkupText text={visible.feature_header || 'Feature'} className="font-semibold" />
               </th>

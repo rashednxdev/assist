@@ -17,7 +17,7 @@ export function subjectScopeKeyFromUser(user: {
   exam_subject_ids?: string[];
 } | null | undefined): string {
   if (!user) return 'none';
-  if (user.is_super_admin || user.user_type === 'system_admin' || user.user_type === 'admin') {
+  if (user.is_super_admin || user.user_type === 'system_admin' || user.user_type === 'admin' || user.user_type === 'host') {
     return 'all';
   }
   if (user.all_exam_subjects !== false) return 'all';

@@ -27,6 +27,7 @@ export interface IPaymentOrder extends Document {
   /** Masked wallet number, e.g. 017•••••678. */
   payer_account?: string;
   trx_id?: string;
+  claimed_amount?: number;
   gateway_payment_id?: string;
   note?: string;
   recorded_by?: Types.ObjectId;
@@ -62,6 +63,7 @@ const schema = new Schema<IPaymentOrder>(
     failure_reason: { type: String },
     payer_account: { type: String },
     trx_id: { type: String },
+    claimed_amount: { type: Number },
     gateway_payment_id: { type: String },
     note: { type: String, trim: true },
     recorded_by: { type: Schema.Types.ObjectId, ref: 'User' },

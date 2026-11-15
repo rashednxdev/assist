@@ -26,7 +26,7 @@ export default function ForgotPasswordScreen() {
       const res = await forgotPassword(trimmed);
       router.push({
         pathname: '/(auth)/reset-password',
-        params: { phone: trimmed, emailHint: res.email_hint },
+        params: { phone: trimmed, phoneHint: res.phone_hint },
       });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not send a reset code. Please try again.');
@@ -38,7 +38,7 @@ export default function ForgotPasswordScreen() {
   return (
     <AuthScreenShell
       title="Forgot password"
-      subtitle="Enter your mobile number — we'll email a reset code to the address on your account."
+      subtitle="Enter your mobile number. We will text a 6-digit code."
     >
       <TextField
         label="Mobile"

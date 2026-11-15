@@ -7,6 +7,7 @@ import {
   createUserAddressSchema,
   subscribePlanSchema,
   forgotPasswordSchema,
+  verifyResetOtpSchema,
   resetPasswordSchema,
   reportClientVersionSchema,
 } from '@ibas/shared-types';
@@ -26,6 +27,12 @@ export async function registerHandler(req: AuthRequest, res: Response): Promise<
 export async function forgotPasswordHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = forgotPasswordSchema.parse(req.body);
   const data = await accountService.requestPasswordReset(dto);
+  res.json({ data });
+}
+
+export async function verifyResetOtpHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = verifyResetOtpSchema.parse(req.body);
+  const data = await accountService.verifyResetOtp(dto);
   res.json({ data });
 }
 

@@ -109,6 +109,11 @@ function isAdminUser(user?: { is_super_admin?: boolean; user_type?: string } | n
   return !!user && (user.is_super_admin || user.user_type === 'system_admin' || user.user_type === 'admin');
 }
 
+/** Admins and Hosts see every Learning subject. Hosts are not platform admins. */
+function seesAllLearningSubjects(user?: { is_super_admin?: boolean; user_type?: string } | null): boolean {
+  return isAdminUser(user) || user?.user_type === 'host';
+}
+
 /** What a learner owns in Exam Preparation right now. `null` until = no end date. */
 export interface OwnedExamPrep {
   wholeParts: Map<string, Date | null>;
@@ -136,14 +141,14 @@ export async function ownedExamPrep(
     starts_at: { $lte: now },
     ends_at: { $gt: now },
   })
-    .select('exam_part_id exam_subject_id ends_at')
+    .select('exam_part_id exam_subject_id exam_subject_ids ends_at')
     .lean();
   for (const e of ents) {
     if (!e.exam_part_id) {
       for (const pid of primaryIds) owned.wholeParts.set(pid, later(owned.wholeParts.get(pid), e.ends_at));
-    } else if (e.exam_subject_id) {
-      const sid = String(e.exam_subject_id);
-      owned.subjects.set(sid, later(owned.subjects.get(sid), e.ends_at));
+    } else if (e.exam_subject_id || (e.exam_subject_ids ?? []).length > 0) {
+      const ids = [...(e.exam_subject_ids ?? []).map(String), e.exam_subject_id ? String(e.exam_subject_id) : ''].filter(Boolean);
+      for (const sid of ids) owned.subjects.set(sid, later(owned.subjects.get(sid), e.ends_at));
     } else {
       const pid = String(e.exam_part_id);
       owned.wholeParts.set(pid, later(owned.wholeParts.get(pid), e.ends_at));
@@ -209,10 +214,10 @@ export async function getExamPrepScope(
   authUser: { id: string; is_super_admin?: boolean; user_type?: string } | null | undefined,
   opts: { paid: boolean },
 ): Promise<ExamSubjectScope> {
-  if (!authUser || isAdminUser(authUser)) return { mode: 'all' };
+  if (!authUser || seesAllLearningSubjects(authUser)) return { mode: 'all' };
   const user = await User.findById(authUser.id).select(USER_FIELDS).lean<ScopeUser>();
   if (!user) return { mode: 'none' };
-  if (isAdminUser(user)) return { mode: 'all' };
+  if (seesAllLearningSubjects(user)) return { mode: 'all' };
   const rows = await loadExamPrepParts();
   if (rows.length === 0) return scopeFromUserFields({ ...user, exam_subject_ids: (user.exam_subject_ids ?? []).map(String) });
   const part = selectedPart(rows, user.exam_prep_part_id)!;
@@ -237,11 +242,12 @@ export async function listPartsForUser(authUser: {
   const user = await User.findById(authUser.id).select(USER_FIELDS).lean<ScopeUser>();
   if (!user) throw notFound('User not found');
   const admin = isAdminUser(authUser) || isAdminUser(user);
+  const openLearning = admin || seesAllLearningSubjects(authUser) || seesAllLearningSubjects(user);
   const part = selectedPart(rows, user.exam_prep_part_id);
-  const owned = admin ? null : await ownedExamPrep(authUser.id, rows, Number(user.amount_received ?? 0) > 0);
+  const owned = openLearning ? null : await ownedExamPrep(authUser.id, rows, Number(user.amount_received ?? 0) > 0);
   const iso = (d: Date | null | undefined) => (d ? d.toISOString() : undefined);
   const parts: ExamPrepPartOption[] = rows.map((r) => {
-    const whole = admin || !!owned?.wholeParts.has(r.id);
+    const whole = openLearning || !!owned?.wholeParts.has(r.id);
     const wholeUntil = owned?.wholeParts.get(r.id);
     const subjects = r.subjects.map((s) => {
       const own = whole || !!owned?.subjects.has(s.id);
@@ -262,7 +268,7 @@ export async function listPartsForUser(authUser: {
       owned_count: subjects.filter((s) => s.owned).length,
     };
   });
-  const scope = admin || !part ? ({ mode: 'all' } as const) : scopeFor(user, rows, part, owned);
+  const scope = openLearning || !part ? ({ mode: 'all' } as const) : scopeFor(user, rows, part, owned);
   return {
     parts,
     selected_part_id: part?.id ?? null,

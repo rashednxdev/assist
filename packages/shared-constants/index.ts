@@ -3,8 +3,13 @@
  * Schema v3.2
  */
 
-export const USER_TYPES = ['system_admin', 'admin', 'applicant', 'officer'] as const;
+export const USER_TYPES = ['system_admin', 'admin', 'applicant', 'officer', 'host'] as const;
 export type UserType = (typeof USER_TYPES)[number];
+
+/** An admin set this account as a Learning host. */
+export function isHostUser(user: { user_type?: string | null } | null | undefined): boolean {
+  return user?.user_type === 'host';
+}
 
 export const USER_STATUSES = ['active', 'inactive', 'suspended', 'pending_verify'] as const;
 
@@ -45,7 +50,7 @@ export const MODULE_CODES = [
 export type ModuleCode = (typeof MODULE_CODES)[number];
 
 /** Modules every authenticated user may open without a grant or payment. */
-export const FREE_MODULE_CODES = ['QOTD', 'EXAM_ROUTINE', 'LIVE_STREAM'] as const;
+export const FREE_MODULE_CODES = ['QOTD', 'EXAM_ROUTINE'] as const;
 export type FreeModuleCode = (typeof FREE_MODULE_CODES)[number];
 
 export function isFreeModuleCode(code: string): boolean {
@@ -62,6 +67,19 @@ export const EXAM_PREP_MODULE_CODES = [
   'USER_QUESTIONS',
   'ANSWER_PDF',
 ] as const;
+
+/** Learning modules a Host may open and use, including live class. */
+export const LEARNING_PRIVILEGE_MODULE_CODES = [
+  ...EXAM_PREP_MODULE_CODES,
+  'QOTD',
+  'EXAM_ROUTINE',
+  'LIVE_STREAM',
+  'QUESTION_EDIT',
+] as const;
+
+export function isLearningPrivilegeModule(code: string): boolean {
+  return (LEARNING_PRIVILEGE_MODULE_CODES as readonly string[]).includes(code);
+}
 
 /**
  * Opened by a Basic Module plan: office tools and references. iBAS++ areas (any `IBAS_*` code or

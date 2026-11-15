@@ -1,6 +1,5 @@
 import type { ComparisonTable, ExplanationSection } from '@ibas/shared-types';
 import { hasComparisonTableContent, hasExplanationContent, hasProcessContent } from '@ibas/shared-types';
-import { Badge } from '@/components/ui/badge';
 import { ComparisonTableView } from '@/components/questions/comparison-table-view';
 import { ProcessFlowPreview } from '@/components/books/process-flow-preview';
 import { MarkupText } from '@/components/shared/markup-text';
@@ -45,7 +44,7 @@ function SubsectionBlock({ sub }: { sub: ExplanationSection['subsections'][numbe
   if (!hasContent) return null;
 
   return (
-    <div className="space-y-3 rounded-lg border border-border/70 bg-background/80 p-3">
+    <div className="space-y-3 rounded-lg border border-[#e2e8f0] bg-[#f4f7fb] p-3">
       {sub.subtitle?.trim() && <p className="text-sm font-semibold text-foreground">{sub.subtitle}</p>}
       <TextBlock text={sub.details} />
       <TextBlock text={sub.note} />
@@ -71,7 +70,7 @@ function SectionBlock({ section }: { section: ExplanationSection }) {
       <TextBlock text={section.note} />
       {hasComparisonTableContent(section.table) && <ComparisonTableView table={section.table} label="" />}
       {hasProcessContent(section.process) && (
-        <div className="rounded-lg border border-border bg-background/80 p-3">
+        <div className="rounded-lg border border-[#e2e8f0] bg-white p-3">
           {section.process?.title?.trim() && (
             <p className="mb-1 text-sm font-semibold text-foreground">{section.process.title}</p>
           )}
@@ -81,7 +80,7 @@ function SectionBlock({ section }: { section: ExplanationSection }) {
       )}
 
       {section.subsections?.length > 0 && (
-        <div className="space-y-3 border-l-2 border-primary/25 pl-4">
+        <div className="space-y-3 border-l-2 border-[#e2e8f0] pl-4">
           {section.subsections.map((sub, subIndex) => (
             <SubsectionBlock key={subIndex} sub={sub} />
           ))}
@@ -102,15 +101,11 @@ export function StructuredSectionsPanel({
 }) {
   return (
     <section
-      className={`space-y-5 rounded-xl border p-4 ${
-        variant === 'primary'
-          ? 'border-primary/30 bg-primary-muted/20'
-          : 'border-border bg-slate-50/80'
-      }`}
+      className="space-y-5 rounded-[14px] border border-[#e2e8f0] bg-white p-4"
     >
       <div
-        className={`text-xs font-semibold uppercase tracking-wide ${
-          variant === 'primary' ? 'text-primary' : 'text-muted'
+        className={`text-xs font-bold uppercase tracking-wide ${
+          variant === 'primary' ? 'text-[#0f5c8c]' : 'text-[#64748b]'
         }`}
       >
         {heading}
@@ -147,37 +142,36 @@ export function QuestionAnswerView({
 
   return (
     <div className="space-y-6">
-      <section className="space-y-2">
-        <div className="text-xs font-semibold uppercase tracking-wide text-primary">Question</div>
-        <TextBlock text={body_en} className="text-base font-medium" />
-        {body_bn?.trim() ? <TextBlock text={body_bn} className="text-muted" /> : null}
+      <section className="space-y-2 rounded-[14px] border border-[#e2e8f0] bg-white p-4 shadow-sm">
+        <TextBlock text={body_en} className="text-base font-semibold text-[#0f172a]" />
+        {body_bn?.trim() ? <TextBlock text={body_bn} className="text-[#64748b]" /> : null}
       </section>
 
       {has_options && options.length > 0 && (
-        <section className="space-y-2">
-          <div className="text-xs font-semibold uppercase tracking-wide text-muted">Options</div>
+        <section className="space-y-2 rounded-[14px] border border-[#e2e8f0] bg-white p-4">
+          <div className="text-xs font-bold uppercase tracking-wide text-[#64748b]">Options</div>
           <div className="space-y-2">
             {options.map((opt) => {
               const isCorrect = showAnswer && opt.is_correct;
               return (
                 <div
                   key={opt.id ?? opt.option_key}
-                  className={`rounded-lg border p-3 ${
-                    isCorrect ? 'border-primary bg-primary-muted/40' : 'border-border bg-background'
+                  className={`rounded-[10px] border p-3 ${
+                    isCorrect ? 'border-[#16a34a] bg-[#ecfdf3]' : 'border-[#e2e8f0] bg-[#f4f7fb]'
                   }`}
                 >
                   <div className="flex gap-2">
-                    <span className="shrink-0 font-semibold uppercase">{opt.option_key}.</span>
-                    <TextBlock text={opt.option_text_en} className="min-w-0 flex-1" />
+                    <span className={`shrink-0 font-bold uppercase ${isCorrect ? 'text-[#16a34a]' : 'text-[#64748b]'}`}>
+                      {opt.option_key}.
+                    </span>
+                    <TextBlock
+                      text={opt.option_text_en}
+                      className={`min-w-0 flex-1 ${isCorrect ? 'font-bold text-[#16a34a]' : 'text-[#0f172a]'}`}
+                    />
                   </div>
                   {opt.option_text_bn ? (
-                    <TextBlock text={opt.option_text_bn} className="mt-1 text-muted" />
+                    <TextBlock text={opt.option_text_bn} className="mt-1 text-[#64748b]" />
                   ) : null}
-                  {isCorrect && (
-                    <Badge className="mt-2" variant="default">
-                      Correct answer
-                    </Badge>
-                  )}
                 </div>
               );
             })}
@@ -196,7 +190,8 @@ export function QuestionAnswerView({
       )}
 
       {showAnswer && answer_note?.trim() && (
-        <section className="rounded-lg border border-dashed border-border px-4 py-3">
+        <section className="space-y-2 rounded-[14px] border border-[#e2e8f0] bg-white p-4">
+          <div className="text-xs font-bold uppercase tracking-wide text-[#64748b]">Note</div>
           <TextBlock text={answer_note} />
         </section>
       )}

@@ -41,6 +41,7 @@ import { Label } from '@/components/ui/label';
 import { Alert } from '@/components/ui/alert';
 import { EmptyState } from '@/components/shared/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
+import { QuestionBankLearner } from '@/components/questions/question-bank-learner';
 
 interface QuestionType {
   id: string;
@@ -118,6 +119,7 @@ export default function QuestionsPage() {
   const [types, setTypes] = useState<QuestionType[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [meReady, setMeReady] = useState(false);
   const [q, setQ] = useState('');
   const [difficulty, setDifficulty] = useState('');
   const [reviewStatusFilter, setReviewStatusFilter] = useState('');
@@ -193,7 +195,8 @@ export default function QuestionsPage() {
     loadTypes();
     fetchMe()
       .then((res) => setIsAdmin(isPlatformAdmin(res.data)))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setMeReady(true));
   }, []);
 
   useEffect(() => {
@@ -549,6 +552,9 @@ export default function QuestionsPage() {
     if (clamped === page) return;
     load(clamped);
   }
+
+  if (!meReady) return <Skeleton className="h-40 w-full" />;
+  if (!isAdmin) return <QuestionBankLearner />;
 
   return (
     <div className="space-y-6">

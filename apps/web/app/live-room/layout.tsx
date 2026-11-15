@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getAccessToken, fetchMe } from '@/lib/auth';
+import { clearAccessToken, fetchMe, getAccessToken, peekMe } from '@/lib/auth';
 import { SALARY_HOME, isSalaryOnlyUser } from '@/lib/salary-only';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -11,17 +11,29 @@ export default function LiveRoomLayout({ children }: { children: React.ReactNode
   const router = useRouter();
   const [ready, setReady] = useState(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    let live = true;
     if (!getAccessToken()) {
       router.replace('/login');
       return;
     }
+    const open = (user: Parameters<typeof isSalaryOnlyUser>[0]) => {
+      if (!live) return;
+      if (isSalaryOnlyUser(user)) router.replace(SALARY_HOME);
+      else setReady(true);
+    };
+    const cached = peekMe();
+    if (cached) open(cached);
     fetchMe()
-      .then((res) => {
-        if (isSalaryOnlyUser(res.data)) router.replace(SALARY_HOME);
-        else setReady(true);
-      })
-      .catch(() => router.replace('/login'));
+      .then((res) => open(res.data))
+      .catch(() => {
+        if (!live) return;
+        clearAccessToken();
+        router.replace('/login');
+      });
+    return () => {
+      live = false;
+    };
   }, [router]);
 
   if (!ready) {

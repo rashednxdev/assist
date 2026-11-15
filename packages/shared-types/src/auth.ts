@@ -63,7 +63,7 @@ export const registerSchema = z
   .object({
     full_name_en: z.string().min(2),
     full_name_bn: z.string().optional(),
-    /** Required — the only channel a forgotten password can be reset through. */
+    /** Required at registration. A forgotten password is recovered by SMS to the mobile number. */
     email: z.string().email(),
     phone: z.string().regex(/^01[3-9]\d{8}$/, 'Enter a valid Bangladesh mobile number'),
     password: z.string().min(8),
@@ -100,6 +100,24 @@ export const otpVerifySchema = z.object({
   code: z.string().length(6),
 });
 
+/** Step 2 of sign-in: the 6-digit code sent by SMS after the password is accepted. */
+export const loginOtpSchema = z.object({
+  challenge: z.string().min(20),
+  code: z.string().regex(/^\d{6}$/, 'Enter the 6-digit code'),
+  device_id: z.string().min(8).max(128),
+  device_label: z.string().max(120).optional(),
+  app_version: z.string().trim().min(1).max(80).optional(),
+  client_platform: z.enum(['mobile', 'web']).optional(),
+});
+
+export type LoginOtpDto = z.infer<typeof loginOtpSchema>;
+
+export const loginOtpResendSchema = z.object({
+  challenge: z.string().min(20),
+});
+
+export type LoginOtpResendDto = z.infer<typeof loginOtpResendSchema>;
+
 export type OtpVerifyDto = z.infer<typeof otpVerifySchema>;
 
 export const changePasswordSchema = z
@@ -115,14 +133,22 @@ export const changePasswordSchema = z
 
 export type ChangePasswordDto = z.infer<typeof changePasswordSchema>;
 
-/** Step 1 of "forgot password": look up the account by phone, email a reset code to it. */
+/** Step 1 of "forgot password": look up the account by phone and text a 6-digit code to it. */
 export const forgotPasswordSchema = z.object({
   phone: z.string().regex(/^01[3-9]\d{8}$/, 'Enter a valid Bangladesh mobile number'),
 });
 
 export type ForgotPasswordDto = z.infer<typeof forgotPasswordSchema>;
 
-/** Step 2: the code from that email, plus a new password. */
+/** Step 2: confirm the 6-digit SMS code before a new password is chosen. */
+export const verifyResetOtpSchema = z.object({
+  phone: z.string().regex(/^01[3-9]\d{8}$/, 'Enter a valid Bangladesh mobile number'),
+  code: z.string().regex(/^\d{6}$/, 'Enter the 6-digit code'),
+});
+
+export type VerifyResetOtpDto = z.infer<typeof verifyResetOtpSchema>;
+
+/** Step 3: the 6-digit code from that SMS, plus a new password. */
 export const resetPasswordSchema = z
   .object({
     phone: z.string().regex(/^01[3-9]\d{8}$/, 'Enter a valid Bangladesh mobile number'),

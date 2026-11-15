@@ -24,7 +24,7 @@ export async function requireLiveHostOrAdmin(
       next(forbidden('Account is not active'));
       return;
     }
-    if (isPlatformAdmin(req.user)) {
+    if (isPlatformAdmin(req.user) || req.user.user_type === 'host') {
       next();
       return;
     }
@@ -33,12 +33,12 @@ export async function requireLiveHostOrAdmin(
       next(forbidden('Live session required'));
       return;
     }
-    const doc = await LiveStream.findOne({ _id: id, is_active: true }).select('host_user_id').lean();
+    const doc = await LiveStream.findOne({ _id: id, is_active: true }).select('host_user_id support_user_id').lean();
     if (!doc) {
       next(notFound('Live session not found'));
       return;
     }
-    if (String(doc.host_user_id) === req.user.id) {
+    if (String(doc.host_user_id) === req.user.id || String(doc.support_user_id ?? '') === req.user.id) {
       next();
       return;
     }

@@ -11,7 +11,7 @@ import { colors, spacing } from '@/theme';
 
 export default function ResetPasswordScreen() {
   const router = useRouter();
-  const { phone: phoneParam, emailHint } = useLocalSearchParams<{ phone?: string; emailHint?: string }>();
+  const { phone: phoneParam, phoneHint } = useLocalSearchParams<{ phone?: string; phoneHint?: string }>();
   const phone = phoneParam ?? '';
 
   const [code, setCode] = useState('');
@@ -26,7 +26,7 @@ export default function ResetPasswordScreen() {
     setError('');
     setMessage('');
     if (code.trim().length !== 6) {
-      setError('Enter the 6-digit code from your email.');
+      setError('Enter the 6-digit code from the text message.');
       return;
     }
     if (password.length < 8) {
@@ -72,10 +72,10 @@ export default function ResetPasswordScreen() {
   return (
     <AuthScreenShell title="Reset password">
       <View style={styles.highlight}>
-        <Ionicons name="mail-unread-outline" size={20} color={colors.primary} />
+        <Ionicons name="chatbubble-ellipses-outline" size={20} color={colors.primary} />
         <Text style={styles.highlightText}>
-          Enter the code we sent to{' '}
-          {emailHint ? <Text style={styles.highlightEmail}>{emailHint}</Text> : 'your email'}
+          Enter the code we texted to{' '}
+          {phoneHint ? <Text style={styles.highlightEmail}>{phoneHint}</Text> : 'your mobile'}
         </Text>
       </View>
 

@@ -18,7 +18,7 @@ export function BookViewModeToggle({
     <div
       role="radiogroup"
       aria-label="Book contents view"
-      className="inline-flex shrink-0 rounded-lg border border-amber-900/15 bg-[#fffef8] p-0.5 text-xs font-medium shadow-sm"
+      className="inline-flex shrink-0 rounded-lg border border-[#e2e8f0] bg-white p-0.5 text-xs font-medium shadow-sm"
     >
       {OPTIONS.map((opt) => {
         const selected = value === opt.value;
@@ -27,8 +27,8 @@ export function BookViewModeToggle({
             key={opt.value}
             className={`cursor-pointer rounded-md px-2.5 py-1.5 transition-colors sm:px-3 ${
               selected
-                ? 'bg-amber-100 text-amber-950 shadow-sm ring-1 ring-amber-900/10'
-                : 'text-muted hover:bg-amber-50/80 hover:text-foreground'
+                ? 'bg-[#0f5c8c] text-white shadow-sm'
+                : 'text-[#64748b] hover:bg-[#e8f3fa] hover:text-[#0f172a]'
             }`}
           >
             <input

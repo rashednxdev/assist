@@ -139,7 +139,7 @@ function ManualGrant({ onDone, onCancel }: { onDone: () => void; onCancel: () =>
 
 export function PaymentsAdmin() {
   const [data, setData] = useState<OrdersResponse | null>(null);
-  const [status, setStatus] = useState<OrderStatus | ''>('paid');
+  const [status, setStatus] = useState<OrderStatus | ''>('pending');
   const [kind, setKind] = useState<AccessPackageKind | ''>('');
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
@@ -323,7 +323,8 @@ export function PaymentsAdmin() {
                   </td>
                   <td className="px-3 py-2">
                     <p>{PAYMENT_METHOD_LABELS[o.method]}</p>
-                    {o.trx_id && <p className="font-mono text-xs text-muted">{o.trx_id}</p>}
+                    {o.trx_id && <p className="font-mono text-xs text-muted">Trx {o.trx_id}</p>}
+                    {o.claimed_amount != null && <p className="text-xs text-muted">Sent {formatBdt(o.claimed_amount)}</p>}
                     {o.payer_account && <p className="text-xs text-muted">{o.payer_account}</p>}
                     {o.note && <p className="text-xs text-muted">{o.note}</p>}
                   </td>
@@ -342,6 +343,42 @@ export function PaymentsAdmin() {
                     {o.status === 'paid' ? `${accessDate(o.access_starts_at)} → ${accessDate(o.access_ends_at)}` : '—'}
                   </td>
                   <td className="px-3 py-2 text-right">
+                    {o.status === 'pending' && o.trx_id && (
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            void apiFetch(`/billing/admin/orders/${o.id}/accept`, { method: 'POST' })
+                              .then(() => {
+                                setMessage('Payment accepted. Access is open.');
+                                return load();
+                              })
+                              .catch((e) => setError(e instanceof Error ? e.message : 'Accept failed'));
+                          }}
+                        >
+                          Accept
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-destructive"
+                          onClick={() => {
+                            const note = window.prompt('Reason for rejecting this payment (optional)') ?? '';
+                            void apiFetch(`/billing/admin/orders/${o.id}/reject`, {
+                              method: 'POST',
+                              body: JSON.stringify({ note }),
+                            })
+                              .then(() => {
+                                setMessage('Payment rejected.');
+                                return load();
+                              })
+                              .catch((e) => setError(e instanceof Error ? e.message : 'Reject failed'));
+                          }}
+                        >
+                          Reject
+                        </Button>
+                      </div>
+                    )}
                     {o.status === 'paid' && !o.access_revoked && (
                       <Button size="sm" variant="ghost" className="text-destructive" onClick={() => revoke(o)}>
                         Revoke

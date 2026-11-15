@@ -1,11 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { ExternalLink, Users, MessageSquare, Radio } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
+import { liveDeviceId } from '@/lib/live-device';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
 import type { ZoomLiveStreamJoinPayload } from '@ibas/shared-types';
@@ -22,6 +23,7 @@ interface SessionDetail {
   status: string;
   allow_guest_messages?: boolean;
   allow_guest_speech?: boolean;
+  allow_guest_video?: boolean;
   can_host?: boolean;
   permission_status?: string;
   video_platform?: 'agora' | 'zoom';
@@ -35,7 +37,7 @@ interface GuestRow {
   name: string;
   email?: string;
   phone?: string;
-  role: 'host' | 'audience';
+  role: 'host' | 'audience' | 'support';
   joined_at: string;
   last_seen_at: string;
 }
@@ -57,7 +59,6 @@ function statusTone(status: string) {
 
 export default function ZoomRoomManagePage() {
   const { id } = useParams<{ id: string }>();
-  const router = useRouter();
   const [session, setSession] = useState<SessionDetail | null>(null);
   const [join, setJoin] = useState<JoinPayload | null>(null);
   const [guests, setGuests] = useState<GuestRow[]>([]);
@@ -66,6 +67,7 @@ export default function ZoomRoomManagePage() {
   const [busy, setBusy] = useState(false);
   const [msgBusy, setMsgBusy] = useState(false);
   const [speechBusy, setSpeechBusy] = useState(false);
+  const [videoBusy, setVideoBusy] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [denied, setDenied] = useState(false);
   const messagesListRef = useRef<HTMLUListElement>(null);
@@ -74,10 +76,6 @@ export default function ZoomRoomManagePage() {
   const load = useCallback(async () => {
     try {
       const res = await apiFetch<{ data: SessionDetail }>(`/live-streams/${id}`);
-      if (res.data.video_platform && res.data.video_platform !== 'zoom') {
-        router.replace(`/live-room/${id}`);
-        return;
-      }
       if (!res.data.can_host) {
         setDenied(true);
         setSession(null);
@@ -88,7 +86,7 @@ export default function ZoomRoomManagePage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
     }
-  }, [id, router]);
+  }, [id]);
 
   useEffect(() => {
     void import('@/lib/auth').then(({ fetchMe }) =>
@@ -202,6 +200,39 @@ export default function ZoomRoomManagePage() {
     }
   }
 
+  useEffect(() => {
+    if (!id || !join) return;
+    const device_id = liveDeviceId();
+    const beat = () => {
+      void apiFetch(`/live-streams/${id}/presence`, {
+        method: 'POST',
+        body: JSON.stringify({ device_id }),
+      }).catch(() => undefined);
+    };
+    beat();
+    const timer = window.setInterval(beat, 25_000);
+    return () => window.clearInterval(timer);
+  }, [id, join]);
+
+  async function toggleGuestVideo(allow: boolean) {
+    if (!id) return;
+    setVideoBusy(true);
+    setError('');
+    try {
+      const res = await apiFetch<{ data: SessionDetail }>(`/live-streams/${id}/guest-video`, {
+        method: 'PATCH',
+        body: JSON.stringify({ allow_guest_video: allow }),
+      });
+      setSession((prev) =>
+        prev ? { ...prev, allow_guest_video: res.data.allow_guest_video ?? allow } : prev,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update guest cameras');
+    } finally {
+      setVideoBusy(false);
+    }
+  }
+
   async function toggleGuestSpeech(allow: boolean) {
     if (!id) return;
     setSpeechBusy(true);
@@ -250,12 +281,8 @@ export default function ZoomRoomManagePage() {
       }
       const res = await apiFetch<{ data: JoinPayload }>(`/live-streams/${id}/join`, {
         method: 'POST',
-        body: JSON.stringify({ as_host: true }),
+        body: JSON.stringify({ as_host: true, device_id: liveDeviceId() }),
       });
-      if (res.data.video_platform !== 'zoom') {
-        setError('This is not a Zoom class.');
-        return;
-      }
       setJoin(res.data);
       await load();
     } catch (err) {
@@ -389,8 +416,8 @@ export default function ZoomRoomManagePage() {
           ) : null}
         </div>
         <p className="text-xs text-slate-400">
-          Pause keeps invites; guests cannot watch until you resume. End when finished. Zoom toolbar
-          provides screen share, mute, and participant controls on desktop.
+          Guests cannot record this class. A raised hand is approved from Zoom Participants. Screen share stays with the host.
+          This class stays open on one device only.
         </p>
 
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-950/40 px-3 py-2.5">
@@ -422,6 +449,25 @@ export default function ZoomRoomManagePage() {
               onClick={() => void toggleGuestSpeech(false)}
             >
               Revoke all
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-sky-500/30 bg-sky-950/40 px-3 py-2.5">
+          <div>
+            <div className="text-sm font-semibold text-sky-100">Guest cameras</div>
+            <p className="text-xs text-sky-200/80">
+              {session.allow_guest_video
+                ? 'Cameras are allowed. Turn a single guest off from Zoom Participants.'
+                : 'Cameras are off for every guest until you allow them.'}
+            </p>
+          </div>
+          <div className="ml-auto flex gap-2">
+            <Button size="sm" variant={session.allow_guest_video ? 'default' : 'outline'} disabled={videoBusy || Boolean(session.allow_guest_video)} onClick={() => void toggleGuestVideo(true)}>
+              Allow cameras
+            </Button>
+            <Button size="sm" variant={!session.allow_guest_video ? 'default' : 'outline'} disabled={videoBusy || !session.allow_guest_video} onClick={() => void toggleGuestVideo(false)}>
+              Cameras off
             </Button>
           </div>
         </div>

@@ -12,6 +12,7 @@ const USER_TYPES = [
   { id: 'officer', label: 'Officer' },
   { id: 'admin', label: 'Admin' },
   { id: 'system_admin', label: 'System admin' },
+  { id: 'host', label: 'Host' },
 ];
 
 export default function NewUserScreen() {

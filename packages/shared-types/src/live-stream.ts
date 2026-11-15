@@ -77,6 +77,8 @@ export const createLiveStreamSchema = z.object({
   scheduled_at: z.coerce.date(),
   /** Assigned class host (defaults to creating admin). Prefer a listed LiveHost. */
   host_user_id: mongoId.optional(),
+  /** Person who supports the host and can control guests. */
+  support_user_id: mongoId.optional(),
   /** Optional exam subject this class is scheduled under. */
   exam_subject_id: mongoId.optional(),
   /** Optional invite list at create time. */
@@ -87,7 +89,7 @@ export const createLiveStreamSchema = z.object({
   /** `free` = everyone invited; `paid` = only users with payment may join/watch. */
   access_type: z.enum(LIVE_CLASS_ACCESS_TYPES).optional().default('free'),
   /** `agora` (default) or `zoom` — selects the video provider for this class. */
-  video_platform: z.enum(LIVE_VIDEO_PLATFORMS).optional().default('agora'),
+  video_platform: z.enum(LIVE_VIDEO_PLATFORMS).optional().default('zoom'),
   /**
    * Zoom only: when true, meeting is created with cloud auto-record so recording
    * starts when the host starts the live class (Zoom Business cloud recording).
@@ -103,6 +105,7 @@ export const updateLiveStreamSchema = z.object({
   status: z.enum(LIVE_STREAM_STATUSES).optional(),
   /** Reassign the class host (admin only). Prefer a listed LiveHost. */
   host_user_id: mongoId.optional(),
+  support_user_id: mongoId.optional().nullable(),
   /** Set or clear the exam subject. */
   exam_subject_id: mongoId.optional().nullable(),
   /** @deprecated Prefer `presentations`. */
@@ -139,6 +142,12 @@ export const liveStreamRevokeInvitesSchema = z.object({
 /** Host tokens are web-only. The mobile app must omit as_host (always audience). */
 export const joinLiveStreamSchema = z.object({
   as_host: z.boolean().optional(),
+  /** This browser or phone. The same class cannot stay open on a second device. */
+  device_id: z.string().trim().min(8).max(80).optional(),
+});
+
+export const livePresenceSchema = z.object({
+  device_id: z.string().trim().min(8).max(80),
 });
 
 export const updateGuestMessagesSchema = z.object({
@@ -147,6 +156,10 @@ export const updateGuestMessagesSchema = z.object({
 
 export const updateGuestSpeechSchema = z.object({
   allow_guest_speech: z.boolean(),
+});
+
+export const updateGuestVideoSchema = z.object({
+  allow_guest_video: z.boolean(),
 });
 
 export const sendLiveStreamMessageSchema = z.object({
@@ -411,7 +424,7 @@ export interface LiveStreamGuestItem {
   name: string;
   email?: string;
   phone?: string;
-  role: 'host' | 'audience';
+  role: 'host' | 'audience' | 'support';
   joined_at: string;
   last_seen_at: string;
 }
@@ -462,6 +475,8 @@ export interface LiveStreamListItem {
   allow_guest_messages: boolean;
   /** Host toggle: guests may unmute and speak while live. */
   allow_guest_speech: boolean;
+  /** Host toggle: guests may turn cameras on. */
+  allow_guest_video?: boolean;
   /** `free` or `paid` — paid classes block unpaid learners. */
   access_type: LiveClassAccessType;
   /** True when this user is unpaid and the class requires payment. */
@@ -494,6 +509,8 @@ export interface LiveStreamJoinPayloadBase {
   status: LiveStreamStatus;
   allow_guest_messages: boolean;
   allow_guest_speech: boolean;
+  /** Host toggle: guests may turn cameras on. */
+  allow_guest_video?: boolean;
   /** Assigned class host display name (for guests). Optional for older clients. */
   host_name?: string;
 }

@@ -40,6 +40,8 @@ import {
 } from '@ibas/shared-types';
 import type { AuthUser } from '../../middleware/auth.js';
 import { AppError, badRequest, forbidden, notFound } from '../../shared/errors/AppError.js';
+import { logger } from '../../shared/logger.js';
+import { formatSmsTaka, PROASSIST_SUPPORT_PHONE, sendSms } from '../../shared/sms.js';
 import { User } from '../users/models/User.model.js';
 import { SalaryBillAccess, type ISalaryBillAccess, type ISalaryPayment } from './models/SalaryBillAccess.model.js';
 import { SalaryBillUsage } from './models/SalaryBillUsage.model.js';
@@ -238,7 +240,23 @@ export async function consumeBill(user: AuthUser, dto: ConsumeSalaryBillDto): Pr
   if (!isPlatformAdmin(user)) {
     await SalaryCalcUsage.updateOne({ user_id: user.id, unprinted: { $gt: 0 } }, { $inc: { unprinted: -1 } });
   }
+  if (free) await notifyFreeTrDownload(user.id, dto.old_pay, dto.net_total);
   return getMyBillAccess(user);
+}
+
+/** Texts the 30 June 2026 basic and the net arrear after a free T.R. Form. A failed SMS does not undo the download. */
+async function notifyFreeTrDownload(userId: string, basic: number, netTotal: number): Promise<void> {
+  try {
+    const owner = await User.findById(userId).select('phone').lean();
+    const phone = owner?.phone;
+    if (!phone || !/^01[3-9]\d{8}$/.test(phone)) return;
+    await sendSms(
+      phone,
+      `Dear ProAssist User, your arrear bill based on Basic Pay of ${formatSmsTaka(basic)} BDT (as of 30.06.2026) is ${formatSmsTaka(netTotal)} BDT (Verify). Thank you for using ProAssist! Support: ${PROASSIST_SUPPORT_PHONE}.`,
+    );
+  } catch (err) {
+    logger.error({ err: err instanceof Error ? err.message : 'sms failed', userId }, 'Free T.R. Form SMS failed');
+  }
 }
 
 /**

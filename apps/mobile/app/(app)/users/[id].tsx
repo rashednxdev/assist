@@ -36,7 +36,7 @@ import { colors, spacing } from '@/theme';
 
 type Tab = 'profile' | 'access' | 'notify';
 
-const USER_TYPES = ['applicant', 'officer', 'admin', 'system_admin'];
+const USER_TYPES = ['applicant', 'officer', 'admin', 'system_admin', 'host'];
 const USER_STATUSES = ['active', 'inactive', 'suspended', 'pending_verify'];
 
 const PERM_FLAGS = [
@@ -418,7 +418,7 @@ export default function UserDetailScreen() {
                   onPress={() => setDetail({ ...detail, user_type: t })}
                 >
                   <Text style={[styles.chipText, detail.user_type === t && styles.chipTextActive]}>
-                    {t}
+                    {t === 'host' ? 'Host' : t}
                   </Text>
                 </Pressable>
               ))}

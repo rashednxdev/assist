@@ -4,16 +4,17 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { ChevronDown, LogOut, Menu, X } from 'lucide-react';
+import { ChevronDown, ChevronLeft, LogOut, Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { logoutRequest, fetchMe, getAccessToken, clearAccessToken, SET_PASSWORD_PATH, type MeUser } from '@/lib/auth';
-import { adminNavGroupsFor, isPlatformAdmin } from '@/lib/capabilities';
+import { adminNavGroupsFor, isPlatformAdmin, learningModuleAccess } from '@/lib/capabilities';
 import {
   LEARNING_HOME,
   SALARY_HOME,
   canHostLive,
   hasLearningWebAccess,
+  isLearningModulePath,
   isPublicSignedInPath,
   isSalaryOnlyUser,
 } from '@/lib/learning-access';
@@ -25,6 +26,20 @@ import {
   salaryPrimaryNav,
   type NavItem,
 } from './nav-config';
+
+const MODULE_ROUTES: { prefix: string; code: string }[] = [
+  { prefix: '/books', code: 'BOOKS' },
+  { prefix: '/questions', code: 'QUESTIONS' },
+  { prefix: '/exams', code: 'EXAM' },
+  { prefix: '/papers', code: 'PAPER' },
+  { prefix: '/qotd', code: 'QOTD' },
+  { prefix: '/exam-week', code: 'EXAM_WEEK' },
+  { prefix: '/exam-routine', code: 'EXAM_ROUTINE' },
+  { prefix: '/marathon', code: 'QUESTIONS' },
+  { prefix: '/user-questions', code: 'USER_QUESTIONS' },
+  { prefix: '/live-room', code: 'LIVE_STREAM' },
+  { prefix: '/live', code: 'LIVE_STREAM' },
+];
 
 function matchesPath(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
@@ -108,6 +123,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (blocked) router.replace(SALARY_HOME);
   }, [blocked, router]);
 
+  useEffect(() => {
+    if (!me || blocked) return;
+    const hit = MODULE_ROUTES.find((r) => pathname === r.prefix || pathname.startsWith(`${r.prefix}/`));
+    if (!hit) return;
+    if (learningModuleAccess(me, hit.code).state !== 'open') router.replace(LEARNING_HOME);
+  }, [me, pathname, blocked, router]);
+
   const primaryLinks = useMemo(() => primaryNavFor(me), [me]);
 
   const adminNav = useMemo(() => {
@@ -143,7 +165,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-40 border-b border-border bg-surface/95 backdrop-blur-md print:hidden">
-        <div className="mx-auto flex h-14 max-w-7xl items-center gap-2 px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex min-h-14 max-w-7xl flex-wrap items-center gap-2 px-4 py-2 sm:px-6 lg:px-8">
           <button
             type="button"
             className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-foreground lg:hidden"
@@ -157,29 +179,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <p className="truncate text-sm font-bold text-foreground sm:text-base">{tApp('name')}</p>
           </Link>
 
-          <nav className="ml-2 hidden min-w-0 flex-1 items-center gap-1 overflow-x-auto lg:flex">
+          <nav className="ml-2 hidden min-w-0 flex-1 flex-wrap items-center gap-1 lg:flex">
             {primaryLinks.map((item) => (
               <TopLink key={item.href} item={item} active={item.href === activePrimary} />
             ))}
-            {showAdmin ? (
-              <div className="relative">
-                <button
-                  type="button"
-                  className={cn(
-                    'inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-semibold',
-                    adminOpen || pathname.startsWith('/admin') || pathname.includes('/admin')
-                      ? 'bg-slate-900 text-white'
-                      : 'text-slate-700 hover:bg-slate-100',
-                  )}
-                  onClick={() => setAdminOpen((v) => !v)}
-                >
-                  Admin
-                  <ChevronDown className="h-4 w-4" />
-                </button>
-                {adminOpen ? (
-                  <div className="absolute left-0 top-full z-50 mt-2 max-h-[70vh] w-72 overflow-y-auto rounded-xl border border-border bg-surface p-3 shadow-xl">
+          </nav>
+          {showAdmin ? (
+            <div className="relative hidden lg:block">
+              <button
+                type="button"
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-semibold',
+                  adminOpen || pathname.startsWith('/admin') || pathname.includes('/admin')
+                    ? 'bg-slate-900 text-white'
+                    : 'text-slate-700 hover:bg-slate-100',
+                )}
+                onClick={() => setAdminOpen((v) => !v)}
+              >
+                Admin
+                <ChevronDown className="h-4 w-4" />
+              </button>
+              {adminOpen ? (
+                <div className="absolute right-0 top-full z-50 mt-2 w-[42rem] max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-surface p-3 shadow-xl">
+                  <div className={cn('grid gap-4', adminNav.length > 1 ? 'sm:grid-cols-2' : 'grid-cols-1')}>
                     {adminNav.map((group) => (
-                      <div key={group.title} className="mb-3 last:mb-0">
+                      <div key={group.title}>
                         <p className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
                           {group.title}
                         </p>
@@ -193,12 +217,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                                 href={item.href}
                                 onClick={() => setAdminOpen(false)}
                                 className={cn(
-                                  'flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-medium',
+                                  'flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium',
                                   active ? 'bg-primary/10 text-primary' : 'text-slate-700 hover:bg-slate-50',
                                 )}
                               >
                                 <Icon className="h-4 w-4 shrink-0" />
-                                <span className="truncate">{item.label}</span>
+                                <span>{item.label}</span>
                               </Link>
                             );
                           })}
@@ -206,10 +230,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       </div>
                     ))}
                   </div>
-                ) : null}
-              </div>
-            ) : null}
-          </nav>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           <Button
             variant="ghost"
@@ -281,6 +305,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <main>
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 print:max-w-none print:p-0">
+          {me && isLearningModulePath(pathname) ? (
+            <button
+              type="button"
+              className="mb-4 inline-flex items-center gap-1 text-sm font-medium text-primary hover:text-primary-dark print:hidden"
+              onClick={() => {
+                if (window.history.length > 1) router.back();
+                else router.push(LEARNING_HOME);
+              }}
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Back
+            </button>
+          ) : null}
           {blocked ? <Skeleton className="h-32 w-full rounded-2xl" /> : children}
         </div>
       </main>

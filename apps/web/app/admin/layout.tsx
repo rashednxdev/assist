@@ -1,33 +1,22 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { getAccessToken, fetchMe } from '@/lib/auth';
+import { isPlatformAdmin } from '@/lib/capabilities';
 import { AppShell } from '@/components/layout/app-shell';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useCachedSession } from '@/lib/use-cached-session';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const [ready, setReady] = useState(false);
+  const { ready, me } = useCachedSession();
+  const admin = isPlatformAdmin(me);
 
   useEffect(() => {
-    if (!getAccessToken()) {
-      router.replace('/login');
-      return;
-    }
-    fetchMe()
-      .then((res) => {
-        const admin =
-          res.data.is_super_admin ||
-          res.data.user_type === 'system_admin' ||
-          res.data.user_type === 'admin';
-        if (!admin) router.replace('/dashboard');
-        else setReady(true);
-      })
-      .catch(() => router.replace('/login'));
-  }, [router]);
+    if (ready && me && !admin) router.replace('/dashboard');
+  }, [ready, me, admin, router]);
 
-  if (!ready) {
+  if (!ready || !admin) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-6">
         <div className="w-full max-w-sm space-y-3 rounded-xl border border-border bg-surface p-6 shadow-md">

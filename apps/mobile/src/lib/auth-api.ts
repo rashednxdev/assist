@@ -56,10 +56,17 @@ export async function clearToken() {
   setApiAccessToken(null);
 }
 
+export interface LoginOtpChallenge {
+  otp_required: true;
+  challenge: string;
+  phone_hint: string;
+  expires_in: number;
+}
+
 export async function login(email: string, password: string) {
   const device_id = await getOrCreateDeviceId();
   const res = await apiFetch<{
-    data: { accessToken: string; expiresIn: number; user: MeUser };
+    data: { accessToken: string; expiresIn: number; user: MeUser } | LoginOtpChallenge;
   }>('/auth/login', {
     method: 'POST',
     body: JSON.stringify({
@@ -71,8 +78,37 @@ export async function login(email: string, password: string) {
       client_platform: 'mobile',
     }),
   });
+  if ('otp_required' in res.data && res.data.otp_required) return res.data;
   await persistToken(res.data.accessToken);
   await syncClientVersionIfNeeded(res.data.user.id);
+  return res.data;
+}
+
+export async function verifyLoginOtp(challenge: string, code: string) {
+  const device_id = await getOrCreateDeviceId();
+  const res = await apiFetch<{
+    data: { accessToken: string; expiresIn: number; user: MeUser };
+  }>('/auth/login/otp', {
+    method: 'POST',
+    body: JSON.stringify({
+      challenge,
+      code,
+      device_id,
+      device_label: getDeviceLabel(),
+      app_version: APP_VERSION_LABEL,
+      client_platform: 'mobile',
+    }),
+  });
+  await persistToken(res.data.accessToken);
+  await syncClientVersionIfNeeded(res.data.user.id);
+  return res.data;
+}
+
+export async function resendLoginOtp(challenge: string) {
+  const res = await apiFetch<{ data: LoginOtpChallenge }>('/auth/login/otp/resend', {
+    method: 'POST',
+    body: JSON.stringify({ challenge }),
+  });
   return res.data;
 }
 
@@ -100,9 +136,9 @@ export async function register(body: Omit<RegisterDto, 'device_id' | 'device_lab
   return res.data;
 }
 
-/** Step 1 of "forgot password" — emails a reset code to the address on file for this phone number. */
+/** Step 1 of "forgot password" — texts a 6-digit reset code to this mobile number. */
 export async function forgotPassword(phone: string) {
-  const res = await apiFetch<{ data: { sent: true; email_hint: string } }>('/auth/password/forgot', {
+  const res = await apiFetch<{ data: { sent: true; phone_hint: string } }>('/auth/password/forgot', {
     method: 'POST',
     body: JSON.stringify({ phone }),
   });

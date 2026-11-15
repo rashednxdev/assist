@@ -1,24 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { getAccessToken, fetchMe } from '@/lib/auth';
+import { usePathname } from 'next/navigation';
+import { isPlatformAdmin } from '@/lib/capabilities';
 import { AppShell } from '@/components/layout/app-shell';
+import { CopyGuard } from '@/components/content/copy-guard';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useCachedSession } from '@/lib/use-cached-session';
 
 export default function BooksLayout({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    if (!getAccessToken()) {
-      router.replace('/login');
-      return;
-    }
-    fetchMe()
-      .then(() => setReady(true))
-      .catch(() => router.replace('/login'));
-  }, [router]);
+  const pathname = usePathname();
+  const { ready, me } = useCachedSession();
+  const admin = isPlatformAdmin(me);
 
   if (!ready) {
     return (
@@ -31,5 +23,18 @@ export default function BooksLayout({ children }: { children: React.ReactNode })
     );
   }
 
-  return <AppShell>{children}</AppShell>;
+  const protect = !admin && !pathname.startsWith('/books/admin');
+  return (
+    <AppShell>
+      {protect ? (
+        <CopyGuard>
+          <div className="learner-app -mx-4 bg-[#f4f7fb] px-4 py-2 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+            {children}
+          </div>
+        </CopyGuard>
+      ) : (
+        children
+      )}
+    </AppShell>
+  );
 }

@@ -52,7 +52,7 @@ export default function RegisterScreen() {
       return;
     }
     if (!acceptedTerms) {
-      setError('অফিসের সকলের বা অন্তত ৫ জনের বিল ফরম ডাউনলোডের সম্মতি দিন।');
+      setError('Please confirm that you want to register.');
       return;
     }
     setLoading(true);
@@ -142,7 +142,7 @@ export default function RegisterScreen() {
           color={acceptedTerms ? colors.primary : colors.textMuted}
         />
         <Text style={styles.termsText}>
-          আমি আমার অফিসের সকলের বা অন্তত ৫ জনের বিল ফরম ডাউনলোড করতে চাই
+          I want to register.
         </Text>
       </Pressable>
 

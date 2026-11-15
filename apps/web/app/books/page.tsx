@@ -20,6 +20,7 @@ import {
   type SubjectCatalogItem,
 } from '@/components/books/book-subject-tags';
 import { BookArchiveTag } from '@/components/books/book-archive-tag';
+import { BooksLearner } from '@/components/books/books-learner';
 
 interface BookItem {
   id: string;
@@ -41,6 +42,7 @@ export default function BooksPage() {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [meReady, setMeReady] = useState(false);
   const [subjectCatalog, setSubjectCatalog] = useState<SubjectCatalogItem[]>([]);
   const [filterSubjectId, setFilterSubjectId] = useState('');
   const [tab, setTab] = useState<'books' | 'circulars'>('books');
@@ -75,17 +77,21 @@ export default function BooksPage() {
         const admin =
           res.data.is_super_admin || res.data.user_type === 'system_admin' || res.data.user_type === 'admin';
         setIsAdmin(admin);
+        setMeReady(true);
         return apiFetch<{ data: SubjectCatalogItem[] }>('/books/subject-catalog').then((r) =>
           setSubjectCatalog(r.data),
         );
       })
-      .catch(() => {});
+      .catch(() => setMeReady(true));
   }, [load]);
 
   useEffect(() => {
     load(q, filterSubjectId || undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- search is applied explicitly via form
   }, [filterSubjectId, load]);
+
+  if (!meReady) return <Skeleton className="h-40 w-full" />;
+  if (!isAdmin) return <BooksLearner />;
 
   return (
     <div className="space-y-6">

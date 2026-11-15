@@ -58,12 +58,43 @@ export interface ZoomMeetingCreated {
   start_url: string;
 }
 
+/** Host-led classroom: guests start muted and off-camera, cannot record, and raise a hand to speak. */
+export function classroomZoomSettings(opts: {
+  autoRecordCloud?: boolean;
+  allowSpeech?: boolean;
+  allowVideo?: boolean;
+  alternativeHosts?: string;
+} = {}) {
+  return {
+    host_video: true,
+    participant_video: Boolean(opts.allowVideo),
+    join_before_host: false,
+    mute_upon_entry: !opts.allowSpeech,
+    waiting_room: false,
+    audio: 'both' as const,
+    /** Cloud recording is an admin choice for the published replay. Guests never get local record. */
+    auto_recording: opts.autoRecordCloud ? 'cloud' : 'none',
+    participant_can_unmute_self: Boolean(opts.allowSpeech),
+    /** Host approves who may speak after a raised hand. */
+    request_permission_to_unmute_participants: true,
+    allow_participants_to_rename: false,
+    allow_host_control_participant_mute_state: true,
+    focus_mode: true,
+    allow_multiple_devices: false,
+    who_can_share_screen: 'host' as const,
+    who_can_share_screen_when_someone_is_sharing: 'host' as const,
+    ...(opts.alternativeHosts ? { alternative_hosts: opts.alternativeHosts } : {}),
+  };
+}
+
 export async function createZoomMeeting(opts: {
   topic: string;
   startTime: Date;
   durationMinutes?: number;
   /** Zoom Business cloud auto-record when host starts the meeting. */
   autoRecordCloud?: boolean;
+  /** Licensed Zoom user who supports the host (co-host). */
+  alternativeHosts?: string;
 }): Promise<ZoomMeetingCreated> {
   const token = await getAccessToken();
   const body = {
@@ -72,21 +103,7 @@ export async function createZoomMeeting(opts: {
     start_time: opts.startTime.toISOString(),
     duration: opts.durationMinutes ?? 120,
     timezone: 'UTC',
-    settings: {
-      host_video: true,
-      /** Guests join without video; host relay only until speech is allowed. */
-      participant_video: false,
-      join_before_host: false,
-      mute_upon_entry: true,
-      waiting_room: false,
-      audio: 'both',
-      auto_recording: opts.autoRecordCloud ? 'cloud' : 'none',
-      participant_can_unmute_self: false,
-      allow_participants_to_rename: false,
-      allow_host_control_participant_mute_state: true,
-      /** Guests see only host video + shared content — not other guests. */
-      focus_mode: true,
-    },
+    settings: classroomZoomSettings({ autoRecordCloud: opts.autoRecordCloud, alternativeHosts: opts.alternativeHosts }),
   };
   const res = await fetch('https://api.zoom.us/v2/users/me/meetings', {
     method: 'POST',
@@ -200,10 +217,10 @@ export async function fetchZoomZakToken(): Promise<string> {
   return data.token;
 }
 
-/** Host toggle: guest listen-only vs allowed to speak (mic) in Zoom. */
-export async function updateZoomGuestUnmuteAllowed(
+/** Apply classroom mic/camera policy without resetting the rest of the meeting. */
+export async function updateZoomClassroom(
   meetingNumber: string,
-  allow: boolean,
+  opts: { allowSpeech?: boolean; allowVideo?: boolean },
 ): Promise<void> {
   const token = await getAccessToken();
   const mn = String(meetingNumber).replace(/\s+/g, '');
@@ -213,21 +230,21 @@ export async function updateZoomGuestUnmuteAllowed(
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      settings: {
-        participant_can_unmute_self: allow,
-        allow_host_control_participant_mute_state: true,
-        mute_upon_entry: !allow,
-        /** Keep cameras off on join; guests may start video only after host allows speak. */
-        participant_video: false,
-        focus_mode: true,
-      },
-    }),
+    body: JSON.stringify({ settings: classroomZoomSettings(opts) }),
   });
   if (!res.ok) {
     const text = await res.text();
     throw badRequest(`Zoom update meeting failed (${res.status}): ${text.slice(0, 240)}`);
   }
+}
+
+/** Host toggle: guest listen-only vs allowed to speak (mic) in Zoom. */
+export async function updateZoomGuestUnmuteAllowed(
+  meetingNumber: string,
+  allow: boolean,
+  allowVideo = false,
+): Promise<void> {
+  await updateZoomClassroom(meetingNumber, { allowSpeech: allow, allowVideo });
 }
 
 /** Ensure Focus Mode so attendees only see host + shared content. */
@@ -241,12 +258,7 @@ export async function ensureZoomFocusMode(meetingNumber: string): Promise<void> 
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      settings: {
-        focus_mode: true,
-        participant_video: false,
-        mute_upon_entry: true,
-        participant_can_unmute_self: false,
-      },
+      settings: classroomZoomSettings(),
     }),
   });
   if (!res.ok) {

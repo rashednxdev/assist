@@ -3,14 +3,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Video, Layers, Radio } from 'lucide-react';
-import type { LiveClassPackageBrief, LivePermissionStatus, LiveStreamStatus } from '@ibas/shared-types';
+import type { ExamPrepPartsResponse, LiveClassPackageBrief, LivePermissionStatus, LiveStreamStatus } from '@ibas/shared-types';
 import { LivePackageChip } from '@/components/live/live-package-cta';
 import { apiFetch } from '@/lib/api-client';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
 
 interface LiveRow {
   id: string;
@@ -26,6 +26,7 @@ interface LiveRow {
   is_previous?: boolean;
   slide_count?: number;
   presentation_count?: number;
+  recorded_content_count?: number;
   access_type?: 'free' | 'paid';
   packages?: LiveClassPackageBrief[];
 }
@@ -55,7 +56,7 @@ function formatWhen(iso: string) {
 
 function ClassCard({ item, previous }: { item: LiveRow; previous?: boolean }) {
   return (
-    <Link key={item.id} href={`/live/${item.id}`}>
+    <Link key={item.id} href={`/live/zoom/${item.id}`}>
       <Card
         className={`transition hover:border-pink-200 hover:shadow-sm ${previous ? 'border-pink-100 bg-pink-50/30' : ''}`}
       >
@@ -102,6 +103,11 @@ function ClassCard({ item, previous }: { item: LiveRow; previous?: boolean }) {
                   {item.slide_count} slide{(item.slide_count ?? 0) === 1 ? '' : 's'}
                 </span>
               ) : null}
+              {(item.recorded_content_count ?? 0) > 0 ? (
+                <span className="rounded-full border border-pink-100 bg-pink-50 px-2 py-0.5 text-[11px] font-bold text-pink-800">
+                  {item.recorded_content_count} recording{(item.recorded_content_count ?? 0) === 1 ? '' : 's'}
+                </span>
+              ) : null}
             </div>
           </div>
         </CardContent>
@@ -115,12 +121,16 @@ export default function LiveStreamUserListPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [subjectFilter, setSubjectFilter] = useState('all');
+  const [catalogOrder, setCatalogOrder] = useState<string[]>([]);
 
   useEffect(() => {
-    apiFetch<{ data: LiveRow[] }>('/live-streams?video_platform=agora')
+    apiFetch<{ data: LiveRow[] }>('/live-streams')
       .then((res) => setItems(res.data))
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'))
       .finally(() => setLoading(false));
+    apiFetch<{ data: ExamPrepPartsResponse }>('/exam-prep/parts')
+      .then((res) => setCatalogOrder(res.data.parts.flatMap((part) => part.subjects.map((subject) => subject.id))))
+      .catch(() => setCatalogOrder([]));
   }, []);
 
   const subjectOptions = useMemo(() => {
@@ -130,14 +140,17 @@ export default function LiveStreamUserListPage() {
         map.set(item.exam_subject_id, item.exam_subject_name);
       }
     }
+    const rank = (id: string) => {
+      const index = catalogOrder.indexOf(id);
+      return index < 0 ? Number.MAX_SAFE_INTEGER : index;
+    };
     return [...map.entries()]
       .map(([id, name]) => ({ id, name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [items]);
+      .sort((a, b) => rank(a.id) - rank(b.id) || a.name.localeCompare(b.name));
+  }, [items, catalogOrder]);
 
   const filtered = useMemo(() => {
     if (subjectFilter === 'all') return items;
-    if (subjectFilter === 'none') return items.filter((i) => !i.exam_subject_id);
     return items.filter((i) => i.exam_subject_id === subjectFilter);
   }, [items, subjectFilter]);
 
@@ -170,40 +183,46 @@ export default function LiveStreamUserListPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Live class (Agora)"
-        description="Browse Agora live sessions by subject. Invited guests can join live. Assigned hosts use Host live to open the control room."
+        title="Live class"
+        description="Join a Zoom class from one device. Previous classes open their recordings here, the same way as the mobile app."
       />
       <div className="flex flex-wrap gap-2">
         <Button asChild variant="outline" size="sm">
-          <Link href="/live/zoom">
-            Zoom class
-          </Link>
-        </Button>
-        <Button asChild variant="outline" size="sm">
-          <Link href="/live/hosting">
+          <Link href="/live/zoom/hosting">
             <Radio className="h-3.5 w-3.5" />
             Host live classes
           </Link>
         </Button>
       </div>
 
-      {!loading && items.length > 0 ? (
-        <div className="max-w-sm space-y-1.5">
-          <Label htmlFor="live-subject-filter">Filter by subject</Label>
-          <select
-            id="live-subject-filter"
-            value={subjectFilter}
-            onChange={(e) => setSubjectFilter(e.target.value)}
-            className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-          >
-            <option value="all">All subjects</option>
-            {subjectOptions.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
+      {!loading && subjectOptions.length > 0 ? (
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Filter by subject</p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setSubjectFilter('all')}
+              className={cn(
+                'rounded-full border px-3 py-1.5 text-sm',
+                subjectFilter === 'all' ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-surface',
+              )}
+            >
+              All
+            </button>
+            {subjectOptions.map((subject) => (
+              <button
+                key={subject.id}
+                type="button"
+                onClick={() => setSubjectFilter(subject.id)}
+                className={cn(
+                  'rounded-full border px-3 py-1.5 text-sm',
+                  subjectFilter === subject.id ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-surface',
+                )}
+              >
+                {subject.name}
+              </button>
             ))}
-            <option value="none">No subject</option>
-          </select>
+          </div>
         </div>
       ) : null}
 

@@ -24,6 +24,11 @@ const envSchema = z.object({
   SMTP_USER: z.string().optional(),
   /** Gmail App Password (not the account password) — Google Account > Security > App passwords. */
   SMTP_PASS: z.string().optional(),
+  /** BulkSMS BD API key for the login verification code. Unset means login SMS cannot be sent. */
+  SMS_API_KEY: z.string().optional(),
+  /** Approved sender id for BulkSMS BD. */
+  SMS_SENDER_ID: z.string().default('8809604903051'),
+  SMS_API_URL: z.string().url().default('https://isms.bulksmsbd.info/api/sendsms'),
   /** Agora.io App ID for LIVE_STREAM (one-to-many). Required to join a session. */
   AGORA_APP_ID: z.string().optional(),
   /** Agora.io App Certificate — used to mint short-lived RTC tokens server-side. */

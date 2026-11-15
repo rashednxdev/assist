@@ -1,24 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { getAccessToken, fetchMe } from '@/lib/auth';
 import { AppShell } from '@/components/layout/app-shell';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useCachedSession } from '@/lib/use-cached-session';
 
 export default function StaticRefLayout({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    if (!getAccessToken()) {
-      router.replace('/login');
-      return;
-    }
-    fetchMe()
-      .then(() => setReady(true))
-      .catch(() => router.replace('/login'));
-  }, [router]);
+  const { ready } = useCachedSession();
 
   if (!ready) {
     return (

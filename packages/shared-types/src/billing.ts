@@ -23,8 +23,12 @@ export const accessPackageInputSchema = z
     description: z.string().trim().max(2000).optional().or(z.literal('')),
     /** Exam Preparation: the exam part this price is for. With no subject = every subject of the part. */
     exam_part_id: mongoId.optional().or(z.literal('')).nullable(),
-    /** Exam Preparation: the subject this price is for. Part and subject both empty = all of Part 1 (older packages). */
+    /** Exam Preparation: the subject this price is for. Part and subjects both empty = all of that part (older packages). */
     exam_subject_id: mongoId.optional().or(z.literal('')).nullable(),
+    /** Exam Preparation or Live: one package may cover several subjects. A subject may also appear in other packages. */
+    exam_subject_ids: z.array(mongoId).max(40).optional().default([]),
+    /** Live class: how many classes of the chosen subject this package includes. */
+    class_limit: z.coerce.number().int().min(1).max(500).optional().nullable(),
     duration_days: z.coerce.number().int().min(1, 'At least 1 day').max(3650),
     price: z.coerce.number().min(0).max(1_000_000),
     /** Optional "was" price shown struck through. */
@@ -35,11 +39,17 @@ export const accessPackageInputSchema = z
     is_active: z.boolean().default(true),
   })
   .superRefine((d, ctx) => {
-    if (d.kind !== 'exam_prep' && d.exam_subject_id) {
-      ctx.addIssue({ code: 'custom', path: ['exam_subject_id'], message: 'Only Exam Preparation packages have a subject' });
+    if (d.kind === 'basic' && (d.exam_subject_id || (d.exam_subject_ids?.length ?? 0) > 0)) {
+      ctx.addIssue({ code: 'custom', path: ['exam_subject_ids'], message: 'Basic Module packages are not tied to a subject' });
     }
     if (d.kind !== 'exam_prep' && d.exam_part_id) {
       ctx.addIssue({ code: 'custom', path: ['exam_part_id'], message: 'Only Exam Preparation packages have an exam part' });
+    }
+    if (d.kind === 'live' && d.class_limit == null) {
+      ctx.addIssue({ code: 'custom', path: ['class_limit'], message: 'Set how many live classes this package includes' });
+    }
+    if (d.kind !== 'live' && d.class_limit != null) {
+      ctx.addIssue({ code: 'custom', path: ['class_limit'], message: 'Only Live class packages have a class count' });
     }
     if (d.compare_at_price != null && d.compare_at_price > 0 && d.compare_at_price <= d.price) {
       ctx.addIssue({ code: 'custom', path: ['compare_at_price'], message: '"Was" price must be higher than the price' });
@@ -91,6 +101,10 @@ export interface AccessPackageRecord {
   exam_part_name?: string;
   exam_subject_id?: string;
   exam_subject_name?: string;
+  exam_subject_ids?: string[];
+  exam_subject_names?: string[];
+  /** Live class packages: classes included for the chosen subject. */
+  class_limit?: number;
   /** Exam Preparation: one subject, a whole part, or (older packages) all of Part 1. */
   scope?: ExamPrepScopeKind;
   duration_days: number;
@@ -119,7 +133,21 @@ export const billingSettingsSchema = z
     charge_label: z.string().trim().min(1).max(60).default('Payment charge'),
     /** Shown on the checkout page. */
     checkout_note: z.string().trim().max(500).optional().or(z.literal('')),
+    /** Personal or merchant bKash number the user sends the package amount to. */
+    bkash_number: z
+      .string()
+      .trim()
+      .regex(/^(01[3-9]\d{8})?$/, 'Enter a valid bKash number (01XXXXXXXXX)')
+      .optional()
+      .or(z.literal('')),
     gateway_enabled: z.boolean().default(true),
+    /**
+     * Percent taken off when a learner enrolls this many subjects of one part together.
+     * One subject is never reduced.
+     */
+    subject_discount_2: z.coerce.number().min(0).max(90).default(10),
+    subject_discount_3: z.coerce.number().min(0).max(90).default(0),
+    subject_discount_4: z.coerce.number().min(0).max(90).default(0),
   })
   .superRefine((d, ctx) => {
     if (d.charge_type === 'percent' && d.charge_value > 50) {
@@ -134,8 +162,92 @@ export const DEFAULT_BILLING_SETTINGS: BillingSettingsRecord = {
   charge_value: 1.85,
   charge_label: 'bKash charge',
   checkout_note: '',
+  bkash_number: '',
   gateway_enabled: true,
+  subject_discount_2: 10,
+  subject_discount_3: 0,
+  subject_discount_4: 0,
 };
+
+/** A learner can enroll at most this many subjects of one part in a single payment. */
+export const MAX_SUBJECTS_PER_ENROLLMENT = 4;
+
+export function subjectBundlePercent(
+  count: number,
+  settings: Pick<BillingSettingsRecord, 'subject_discount_2' | 'subject_discount_3' | 'subject_discount_4'>,
+): number {
+  if (count === 2) return settings.subject_discount_2;
+  if (count === 3) return settings.subject_discount_3;
+  if (count === 4) return settings.subject_discount_4;
+  return 0;
+}
+
+/** Apply one percent to a list of prices. The last price absorbs rounding so the sum matches. */
+export function pricesAfterPercent(prices: number[], percent: number): number[] {
+  if (percent <= 0 || prices.length === 0) return prices.map((p) => roundTaka(p));
+  const full = prices.reduce((s, p) => s + p, 0);
+  const target = roundTaka(full * (1 - percent / 100));
+  if (full <= 0) return prices.map(() => 0);
+  let assigned = 0;
+  return prices.map((p, i) => {
+    if (i === prices.length - 1) return roundTaka(Math.max(0, target - assigned));
+    const share = roundTaka((target * p) / full);
+    assigned = roundTaka(assigned + share);
+    return share;
+  });
+}
+
+export interface SubjectBundleItem {
+  id: string;
+  partId: string;
+  price: number;
+  /** 1 when the package is a single subject. Other packages keep their own price. */
+  subjects: number;
+}
+
+export interface SubjectBundleQuote {
+  priceById: Record<string, number>;
+  full: number;
+  payable: number;
+  saving: number;
+  groups: Array<{ partId: string; count: number; percent: number }>;
+}
+
+/** Price for enrolling several single-subject packages of the same part at once. */
+export function subjectBundleQuote(
+  items: SubjectBundleItem[],
+  settings: Pick<BillingSettingsRecord, 'subject_discount_2' | 'subject_discount_3' | 'subject_discount_4'>,
+): SubjectBundleQuote {
+  const priceById: Record<string, number> = {};
+  const buckets = new Map<string, SubjectBundleItem[]>();
+  for (const item of items) {
+    if (item.subjects !== 1 || !item.partId) {
+      priceById[item.id] = roundTaka(item.price);
+      continue;
+    }
+    const list = buckets.get(item.partId) ?? [];
+    list.push(item);
+    buckets.set(item.partId, list);
+  }
+  const groups: SubjectBundleQuote['groups'] = [];
+  for (const [partId, list] of buckets) {
+    const percent = list.length > MAX_SUBJECTS_PER_ENROLLMENT ? 0 : subjectBundlePercent(list.length, settings);
+    const next =
+      list.length > MAX_SUBJECTS_PER_ENROLLMENT
+        ? list.map((item) => roundTaka(item.price))
+        : pricesAfterPercent(
+            list.map((item) => item.price),
+            percent,
+          );
+    list.forEach((item, i) => {
+      priceById[item.id] = next[i] ?? roundTaka(item.price);
+    });
+    groups.push({ partId, count: list.length, percent });
+  }
+  const full = roundTaka(items.reduce((s, item) => s + item.price, 0));
+  const payable = roundTaka(items.reduce((s, item) => s + (priceById[item.id] ?? item.price), 0));
+  return { priceById, full, payable, saving: roundTaka(Math.max(0, full - payable)), groups };
+}
 
 /** Round to poisha (2 decimals). */
 export function roundTaka(n: number): number {
@@ -178,6 +290,24 @@ export const createCartSchema = z.object({
   package_ids: z.array(mongoId).min(1, 'Pick at least one package').max(30),
 });
 export type CreateCartInput = z.infer<typeof createCartSchema>;
+
+/** User has already sent the package amount to the admin bKash number. */
+export const submitBkashClaimSchema = z.object({
+  trx_id: z.string().trim().min(4, 'Enter the bKash transaction ID').max(40),
+  amount: z.coerce.number().positive('Enter the amount you sent'),
+  /** The number the user sent from. Optional. */
+  payer_account: z
+    .string()
+    .trim()
+    .regex(/^(01[3-9]\d{8})?$/, 'Enter a valid mobile number')
+    .optional()
+    .or(z.literal('')),
+});
+export type SubmitBkashClaimInput = z.infer<typeof submitBkashClaimSchema>;
+
+export const reviewOrderSchema = z.object({
+  note: z.string().trim().max(500).optional().or(z.literal('')),
+});
 
 export const demoPaySchema = z.object({
   msisdn: z.string().trim().regex(/^01[3-9]\d{8}$/, 'Enter your 11-digit bKash number'),
@@ -230,6 +360,8 @@ export interface PaymentOrderRecord {
   failure_reason?: string;
   payer_account?: string;
   trx_id?: string;
+  /** Amount the user says they sent. The admin compares it with the package total. */
+  claimed_amount?: number;
   note?: string;
   /** Paid, but an admin revoked the access it granted. */
   access_revoked?: boolean;
@@ -293,7 +425,20 @@ export interface CartRecord {
 }
 
 export interface BillingCatalog {
-  settings: Pick<BillingSettingsRecord, 'charge_type' | 'charge_value' | 'charge_label' | 'checkout_note' | 'gateway_enabled'>;
+  settings: Pick<
+    BillingSettingsRecord,
+    | 'charge_type'
+    | 'charge_value'
+    | 'charge_label'
+    | 'checkout_note'
+    | 'bkash_number'
+    | 'gateway_enabled'
+    | 'subject_discount_2'
+    | 'subject_discount_3'
+    | 'subject_discount_4'
+  >;
+  /** False until an admin grants Learning (read). Package requests stay closed. */
+  can_request: boolean;
   packages: AccessPackageRecord[];
   access: MyAccessSummary;
 }

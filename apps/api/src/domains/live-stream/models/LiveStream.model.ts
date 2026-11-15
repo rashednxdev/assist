@@ -56,8 +56,12 @@ export interface ILiveStream extends Document {
   ended_at?: Date;
   /** When true, invited guests may send messages to the host while the class is live. */
   allow_guest_messages: boolean;
+  /** Person who supports the host and shares guest controls. */
+  support_user_id?: Types.ObjectId;
   /** When true, guests may unmute and speak (Zoom participant_can_unmute_self). */
   allow_guest_speech: boolean;
+  /** When true, guests may turn their camera on. */
+  allow_guest_video: boolean;
   /**
    * @deprecated Prefer `presentations`. Kept for legacy rows; synced as flatten of presentations.
    */
@@ -112,7 +116,7 @@ const schema = new Schema<ILiveStream>(
       default: 'scheduled',
     },
     channel_name: { type: String, required: true, unique: true },
-    video_platform: { type: String, enum: ['agora', 'zoom'], default: 'agora' },
+    video_platform: { type: String, enum: ['zoom', 'agora'], default: 'zoom' },
     zoom_meeting_id: { type: String },
     zoom_meeting_number: { type: String },
     zoom_password: { type: String },
@@ -120,6 +124,7 @@ const schema = new Schema<ILiveStream>(
     auto_record_cloud: { type: Boolean, default: false },
     recorded_contents: { type: [recordedContentSchema], default: [] },
     host_user_id: { type: Schema.Types.ObjectId, required: true, ref: 'User' },
+    support_user_id: { type: Schema.Types.ObjectId, ref: 'User' },
     exam_subject_id: { type: Schema.Types.ObjectId, ref: 'ExamSubject' },
     created_by: { type: Schema.Types.ObjectId, required: true, ref: 'User' },
     is_active: { type: Boolean, default: true },
@@ -127,6 +132,7 @@ const schema = new Schema<ILiveStream>(
     ended_at: { type: Date },
     allow_guest_messages: { type: Boolean, default: false },
     allow_guest_speech: { type: Boolean, default: false },
+    allow_guest_video: { type: Boolean, default: false },
     slides: { type: [slideSchema], default: [] },
     presentations: { type: [presentationSchema], default: [] },
     access_type: { type: String, enum: ['free', 'paid'], default: 'free' },

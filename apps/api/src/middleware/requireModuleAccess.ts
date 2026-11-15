@@ -1,5 +1,5 @@
 import type { Response, NextFunction, RequestHandler } from 'express';
-import { isFreeModuleCode } from '@ibas/shared-constants';
+import { isFreeModuleCode, isHostUser, isLearningPrivilegeModule } from '@ibas/shared-constants';
 import type { AuthRequest } from './auth.js';
 import { AppError, forbidden, unauthorized } from '../shared/errors/AppError.js';
 import { areaModuleCodes, hasPackageAccess, isPurchasable } from '../domains/billing/entitlements.service.js';
@@ -96,7 +96,7 @@ export function requireModuleAccess(moduleCode: string): RequestHandler {
         }
       }
 
-      if (isFreeModuleCode(moduleCode)) {
+      if (isFreeModuleCode(moduleCode) || (isHostUser(req.user) && isLearningPrivilegeModule(moduleCode))) {
         next();
         return;
       }
@@ -153,7 +153,10 @@ export function requireModuleAccessAny(...moduleCodes: string[]): RequestHandler
         }
       }
 
-      if (moduleCodes.some((code) => isFreeModuleCode(code))) {
+      if (
+        moduleCodes.some((code) => isFreeModuleCode(code)) ||
+        (isHostUser(req.user) && moduleCodes.length > 0 && moduleCodes.every((code) => isLearningPrivilegeModule(code)))
+      ) {
         next();
         return;
       }

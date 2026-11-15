@@ -304,7 +304,7 @@ export default function QuestionDetailPage() {
           prototypeQuestions={question.prototype_questions}
           onMotherQuestionChange={() => void reload()}
         />
-      ) : (
+      ) : isAdmin ? (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-lg">Preview</CardTitle>
@@ -368,6 +368,57 @@ export default function QuestionDetailPage() {
             )}
           </CardContent>
         </Card>
+      ) : (
+        <div className="space-y-4">
+          <div className="flex justify-end">
+            <Button
+              size="sm"
+              className="bg-[#0f5c8c] text-white hover:bg-[#0a3d5c]"
+              onClick={() => setShowAnswer((v) => !v)}
+            >
+              <Eye className="h-4 w-4" />
+              {showAnswer ? 'Hide answer' : 'Show answer'}
+            </Button>
+          </div>
+          <QuestionAnswerView
+            body_en={question.body_en}
+            body_bn={question.body_bn}
+            has_options={question.has_options}
+            options={question.options}
+            model_answer_sections={question.model_answer_sections}
+            model_answer_comparison={question.model_answer_comparison}
+            explanation_sections={question.explanation_sections}
+            answer_note={question.note}
+            showAnswer={showAnswer}
+          />
+          {bookLinks.length > 0 ? (
+            <div className="space-y-2 rounded-[14px] border border-[#e2e8f0] bg-white p-4">
+              <div className="text-xs font-bold uppercase tracking-wide text-[#64748b]">Tagged locations</div>
+              <ul className="space-y-1.5">
+                {bookLinks.map((bl) => {
+                  const href = taggedQuestionLocationHref({
+                    book_info_id: bl.book_id,
+                    book_chapter_id: bl.book_chapter_id,
+                    book_topic_id: bl.book_topic_id,
+                    book_sub_topic_id: bl.book_sub_topic_id,
+                    regulation_id: bl.regulation_id,
+                  });
+                  return (
+                    <li key={bl.id ?? bl.label} className="text-sm">
+                      {href ? (
+                        <Link href={href} className="font-semibold text-[#0f5c8c] hover:underline">
+                          {bl.label || 'Book link'}
+                        </Link>
+                      ) : (
+                        bl.label || 'Book link'
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : null}
+        </div>
       )}
     </div>
   );

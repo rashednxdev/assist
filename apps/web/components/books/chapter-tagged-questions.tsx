@@ -162,7 +162,7 @@ export function ChapterTaggedQuestions({
                   </div>
                   <p className="text-sm leading-relaxed">{question.body_en}</p>
                   <QuestionEvaluator questionId={selectedId} onUpdated={handleEvalUpdated} />
-                  <div className="border-t border-amber-900/10 pt-4">
+                  <div className="border-t border-[#e2e8f0] pt-4">
                     <h3 className="mb-2 text-sm font-semibold text-muted">Answer</h3>
                     <QuestionAnswerView
                       body_en={question.body_en}

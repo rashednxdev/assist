@@ -303,7 +303,6 @@ export default function EditUserPage() {
       'ANSWER_PDF',
       'QOTD',
       'EXAM_ROUTINE',
-      'LIVE_STREAM',
     ]);
     const targets = modules.filter((m) => learningCodes.has(m.code));
     if (targets.length === 0) {
@@ -536,7 +535,7 @@ export default function EditUserPage() {
                   >
                     {USER_TYPES.map((t) => (
                       <option key={t} value={t}>
-                        {t}
+                        {t === 'host' ? 'Host' : t.replaceAll('_', ' ')}
                       </option>
                     ))}
                   </select>
@@ -808,9 +807,10 @@ export default function EditUserPage() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <p className="text-xs text-muted">
-                    Salary is available to every signed-in user. Use <span className="font-semibold">Grant Learning (read)</span>{' '}
-                    to open the web Learning hub and mobile exam-prep modules. Add Live host create flags or list the user under{' '}
-                    <span className="font-semibold">Admin → Live hosts</span> for hosting.
+                    Salary is available to every signed-in user. <span className="font-semibold">Grant Learning (read)</span>{' '}
+                    opens the Learning hub and the free modules (Questions of the Day and Exam Routine). Books, Exam Papers,
+                    Question Bank and the other modules stay closed until the user requests a subject package and you accept the
+                    bKash payment. Live class is a separate package.
                   </p>
                   {mobileModules.length === 0 ? (
                     <p className="text-sm text-muted">No mobile modules found.</p>

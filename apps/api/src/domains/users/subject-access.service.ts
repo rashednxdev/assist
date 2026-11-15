@@ -23,7 +23,7 @@ export function scopeFromUserFields(user: {
   all_exam_subjects?: boolean;
   exam_subject_ids?: Array<mongoose.Types.ObjectId | string>;
 }): ExamSubjectScope {
-  if (isAdminUser(user)) return { mode: 'all' };
+  if (isAdminUser(user) || user.user_type === 'host') return { mode: 'all' };
   if (user.all_exam_subjects !== false) return { mode: 'all' };
   const ids = [...new Set((user.exam_subject_ids ?? []).map(String).filter(Boolean))];
   if (ids.length === 0) return { mode: 'none' };
@@ -44,7 +44,7 @@ export async function getExamSubjectScopeForAuthUser(user?: {
   user_type?: string;
 } | null): Promise<ExamSubjectScope> {
   if (!user) return { mode: 'all' };
-  if (isAdminUser(user)) return { mode: 'all' };
+  if (isAdminUser(user) || user.user_type === 'host') return { mode: 'all' };
   return getExamSubjectScopeForUserId(user.id);
 }
 

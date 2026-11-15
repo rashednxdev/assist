@@ -7,7 +7,9 @@ import {
   liveStreamRevokeInvitesSchema,
   sendLiveStreamMessageSchema,
   updateGuestMessagesSchema,
+  livePresenceSchema,
   updateGuestSpeechSchema,
+  updateGuestVideoSchema,
   updateLiveHostSchema,
   updateLiveStreamSchema,
 } from '@ibas/shared-types';
@@ -17,7 +19,8 @@ import * as liveStreamService from './live-stream.service.js';
 
 function platformFromQuery(req: AuthRequest): string | undefined {
   const raw = req.query.video_platform;
-  if (raw === 'agora' || raw === 'zoom') return raw;
+  if (raw === 'zoom') return raw;
+  if (raw === 'agora') return undefined;
   return undefined;
 }
 
@@ -53,6 +56,7 @@ export async function joinLiveStreamHandler(req: AuthRequest, res: Response): Pr
   const dto = joinLiveStreamSchema.parse(req.body ?? {});
   const data = await liveStreamService.joinLiveStream(String(req.params.id), req.user!, {
     as_host: dto.as_host,
+    device_id: dto.device_id,
   });
   res.json({ data });
 }
@@ -69,6 +73,18 @@ export async function setGuestMessagesHandler(req: AuthRequest, res: Response): 
     dto.allow_guest_messages,
   );
   res.json({ data });
+}
+
+export async function setGuestVideoHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = updateGuestVideoSchema.parse(req.body);
+  const data = await liveStreamService.setGuestVideoAllowed(String(req.params.id), dto.allow_guest_video);
+  res.json({ data });
+}
+
+export async function livePresenceHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = livePresenceSchema.parse(req.body ?? {});
+  await liveStreamService.touchLivePresence(String(req.params.id), req.user!.id, dto.device_id);
+  res.json({ data: { ok: true } });
 }
 
 export async function setGuestSpeechHandler(req: AuthRequest, res: Response): Promise<void> {

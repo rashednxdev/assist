@@ -57,7 +57,7 @@ export default function LiveHostingPage() {
 
   useEffect(() => {
     apiFetch<{ data: HostingRow[]; meta?: { host_profile?: HostProfile | null } }>(
-      '/live-streams/hosting?video_platform=agora',
+      '/live-streams/hosting',
     )
       .then((res) => {
         setItems(res.data);
@@ -114,13 +114,13 @@ export default function LiveHostingPage() {
 
   const isListedHost = Boolean(hostProfile);
   const emptyMessage = isListedHost
-    ? 'You are a listed host, but no Agora classes are assigned to you yet. An admin can schedule a class with you as host.'
+    ? 'You are a listed host, but no classes are assigned to you yet. An admin can schedule a class with you as host.'
     : 'No classes assigned to you as host yet. An admin can add you under Live hosts and assign you on a session.';
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Host live classes (Agora)"
+        title="Host live classes"
         description="Your hosting schedule. Open the control room to go live, share screen, manage guests, and messages."
       />
 

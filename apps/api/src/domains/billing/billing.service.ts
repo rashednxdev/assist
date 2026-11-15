@@ -15,8 +15,11 @@ import {
   demoPaySchema,
   formatBdt,
   manualGrantSchema,
+  MAX_SUBJECTS_PER_ENROLLMENT,
   roundTaka,
   setPackageClassesSchema,
+  subjectBundleQuote,
+  submitBkashClaimSchema,
   type AccessPackageRecord,
   type BillingCatalog,
   type BillingSettingsRecord,
@@ -37,7 +40,9 @@ import { ExamSubject } from '../exams/models/ExamSubject.model.js';
 import { loadExamPrepParts, partLabel } from '../exam-prep/exam-prep.service.js';
 import { LiveStream } from '../live-stream/models/LiveStream.model.js';
 import { deliverSystemNotification } from '../notifications/notifications.service.js';
+import { formatSmsTaka, PROASSIST_SUPPORT_PHONE, sendSms } from '../../shared/sms.js';
 import { User } from '../users/models/User.model.js';
+import { UserModuleAccess } from '../users/models/UserModuleAccess.model.js';
 import { AccessPackage, type IAccessPackage } from './models/AccessPackage.model.js';
 import { BillingSettings } from './models/BillingSettings.model.js';
 import { PaymentOrder, type IPaymentOrder } from './models/PaymentOrder.model.js';
@@ -59,6 +64,23 @@ function displayName(u: { full_name_en?: string; full_name_bn?: string; email?: 
   return u?.full_name_en?.trim() || u?.full_name_bn?.trim() || u?.email?.split('@')[0] || u?.phone || 'User';
 }
 
+function smsPackageName(name: string): string {
+  const trimmed = name.trim();
+  return trimmed.length <= 40 ? trimmed : `${trimmed.slice(0, 37)}...`;
+}
+
+/** A failed text does not undo the payment. */
+async function textLearningUser(userId: string, message: string): Promise<void> {
+  try {
+    const owner = await User.findById(userId).select('phone').lean();
+    const phone = owner?.phone;
+    if (!phone || !/^01[3-9]\d{8}$/.test(phone)) return;
+    await sendSms(phone, message);
+  } catch (err) {
+    logger.error({ err: err instanceof Error ? err.message : 'sms failed', userId }, 'Learning package SMS failed');
+  }
+}
+
 /* -------------------------------- settings -------------------------------- */
 
 export async function getBillingSettings(): Promise<BillingSettingsRecord> {
@@ -69,7 +91,11 @@ export async function getBillingSettings(): Promise<BillingSettingsRecord> {
     charge_value: doc.charge_value,
     charge_label: doc.charge_label,
     checkout_note: doc.checkout_note ?? '',
+    bkash_number: doc.bkash_number ?? '',
     gateway_enabled: doc.gateway_enabled,
+    subject_discount_2: doc.subject_discount_2 ?? DEFAULT_BILLING_SETTINGS.subject_discount_2,
+    subject_discount_3: doc.subject_discount_3 ?? DEFAULT_BILLING_SETTINGS.subject_discount_3,
+    subject_discount_4: doc.subject_discount_4 ?? DEFAULT_BILLING_SETTINGS.subject_discount_4,
   };
 }
 
@@ -86,7 +112,12 @@ export async function updateBillingSettings(body: unknown, userId: string): Prom
 
 /* -------------------------------- packages -------------------------------- */
 
-type ScopeRef = { exam_subject_id?: unknown; exam_part_id?: unknown };
+type ScopeRef = { exam_subject_id?: unknown; exam_part_id?: unknown; exam_subject_ids?: unknown[] };
+
+function subjectIdsOf(ref: ScopeRef): string[] {
+  const ids = [...(ref.exam_subject_ids ?? []).map(String), ref.exam_subject_id ? String(ref.exam_subject_id) : ''].filter(Boolean);
+  return [...new Set(ids)];
+}
 
 /** Subject and part names (and each subject's part) for Exam Preparation packages, orders and grants. */
 interface ScopeNames {
@@ -96,7 +127,7 @@ interface ScopeNames {
 }
 
 async function scopeNames(items: ScopeRef[]): Promise<ScopeNames> {
-  const subjectIds = [...new Set(items.map((i) => i.exam_subject_id).filter(Boolean).map(String))];
+  const subjectIds = [...new Set(items.flatMap(subjectIdsOf))];
   const subjectDocs = subjectIds.length
     ? await ExamSubject.find({ _id: { $in: subjectIds } }).select('name exam_part_id').lean()
     : [];
@@ -122,7 +153,7 @@ function partIdOf(ref: ScopeRef, names: ScopeNames): string | undefined {
 }
 
 function scopeKindOf(ref: ScopeRef, names: ScopeNames): ExamPrepScopeKind {
-  if (ref.exam_subject_id) return 'subject';
+  if (subjectIdsOf(ref).length > 0) return 'subject';
   return partIdOf(ref, names) ? 'part' : 'legacy';
 }
 
@@ -138,7 +169,7 @@ function briefClass(doc: { _id: unknown; topic: string; scheduled_at: Date; stat
     topic: doc.topic,
     scheduled_at: doc.scheduled_at.toISOString(),
     status: doc.status,
-    video_platform: doc.video_platform === 'zoom' ? 'zoom' : 'agora',
+    video_platform: 'zoom',
   };
 }
 
@@ -156,6 +187,9 @@ function toPackageRecord(doc: IAccessPackage, names: ScopeNames, legacyPart: str
     exam_part_name: partId ? names.parts.get(partId) : scope === 'legacy' ? legacyPart : undefined,
     exam_subject_id: subjectId,
     exam_subject_name: subjectId ? names.subjects.get(subjectId) : undefined,
+    exam_subject_ids: (doc.exam_subject_ids ?? []).map(String),
+    exam_subject_names: (doc.exam_subject_ids ?? []).map((id) => names.subjects.get(String(id)) ?? ''),
+    class_limit: doc.class_limit ?? undefined,
     scope,
     duration_days: doc.duration_days,
     price: doc.price,
@@ -195,7 +229,7 @@ export async function listPackagesAdmin(kind?: string): Promise<AccessPackageRec
   const soldMap = new Map(sold.map((s) => [String(s._id), s.n]));
   return docs.map((d) => ({
     ...toPackageRecord(d, names, legacyPart),
-    ...(d.kind === 'live' ? { class_count: counts.get(String(d._id)) ?? 0 } : {}),
+    ...(d.kind === 'live' ? { class_count: d.class_limit ?? counts.get(String(d._id)) ?? 0 } : {}),
     sold_count: soldMap.get(String(d._id)) ?? 0,
   }));
 }
@@ -204,13 +238,24 @@ async function parsePackage(body: unknown) {
   const parsed = accessPackageInputSchema.safeParse(body);
   if (!parsed.success) throw badRequest(zodMessage(parsed.error));
   const d = parsed.data;
-  const subjectId = d.kind === 'exam_prep' && d.exam_subject_id ? d.exam_subject_id : null;
+  const requestedIds = [
+    ...new Set(
+      [
+        ...(d.kind === 'basic' ? [] : d.exam_subject_ids ?? []),
+        d.kind !== 'basic' && d.exam_subject_id ? d.exam_subject_id : '',
+      ].filter(Boolean),
+    ),
+  ];
+  const subjectId = d.kind === 'exam_prep' && requestedIds.length === 1 ? requestedIds[0] : d.kind === 'live' && requestedIds[0] ? requestedIds[0] : null;
   let partId = d.kind === 'exam_prep' && d.exam_part_id ? d.exam_part_id : null;
-  if (subjectId) {
-    const subject = await ExamSubject.findById(subjectId).select('exam_part_id').lean();
-    if (!subject) throw badRequest('Exam subject not found');
-    if (partId && String(subject.exam_part_id) !== partId) throw badRequest('This subject belongs to another exam part');
-    partId = String(subject.exam_part_id);
+  if (requestedIds.length > 0) {
+    const subjects = await ExamSubject.find({ _id: { $in: requestedIds } }).select('exam_part_id').lean();
+    if (subjects.length !== requestedIds.length) throw badRequest('Exam subject not found');
+    const partIds = new Set(subjects.map((s) => String(s.exam_part_id)));
+    if (partIds.size > 1) throw badRequest('Choose subjects from the same exam part');
+    const onlyPart = [...partIds][0];
+    if (partId && onlyPart !== partId) throw badRequest('This subject belongs to another exam part');
+    if (d.kind === 'exam_prep') partId = onlyPart ?? partId;
   } else if (partId && !(await ExamPart.exists({ _id: partId }))) {
     throw badRequest('Exam part not found');
   }
@@ -221,6 +266,8 @@ async function parsePackage(body: unknown) {
     description: d.description || undefined,
     exam_part_id: partId,
     exam_subject_id: subjectId,
+    exam_subject_ids: requestedIds,
+    class_limit: d.kind === 'live' ? d.class_limit ?? null : null,
     duration_days: d.duration_days,
     price: roundTaka(d.price),
     compare_at_price: d.compare_at_price ? roundTaka(d.compare_at_price) : null,
@@ -438,16 +485,21 @@ export async function getMyAccess(userId: string): Promise<MyAccessSummary> {
     return end ? [{ package_id: pid, package_name: name, until: end.toISOString() }] : [];
   });
 
-  const scopeKeyOf = (e: IUserEntitlement) =>
-    !e.exam_part_id ? 'legacy' : `${String(e.exam_part_id)}|${e.exam_subject_id ? String(e.exam_subject_id) : ''}`;
+  const scopeKeysOf = (e: IUserEntitlement): string[] => {
+    const ids = subjectIdsOf(e);
+    if (!e.exam_part_id && ids.length === 0) return ['legacy'];
+    const part = e.exam_part_id ? String(e.exam_part_id) : 'legacy';
+    if (ids.length === 0) return [`${part}|`];
+    return ids.map((id) => `${part}|${id}`);
+  };
   const accessByKey = new Map<string, ExamPrepAccessItem>();
   const keep = (item: ExamPrepAccessItem) => {
     const key = `${item.exam_part_id}|${item.exam_subject_id ?? ''}`;
     const prev = accessByKey.get(key);
     if (!prev || item.until > prev.until) accessByKey.set(key, item);
   };
-  for (const key of new Set(examRows.map(scopeKeyOf))) {
-    const end = until((e) => e.kind === 'exam_prep' && scopeKeyOf(e) === key);
+  for (const key of new Set(examRows.flatMap(scopeKeysOf))) {
+    const end = until((e) => e.kind === 'exam_prep' && scopeKeysOf(e).includes(key));
     if (!end) continue;
     if (key === 'legacy') {
       for (const p of partRows.filter((r) => r.is_primary)) {
@@ -456,7 +508,7 @@ export async function getMyAccess(userId: string): Promise<MyAccessSummary> {
       continue;
     }
     const [partId, subjectId] = key.split('|');
-    const sample = examRows.find((e) => scopeKeyOf(e) === key)!;
+    const sample = examRows.find((e) => scopeKeysOf(e).includes(key))!;
     keep({
       exam_part_id: partId!,
       exam_part_name: names.parts.get(partId!) ?? sample.exam_part_name ?? 'Exam part',
@@ -523,6 +575,8 @@ export async function packageGrantsForMe(userId: string, extraBasic: string[]) {
     if (!until[r.kind] || r.ends_at > until[r.kind]!) until[r.kind] = r.ends_at;
   }
   const out: Array<{ module_code: string; expires_at: string }> = [];
+  const liveUntil = rows.filter((r) => r.kind === 'live').reduce<Date | undefined>((m, r) => (!m || r.ends_at > m ? r.ends_at : m), undefined);
+  if (liveUntil) out.push({ module_code: 'LIVE_STREAM', expires_at: liveUntil.toISOString() });
   if (until.exam_prep) for (const c of EXAM_PREP_MODULE_CODES) out.push({ module_code: c, expires_at: until.exam_prep.toISOString() });
   if (until.basic) {
     for (const c of new Set([...BASIC_MODULE_CODES, ...extraBasic])) out.push({ module_code: c, expires_at: until.basic.toISOString() });
@@ -560,7 +614,7 @@ export async function getCatalog(user: AuthUser): Promise<BillingCatalog> {
     if (d.kind !== 'live') return rec;
     return {
       ...rec,
-      class_count: counts.get(String(d._id)) ?? 0,
+      class_count: d.class_limit ?? counts.get(String(d._id)) ?? 0,
       upcoming_classes: upcoming
         .filter((c) => (c.package_ids ?? []).some((p) => String(p) === String(d._id)))
         .slice(0, 5)
@@ -573,8 +627,13 @@ export async function getCatalog(user: AuthUser): Promise<BillingCatalog> {
       charge_value: settings.charge_value,
       charge_label: settings.charge_label,
       checkout_note: settings.checkout_note,
+      bkash_number: settings.bkash_number,
       gateway_enabled: settings.gateway_enabled,
+      subject_discount_2: settings.subject_discount_2,
+      subject_discount_3: settings.subject_discount_3,
+      subject_discount_4: settings.subject_discount_4,
     },
+    can_request: isAdminUser(user) || (await hasLearningGrant(user.id)),
     packages,
     access,
   };
@@ -620,6 +679,7 @@ function toOrderRecord(o: IPaymentOrder, user?: { _id: unknown; full_name_en?: s
     failure_reason: o.failure_reason || undefined,
     payer_account: o.payer_account || undefined,
     trx_id: o.trx_id || undefined,
+    claimed_amount: o.claimed_amount ?? undefined,
     note: o.note || undefined,
     access_starts_at: (o.access_starts_at ?? o.created_at).toISOString(),
     access_ends_at: (o.access_ends_at ?? o.created_at).toISOString(),
@@ -630,7 +690,7 @@ function toOrderRecord(o: IPaymentOrder, user?: { _id: unknown; full_name_en?: s
 }
 
 async function expireIfLapsed(o: IPaymentOrder): Promise<void> {
-  if (o.status === 'pending' && o.expires_at && o.expires_at.getTime() < Date.now()) {
+  if (o.status === 'pending' && !o.trx_id && o.expires_at && o.expires_at.getTime() < Date.now()) {
     o.status = 'expired';
     await o.save();
   }
@@ -663,6 +723,8 @@ const bdDate = (d: Date) =>
 /** Grants access for a paid order (idempotent — one entitlement per order). */
 async function fulfil(o: IPaymentOrder, opts: { notify?: boolean } = {}): Promise<void> {
   if (await UserEntitlement.exists({ order_id: o._id })) return;
+  const pkg = await AccessPackage.findById(o.package_id).select('exam_subject_id exam_subject_ids').lean();
+  const subjectIds = subjectIdsOf(pkg ?? { exam_subject_id: o.exam_subject_id });
   if (o.kind === 'exam_prep' && o.exam_subject_id && !o.exam_part_id) {
     const subject = await ExamSubject.findById(o.exam_subject_id).select('exam_part_id').lean();
     if (subject) o.exam_part_id = subject.exam_part_id;
@@ -676,6 +738,7 @@ async function fulfil(o: IPaymentOrder, opts: { notify?: boolean } = {}): Promis
     ...(o.kind === 'exam_prep' && o.exam_part_id ? { exam_part_id: o.exam_part_id, exam_part_name: o.exam_part_name } : {}),
     exam_subject_id: o.exam_subject_id ?? null,
     exam_subject_name: o.exam_subject_name,
+    exam_subject_ids: subjectIds,
     order_id: o._id,
     starts_at: o.access_starts_at,
     ends_at: o.access_ends_at,
@@ -748,11 +811,55 @@ async function createOrderDoc(input: {
   throw new Error('unreachable');
 }
 
+const LEARNING_GRANT_CODES = [...EXAM_PREP_MODULE_CODES, 'QOTD', 'EXAM_ROUTINE'];
+
+async function hasLearningGrant(userId: string): Promise<boolean> {
+  const hit = await UserModuleAccess.exists({
+    user_id: userId,
+    is_active: true,
+    can_read: true,
+    module_code: { $in: LEARNING_GRANT_CODES },
+  });
+  return Boolean(hit);
+}
+
+/** A bought subject cannot be selected again, in this package or any other. */
+async function assertSubjectsAvailable(userId: string, pkg: IAccessPackage): Promise<void> {
+  const wanted = subjectIdsOf(pkg);
+  const now = new Date();
+  const ents = await UserEntitlement.find({
+    user_id: userId,
+    kind: pkg.kind === 'live' ? 'live' : pkg.kind,
+    is_revoked: false,
+    starts_at: { $lte: now },
+    ends_at: { $gt: now },
+  })
+    .select('exam_part_id exam_subject_id exam_subject_ids')
+    .lean();
+  const owned = new Set<string>();
+  const wholeParts = new Set<string>();
+  for (const e of ents) {
+    const ids = subjectIdsOf(e);
+    if (ids.length === 0 && e.exam_part_id) wholeParts.add(String(e.exam_part_id));
+    for (const id of ids) owned.add(id);
+  }
+  if (pkg.kind === 'exam_prep' && pkg.exam_part_id && wanted.length === 0 && wholeParts.has(String(pkg.exam_part_id))) {
+    throw badRequest('You already have this exam part.');
+  }
+  if (wanted.some((id) => owned.has(id))) {
+    throw badRequest('You already have a subject in this package. It cannot be selected again.');
+  }
+}
+
 export async function createOrder(user: AuthUser, body: unknown): Promise<PaymentOrderRecord> {
   const parsed = createOrderSchema.safeParse(body);
   if (!parsed.success) throw badRequest(zodMessage(parsed.error));
   const pkg = await loadPackage(parsed.data.package_id);
   if (!pkg.is_active) throw badRequest('This package is not available right now');
+  if (!isAdminUser(user) && !(await hasLearningGrant(user.id))) {
+    throw forbidden('An admin must grant Learning access before you can request a package.');
+  }
+  await assertSubjectsAvailable(user.id, pkg);
   const settings = await getBillingSettings();
   if (!settings.gateway_enabled && pkg.price > 0) {
     throw new AppError(503, 'PAYMENTS_PAUSED', 'Online payment is paused. Please try again later.');
@@ -783,6 +890,65 @@ export async function createOrder(user: AuthUser, body: unknown): Promise<Paymen
   return toOrderRecord(order);
 }
 
+/** Records the bKash send. Access stays closed until an admin accepts the transaction. */
+export async function submitBkashClaim(id: string, body: unknown, user: AuthUser): Promise<PaymentOrderRecord> {
+  const o = await loadOrder(id, user);
+  if (String(o.user_id) !== user.id) throw forbidden('Only the buyer can submit this payment');
+  if (o.status === 'paid') return toOrderRecord(o);
+  if (o.status !== 'pending') throw badRequest('This request is no longer open.');
+  const parsed = submitBkashClaimSchema.safeParse(body);
+  if (!parsed.success) throw badRequest(zodMessage(parsed.error));
+  const settings = await getBillingSettings();
+  if (!settings.bkash_number) throw badRequest('The bKash number is not set yet. Ask an admin.');
+  const duplicate = await PaymentOrder.exists({
+    _id: { $ne: o._id },
+    trx_id: parsed.data.trx_id,
+    status: { $in: ['pending', 'paid'] },
+  });
+  if (duplicate) throw badRequest('This transaction ID is already used.');
+  const firstClaim = !o.trx_id;
+  o.trx_id = parsed.data.trx_id;
+  o.claimed_amount = roundTaka(parsed.data.amount);
+  o.payer_account = parsed.data.payer_account || undefined;
+  o.method = 'manual';
+  o.expires_at = undefined;
+  await o.save();
+  if (firstClaim) {
+    await textLearningUser(
+      user.id,
+      `Dear ProAssist User, your enrollment request for ${smsPackageName(o.package_name)} (${formatSmsTaka(parsed.data.amount)} BDT) has been submitted for review. Thank you! Support: ${PROASSIST_SUPPORT_PHONE}`,
+    );
+  }
+  return toOrderRecord(o);
+}
+
+export async function acceptOrder(id: string, admin: AuthUser): Promise<PaymentOrderRecord> {
+  const o = await loadOrder(id, admin);
+  if (o.status === 'paid') return toOrderRecord(o);
+  if (o.status !== 'pending' || !o.trx_id) throw badRequest('This payment has not been submitted.');
+  o.status = 'paid';
+  o.paid_at = new Date();
+  o.method = 'manual';
+  o.recorded_by = new mongoose.Types.ObjectId(admin.id);
+  await o.save();
+  await fulfil(o);
+  await textLearningUser(
+    String(o.user_id),
+    `Dear ProAssist User, your ${smsPackageName(o.package_name)} package (${formatSmsTaka(o.claimed_amount ?? o.total)} BDT) is now approved & active! Thank you for choosing ProAssist. Support: ${PROASSIST_SUPPORT_PHONE}`,
+  );
+  return toOrderRecord(o);
+}
+
+export async function rejectOrder(id: string, note: string | undefined, admin: AuthUser): Promise<PaymentOrderRecord> {
+  const o = await loadOrder(id, admin);
+  if (o.status !== 'pending') throw badRequest('Only a waiting payment can be rejected.');
+  o.status = 'failed';
+  o.failure_reason = note?.trim() || 'Rejected by admin';
+  o.recorded_by = new mongoose.Types.ObjectId(admin.id);
+  await o.save();
+  return toOrderRecord(o);
+}
+
 export async function getOrder(id: string, user: AuthUser): Promise<PaymentOrderRecord> {
   const o = await loadOrder(id, user);
   if (o.status === 'pending') {
@@ -793,7 +959,10 @@ export async function getOrder(id: string, user: AuthUser): Promise<PaymentOrder
 }
 
 export async function listMyOrders(userId: string): Promise<PaymentOrderRecord[]> {
-  await PaymentOrder.updateMany({ user_id: userId, status: 'pending', expires_at: { $lt: new Date() } }, { status: 'expired' });
+  await PaymentOrder.updateMany(
+    { user_id: userId, status: 'pending', expires_at: { $lt: new Date() }, $or: [{ trx_id: null }, { trx_id: '' }, { trx_id: { $exists: false } }] },
+    { status: 'expired' },
+  );
   const rows = await PaymentOrder.find({ user_id: userId }).sort({ created_at: -1 }).limit(200);
   const revoked = await revokedOrderIds(rows);
   return rows.map((o) => ({ ...toOrderRecord(o), ...(revoked.has(String(o._id)) ? { access_revoked: true } : {}) }));
@@ -814,6 +983,7 @@ export async function demoPay(id: string, body: unknown, user: AuthUser): Promis
   const o = await loadOrder(id, user);
   if (String(o.user_id) !== user.id) throw forbidden('Only the buyer can pay for this order');
   if (o.status === 'paid') return toOrderRecord(o);
+  if (o.trx_id || o.method === 'manual') throw badRequest('This payment is waiting for an admin to confirm it.');
   if (o.status !== 'pending') throw badRequest(o.status === 'expired' ? 'This checkout expired. Start again from Pricing.' : `This order is ${o.status}.`);
   const parsed = demoPaySchema.safeParse(body);
   if (!parsed.success) throw badRequest(zodMessage(parsed.error));
@@ -922,6 +1092,10 @@ export async function createCart(user: AuthUser, body: unknown): Promise<CartRec
   const ids = [...new Set(parsed.data.package_ids)];
   const pkgs = await AccessPackage.find({ _id: { $in: ids }, is_deleted: false, is_active: true });
   if (pkgs.length !== ids.length) throw badRequest('One of the packages is not available right now. Refresh and try again.');
+  if (!isAdminUser(user) && !(await hasLearningGrant(user.id))) {
+    throw forbidden('An admin must grant Learning access before you can request a package.');
+  }
+  for (const pkg of pkgs) await assertSubjectsAvailable(user.id, pkg);
   const ordered = ids.map((id) => pkgs.find((p) => String(p._id) === id)!);
   const names = await scopeNames(ordered);
   const keys = new Set<string>();
@@ -930,8 +1104,27 @@ export async function createCart(user: AuthUser, body: unknown): Promise<CartRec
     if (keys.has(key)) throw badRequest(`Pick only one package for ${p.exam_subject_id ? 'each subject' : 'the same access'}.`);
     keys.add(key);
   }
+  const seenSubjects = new Set<string>();
+  for (const pkg of ordered) {
+    for (const id of subjectIdsOf(pkg)) {
+      if (seenSubjects.has(id)) throw badRequest('A subject can only be enrolled once in the same payment.');
+      seenSubjects.add(id);
+    }
+  }
   const settings = await getBillingSettings();
-  const subtotal = ordered.reduce((s, p) => s + p.price, 0);
+  const quote = subjectBundleQuote(
+    ordered.map((pkg) => ({
+      id: String(pkg._id),
+      partId: pkg.kind === 'exam_prep' ? (partIdOf(pkg, names) ?? 'part') : '',
+      price: pkg.price,
+      subjects: pkg.kind === 'exam_prep' ? subjectIdsOf(pkg).length : 0,
+    })),
+    settings,
+  );
+  if (quote.groups.some((g) => g.count > MAX_SUBJECTS_PER_ENROLLMENT)) {
+    throw badRequest('Enroll at most 4 subjects of one part at a time. You can enroll the rest later.');
+  }
+  const subtotal = quote.payable;
   if (!settings.gateway_enabled && subtotal > 0) {
     throw new AppError(503, 'PAYMENTS_PAUSED', 'Online payment is paused. Please try again later.');
   }
@@ -941,12 +1134,13 @@ export async function createCart(user: AuthUser, body: unknown): Promise<CartRec
   let fixedCharged = false;
   const orders: IPaymentOrder[] = [];
   for (const pkg of ordered) {
-    let charge = computeCharge(pkg.price, settings);
-    if (settings.charge_type === 'fixed' && pkg.price > 0) {
+    const price = quote.priceById[String(pkg._id)] ?? pkg.price;
+    let charge = computeCharge(price, settings);
+    if (settings.charge_type === 'fixed' && price > 0) {
       if (fixedCharged) charge = 0;
       fixedCharged = true;
     }
-    orders.push(await createOrderDoc({ userId: user.id, pkg, settings, method, charge, cartId }));
+    orders.push(await createOrderDoc({ userId: user.id, pkg, settings, method, price, charge, cartId }));
   }
   if (subtotal === 0) {
     for (const o of orders) {
@@ -970,6 +1164,43 @@ export async function getCart(cartId: string, user: AuthUser): Promise<CartRecor
   return toCartRecord(cartId, orders);
 }
 
+/** One bKash send covers every package in the basket. Access stays closed until an admin accepts each order. */
+export async function submitCartClaim(cartId: string, body: unknown, user: AuthUser): Promise<CartRecord> {
+  const orders = await loadCartOrders(cartId, user);
+  if (String(orders[0]!.user_id) !== user.id) throw forbidden('Only the buyer can submit this payment');
+  const pending = orders.filter((o) => o.status === 'pending');
+  if (pending.length === 0) {
+    if (orders.every((o) => o.status === 'paid')) return toCartRecord(cartId, orders);
+    throw badRequest('This request is no longer open.');
+  }
+  if (pending.some((o) => o.trx_id)) return toCartRecord(cartId, orders);
+  const parsed = submitBkashClaimSchema.safeParse(body);
+  if (!parsed.success) throw badRequest(zodMessage(parsed.error));
+  const settings = await getBillingSettings();
+  if (!settings.bkash_number) throw badRequest('The bKash number is not set yet. Ask an admin.');
+  const duplicate = await PaymentOrder.exists({
+    cart_id: { $ne: cartId },
+    trx_id: parsed.data.trx_id,
+    status: { $in: ['pending', 'paid'] },
+  });
+  if (duplicate) throw badRequest('This transaction ID is already used.');
+  const claimed = roundTaka(parsed.data.amount);
+  for (const o of pending) {
+    o.trx_id = parsed.data.trx_id;
+    o.claimed_amount = claimed;
+    o.payer_account = parsed.data.payer_account || undefined;
+    o.method = 'manual';
+    o.expires_at = undefined;
+    await o.save();
+  }
+  const names = pending.map((o) => smsPackageName(o.package_name)).join(', ');
+  await textLearningUser(
+    user.id,
+    `Dear ProAssist User, your enrollment request for ${names} (${formatSmsTaka(parsed.data.amount)} BDT) has been submitted for review. Thank you! Support: ${PROASSIST_SUPPORT_PHONE}`,
+  );
+  return toCartRecord(cartId, orders);
+}
+
 /** Demo bKash payment for the whole cart: one wallet debit, every package granted. */
 export async function payCart(cartId: string, body: unknown, user: AuthUser): Promise<CartRecord> {
   const orders = await loadCartOrders(cartId, user);
@@ -979,6 +1210,9 @@ export async function payCart(cartId: string, body: unknown, user: AuthUser): Pr
     if (orders.every((o) => o.status === 'paid')) return toCartRecord(cartId, orders);
     const status = orders[0]!.status;
     throw badRequest(status === 'expired' ? 'This checkout expired. Start again from Pricing.' : `This checkout is ${status}.`);
+  }
+  if (pending.some((o) => o.trx_id || o.method === 'manual')) {
+    throw badRequest('This payment is waiting for an admin to confirm it.');
   }
   const parsed = demoPaySchema.safeParse(body);
   if (!parsed.success) throw badRequest(zodMessage(parsed.error));
@@ -1029,7 +1263,10 @@ export async function listOrdersAdmin(query: unknown) {
   const parsed = adminOrderQuerySchema.safeParse(query);
   if (!parsed.success) throw badRequest(zodMessage(parsed.error));
   const q = parsed.data;
-  await PaymentOrder.updateMany({ status: 'pending', expires_at: { $lt: new Date() } }, { status: 'expired' });
+  await PaymentOrder.updateMany(
+    { status: 'pending', expires_at: { $lt: new Date() }, $or: [{ trx_id: null }, { trx_id: '' }, { trx_id: { $exists: false } }] },
+    { status: 'expired' },
+  );
   const filter: FilterQuery<IPaymentOrder> = {};
   if (q.status) filter.status = q.status;
   if (q.kind) filter.kind = q.kind;

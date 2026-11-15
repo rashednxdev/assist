@@ -116,6 +116,48 @@ export function BillingSettingsAdmin() {
           })}
         </div>
 
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Subject enrollment under a part</p>
+          <p className="text-xs text-muted">
+            One subject is never reduced. When a learner enrolls 2, 3, or 4 subjects of the same part together, the total is this
+            much less. They can enroll more later, but only subjects they do not already have.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-3">
+            {(
+              [
+                ['subject_discount_2', '2 subjects (%)'],
+                ['subject_discount_3', '3 subjects (%)'],
+                ['subject_discount_4', '4 subjects (%)'],
+              ] as const
+            ).map(([key, label]) => (
+              <div key={key} className="space-y-1.5">
+                <Label htmlFor={key}>{label}</Label>
+                <Input
+                  id={key}
+                  type="number"
+                  min={0}
+                  max={90}
+                  step="0.01"
+                  value={s[key]}
+                  onChange={(e) => setS({ ...s, [key]: Number(e.target.value) })}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="bs-bkash">bKash number</Label>
+          <Input
+            id="bs-bkash"
+            inputMode="tel"
+            value={s.bkash_number ?? ''}
+            onChange={(e) => setS({ ...s, bkash_number: e.target.value })}
+            placeholder="01XXXXXXXXX"
+          />
+          <p className="text-xs text-muted">Learners send the package amount to this number, then submit the transaction ID.</p>
+        </div>
+
         <div className="space-y-1.5">
           <Label htmlFor="bs-note">Checkout note (optional)</Label>
           <textarea

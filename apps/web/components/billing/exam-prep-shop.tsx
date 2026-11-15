@@ -6,7 +6,9 @@ import { Check, CheckCircle2, Layers, Loader2, ShoppingCart, Sparkles, X } from 
 import {
   computeCartCharge,
   formatBdt,
+  MAX_SUBJECTS_PER_ENROLLMENT,
   roundTaka,
+  subjectBundleQuote,
   type AccessPackageRecord,
   type BillingCatalog,
   type CartRecord,
@@ -41,6 +43,11 @@ function bundleKey(groupId: string): string {
 
 function subjectKey(subjectId: string): string {
   return `subject|${subjectId}`;
+}
+
+function packageSubjectIds(p: AccessPackageRecord): string[] {
+  if (p.exam_subject_ids && p.exam_subject_ids.length > 0) return p.exam_subject_ids;
+  return p.exam_subject_id ? [p.exam_subject_id] : [];
 }
 
 function byDuration(a: AccessPackageRecord, b: AccessPackageRecord): number {
@@ -98,7 +105,7 @@ export function ExamPrepShop({ catalog }: { catalog: BillingCatalog }) {
   const bundles = useMemo(() => {
     if (!group) return [];
     return packages
-      .filter((p) => !p.exam_subject_id && (p.exam_part_id ? p.exam_part_id === group.id : group.isPrimary))
+      .filter((p) => packageSubjectIds(p).length === 0 && (p.exam_part_id ? p.exam_part_id === group.id : group.isPrimary))
       .sort(byDuration);
   }, [packages, group]);
 
@@ -106,11 +113,13 @@ export function ExamPrepShop({ catalog }: { catalog: BillingCatalog }) {
     if (!group) return [];
     const rows = new Map<string, SubjectRow>();
     for (const p of packages) {
-      if (!p.exam_subject_id) continue;
+      const ids = packageSubjectIds(p);
+      if (ids.length !== 1) continue;
       if (p.exam_part_id ? p.exam_part_id !== group.id : !group.isPrimary) continue;
-      const row = rows.get(p.exam_subject_id) ?? { id: p.exam_subject_id, name: p.exam_subject_name ?? 'Subject', packages: [] };
+      const subjectId = ids[0]!;
+      const row = rows.get(subjectId) ?? { id: subjectId, name: p.exam_subject_names?.[0] || p.exam_subject_name || 'Subject', packages: [] };
       row.packages.push(p);
-      rows.set(p.exam_subject_id, row);
+      rows.set(subjectId, row);
     }
     const rank = (id: string) => {
       const i = group.subjectOrder.indexOf(id);
@@ -135,13 +144,41 @@ export function ExamPrepShop({ catalog }: { catalog: BillingCatalog }) {
     () => [...new Set(Object.values(picked))].map((id) => byId.get(id)).filter((p): p is AccessPackageRecord => !!p),
     [picked, byId],
   );
-  const subtotal = roundTaka(chosen.reduce((s, p) => s + p.price, 0));
+  const quote = useMemo(
+    () =>
+      subjectBundleQuote(
+        chosen.map((p) => ({
+          id: p.id,
+          partId: p.exam_part_id || (packageSubjectIds(p).length === 1 ? 'part' : ''),
+          price: p.price,
+          subjects: packageSubjectIds(p).length,
+        })),
+        catalog.settings,
+      ),
+    [chosen, catalog.settings],
+  );
+  const subtotal = quote.payable;
   const charge = computeCartCharge(
-    chosen.map((p) => p.price),
+    chosen.map((p) => quote.priceById[p.id] ?? p.price),
     catalog.settings,
   );
   const total = roundTaka(subtotal + charge);
   const paused = !catalog.settings.gateway_enabled && subtotal > 0;
+
+  const combos = useMemo(() => {
+    if (!group) return [];
+    return packages
+      .filter((p) => packageSubjectIds(p).length > 1 && (p.exam_part_id ? p.exam_part_id === group.id : group.isPrimary))
+      .sort(byDuration);
+  }, [packages, group]);
+
+  function alreadyOwned(p: AccessPackageRecord): boolean {
+    if (!group) return false;
+    const ids = packageSubjectIds(p);
+    if (partUntil(group.id)) return ids.length === 0 || ids.some((id) => subjectUntil(group.id, id));
+    if (ids.length === 0) return subjects.some((s) => subjectUntil(group.id, s.id));
+    return ids.some((id) => subjectUntil(group.id, id));
+  }
 
   const bundlePicked = group ? picked[bundleKey(group.id)] : undefined;
 
@@ -161,23 +198,54 @@ export function ExamPrepShop({ catalog }: { catalog: BillingCatalog }) {
     });
   }
 
+  function partOf(pkg: AccessPackageRecord): string {
+    return pkg.exam_part_id || (packageSubjectIds(pkg).length === 1 ? 'part' : '');
+  }
+
+  function selectedInPart(partId: string, current: Record<string, string>, exceptKey?: string): number {
+    return Object.entries(current).filter(([key, id]) => {
+      if (key === exceptKey) return false;
+      const pkg = byId.get(id);
+      return !!pkg && packageSubjectIds(pkg).length === 1 && partOf(pkg) === partId;
+    }).length;
+  }
+
   function toggleSubject(subjectId: string, pkg: AccessPackageRecord) {
+    const key = subjectKey(subjectId);
+    if (picked[key] === pkg.id) {
+      setError('');
+      setPicked((cur) => {
+        const next = { ...cur };
+        delete next[key];
+        return next;
+      });
+      return;
+    }
+    if (picked[key] == null && selectedInPart(partOf(pkg), picked) >= MAX_SUBJECTS_PER_ENROLLMENT) {
+      setError('You can enroll up to 4 subjects of one part at a time. Enroll the rest later.');
+      return;
+    }
     setError('');
-    setPicked((cur) => {
-      const next = { ...cur };
-      const key = subjectKey(subjectId);
-      if (next[key] === pkg.id) delete next[key];
-      else next[key] = pkg.id;
-      return next;
-    });
+    setPicked((cur) => ({ ...cur, [key]: pkg.id }));
   }
 
   function pickAllSubjects() {
+    if (!group) return;
+    const sample = subjects.find((s) => s.packages[0] && !subjectUntil(group.id, s.id))?.packages[0];
+    if (!sample) return;
+    const partId = partOf(sample);
     setError('');
     setPicked((cur) => {
       const next = { ...cur };
+      let n = selectedInPart(partId, next);
       for (const s of subjects) {
-        if (!next[subjectKey(s.id)]) next[subjectKey(s.id)] = s.packages[0]!.id;
+        if (n >= MAX_SUBJECTS_PER_ENROLLMENT) break;
+        if (subjectUntil(group.id, s.id)) continue;
+        const key = subjectKey(s.id);
+        if (!next[key] && s.packages[0]) {
+          next[key] = s.packages[0].id;
+          n += 1;
+        }
       }
       return next;
     });
@@ -313,7 +381,12 @@ export function ExamPrepShop({ catalog }: { catalog: BillingCatalog }) {
                         ))}
                       </ul>
                     )}
-                    <Button className="mt-auto w-full" variant={on ? 'outline' : 'default'} onClick={() => toggleBundle(p)}>
+                    <Button
+                      className="mt-auto w-full"
+                      variant={on ? 'outline' : 'default'}
+                      disabled={!catalog.can_request || alreadyOwned(p)}
+                      onClick={() => toggleBundle(p)}
+                    >
                       {on ? (
                         <>
                           <X className="h-4 w-4" />
@@ -334,18 +407,63 @@ export function ExamPrepShop({ catalog }: { catalog: BillingCatalog }) {
         </section>
       )}
 
+      {combos.length > 0 && (
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-lg font-semibold">Subject packages</h2>
+            <p className="text-sm text-muted">
+              A package can include more than one subject. If you already have any of those subjects, it cannot be selected again.
+            </p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {combos.map((p) => {
+              const on = picked[p.id] === p.id;
+              const owned = alreadyOwned(p);
+              return (
+                <Card key={p.id} className={cn('flex flex-col', on && 'ring-2 ring-primary', owned && 'opacity-60')}>
+                  <CardHeader className="space-y-2">
+                    <CardTitle className="text-lg">{p.name}</CardTitle>
+                    <p className="text-sm text-muted">{(p.exam_subject_names ?? []).filter(Boolean).join(', ')}</p>
+                    <p className="text-2xl font-bold">{p.price === 0 ? 'Free' : formatBdt(p.price)}</p>
+                  </CardHeader>
+                  <CardContent>
+                    <Button
+                      className="w-full"
+                      variant={on ? 'outline' : 'default'}
+                      disabled={!catalog.can_request || owned}
+                      onClick={() =>
+                        setPicked((cur) => {
+                          const next = { ...cur };
+                          if (next[p.id] === p.id) delete next[p.id];
+                          else next[p.id] = p.id;
+                          return next;
+                        })
+                      }
+                    >
+                      {owned ? 'Already included' : on ? 'Remove from basket' : 'Add to basket'}
+                    </Button>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {subjects.length > 0 && (
         <section className="space-y-3">
           <div className="flex flex-wrap items-end justify-between gap-2">
             <div>
               <h2 className="text-lg font-semibold">{bundles.length > 0 ? 'Or pick subjects' : `Subjects of ${group.label}`}</h2>
               <p className="text-sm text-muted">
-                Tick the subjects you need — you only see questions, papers and reviews of the subjects you own.
+                Tick the subjects you need. One subject stays at full price. Together, 2 subjects of this part are{' '}
+                {catalog.settings.subject_discount_2}% less, 3 are {catalog.settings.subject_discount_3}% less, and 4 are{' '}
+                {catalog.settings.subject_discount_4}% less. A subject you already have cannot be selected again.
               </p>
             </div>
-            {!bundlePicked && subjects.length > 1 && pickedInGroup < subjects.length && (
+            {!bundlePicked && subjects.length > 1 && pickedInGroup < Math.min(MAX_SUBJECTS_PER_ENROLLMENT, subjects.length) && (
               <Button variant="outline" size="sm" onClick={pickAllSubjects}>
-                Select all subjects
+                Select up to {MAX_SUBJECTS_PER_ENROLLMENT}
               </Button>
             )}
           </div>
@@ -372,11 +490,12 @@ export function ExamPrepShop({ catalog }: { catalog: BillingCatalog }) {
                     <div className="flex flex-wrap gap-2">
                       {s.packages.map((p) => {
                         const on = sel === p.id;
+                        const atCap = !sel && selectedInPart(partOf(p), picked) >= MAX_SUBJECTS_PER_ENROLLMENT;
                         return (
                           <button
                             key={p.id}
                             type="button"
-                            disabled={!!bundlePicked}
+                            disabled={!!bundlePicked || !catalog.can_request || !!until || atCap}
                             onClick={() => toggleSubject(s.id, p)}
                             aria-pressed={on}
                             className={cn(
@@ -419,7 +538,13 @@ export function ExamPrepShop({ catalog }: { catalog: BillingCatalog }) {
                 {chosen.length} package{chosen.length === 1 ? '' : 's'} in basket
               </p>
               <p className="truncate text-muted">
-                {formatBdt(subtotal)}
+                {quote.saving > 0 ? (
+                  <>
+                    <span className="line-through">{formatBdt(quote.full)}</span> {formatBdt(subtotal)} ({formatBdt(quote.saving)} less)
+                  </>
+                ) : (
+                  formatBdt(subtotal)
+                )}
                 {charge > 0 ? ` + ${catalog.settings.charge_label} ${formatBdt(charge)}` : ''} ·{' '}
                 {chosen.map((p) => p.exam_subject_name ?? p.exam_part_name ?? p.name).join(', ')}
               </p>
@@ -436,7 +561,7 @@ export function ExamPrepShop({ catalog }: { catalog: BillingCatalog }) {
                 onClick={checkout}
               >
                 {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-                {total === 0 ? 'Get it free' : `Pay ${formatBdt(total)} with bKash`}
+                {total === 0 ? 'Get it free' : `Continue · ${formatBdt(total)}`}
               </Button>
             </div>
           </div>

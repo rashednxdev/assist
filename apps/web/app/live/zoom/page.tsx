@@ -124,7 +124,7 @@ export default function LiveStreamUserListPage() {
       <div className="flex flex-wrap gap-2">
         <Button asChild variant="outline" size="sm">
           <Link href="/live">
-            Agora live
+            All classes
           </Link>
         </Button>
         <Button asChild variant="outline" size="sm">

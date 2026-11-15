@@ -1,8 +1,8 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useLayoutEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { fetchMe, getAccessToken, SET_PASSWORD_PATH, type MeUser } from '@/lib/auth';
+import { clearAccessToken, fetchMe, getAccessToken, peekMe, SET_PASSWORD_PATH, type MeUser } from '@/lib/auth';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const LOGIN_PATH = '/login?next=%2Fsalary';
@@ -18,18 +18,29 @@ export function SalaryAuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [me, setMe] = useState<MeUser | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    let live = true;
     if (!getAccessToken()) {
       router.replace(LOGIN_PATH);
       return;
     }
+    const cached = peekMe();
+    if (cached) setMe({ ...cached, module_access: cached.module_access ?? [] });
     fetchMe()
       .then((res) => {
+        if (!live) return;
         if (res.data.must_change_password) router.replace(SET_PASSWORD_PATH);
         else if (res.data.status === 'pending_verify') router.replace('/register/verify');
         else setMe({ ...res.data, module_access: res.data.module_access ?? [] });
       })
-      .catch(() => router.replace(LOGIN_PATH));
+      .catch(() => {
+        if (!live) return;
+        clearAccessToken();
+        router.replace(LOGIN_PATH);
+      });
+    return () => {
+      live = false;
+    };
   }, [router]);
 
   if (!me) {

@@ -63,6 +63,7 @@ export async function loadEntitlementSnapshot(userId: string, now = new Date()):
 /** True when an active package opens any of the given module codes. */
 export function snapshotOpens(snap: EntitlementSnapshot, codes: string[], extraBasic: readonly string[]): boolean {
   return codes.some((c) => {
+    if (c === 'LIVE_STREAM') return snap.live.size > 0;
     const g = moduleAccessGroup(c, extraBasic);
     return !!g && !!snap.groups[g];
   });
@@ -70,7 +71,7 @@ export function snapshotOpens(snap: EntitlementSnapshot, codes: string[], extraB
 
 /** True when any code belongs to a purchasable group (so "buy a package" is the way in). */
 export function isPurchasable(codes: string[], extraBasic: readonly string[]): boolean {
-  return codes.some((c) => moduleAccessGroup(c, extraBasic) !== null);
+  return codes.some((c) => c === 'LIVE_STREAM' || moduleAccessGroup(c, extraBasic) !== null);
 }
 
 export async function hasPackageAccess(userId: string, codes: string[]): Promise<boolean> {

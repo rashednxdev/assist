@@ -116,7 +116,7 @@ export default function NewUserPage() {
               >
                 {USER_TYPES.map((t) => (
                   <option key={t} value={t}>
-                    {t}
+                    {t === 'host' ? 'Host' : t.replaceAll('_', ' ')}
                   </option>
                 ))}
               </select>

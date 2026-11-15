@@ -155,6 +155,57 @@ body {
   @apply border-t border-amber-900/10 pt-4;
 }
 
+/* Learner Books & Tools and question reading — same palette as the mobile app. */
+.learner-app {
+  --color-primary: #0f5c8c;
+  --color-primary-dark: #0a3d5c;
+  --color-primary-light: #e8f2fa;
+  --color-primary-muted: #e8f3fa;
+  --color-background: #f4f7fb;
+  color: #0f172a;
+}
+
+.learner-app .book-panel,
+.learner-app .book-panel-padded,
+.learner-app .book-link-card,
+.learner-app .book-list-item {
+  border-color: #e2e8f0;
+  background-color: #ffffff;
+}
+
+.learner-app .book-panel-header,
+.learner-app .book-divider,
+.learner-app .book-nav-footer {
+  border-color: #e2e8f0;
+}
+
+.learner-app .book-hover-row:hover,
+.learner-app .book-link-card:hover,
+.learner-app .book-list-item:hover {
+  background-color: #e8f3fa;
+  border-color: #c5d8e8;
+  color: #0f5c8c;
+}
+
+.learner-app .book-note {
+  background-color: #e8f3fa;
+  color: #0a3d5c;
+}
+
+.nav-progress-bar {
+  width: 35%;
+  animation: nav-progress 1s ease-in-out infinite;
+}
+
+@keyframes nav-progress {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
 @media (min-width: 1280px) {
   .salary-page-main {
     display: grid;

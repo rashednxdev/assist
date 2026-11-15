@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { AuthScreenShell } from '@/components/auth/AuthScreenShell';
 import { TextField } from '@/components/ui/TextField';
 import { Button } from '@/components/ui/Button';
-import { login } from '@/lib/auth-api';
+import { login, resendLoginOtp, verifyLoginOtp } from '@/lib/auth-api';
 import { useAuth } from '@/lib/auth-context';
 import { ApiError } from '@/lib/api';
 import { colors, spacing } from '@/theme';
@@ -16,6 +16,16 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [challenge, setChallenge] = useState('');
+  const [phoneHint, setPhoneHint] = useState('');
+  const [code, setCode] = useState('');
+  const [resendIn, setResendIn] = useState(0);
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const timer = setTimeout(() => setResendIn((seconds) => seconds - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendIn]);
 
   async function handleLogin() {
     setError('');
@@ -25,7 +35,15 @@ export default function LoginScreen() {
     }
     setLoading(true);
     try {
-      await login(email.trim(), password);
+      const result = await login(email.trim(), password);
+      if ('otp_required' in result && result.otp_required) {
+        setPassword('');
+        setChallenge(result.challenge);
+        setPhoneHint(result.phone_hint);
+        setCode('');
+        setResendIn(60);
+        return;
+      }
       await refreshUser();
       router.replace('/(app)/home');
     } catch (err) {
@@ -35,11 +53,45 @@ export default function LoginScreen() {
     }
   }
 
+  async function handleOtp() {
+    setError('');
+    if (code.length !== 6) {
+      setError('Enter the 6-digit code.');
+      return;
+    }
+    setLoading(true);
+    try {
+      await verifyLoginOtp(challenge, code);
+      await refreshUser();
+      router.replace('/(app)/home');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'That code is not correct.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleResend() {
+    if (resendIn > 0 || loading) return;
+    setLoading(true);
+    setError('');
+    try {
+      const next = await resendLoginOtp(challenge);
+      setChallenge(next.challenge);
+      setPhoneHint(next.phone_hint);
+      setResendIn(60);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not send a new code.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <AuthScreenShell
       variant="premium"
-      title="Welcome back"
-      subtitle="Sign in to your preparation dashboard"
+      title={challenge ? 'Enter the code' : 'Welcome back'}
+      subtitle={challenge ? `Sent to ${phoneHint}. It expires in 5 minutes.` : 'Sign in to your preparation dashboard'}
       footer={
         <View style={styles.footer}>
           <Text style={styles.footerText}>New to ProAssist?</Text>
@@ -51,6 +103,26 @@ export default function LoginScreen() {
         </View>
       }
     >
+      {challenge ? (
+        <>
+          <TextField
+            label="Verification code"
+            variant="premium"
+            value={code}
+            onChangeText={(value) => setCode(value.replace(/\D/g, '').slice(0, 6))}
+            keyboardType="number-pad"
+            autoComplete="sms-otp"
+            maxLength={6}
+            placeholder="6-digit code"
+          />
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          <Button title="Verify and sign in" variant="premium" onPress={handleOtp} loading={loading} />
+          <Pressable disabled={loading || resendIn > 0} onPress={() => void handleResend()} style={styles.forgotLink}>
+            <Text style={styles.forgotLinkText}>{resendIn > 0 ? `Resend in ${resendIn}s` : 'Resend code'}</Text>
+          </Pressable>
+        </>
+      ) : (
+        <>
       <TextField
         label="Mobile"
         variant="premium"
@@ -77,6 +149,8 @@ export default function LoginScreen() {
       </Link>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <Button title="Sign in" variant="premium" onPress={handleLogin} loading={loading} />
+        </>
+      )}
       {loading ? (
         <Text style={styles.loadingHint}>Connecting to server — this may take a moment on first load.</Text>
       ) : null}

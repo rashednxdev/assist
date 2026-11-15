@@ -36,6 +36,8 @@ interface FormState {
   description: string;
   exam_part_id: string;
   exam_subject_id: string;
+  exam_subject_ids: string[];
+  class_limit: string;
   duration_days: string;
   price: string;
   compare_at_price: string;
@@ -52,6 +54,8 @@ function toForm(p?: AccessPackageRecord): FormState {
     description: p?.description ?? '',
     exam_part_id: p?.exam_part_id ?? '',
     exam_subject_id: p?.exam_subject_id ?? '',
+    exam_subject_ids: p?.exam_subject_ids?.length ? p.exam_subject_ids : p?.exam_subject_id ? [p.exam_subject_id] : [],
+    class_limit: p?.class_limit ? String(p.class_limit) : p?.class_count ? String(p.class_count) : '1',
     duration_days: String(p?.duration_days ?? 30),
     price: p ? String(p.price) : '',
     compare_at_price: p?.compare_at_price ? String(p.compare_at_price) : '',
@@ -101,7 +105,9 @@ function PackageForm({
       name_bn: f.name_bn,
       description: f.description,
       exam_part_id: kind === 'exam_prep' ? f.exam_part_id || null : null,
-      exam_subject_id: kind === 'exam_prep' ? f.exam_subject_id || null : null,
+      exam_subject_id: null,
+      exam_subject_ids: kind === 'basic' ? [] : f.exam_subject_ids,
+      class_limit: kind === 'live' ? Number(f.class_limit || 1) : null,
       duration_days: Number(f.duration_days),
       price: Number(f.price || 0),
       compare_at_price: f.compare_at_price ? Number(f.compare_at_price) : null,
@@ -149,7 +155,7 @@ function PackageForm({
                   id="pk-part"
                   className={SELECT}
                   value={f.exam_part_id}
-                  onChange={(e) => setF((prev) => ({ ...prev, exam_part_id: e.target.value, exam_subject_id: '' }))}
+                  onChange={(e) => setF((prev) => ({ ...prev, exam_part_id: e.target.value, exam_subject_id: '', exam_subject_ids: [] }))}
                 >
                   {isLegacy && <option value="">All of Part 1 (older package)</option>}
                   {!isLegacy && !f.exam_part_id && <option value="">Pick a part…</option>}
@@ -160,27 +166,72 @@ function PackageForm({
                   ))}
                 </select>
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="pk-subject">Covers</Label>
-                <select
-                  id="pk-subject"
-                  className={SELECT}
-                  value={f.exam_subject_id}
-                  disabled={!part}
-                  onChange={(e) => set('exam_subject_id', e.target.value)}
-                >
-                  <option value="">{part ? `Whole ${part.label} — every subject` : '—'}</option>
-                  {(part?.subjects ?? []).map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name_bn?.trim() ? `${s.name} (${s.name_bn})` : s.name}
-                    </option>
-                  ))}
-                </select>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>Subjects in this package</Label>
+                <div className="grid gap-1.5 rounded-lg border border-border p-3 sm:grid-cols-2">
+                  {(part?.subjects ?? []).map((s) => {
+                    const on = f.exam_subject_ids.includes(s.id);
+                    return (
+                      <label key={s.id} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={() =>
+                            set(
+                              'exam_subject_ids',
+                              on ? f.exam_subject_ids.filter((id) => id !== s.id) : [...f.exam_subject_ids, s.id],
+                            )
+                          }
+                        />
+                        {s.name_bn?.trim() ? `${s.name} (${s.name_bn})` : s.name}
+                      </label>
+                    );
+                  })}
+                  {(part?.subjects ?? []).length === 0 && <p className="text-xs text-muted">This part has no subjects yet.</p>}
+                </div>
+                <p className="text-xs text-muted">
+                  Tick one or more subjects. The same subject can also be in another package. A learner who already has a subject cannot
+                  select a package that includes it. Leave every box empty to cover the whole part. This opens Books, Question Bank, Exam
+                  Papers and the other learning modules except Live class.
+                </p>
               </div>
-              <p className="text-xs text-muted sm:col-span-2">
-                A subject package opens that subject in Question Bank, Marathon review and Exam Papers. A whole-part package opens every
-                subject of the part. Users can tick several subjects and pay once.
-              </p>
+            </>
+          )}
+          {kind === 'live' && (
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="pk-classes">Number of classes</Label>
+                <Input id="pk-classes" type="number" min={1} value={f.class_limit} onChange={(e) => set('class_limit', e.target.value)} />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>Subject</Label>
+                <div className="grid max-h-40 gap-1.5 overflow-y-auto rounded-lg border border-border p-3 sm:grid-cols-2">
+                  {parts.flatMap((p) =>
+                    p.subjects.map((s) => {
+                      const on = f.exam_subject_ids.includes(s.id);
+                      return (
+                        <label key={s.id} className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            onChange={() =>
+                              set(
+                                'exam_subject_ids',
+                                on ? f.exam_subject_ids.filter((id) => id !== s.id) : [...f.exam_subject_ids, s.id],
+                              )
+                            }
+                          />
+                          {s.name}
+                        </label>
+                      );
+                    }),
+                  )}
+                </div>
+                <p className="text-xs text-muted">
+                  Live class is separate from Books and Question Bank. The learner requests this package, then you accept the payment
+                  before they can join.
+                </p>
+              </div>
             </>
           )}
           <div className="space-y-1.5">

@@ -26,7 +26,6 @@ import { LiveStreamGuest } from './models/LiveStreamGuest.model.js';
 import { LiveStreamGuestMessage } from './models/LiveStreamGuestMessage.model.js';
 import { User } from '../users/models/User.model.js';
 import { ExamSubject } from '../exams/models/ExamSubject.model.js';
-import { agoraUidFromUserId, buildAgoraRtcToken } from './agora-token.js';
 import {
   buildZoomSdkSignature,
   buildZoomWebClientUrl,
@@ -34,6 +33,7 @@ import {
   ensureZoomCloudRecording,
   ensureZoomFocusMode,
   fetchZoomZakToken,
+  updateZoomClassroom,
   updateZoomGuestUnmuteAllowed,
   zoomConfigured,
 } from './zoom-meeting.js';
@@ -43,6 +43,10 @@ function isPlatformAdmin(user: { is_super_admin?: boolean; user_type?: string })
   return Boolean(
     user.is_super_admin || user.user_type === 'system_admin' || user.user_type === 'admin',
   );
+}
+
+function isLearningHost(user: { user_type?: string }) {
+  return user.user_type === 'host';
 }
 
 /** Display name for hosts/guests — never blank when email/phone exist. */
@@ -127,7 +131,7 @@ async function assertAssignableHost(hostUserId: string) {
     '_id is_super_admin user_type',
   );
   if (!hostUser) throw badRequest('Host user not found or inactive.');
-  if (isPlatformAdmin(hostUser)) return hostUser;
+  if (isPlatformAdmin(hostUser) || isLearningHost(hostUser)) return hostUser;
   const listed = await LiveHost.findOne({ user_id: hostUserId, is_active: true }).select('_id');
   if (!listed) {
     throw badRequest('Host must be an active listed live host (or a platform admin).');
@@ -171,7 +175,7 @@ function isPaidClass(doc: { access_type?: string }) {
 
 /** Legacy: marked paid by an admin. */
 async function userHasPaid(user: { id: string; is_super_admin?: boolean; user_type?: string }) {
-  if (isPlatformAdmin(user)) return true;
+  if (isPlatformAdmin(user) || isLearningHost(user)) return true;
   const u = await User.findById(user.id).select('amount_received');
   return Number(u?.amount_received ?? 0) > 0;
 }
@@ -198,7 +202,7 @@ function paymentAccessFor(
   owned: Set<string> = new Set(),
   permissionStatus?: LivePermissionStatus,
 ) {
-  if (isPlatformAdmin(user)) return { payment_blocked: false as const };
+  if (isPlatformAdmin(user) || isLearningHost(user)) return { payment_blocked: false as const };
   if (user.id === String(doc.host_user_id)) return { payment_blocked: false as const };
   if (classPackageIds(doc).length > 0) {
     if (ownsClassPackage(doc, owned)) return { payment_blocked: false as const };
@@ -231,8 +235,47 @@ function channelForId(id: string) {
   return `live_${id}`;
 }
 
-function videoPlatformOf(doc: { video_platform?: string }): LiveVideoPlatform {
-  return doc.video_platform === 'zoom' ? 'zoom' : 'agora';
+function videoPlatformOf(_doc: { video_platform?: string }): LiveVideoPlatform {
+  return 'zoom';
+}
+
+const DEVICE_LOCK_MS = 90_000;
+
+async function claimClassDevice(
+  liveStreamId: unknown,
+  userId: string,
+  deviceId: string | undefined,
+  role?: 'host' | 'audience' | 'support',
+): Promise<void> {
+  const existing = await LiveStreamGuest.findOne({
+    live_stream_id: liveStreamId,
+    user_id: userId,
+  });
+  if (
+    deviceId &&
+    existing?.device_id &&
+    existing.device_id !== deviceId &&
+    existing.last_seen_at &&
+    Date.now() - new Date(existing.last_seen_at).getTime() < DEVICE_LOCK_MS
+  ) {
+    throw forbidden('This live class is already open on another device. Close it there, then join here.');
+  }
+  await LiveStreamGuest.updateOne(
+    { live_stream_id: liveStreamId, user_id: new mongoose.Types.ObjectId(userId) },
+    {
+      $set: {
+        last_seen_at: new Date(),
+        ...(role ? { role } : {}),
+        ...(deviceId ? { device_id: deviceId } : {}),
+      },
+      $setOnInsert: {
+        live_stream_id: liveStreamId,
+        user_id: new mongoose.Types.ObjectId(userId),
+        joined_at: new Date(),
+      },
+    },
+    { upsert: true },
+  );
 }
 
 export function liveStreamPlatformFilter(platform?: string) {
@@ -325,7 +368,7 @@ function canViewPresentation(
   permissionStatus: LivePermissionStatus,
   hasPaid: boolean,
 ): boolean {
-  if (isPlatformAdmin(user)) return true;
+  if (isPlatformAdmin(user) || isLearningHost(user)) return true;
   if (user.id === String(doc.host_user_id)) return true;
   if (isPreviousClass(doc) && hasPaid) return true;
   if (permissionStatus === 'not_permitted') return false;
@@ -413,6 +456,7 @@ async function permissionFor(
     _id: unknown;
     access_type?: string;
     host_user_id: unknown;
+    support_user_id?: unknown;
     status?: string;
     scheduled_at?: Date | string;
     package_ids?: unknown[];
@@ -424,11 +468,12 @@ async function permissionFor(
 ): Promise<{ permission_status: LivePermissionStatus; can_join: boolean; can_host: boolean }> {
   const sessionId = String(doc._id);
   const hostUserId = String(doc.host_user_id);
-  const canHost = userId === hostUserId || isPlatformAdmin(user);
-  if (userId === hostUserId) {
+  const supportUserId = doc.support_user_id ? String(doc.support_user_id) : '';
+  const canHost = userId === hostUserId || userId === supportUserId || isPlatformAdmin(user) || isLearningHost(user);
+  if (userId === hostUserId || userId === supportUserId) {
     return { permission_status: 'host', can_join: true, can_host: true };
   }
-  if (isPlatformAdmin(user)) {
+  if (isPlatformAdmin(user) || isLearningHost(user)) {
     return { permission_status: 'permitted', can_join: true, can_host: true };
   }
   // Buyers of any package this class belongs to may join and watch it.
@@ -484,6 +529,7 @@ function serializeBase(doc: InstanceType<typeof LiveStream>, includeSlides = tru
     presentation_count: presentations.length,
     allow_guest_messages: Boolean(doc.allow_guest_messages),
     allow_guest_speech: Boolean(doc.allow_guest_speech),
+    allow_guest_video: Boolean(doc.allow_guest_video),
     access_type: liveClassAccessType(doc),
     auto_record_cloud: Boolean(doc.auto_record_cloud),
     recorded_content_count: recorded.length,
@@ -801,8 +847,7 @@ export async function createLiveStream(dto: CreateLiveStreamDto, actorId: string
   const examSubjectId = await resolveExamSubjectId(dto.exam_subject_id);
 
   const tempId = new mongoose.Types.ObjectId();
-  const platform = dto.video_platform === 'zoom' ? 'zoom' : 'agora';
-  if (platform === 'zoom' && !zoomConfigured()) {
+  if (!zoomConfigured()) {
     throw badRequest('Zoom is not configured on the server. Set ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET.');
   }
   const presentations = normalizeLiveStreamPresentations({
@@ -816,23 +861,22 @@ export async function createLiveStream(dto: CreateLiveStreamDto, actorId: string
     scheduled_at: dto.scheduled_at,
     status: 'scheduled',
     channel_name: channelForId(String(tempId)),
-    video_platform: platform,
+    video_platform: 'zoom',
     host_user_id: hostUserId,
+    ...(dto.support_user_id ? { support_user_id: dto.support_user_id } : {}),
     ...(examSubjectId ? { exam_subject_id: examSubjectId } : {}),
     created_by: actorId,
     is_active: true,
     presentations,
     slides: flattenLiveStreamSlides({ presentations }),
     access_type: dto.access_type === 'paid' ? 'paid' : 'free',
-    auto_record_cloud: platform === 'zoom' ? Boolean(dto.auto_record_cloud) : false,
+    auto_record_cloud: Boolean(dto.auto_record_cloud),
     recorded_contents: dto.recorded_contents
       ? serializeRecordedContents(dto.recorded_contents)
       : [],
   });
 
-  if (platform === 'zoom') {
-    await ensureZoomMeeting(doc);
-  }
+  await ensureZoomMeeting(doc);
 
   if (dto.invite_user_ids?.length) {
     await addInvites(String(doc._id), dto.invite_user_ids, actorId);
@@ -868,6 +912,13 @@ export async function updateLiveStream(id: string, dto: UpdateLiveStreamDto) {
   if (dto.host_user_id !== undefined && String(doc.host_user_id) !== dto.host_user_id) {
     const hostUser = await assertAssignableHost(dto.host_user_id);
     doc.host_user_id = hostUser._id as typeof doc.host_user_id;
+  }
+  if (dto.support_user_id !== undefined) {
+    if (dto.support_user_id === null) doc.set('support_user_id', undefined);
+    else {
+      const support = await assertAssignableHost(dto.support_user_id);
+      doc.support_user_id = support._id as typeof doc.support_user_id;
+    }
   }
   if (dto.exam_subject_id !== undefined) {
     if (dto.exam_subject_id === null) {
@@ -1041,7 +1092,7 @@ export async function revokeInvites(sessionId: string, userIds: string[]) {
 export async function joinLiveStream(
   id: string,
   user: { id: string; is_super_admin?: boolean; user_type?: string },
-  opts?: { as_host?: boolean },
+  opts?: { as_host?: boolean; device_id?: string },
 ): Promise<LiveStreamJoinPayload> {
   const doc = await LiveStream.findOne({ _id: id, is_active: true });
   if (!doc) throw notFound('Live session not found');
@@ -1059,8 +1110,9 @@ export async function joinLiveStream(
     throw forbidden('You are not permitted to join this live session. Ask an admin for access.');
   }
 
+  const isSupport = Boolean(doc.support_user_id) && user.id === String(doc.support_user_id);
   const wantsHost = Boolean(opts?.as_host);
-  const mayHost = user.id === String(doc.host_user_id) || isPlatformAdmin(user);
+  const mayHost = user.id === String(doc.host_user_id) || isSupport || isPlatformAdmin(user) || isLearningHost(user);
   const role: 'host' | 'audience' = wantsHost && mayHost ? 'host' : 'audience';
 
   if (doc.status === 'paused' && role !== 'host') {
@@ -1070,92 +1122,48 @@ export async function joinLiveStream(
     throw badRequest('This live class has not started yet.');
   }
 
-  await LiveStreamGuest.updateOne(
-    {
-      live_stream_id: doc._id,
-      user_id: new mongoose.Types.ObjectId(user.id),
-    },
-    {
-      $set: {
-        role,
-        last_seen_at: new Date(),
-      },
-      $setOnInsert: {
-        live_stream_id: doc._id,
-        user_id: new mongoose.Types.ObjectId(user.id),
-        joined_at: new Date(),
-      },
-    },
-    { upsert: true },
-  );
+  await claimClassDevice(doc._id, user.id, opts?.device_id, isSupport && role === 'host' ? 'support' : role);
 
-  const platform = videoPlatformOf(doc);
-
-  if (platform === 'zoom') {
-    if (!doc.zoom_meeting_number) {
-      throw badRequest('Zoom meeting is not ready yet. The host must start the class first.');
-    }
-    const userDoc = await User.findById(user.id).select('full_name_en full_name_bn email phone');
-    const userName = zoomParticipantName(userDoc);
-    const host_name = await resolveHostName(doc.host_user_id);
-    let zak: string | undefined;
-    if (role === 'host') {
-      zak = await fetchZoomZakToken();
-    }
-    const password = doc.zoom_password ?? '';
-    const webClientUrl = buildZoomWebClientUrl({
-      meetingNumber: doc.zoom_meeting_number,
-      password,
-      role,
-      zak,
-      userName,
-      userEmail: userDoc?.email,
-    });
-    const sdk = buildZoomSdkSignature(doc.zoom_meeting_number, role);
-    return {
-      video_platform: 'zoom',
-      meeting_number: doc.zoom_meeting_number,
-      password,
-      web_client_url: webClientUrl,
-      user_name: userName,
-      user_email: userDoc?.email,
-      zak,
-      ...(sdk
-        ? {
-            signature: sdk.signature,
-            sdk_key: sdk.sdk_key,
-            signature_expires_at: sdk.expire_at,
-          }
-        : {}),
-      role,
-      topic: doc.topic,
-      status: doc.status,
-      allow_guest_messages: Boolean(doc.allow_guest_messages),
-      allow_guest_speech: Boolean(doc.allow_guest_speech),
-      host_name,
-    };
-  }
-
-  const uid = agoraUidFromUserId(user.id);
-  const { appId, token, expireAt } = buildAgoraRtcToken({
-    channel: doc.channel_name,
-    uid,
-    role,
-  });
+  doc.video_platform = 'zoom';
+  if (!doc.zoom_meeting_number) await ensureZoomMeeting(doc);
+  const userDoc = await User.findById(user.id).select('full_name_en full_name_bn email phone');
+  const userName = zoomParticipantName(userDoc);
   const host_name = await resolveHostName(doc.host_user_id);
-
+  let zak: string | undefined;
+  if (role === 'host' && !isSupport) {
+    zak = await fetchZoomZakToken();
+  }
+  const password = doc.zoom_password ?? '';
+  const webClientUrl = buildZoomWebClientUrl({
+    meetingNumber: doc.zoom_meeting_number!,
+    password,
+    role: isSupport ? 'audience' : role,
+    zak,
+    userName: isSupport ? `Support · ${userName}` : userName,
+    userEmail: userDoc?.email,
+  });
+  const sdk = buildZoomSdkSignature(doc.zoom_meeting_number!, isSupport ? 'audience' : role);
   return {
-    video_platform: 'agora',
-    app_id: appId,
-    channel: doc.channel_name,
-    token,
-    token_expires_at: expireAt,
-    uid,
+    video_platform: 'zoom',
+    meeting_number: doc.zoom_meeting_number!,
+    password,
+    web_client_url: webClientUrl,
+    user_name: userName,
+    user_email: userDoc?.email,
+    zak,
+    ...(sdk
+      ? {
+          signature: sdk.signature,
+          sdk_key: sdk.sdk_key,
+          signature_expires_at: sdk.expire_at,
+        }
+      : {}),
     role,
     topic: doc.topic,
     status: doc.status,
     allow_guest_messages: Boolean(doc.allow_guest_messages),
     allow_guest_speech: Boolean(doc.allow_guest_speech),
+    allow_guest_video: Boolean(doc.allow_guest_video),
     host_name,
   };
 }
@@ -1178,16 +1186,53 @@ export async function setGuestMessagesAllowed(
   };
 }
 
+export async function setGuestVideoAllowed(
+  id: string,
+  allow: boolean,
+): Promise<LiveStreamListItem> {
+  const doc = await LiveStream.findOne({ _id: id, is_active: true });
+  if (!doc) throw notFound('Live session not found');
+  doc.allow_guest_video = allow;
+  if (doc.zoom_meeting_number) {
+    await updateZoomClassroom(doc.zoom_meeting_number, {
+      allowSpeech: Boolean(doc.allow_guest_speech),
+      allowVideo: allow,
+    });
+  }
+  await doc.save();
+  return {
+    ...serializeBase(doc, false),
+    invite_count: await LiveStreamInvite.countDocuments({ live_stream_id: doc._id }),
+    permission_status: 'host',
+    can_join: true,
+    can_host: true,
+    can_view_presentation: true,
+  };
+}
+
+export async function touchLivePresence(id: string, userId: string, deviceId: string): Promise<void> {
+  const doc = await LiveStream.findOne({ _id: id, is_active: true }).select('_id');
+  if (!doc) throw notFound('Live session not found');
+  const guest = await LiveStreamGuest.findOne({ live_stream_id: doc._id, user_id: userId });
+  if (!guest) return;
+  if (guest.device_id && guest.device_id !== deviceId && Date.now() - new Date(guest.last_seen_at).getTime() < DEVICE_LOCK_MS) {
+    throw forbidden('This live class is already open on another device. Close it there, then join here.');
+  }
+  guest.device_id = deviceId;
+  guest.last_seen_at = new Date();
+  await guest.save();
+}
+
 export async function setGuestSpeechAllowed(
   id: string,
   allow: boolean,
 ): Promise<LiveStreamListItem> {
   const doc = await LiveStream.findOne({ _id: id, is_active: true });
   if (!doc) throw notFound('Live session not found');
-  if (videoPlatformOf(doc) === 'zoom' && doc.zoom_meeting_number) {
-    await updateZoomGuestUnmuteAllowed(doc.zoom_meeting_number, allow);
-  }
   doc.allow_guest_speech = allow;
+  if (doc.zoom_meeting_number) {
+    await updateZoomGuestUnmuteAllowed(doc.zoom_meeting_number, allow, Boolean(doc.allow_guest_video));
+  }
   await doc.save();
   return {
     ...serializeBase(doc, false),

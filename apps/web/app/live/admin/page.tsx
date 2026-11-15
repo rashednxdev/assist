@@ -76,7 +76,7 @@ export default function LiveStreamAdminPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await apiFetch<{ data: LiveRow[] }>('/live-streams/admin?limit=100&video_platform=agora');
+      const res = await apiFetch<{ data: LiveRow[] }>('/live-streams/admin?limit=100&video_platform=zoom');
       setItems(res.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');

@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FormField } from '@/components/shared/form-field';
 import { Alert } from '@/components/ui/alert';
@@ -44,7 +45,7 @@ function RegisterForm() {
       return;
     }
     if (!acceptedTerms) {
-      setError('অফিসের সকলের বা অন্তত ৫ জনের বিল ফরম ডাউনলোডের সম্মতি দিন');
+      setError('Please confirm that you want to register.');
       return;
     }
     setLoading(true);
@@ -118,23 +119,23 @@ function RegisterForm() {
               </FormField>
               <div className="grid gap-4 sm:grid-cols-2">
                 <FormField label="Password" htmlFor="password" required>
-                  <Input
+                  <PasswordInput
                     id="password"
-                    type="password"
                     value={form.password}
                     onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
                     required
                     minLength={8}
+                    autoComplete="new-password"
                   />
                 </FormField>
                 <FormField label="Confirm password" htmlFor="confirm" required>
-                  <Input
+                  <PasswordInput
                     id="confirm"
-                    type="password"
                     value={form.confirm_password}
                     onChange={(e) => setForm((f) => ({ ...f, confirm_password: e.target.value }))}
                     required
                     minLength={8}
+                    autoComplete="new-password"
                   />
                 </FormField>
               </div>
@@ -146,7 +147,7 @@ function RegisterForm() {
                   onChange={(e) => setAcceptedTerms(e.target.checked)}
                 />
                 <span className="font-medium text-[#b71c1c]">
-                  আমি আমার অফিসের সকলের বা অন্তত ৫ জনের বিল ফরম ডাউনলোড করতে চাই
+                  I want to register.
                 </span>
               </label>
               {error && <Alert variant="error">{error}</Alert>}

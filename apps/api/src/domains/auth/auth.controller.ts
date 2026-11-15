@@ -1,8 +1,8 @@
 import type { Response } from 'express';
-import { loginSchema } from '@ibas/shared-types';
-import { moduleAccessGroup } from '@ibas/shared-constants';
+import { loginOtpResendSchema, loginOtpSchema, loginSchema } from '@ibas/shared-types';
+import { LEARNING_PRIVILEGE_MODULE_CODES, moduleAccessGroup } from '@ibas/shared-constants';
 import type { AuthRequest } from '../../middleware/auth.js';
-import { login, refreshExpiresMs } from './auth.service.js';
+import { completeLoginOtp, login, refreshExpiresMs, resendLoginOtp, type LoginSession } from './auth.service.js';
 import { User } from '../users/models/User.model.js';
 import { Credentials } from '../users/models/Credentials.model.js';
 import * as usersService from '../users/users.service.js';
@@ -15,18 +15,20 @@ import { Module } from '../setup/models/Module.model.js';
 import { packageGrantsForMe } from '../billing/billing.service.js';
 import { areaModuleCodes } from '../billing/entitlements.service.js';
 
-export async function loginHandler(req: AuthRequest, res: Response): Promise<void> {
-  const dto = loginSchema.parse(req.body);
-  const { tokens, userId, mustChangePassword } = await login(dto, req.ip);
-  if (dto.app_version && dto.client_platform === 'mobile') {
-    await usersService.reportClientVersion(userId, dto.app_version, dto.client_platform);
+async function respondWithSession(
+  res: Response,
+  session: LoginSession,
+  client?: { app_version?: string; client_platform?: 'mobile' | 'web' },
+): Promise<void> {
+  if (client?.app_version && client.client_platform === 'mobile') {
+    await usersService.reportClientVersion(session.userId, client.app_version, client.client_platform);
   }
-  const user = await User.findById(userId).select('-__v');
+  const user = await User.findById(session.userId).select('-__v');
   if (!user) {
     throw badRequest('Invalid request');
   }
 
-  res.cookie('refreshToken', tokens.refreshToken, {
+  res.cookie('refreshToken', session.tokens.refreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
@@ -36,9 +38,10 @@ export async function loginHandler(req: AuthRequest, res: Response): Promise<voi
 
   res.json({
     data: {
-      accessToken: tokens.accessToken,
-      expiresIn: tokens.expiresIn,
-      must_change_password: mustChangePassword,
+      otp_required: false,
+      accessToken: session.tokens.accessToken,
+      expiresIn: session.tokens.expiresIn,
+      must_change_password: session.mustChangePassword,
       user: {
         id: String(user._id),
         email: user.email,
@@ -51,13 +54,48 @@ export async function loginHandler(req: AuthRequest, res: Response): Promise<voi
         is_verified: user.is_verified,
         email_verified: user.email_verified,
         phone_verified: user.phone_verified,
-        must_change_password: mustChangePassword,
+        must_change_password: session.mustChangePassword,
         workflow_roles: user.workflow_roles.map((r) => ({
           role_code: r.role_code,
           is_active: r.is_active,
           self_assigned: !!r.self_assigned,
         })),
       },
+    },
+  });
+}
+
+export async function loginHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = loginSchema.parse(req.body);
+  const result = await login(dto, req.ip);
+  if (result.kind === 'otp') {
+    res.json({
+      data: {
+        otp_required: true,
+        challenge: result.challenge,
+        phone_hint: result.phoneHint,
+        expires_in: result.expiresIn,
+      },
+    });
+    return;
+  }
+  await respondWithSession(res, result, dto);
+}
+
+export async function loginOtpHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = loginOtpSchema.parse(req.body);
+  const session = await completeLoginOtp(dto, req.ip);
+  await respondWithSession(res, session, dto);
+}
+
+export async function loginOtpResendHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = loginOtpResendSchema.parse(req.body);
+  const result = await resendLoginOtp(dto.challenge);
+  res.json({
+    data: {
+      challenge: result.challenge,
+      phone_hint: result.phoneHint,
+      expires_in: result.expiresIn,
     },
   });
 }
@@ -121,11 +159,42 @@ export async function meHandler(req: AuthRequest, res: Response): Promise<void> 
       });
     }
   }
-  const has_paid = isAdmin || legacy_paid || pkg.hasAny;
+  const isHost = user.user_type === 'host';
+  const has_paid = isAdmin || isHost || legacy_paid || pkg.hasAny;
   // Manual grants need the admin paid mark; without it, sellable modules open only through a package.
-  if (has_paid && !isAdmin && !legacy_paid) {
+  if (has_paid && !isAdmin && !isHost && !legacy_paid) {
     for (const g of grants) {
       if (g.source !== 'package' && moduleAccessGroup(g.module_code, extraBasic)) g.can_read = false;
+    }
+  }
+  if (isHost) {
+    const names = new Map(
+      (await Module.find({ code: { $in: [...LEARNING_PRIVILEGE_MODULE_CODES] } }).select('code name_en').lean()).map(
+        (m) => [m.code, m.name_en],
+      ),
+    );
+    for (const code of LEARNING_PRIVILEGE_MODULE_CODES) {
+      const existing = grants.find((g) => g.module_code === code);
+      if (existing) {
+        existing.can_read = true;
+        existing.can_create = true;
+        existing.can_update = true;
+        if (code === 'LIVE_STREAM') existing.can_publish = true;
+        if (existing.source === 'package') existing.source = 'grant';
+        continue;
+      }
+      grants.push({
+        module_code: code,
+        module_name_en: names.get(code) ?? code,
+        can_read: true,
+        can_create: true,
+        can_update: true,
+        can_delete: false,
+        can_grade: false,
+        can_publish: code === 'LIVE_STREAM',
+        bypass_stop: false,
+        source: 'grant',
+      });
     }
   }
   const module_access = grants;

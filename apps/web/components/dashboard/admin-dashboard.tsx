@@ -274,6 +274,7 @@ export function AdminDashboard({ user, onLearnerView }: { user: MeUser; onLearne
     applicant: 'Applicants',
     admin: 'Admins',
     system_admin: 'System admins',
+    host: 'Hosts',
   };
 
   return (

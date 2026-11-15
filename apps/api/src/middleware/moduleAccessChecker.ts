@@ -1,4 +1,4 @@
-import { isFreeModuleCode } from '@ibas/shared-constants';
+import { isFreeModuleCode, isHostUser, isLearningPrivilegeModule } from '@ibas/shared-constants';
 import type { AuthUser } from './auth.js';
 import { UserModuleAccess } from '../domains/users/models/UserModuleAccess.model.js';
 import { Module } from '../domains/setup/models/Module.model.js';
@@ -60,6 +60,7 @@ export async function loadModuleAccessChecker(user: AuthUser): Promise<ModuleAcc
   /** free → bought package → legacy (admin-marked paid + grant) → "unpaid" means buy a package. */
   function afterStop(codes: string[]): ModuleAccessState {
     if (codes.some((c) => isFreeModuleCode(c))) return 'open';
+    if (isHostUser(user) && codes.length > 0 && codes.every((c) => isLearningPrivilegeModule(c))) return 'open';
     if (snapshotOpens(entitlements, codes, extraBasic)) return 'open';
     if (paid && granted(codes)) return 'open';
     if (!paid || isPurchasable(codes, extraBasic)) return 'unpaid';

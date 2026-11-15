@@ -1,4 +1,4 @@
-import { moduleAccessGroup } from '@ibas/shared-constants';
+import { isHostUser, moduleAccessGroup } from '@ibas/shared-constants';
 import type { ModuleAccessGrant, ModuleStop } from '@ibas/shared-types';
 import type { MeUser } from '@/lib/auth';
 import type { NavGroup, NavItem } from '@/components/layout/nav-config';
@@ -42,8 +42,8 @@ function grantFor(
   return grants.find((g) => g.module_code === moduleCode);
 }
 
-/** Learning modules open to every signed-in user (same as mobile). */
-export const FREE_LEARNING_MODULE_CODES = ['QOTD', 'EXAM_ROUTINE', 'LIVE_STREAM'] as const;
+/** Open after an admin grants Learning. Live class is requested separately. */
+export const FREE_LEARNING_MODULE_CODES = ['QOTD', 'EXAM_ROUTINE'] as const;
 
 export function isFreeLearningModule(code: string): boolean {
   return (FREE_LEARNING_MODULE_CODES as readonly string[]).includes(code);
@@ -85,17 +85,28 @@ export function learningModuleAccess(user: MeUser, code: string): LearningAccess
   if (isModuleEffectivelyStopped(stops, grants, code)) {
     return { state: 'stopped', reason: findModuleStop(stops, code)?.stopped_reason };
   }
+  if (isHostUser(user)) return { state: 'open' };
+  if (
+    grants.some(
+      (g) =>
+        g.module_code === code &&
+        (g.can_create || g.can_update || g.can_delete || g.can_publish || g.can_grade),
+    )
+  ) {
+    return { state: 'open' };
+  }
+  const shell = grants.some(
+    (g) => g.can_read && g.source !== 'package' && (isFreeLearningModule(g.module_code) || packageTabFor(g.module_code) != null || g.module_code === 'LIVE_STREAM'),
+  );
+  if (!shell) return { state: 'denied' };
   if (isFreeLearningModule(code)) return { state: 'open' };
   const mine = grants.filter((g) => g.module_code === code && g.can_read);
   if (mine.some((g) => g.source === 'package')) return { state: 'open' };
-  const legacyPaid = user.legacy_paid ?? user.has_paid !== false;
-  if (legacyPaid && mine.length > 0) return { state: 'open' };
-  if (!legacyPaid || packageTabFor(code)) return { state: 'unpaid' };
+  if (packageTabFor(code) || code === 'LIVE_STREAM') return { state: 'unpaid' };
   return { state: 'denied' };
 }
 
 export function hasModuleRead(grants: ModuleAccessGrant[], moduleCode: string): boolean {
-  if (moduleCode === 'QOTD' || moduleCode === 'EXAM_ROUTINE' || moduleCode === 'LIVE_STREAM') return true;
   return grantFor(grants, moduleCode)?.can_read === true;
 }
 

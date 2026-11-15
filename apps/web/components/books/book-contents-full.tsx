@@ -113,7 +113,7 @@ export function BookContentsFull({
         const editingChapter = editing?.type === 'chapter' && editing.id === chapter.id;
         return (
           <section key={chapter.id} id={`chapter-${chapter.id}`} className="scroll-mt-6">
-            <div className="flex items-start justify-between gap-2 border-b border-amber-900/10 pb-3">
+            <div className="flex items-start justify-between gap-2 border-b border-[#e2e8f0] pb-3">
               <div className="min-w-0">
                 <h3 className="text-lg font-semibold text-foreground">
                   <Link
@@ -180,7 +180,7 @@ export function BookContentsFull({
                     <div
                       key={topic.id}
                       id={`rule-${topic.id}`}
-                      className={`scroll-mt-6 rounded-lg border border-amber-900/10 bg-[#fffef8]/60 p-4 sm:p-5 ${bookTheme.listItem}`}
+                      className={`scroll-mt-6 rounded-lg border border-[#e2e8f0] bg-white p-4 sm:p-5 ${bookTheme.listItem}`}
                     >
                       <div className="mb-3 flex flex-wrap items-center gap-2">
                         <h4 className="min-w-0 flex-1 text-base font-semibold text-foreground">
@@ -258,7 +258,7 @@ export function BookContentsFull({
                       )}
 
                       {topic.sub_topics.length > 0 && (
-                        <ul className="mt-5 space-y-4 border-t border-amber-900/10 pt-4">
+                        <ul className="mt-5 space-y-4 border-t border-[#e2e8f0] pt-4">
                           {topic.sub_topics.map((sub) => {
                             const editingSub = editing?.type === 'sub' && editing.id === sub.id;
                             return (

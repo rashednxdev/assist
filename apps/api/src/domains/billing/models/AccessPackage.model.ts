@@ -9,6 +9,10 @@ export interface IAccessPackage extends Document {
   /** Exam Preparation: with no subject, the package covers every subject of this part. Both empty = all of Part 1. */
   exam_part_id?: Types.ObjectId | null;
   exam_subject_id?: Types.ObjectId | null;
+  /** Several subjects in one content package. A subject may also sit in other packages. */
+  exam_subject_ids?: Types.ObjectId[];
+  /** Live class: how many classes of the subject this package includes. */
+  class_limit?: number | null;
   duration_days: number;
   price: number;
   compare_at_price?: number | null;
@@ -32,6 +36,8 @@ const schema = new Schema<IAccessPackage>(
     description: { type: String, trim: true },
     exam_part_id: { type: Schema.Types.ObjectId, ref: 'ExamPart', default: null },
     exam_subject_id: { type: Schema.Types.ObjectId, ref: 'ExamSubject', default: null },
+    exam_subject_ids: { type: [{ type: Schema.Types.ObjectId, ref: 'ExamSubject' }], default: [] },
+    class_limit: { type: Number, default: null },
     duration_days: { type: Number, required: true, min: 1 },
     price: { type: Number, required: true, min: 0 },
     compare_at_price: { type: Number, default: null },

@@ -89,7 +89,7 @@ export default function RegisterVerifyPage() {
         setDemo(updated);
         sessionStorage.setItem('ibas_register_demo', JSON.stringify(updated));
       }
-      setMessage(`New demo ${channel} code sent`);
+      setMessage(channel === 'phone' ? 'A new code was sent by text message.' : 'A new email code was sent');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not resend');
     } finally {
@@ -108,7 +108,7 @@ export default function RegisterVerifyPage() {
               Verify your account
             </CardTitle>
             <CardDescription>
-              Demo mode: verification codes are shown below. In production, codes will be sent to your email and SMS.
+              The registration code is sent by text message. Enter that code to verify the mobile number.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">

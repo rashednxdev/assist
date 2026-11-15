@@ -9,6 +9,7 @@ import type {
   CreateUserAddressDto,
   SubscribePlanDto,
   ForgotPasswordDto,
+  VerifyResetOtpDto,
   ResetPasswordDto,
 } from '@ibas/shared-types';
 import { User } from '../users/models/User.model.js';
@@ -25,22 +26,22 @@ import { hashPassword, signTokens } from '../auth/auth.service.js';
 import { clearTempPassword } from '../users/account-recovery.service.js';
 import { badRequest, notFound, unauthorized } from '../../shared/errors/AppError.js';
 import { logger } from '../../shared/logger.js';
-import { sendEmail } from '../../shared/mailer.js';
+import { sendSms } from '../../shared/sms.js';
+
+const REGISTER_OTP_SMS = (code: string) =>
+  `Welcome to ProAssist! Your registration OTP is ${code} (valid for 15 mins). Do not share this code with anyone.`;
 
 const OTP_TTL_MS = 15 * 60 * 1000;
+const RESET_OTP_TTL_MS = 15 * 60 * 1000;
+const RESET_COOLDOWN_MS = 60 * 1000;
+const RESET_WINDOW_MS = 15 * 60 * 1000;
+const RESET_MAX_SENDS = 5;
+const RESET_MAX_ATTEMPTS = 5;
 /** Domain used for the auto-generated placeholder email of legacy phone-only signups (pre-dating required email). */
 const PLACEHOLDER_EMAIL_DOMAIN = '@phone.proassist.app';
 
-/** "ra.........nx@gmail.com" — first/last couple of characters, enough for a user to recognize their own inbox without exposing it in full. */
-function maskEmail(email: string): string {
-  const [local, domain] = email.split('@');
-  if (!local || !domain) return email;
-  if (local.length <= 4) {
-    return `${local[0]}${'.'.repeat(Math.max(1, local.length - 1))}@${domain}`;
-  }
-  const head = local.slice(0, 2);
-  const tail = local.slice(-2);
-  return `${head}${'.'.repeat(local.length - 4)}${tail}@${domain}`;
+function maskPhone(phone: string): string {
+  return `${phone.slice(0, 3)}${'*'.repeat(Math.max(1, phone.length - 5))}${phone.slice(-2)}`;
 }
 
 function generateOtp(): string {
@@ -91,25 +92,6 @@ function serializeUser(user: InstanceType<typeof User>) {
   };
 }
 
-async function issueDemoOtps(user: InstanceType<typeof User>, creds: InstanceType<typeof Credentials>) {
-  const emailOtp = generateOtp();
-  const phoneOtp = generateOtp();
-  const expires = new Date(Date.now() + OTP_TTL_MS);
-
-  creds.email_otp_hash = await hashOtp(emailOtp);
-  creds.email_otp_expires_at = expires;
-  creds.phone_otp_hash = await hashOtp(phoneOtp);
-  creds.phone_otp_expires_at = expires;
-  await creds.save();
-
-  logger.info(
-    { email: user.email, phone: user.phone, emailOtp, phoneOtp },
-    'Demo verification codes (development)',
-  );
-
-  return { emailOtp, phoneOtp, expiresInMinutes: 15 };
-}
-
 async function assignDefaultWorkflowRoles(user: InstanceType<typeof User>) {
   if (user.user_type !== 'officer') return;
 
@@ -148,8 +130,6 @@ export async function registerUser(dto: RegisterDto) {
   const exists = await User.findOne({ $or: [{ email }, { phone }] });
   if (exists) throw badRequest('Mobile number is already registered');
 
-  const hasRealEmail = Boolean(dto.email?.trim());
-
   const user = await User.create({
     full_name_en: dto.full_name_en,
     full_name_bn: dto.full_name_bn,
@@ -184,10 +164,24 @@ export async function registerUser(dto: RegisterDto) {
 
   await assignDefaultWorkflowRoles(user);
 
-  const demo = hasRealEmail ? await issueDemoOtps(user, creds) : undefined;
+  const code = generateOtp();
+  creds.phone_otp_hash = await hashOtp(code);
+  creds.phone_otp_expires_at = new Date(Date.now() + OTP_TTL_MS);
+  await creds.save();
+
+  if (/^01[3-9]\d{8}$/.test(phone)) {
+    try {
+      await sendSms(phone, REGISTER_OTP_SMS(code));
+    } catch (err) {
+      await Credentials.deleteOne({ _id: creds._id });
+      await User.deleteOne({ _id: user._id });
+      throw err;
+    }
+  }
+
   const tokens = signTokens(String(user._id), dto.device_id, 0);
 
-  return { tokens, user: serializeUser(user), demo };
+  return { tokens, user: serializeUser(user) };
 }
 
 export async function resendOtp(userId: string, channel: 'email' | 'phone') {
@@ -209,7 +203,22 @@ export async function resendOtp(userId: string, channel: 'email' | 'phone') {
   }
   await creds.save();
 
-  logger.info({ userId, channel, code }, 'Demo OTP resent');
+  if (channel === 'phone') {
+    if (!/^01[3-9]\d{8}$/.test(user.phone)) {
+      throw badRequest('This account has no mobile number for a text message.');
+    }
+    try {
+      await sendSms(user.phone, REGISTER_OTP_SMS(code));
+    } catch (err) {
+      creds.phone_otp_hash = undefined;
+      creds.phone_otp_expires_at = undefined;
+      await creds.save();
+      throw err;
+    }
+    logger.info({ userId }, 'Registration code sent by SMS');
+    return { channel, sent: true, expiresInMinutes: 15 };
+  }
+
   return { channel, demoCode: code, expiresInMinutes: 15 };
 }
 
@@ -318,55 +327,105 @@ export async function changeMyPassword(userId: string, dto: ChangePasswordDto) {
 }
 
 /**
- * "Forgot password" step 1 — no auth token yet, so the account is found by phone (the only thing
- * a locked-out user still has) and a reset code is emailed to whatever address is on file. Legacy
- * accounts that never supplied a real email (placeholder `@phone.proassist.app`) can't be reached
- * this way and are told to ask an admin instead.
+ * "Forgot password" step 1 — no auth token yet. The account is found by phone and a 6-digit
+ * code is texted to that number.
  */
 export async function requestPasswordReset(dto: ForgotPasswordDto) {
-  const user = await User.findOne({ phone: dto.phone.trim() });
+  const phone = dto.phone.trim();
+  const user = await User.findOne({ phone });
   if (!user) throw notFound('No account found with that mobile number');
-  if (user.email.endsWith(PLACEHOLDER_EMAIL_DOMAIN)) {
-    throw badRequest('No email is on file for this account. Ask an admin to reset your password.');
-  }
 
   const creds = await Credentials.findOne({ user_id: user._id });
   if (!creds) throw notFound('Credentials not found');
+
+  const now = Date.now();
+  if (
+    creds.reset_otp_hash &&
+    creds.reset_otp_sent_at &&
+    creds.reset_otp_expires_at &&
+    creds.reset_otp_expires_at.getTime() > now &&
+    now - creds.reset_otp_sent_at.getTime() < RESET_COOLDOWN_MS
+  ) {
+    const wait = Math.ceil((RESET_COOLDOWN_MS - (now - creds.reset_otp_sent_at.getTime())) / 1000);
+    throw badRequest(`Wait ${wait} seconds before requesting another code.`);
+  }
+  if (!creds.reset_otp_window_start || now - creds.reset_otp_window_start.getTime() > RESET_WINDOW_MS) {
+    creds.reset_otp_window_start = new Date(now);
+    creds.reset_otp_window_count = 0;
+  }
+  if ((creds.reset_otp_window_count ?? 0) >= RESET_MAX_SENDS) {
+    throw badRequest('Too many reset codes were sent. Wait a few minutes and try again.');
+  }
 
   const code = generateOtp();
   creds.reset_otp_hash = await hashOtp(code);
-  creds.reset_otp_expires_at = new Date(Date.now() + OTP_TTL_MS);
+  creds.reset_otp_expires_at = new Date(now + RESET_OTP_TTL_MS);
+  creds.reset_otp_attempts = 0;
+  creds.reset_otp_sent_at = new Date(now);
+  creds.reset_otp_window_count = (creds.reset_otp_window_count ?? 0) + 1;
   await creds.save();
 
-  await sendEmail({
-    to: user.email,
-    subject: 'Your proAssist password reset code',
-    html: `<p>Hello ${user.full_name_en},</p><p>Your password reset code is:</p><p style="font-size:24px;font-weight:bold;letter-spacing:4px;">${code}</p><p>This code expires in 15 minutes. If you didn't request this, you can safely ignore this email.</p>`,
-  });
+  try {
+    await sendSms(
+      phone,
+      `Your ProAssist password reset code is ${code} (valid for 15 mins). Thank you for using ProAssist!`,
+    );
+  } catch (err) {
+    creds.reset_otp_hash = undefined;
+    creds.reset_otp_expires_at = undefined;
+    creds.reset_otp_window_count = Math.max(0, (creds.reset_otp_window_count ?? 1) - 1);
+    await creds.save();
+    throw err;
+  }
 
-  logger.info({ userId: user._id }, 'Password reset code emailed');
-  return { sent: true, email_hint: maskEmail(user.email) };
+  logger.info({ userId: user._id }, 'Password reset code sent by SMS');
+  return { sent: true, phone_hint: maskPhone(phone) };
 }
 
-/** "Forgot password" step 2 — the emailed code plus a new password, still with no auth token. */
-export async function resetPasswordWithOtp(dto: ResetPasswordDto) {
-  const user = await User.findOne({ phone: dto.phone.trim() });
+async function assertResetCode(phone: string, code: string) {
+  const user = await User.findOne({ phone: phone.trim() });
   if (!user) throw notFound('No account found with that mobile number');
 
   const creds = await Credentials.findOne({ user_id: user._id });
   if (!creds) throw notFound('Credentials not found');
 
-  if (!creds.reset_otp_expires_at || creds.reset_otp_expires_at < new Date()) {
+  if (!creds.reset_otp_expires_at || creds.reset_otp_expires_at < new Date() || !creds.reset_otp_hash) {
     throw badRequest('Reset code expired. Request a new one.');
   }
-  if (!(await checkOtp(dto.code, creds.reset_otp_hash))) {
-    throw badRequest('Invalid reset code');
+  if ((creds.reset_otp_attempts ?? 0) >= RESET_MAX_ATTEMPTS) {
+    creds.reset_otp_hash = undefined;
+    creds.reset_otp_expires_at = undefined;
+    await creds.save();
+    throw badRequest('Too many wrong codes. Request a new one.');
   }
+  if (!(await checkOtp(code, creds.reset_otp_hash))) {
+    creds.reset_otp_attempts = (creds.reset_otp_attempts ?? 0) + 1;
+    const lockedOut = creds.reset_otp_attempts >= RESET_MAX_ATTEMPTS;
+    if (lockedOut) {
+      creds.reset_otp_hash = undefined;
+      creds.reset_otp_expires_at = undefined;
+    }
+    await creds.save();
+    throw badRequest(lockedOut ? 'Too many wrong codes. Request a new one.' : 'That code is not correct.');
+  }
+  return { user, creds };
+}
+
+/** "Forgot password" step 2 — the code is checked and kept until a new password is saved. */
+export async function verifyResetOtp(dto: VerifyResetOtpDto) {
+  await assertResetCode(dto.phone, dto.code);
+  return { verified: true };
+}
+
+/** "Forgot password" step 3 — the checked SMS code plus a new password, still with no auth token. */
+export async function resetPasswordWithOtp(dto: ResetPasswordDto) {
+  const { user, creds } = await assertResetCode(dto.phone, dto.code);
 
   creds.password_hash = await hashPassword(dto.new_password);
   creds.password_changed_at = new Date();
   creds.reset_otp_hash = undefined;
   creds.reset_otp_expires_at = undefined;
+  creds.reset_otp_attempts = 0;
   clearTempPassword(creds);
   creds.failed_attempts = 0;
   creds.status = 'active';

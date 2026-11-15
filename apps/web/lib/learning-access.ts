@@ -1,4 +1,4 @@
-import { EXAM_PREP_MODULE_CODES } from '@ibas/shared-constants';
+import { EXAM_PREP_MODULE_CODES, isHostUser } from '@ibas/shared-constants';
 import type { MeUser } from '@/lib/auth';
 import { isPlatformAdmin } from '@/lib/capabilities';
 
@@ -56,9 +56,10 @@ export function hasLearningWebAccess(
   user: Pick<MeUser, 'is_super_admin' | 'user_type' | 'module_access'> | null | undefined,
 ): boolean {
   if (!user) return false;
-  if (isPlatformAdmin(user)) return true;
+  if (isPlatformAdmin(user) || isHostUser(user)) return true;
   const grants = user.module_access ?? [];
   return grants.some((g) => {
+    if (g.source === 'package') return false;
     if (!isLearningAccessCode(g.module_code)) return false;
     if (g.can_create || g.can_update || g.can_delete || g.can_publish || g.can_grade) return true;
     return g.can_read === true;
@@ -77,7 +78,7 @@ export function canHostLive(
   user: Pick<MeUser, 'is_super_admin' | 'user_type' | 'module_access'> | null | undefined,
 ): boolean {
   if (!user) return false;
-  if (isPlatformAdmin(user)) return true;
+  if (isPlatformAdmin(user) || isHostUser(user)) return true;
   return (user.module_access ?? []).some(
     (g) => g.module_code === 'LIVE_STREAM' && (g.can_create || g.can_update || g.can_publish),
   );
@@ -95,6 +96,12 @@ export function isPublicSignedInPath(pathname: string): boolean {
 
 export function isLearningRoute(pathname: string): boolean {
   return LEARNING_ROUTE_PREFIXES.some((p) => pathMatches(pathname, p));
+}
+
+/** A Learning module screen, not the hub. Back returns to the previous module, as on mobile. */
+export function isLearningModulePath(pathname: string): boolean {
+  if (pathname === LEARNING_HOME) return false;
+  return isLearningRoute(pathname);
 }
 
 /** @deprecated Use isPublicSignedInPath */

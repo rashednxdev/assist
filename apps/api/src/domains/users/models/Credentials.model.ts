@@ -22,9 +22,21 @@ export interface ICredentials extends Document {
   email_otp_expires_at?: Date;
   phone_otp_hash?: string;
   phone_otp_expires_at?: Date;
-  /** "Forgot password" code, emailed to the account's on-file address. Separate from email_otp_* (account verification) so one flow can't consume/invalidate the other. */
+  /** "Forgot password" SMS code. Separate from phone_otp_* (account verification) so one flow can't consume the other. */
   reset_otp_hash?: string;
   reset_otp_expires_at?: Date;
+  reset_otp_attempts?: number;
+  reset_otp_sent_at?: Date;
+  reset_otp_window_start?: Date;
+  reset_otp_window_count?: number;
+  /** SMS code required after a correct password, before a session is issued. */
+  login_otp_hash?: string;
+  login_otp_expires_at?: Date;
+  login_otp_attempts?: number;
+  login_otp_sent_at?: Date;
+  login_challenge_id?: string;
+  login_otp_window_start?: Date;
+  login_otp_window_count?: number;
   /** Set with status `reset_required`: the admin-issued temporary password stops working after this. */
   temp_password_expires_at?: Date;
   temp_password_set_at?: Date;
@@ -58,6 +70,17 @@ const credentialsSchema = new Schema<ICredentials>(
     phone_otp_expires_at: { type: Date },
     reset_otp_hash: { type: String },
     reset_otp_expires_at: { type: Date },
+    reset_otp_attempts: { type: Number },
+    reset_otp_sent_at: { type: Date },
+    reset_otp_window_start: { type: Date },
+    reset_otp_window_count: { type: Number },
+    login_otp_hash: { type: String },
+    login_otp_expires_at: { type: Date },
+    login_otp_attempts: { type: Number },
+    login_otp_sent_at: { type: Date },
+    login_challenge_id: { type: String },
+    login_otp_window_start: { type: Date },
+    login_otp_window_count: { type: Number },
     temp_password_expires_at: { type: Date },
     temp_password_set_at: { type: Date },
     temp_password_set_by: { type: Schema.Types.ObjectId, ref: 'User' },

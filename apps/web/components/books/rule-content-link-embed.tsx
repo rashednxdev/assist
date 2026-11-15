@@ -31,7 +31,7 @@ export function RuleContentLinkEmbed({
         </Button>
       </div>
       <div
-        className={`overflow-hidden rounded-lg border border-amber-900/15 bg-white shadow-sm ${heightClassName}`}
+        className={`overflow-hidden rounded-lg border border-[#e2e8f0] bg-white shadow-sm ${heightClassName}`}
       >
         <iframe title={title} src={embedSrc} className="h-full w-full border-0" />
       </div>

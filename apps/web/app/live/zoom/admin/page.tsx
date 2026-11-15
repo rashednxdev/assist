@@ -67,6 +67,7 @@ export default function LiveStreamAdminPage() {
   const [accessType, setAccessType] = useState<'free' | 'paid'>('free');
   const [examSubjectId, setExamSubjectId] = useState('');
   const [hostUserId, setHostUserId] = useState('');
+  const [supportUserId, setSupportUserId] = useState('');
   const [subjects, setSubjects] = useState<SubjectOption[]>([]);
   const [hosts, setHosts] = useState<HostOption[]>([]);
   const [autoRecordCloud, setAutoRecordCloud] = useState(false);
@@ -115,6 +116,7 @@ export default function LiveStreamAdminPage() {
           auto_record_cloud: autoRecordCloud,
           ...(examSubjectId ? { exam_subject_id: examSubjectId } : {}),
           ...(hostUserId ? { host_user_id: hostUserId } : {}),
+          ...(supportUserId ? { support_user_id: supportUserId } : {}),
         }),
       });
       setTopic('');
@@ -122,6 +124,7 @@ export default function LiveStreamAdminPage() {
       setScheduledAt('');
       setExamSubjectId('');
       setHostUserId('');
+      setSupportUserId('');
       setAutoRecordCloud(false);
       await load();
       window.location.href = `/live/admin/${res.data.id}`;
@@ -214,6 +217,23 @@ export default function LiveStreamAdminPage() {
             </select>
           </div>
           <div className="space-y-1.5">
+            <Label htmlFor="live-support">Support person</Label>
+            <select
+              id="live-support"
+              value={supportUserId}
+              onChange={(e) => setSupportUserId(e.target.value)}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">None</option>
+              {hosts.map((h) => (
+                <option key={`support-${h.id}`} value={h.user_id}>
+                  {h.display_name}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted">Helps the host control guest mic, camera, and text.</p>
+          </div>
+          <div className="space-y-1.5">
             <Label htmlFor="live-access">Access</Label>
             <select
               id="live-access"
@@ -239,8 +259,8 @@ export default function LiveStreamAdminPage() {
               <span>
                 <span className="font-semibold text-slate-900">Auto record to Zoom cloud</span>
                 <span className="mt-0.5 block text-xs text-muted">
-                  Optional. When the host starts the class, Zoom records to the cloud. On the class
-                  edit page, add previous-class videos as YouTube or Zoom share/MP4 links.
+                  Optional cloud copy for the published replay. Guests cannot record the class from the web.
+                  After the class, add the YouTube or Zoom share link on the class edit page.
                 </span>
               </span>
             </label>

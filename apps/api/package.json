@@ -27,7 +27,6 @@
     "@ibas/shared-constants": "workspace:*",
     "@ibas/shared-types": "workspace:*",
     "@napi-rs/canvas": "^0.1.70",
-    "agora-token": "^2.0.5",
     "bcryptjs": "^3.0.2",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",

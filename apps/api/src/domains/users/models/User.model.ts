@@ -133,7 +133,7 @@ const userSchema = new Schema<IUser>(
     profile_photo: { type: String },
     user_type: {
       type: String,
-      enum: ['system_admin', 'admin', 'applicant', 'officer'],
+      enum: ['system_admin', 'admin', 'applicant', 'officer', 'host'],
       required: true,
     },
     workflow_roles: { type: [workflowRoleTagSchema], default: [] },

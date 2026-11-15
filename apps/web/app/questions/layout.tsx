@@ -1,25 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { getAccessToken, fetchMe } from '@/lib/auth';
+import { usePathname } from 'next/navigation';
+import { isPlatformAdmin } from '@/lib/capabilities';
 import { AppShell } from '@/components/layout/app-shell';
+import { CopyGuard } from '@/components/content/copy-guard';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ExamPartScope } from '@/components/exam-prep/exam-part-scope';
+import { useCachedSession } from '@/lib/use-cached-session';
 
 export default function QuestionsLayout({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    if (!getAccessToken()) {
-      router.replace('/login');
-      return;
-    }
-    fetchMe()
-      .then(() => setReady(true))
-      .catch(() => router.replace('/login'));
-  }, [router]);
+  const pathname = usePathname();
+  const { ready, me } = useCachedSession();
+  const admin = isPlatformAdmin(me);
 
   if (!ready) {
     return (
@@ -34,7 +26,17 @@ export default function QuestionsLayout({ children }: { children: React.ReactNod
 
   return (
     <AppShell>
-      <ExamPartScope listPath="/questions">{children}</ExamPartScope>
+      <ExamPartScope listPath="/questions">
+        {!admin && !pathname.startsWith('/questions/new') && !pathname.startsWith('/questions/trash') ? (
+          <CopyGuard>
+            <div className="learner-app -mx-4 bg-[#f4f7fb] px-4 py-2 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+              {children}
+            </div>
+          </CopyGuard>
+        ) : (
+          children
+        )}
+      </ExamPartScope>
     </AppShell>
   );
 }

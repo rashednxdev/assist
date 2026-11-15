@@ -15,6 +15,7 @@ export interface IUserEntitlement extends Document {
   exam_part_name?: string;
   exam_subject_id?: Types.ObjectId | null;
   exam_subject_name?: string;
+  exam_subject_ids?: Types.ObjectId[];
   order_id?: Types.ObjectId;
   starts_at: Date;
   ends_at: Date;
@@ -34,6 +35,7 @@ const schema = new Schema<IUserEntitlement>(
     exam_part_name: { type: String },
     exam_subject_id: { type: Schema.Types.ObjectId, ref: 'ExamSubject', default: null },
     exam_subject_name: { type: String },
+    exam_subject_ids: { type: [{ type: Schema.Types.ObjectId, ref: 'ExamSubject' }], default: [] },
     order_id: { type: Schema.Types.ObjectId, ref: 'PaymentOrder' },
     starts_at: { type: Date, required: true },
     ends_at: { type: Date, required: true },

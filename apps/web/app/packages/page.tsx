@@ -187,9 +187,11 @@ function CheckoutSummary({
             onClick={onConfirm}
           >
             {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-            {total === 0 ? 'Confirm' : `Pay ${formatBdt(total)} with bKash`}
+            {total === 0 ? 'Confirm' : 'Continue to bKash payment'}
           </Button>
-          <p className="text-center text-xs text-muted">Demo payment — no real money is charged.</p>
+          <p className="text-center text-xs text-muted">
+            Send the amount by bKash, then enter the transaction ID. An admin confirms it before access opens.
+          </p>
         </div>
       </div>
     </div>
@@ -241,7 +243,7 @@ function PackagesContent() {
             key={p.id}
             pkg={p}
             owned={catalog ? currentUntil(catalog, p) : undefined}
-            disabled={!catalog?.settings.gateway_enabled && p.price > 0}
+            disabled={(!catalog?.settings.gateway_enabled && p.price > 0) || catalog?.can_request === false}
             onBuy={() => {
               setBuyError('');
               setSelected(p);
@@ -256,13 +258,19 @@ function PackagesContent() {
     <div className="space-y-6">
       <PageHeader
         title="Pricing"
-        description="Choose a package and pay with bKash — access opens as soon as the payment succeeds."
+        description="After an admin grants Learning, request a subject package and pay by bKash. Access opens when the admin accepts the transaction."
         action={
           <Button asChild variant="outline">
             <Link href="/settings/payments">Payments &amp; access</Link>
           </Button>
         }
       />
+
+      {catalog && !catalog.can_request && (
+        <Alert>
+          Learning is not open on this account yet. An admin must grant Learning (read) before you can request a package.
+        </Alert>
+      )}
 
       <nav className="flex flex-wrap gap-2 border-b border-border pb-3">
         {PACKAGE_TABS.map((t) => (

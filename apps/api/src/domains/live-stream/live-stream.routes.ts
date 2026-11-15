@@ -28,7 +28,9 @@ import {
   revokeInvitesHandler,
   sendGuestMessageHandler,
   setGuestMessagesHandler,
+  livePresenceHandler,
   setGuestSpeechHandler,
+  setGuestVideoHandler,
   startLiveStreamHandler,
   updateLiveHostHandler,
   updateLiveStreamHandler,
@@ -64,6 +66,16 @@ liveStreamRouter.patch(
   '/:id/guest-speech',
   requireLiveHostOrAdmin,
   asyncHandler(setGuestSpeechHandler),
+);
+liveStreamRouter.patch(
+  '/:id/guest-video',
+  requireLiveHostOrAdmin,
+  asyncHandler(setGuestVideoHandler),
+);
+liveStreamRouter.post(
+  '/:id/presence',
+  requireModuleAccess('LIVE_STREAM'),
+  asyncHandler(livePresenceHandler),
 );
 liveStreamRouter.post('/:id/invites', requireAdmin, asyncHandler(addInvitesHandler));
 liveStreamRouter.post('/:id/invites/revoke', requireAdmin, asyncHandler(revokeInvitesHandler));

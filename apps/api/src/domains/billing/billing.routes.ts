@@ -45,6 +45,13 @@ billingRouter.get(
 );
 
 billingRouter.post(
+  '/orders/:id/claim',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    res.json({ data: await billing.submitBkashClaim(String(req.params.id), req.body, req.user!) });
+  }),
+);
+
+billingRouter.post(
   '/orders/:id/pay',
   asyncHandler(async (req: AuthRequest, res: Response) => {
     res.json({ data: await billing.demoPay(String(req.params.id), req.body, req.user!) });
@@ -69,6 +76,13 @@ billingRouter.get(
   '/carts/:id',
   asyncHandler(async (req: AuthRequest, res: Response) => {
     res.json({ data: await billing.getCart(String(req.params.id), req.user!) });
+  }),
+);
+
+billingRouter.post(
+  '/carts/:id/claim',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    res.json({ data: await billing.submitCartClaim(String(req.params.id), req.body, req.user!) });
   }),
 );
 
@@ -189,6 +203,23 @@ billingRouter.post(
   requireAdmin,
   asyncHandler(async (req: AuthRequest, res: Response) => {
     res.status(201).json({ data: await billing.manualGrant(req.body, req.user!) });
+  }),
+);
+
+billingRouter.post(
+  '/admin/orders/:id/accept',
+  requireAdmin,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    res.json({ data: await billing.acceptOrder(String(req.params.id), req.user!) });
+  }),
+);
+
+billingRouter.post(
+  '/admin/orders/:id/reject',
+  requireAdmin,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const note = typeof req.body?.note === 'string' ? req.body.note : undefined;
+    res.json({ data: await billing.rejectOrder(String(req.params.id), note, req.user!) });
   }),
 );
 

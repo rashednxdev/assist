@@ -9,6 +9,7 @@ import {
 import type { AuthRequest } from '../../middleware/auth.js';
 import { parsePagination } from '../../shared/pagination.js';
 import * as usersService from './users.service.js';
+import { purgeUserAccount } from './purge-account.service.js';
 import * as moduleAccessService from './module-access.service.js';
 import * as userProfileService from './user-profile.service.js';
 import { logUserActivity } from './models/UserActivityLog.model.js';
@@ -74,14 +75,8 @@ export async function updateUserHandler(req: AuthRequest, res: Response): Promis
 }
 
 export async function deactivateUserHandler(req: AuthRequest, res: Response): Promise<void> {
-  const user = await usersService.deactivateUser(String(req.params.id));
-  await logUserActivity({
-    userId: user.id,
-    action: 'USER_DEACTIVATE',
-    description: 'User deactivated',
-    ip: req.ip,
-  });
-  res.json({ data: user });
+  const deleted = await purgeUserAccount(String(req.params.id), req.user!);
+  res.json({ data: deleted });
 }
 
 export async function assignWorkflowRoleHandler(req: AuthRequest, res: Response): Promise<void> {

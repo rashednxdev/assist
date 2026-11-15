@@ -1077,6 +1077,7 @@ export default function SalaryOn2026Page() {
             old_pay: oldPay,
             months: arrearResult.rows.map((r) => r.month),
             net_total: arrearResult.total_net_arrear,
+            stamp_duty: target === 'trform' && deductStamp ? STAMP_DUTY : 0,
           }),
         });
         setBillAccess(res.data);

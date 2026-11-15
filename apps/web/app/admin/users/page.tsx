@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Plus, Search, ChevronLeft, ChevronRight, Phone, MessageCircle, KeyRound } from 'lucide-react';
+import { Plus, Search, Phone, MessageCircle, KeyRound } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { phoneTelHref, phoneWhatsAppHref } from '@/lib/contact';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,16 @@ import { Badge } from '@/components/ui/badge';
 import { formatMobileAppVersion, isLatestMobileAppVersion } from '@/lib/app-version';
 
 const PAGE_SIZE = 100;
+
+type SortMode = 'recent' | 'paid' | 'unpaid';
+
+function matchesQuery(user: UserRow, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  return [user.full_name_en, user.full_name_bn, user.email, user.phone].some((value) =>
+    (value ?? '').toLowerCase().includes(needle),
+  );
+}
 
 interface UserRow {
   id: string;
@@ -63,46 +73,117 @@ function ContactActions({ user }: { user: UserRow }) {
 }
 
 export default function UsersPage() {
-  const [users, setUsers] = useState<UserRow[]>([]);
+  const [loaded, setLoaded] = useState<UserRow[]>([]);
+  const [directoryTotal, setDirectoryTotal] = useState(0);
+  const [pagesLoaded, setPagesLoaded] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [paySort, setPaySort] = useState<'paid' | 'unpaid'>('paid');
+  const [paySort, setPaySort] = useState<SortMode>('recent');
+  const [serverMatches, setServerMatches] = useState<UserRow[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    setLoading(true);
     let cancelled = false;
+    setLoading(true);
+    setError('');
+    setLoaded([]);
+    setServerMatches([]);
+    setPagesLoaded(0);
+    const params = new URLSearchParams({
+      page: '1',
+      limit: String(PAGE_SIZE),
+      sort: paySort,
+    });
+    apiFetch<{ data: UserRow[]; meta: { total: number } }>(`/users?${params.toString()}`)
+      .then((res) => {
+        if (cancelled) return;
+        setLoaded(res.data);
+        setDirectoryTotal(res.meta.total);
+        setPagesLoaded(1);
+      })
+      .catch(() => {
+        if (!cancelled) setError('Could not load users.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [paySort]);
+
+  const query = search.trim();
+  const haveAll = directoryTotal > 0 && loaded.length >= directoryTotal;
+  const localMatches = useMemo(
+    () => (query ? loaded.filter((user) => matchesQuery(user, query)) : loaded),
+    [loaded, query],
+  );
+
+  useEffect(() => {
+    if (query.length < 2 || haveAll) {
+      setServerMatches([]);
+      setSearching(false);
+      return;
+    }
+    let cancelled = false;
+    setSearching(true);
     const timer = window.setTimeout(() => {
       const params = new URLSearchParams({
-        page: String(page),
+        page: '1',
         limit: String(PAGE_SIZE),
         sort: paySort,
+        q: query,
       });
-      if (search.trim()) params.set('q', search.trim());
       apiFetch<{ data: UserRow[]; meta: { total: number } }>(`/users?${params.toString()}`)
         .then((res) => {
-          if (cancelled) return;
-          setUsers(res.data);
-          setTotal(res.meta.total);
+          if (!cancelled) setServerMatches(res.data);
+        })
+        .catch(() => {
+          if (!cancelled) setServerMatches([]);
         })
         .finally(() => {
-          if (!cancelled) setLoading(false);
+          if (!cancelled) setSearching(false);
         });
     }, 300);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [search, page, paySort]);
+  }, [query, haveAll, paySort]);
 
-  // Any search change starts back at page 1 — a stale page number from a previous, longer
-  // result set could otherwise land past the end of a narrower search's results.
-  useEffect(() => {
-    setPage(1);
-  }, [search, paySort]);
+  const users = useMemo(() => {
+    if (!query) return loaded;
+    if (haveAll || query.length < 2) return localMatches;
+    const seen = new Set(localMatches.map((user) => user.id));
+    const extra = serverMatches.filter((user) => !seen.has(user.id));
+    return [...localMatches, ...extra];
+  }, [query, loaded, haveAll, localMatches, serverMatches]);
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  async function loadMore() {
+    if (loadingMore || query || loaded.length >= directoryTotal) return;
+    setLoadingMore(true);
+    setError('');
+    try {
+      const params = new URLSearchParams({
+        page: String(pagesLoaded + 1),
+        limit: String(PAGE_SIZE),
+        sort: paySort,
+      });
+      const res = await apiFetch<{ data: UserRow[]; meta: { total: number } }>(`/users?${params.toString()}`);
+      setDirectoryTotal(res.meta.total);
+      setLoaded((prev) => {
+        const seen = new Set(prev.map((user) => user.id));
+        return [...prev, ...res.data.filter((user) => !seen.has(user.id))];
+      });
+      setPagesLoaded((page) => page + 1);
+    } catch {
+      setError('Could not load more users.');
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -142,10 +223,13 @@ export default function UsersPage() {
             </div>
             <select
               value={paySort}
-              onChange={(e) => setPaySort(e.target.value === 'unpaid' ? 'unpaid' : 'paid')}
+              onChange={(e) =>
+                setPaySort(e.target.value === 'paid' || e.target.value === 'unpaid' ? e.target.value : 'recent')
+              }
               className="flex h-10 rounded-md border border-input bg-background px-3 text-sm"
-              aria-label="Sort by payment"
+              aria-label="Sort users"
             >
+              <option value="recent">Newest</option>
               <option value="paid">Paid first</option>
               <option value="unpaid">Unpaid first</option>
             </select>
@@ -154,10 +238,12 @@ export default function UsersPage() {
         <CardContent className="p-0 sm:p-0">
           <DataTable
             className="border-0 shadow-none rounded-none"
-            loading={loading}
+            loading={loading && users.length === 0}
             data={users}
-            emptyTitle="No users yet"
-            emptyDescription="Create the first user to get started."
+            emptyTitle={query ? 'No matching users' : 'No users yet'}
+            emptyDescription={
+              query ? 'Try another name, email, or mobile number.' : 'Create the first user to get started.'
+            }
             columns={[
               {
                 key: 'name',
@@ -229,43 +315,34 @@ export default function UsersPage() {
                 header: '',
                 className: 'text-right',
                 cell: (u) => (
-                  <Button asChild variant="ghost" size="sm">
-                    <Link href={`/admin/users/${u.id}`}>Edit</Link>
-                  </Button>
+                  <Link
+                    href={`/admin/users/${u.id}`}
+                    className="inline-flex h-8 items-center rounded-md px-3 text-sm font-medium text-primary hover:bg-muted"
+                  >
+                    Edit
+                  </Link>
                 ),
               },
             ]}
           />
-          {!loading && users.length > 0 && (
-            <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-3">
-              <span className="text-xs text-muted">
-                {total} user{total === 1 ? '' : 's'} · page {page} of {totalPages} · {PAGE_SIZE} per
-                page
-              </span>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Previous
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={page >= totalPages}
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          )}
+          {!loading || users.length > 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3">
+            <span className="text-xs text-muted">
+              {error
+                ? error
+                : query
+                  ? `${users.length} match${users.length === 1 ? '' : 'es'}${
+                      searching ? ' · searching the full directory…' : haveAll ? ' · from loaded users' : ''
+                    }`
+                  : `${loaded.length} of ${directoryTotal} user${directoryTotal === 1 ? '' : 's'} loaded`}
+            </span>
+            {!query && loaded.length < directoryTotal ? (
+              <Button type="button" variant="outline" size="sm" disabled={loadingMore} onClick={() => void loadMore()}>
+                {loadingMore ? 'Loading…' : `Load ${Math.min(PAGE_SIZE, directoryTotal - loaded.length)} earlier`}
+              </Button>
+            ) : null}
+          </div>
+          ) : null}
         </CardContent>
       </Card>
     </div>

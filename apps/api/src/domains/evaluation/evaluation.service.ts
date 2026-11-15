@@ -88,8 +88,60 @@ function serializeEvaluation(row: InstanceType<typeof UserQuestionEvaluation>) {
     is_correct: row.is_correct,
     self_rating: row.self_rating,
     selected_option_id: idStr(row.selected_option_id),
+    read_count: row.read_count ?? 0,
+    last_read_at: row.last_read_at ? row.last_read_at.toISOString() : undefined,
     updated_at: row.updated_at.toISOString(),
   };
+}
+
+function plainSnippet(html: string | undefined, len = 140): string {
+  const plain = (html ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return plain.length > len ? `${plain.slice(0, len)}…` : plain;
+}
+
+/** One counted read. Does not change an existing evaluation score. */
+export async function recordQuestionRead(userId: string, questionId: string) {
+  const question = await Question.findById(questionId).select('_id is_active is_published');
+  if (!question || !question.is_active || !question.is_published) {
+    throw notFound('Question not found');
+  }
+  const row = await UserQuestionEvaluation.findOneAndUpdate(
+    { user_id: userId, question_id: question._id },
+    {
+      $inc: { read_count: 1 },
+      $set: { last_read_at: new Date() },
+      $setOnInsert: {
+        user_id: userId,
+        question_id: question._id,
+        progress_index: 0,
+      },
+    },
+    { upsert: true, new: true },
+  );
+  return serializeEvaluation(row);
+}
+
+/** Newest reads first. Shared by web and mobile so the same person sees one history. */
+export async function listReadingHistory(userId: string, offset: number, limit: number) {
+  const filter = { user_id: userId, read_count: { $gt: 0 } };
+  const [rows, total] = await Promise.all([
+    UserQuestionEvaluation.find(filter).sort({ last_read_at: -1, _id: -1 }).skip(offset).limit(limit),
+    UserQuestionEvaluation.countDocuments(filter),
+  ]);
+  const ids = rows.map((row) => row.question_id);
+  const questions = ids.length
+    ? await Question.find({ _id: { $in: ids } }).select('body_en body_bn question_type_code')
+    : [];
+  const byId = new Map(questions.map((q) => [String(q._id), q]));
+  const items = rows.map((row) => {
+    const question = byId.get(String(row.question_id));
+    return {
+      ...serializeEvaluation(row),
+      title: plainSnippet(question?.body_en || question?.body_bn),
+      question_type_code: question?.question_type_code,
+    };
+  });
+  return { items, total, limit, offset };
 }
 
 export async function getQuestionEvaluation(userId: string, questionId: string) {
@@ -98,6 +150,7 @@ export async function getQuestionEvaluation(userId: string, questionId: string) 
     return {
       question_id: questionId,
       progress_index: 0,
+      read_count: 0,
     };
   }
   return serializeEvaluation(row);

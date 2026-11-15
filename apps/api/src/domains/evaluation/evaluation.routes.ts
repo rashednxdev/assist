@@ -6,6 +6,8 @@ import {
   getQuestionPracticeStemHandler,
   batchQuestionEvaluationsHandler,
   upsertQuestionEvaluationHandler,
+  recordQuestionReadHandler,
+  listReadingHistoryHandler,
   getBookEvaluationHandler,
   getPaperEvaluationHandler,
   getProgressDashboardHandler,
@@ -18,6 +20,8 @@ export const evaluationRouter = Router();
 evaluationRouter.use(authenticate);
 
 evaluationRouter.get('/dashboard', asyncHandler(getProgressDashboardHandler));
+evaluationRouter.get('/history', asyncHandler(listReadingHistoryHandler));
+evaluationRouter.post('/questions/:questionId/read', asyncHandler(recordQuestionReadHandler));
 evaluationRouter.get('/questions/batch', asyncHandler(batchQuestionEvaluationsHandler));
 evaluationRouter.get('/questions/:questionId/practice', asyncHandler(getQuestionPracticeStemHandler));
 evaluationRouter.get('/questions/:questionId', asyncHandler(getQuestionEvaluationHandler));

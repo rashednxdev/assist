@@ -1,6 +1,8 @@
 import type { Response } from 'express';
 import {
   registerSchema,
+  verifyRegisterOtpSchema,
+  resendRegisterOtpSchema,
   otpVerifySchema,
   changePasswordSchema,
   updateMyProfileSchema,
@@ -12,16 +14,40 @@ import {
   reportClientVersionSchema,
 } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
+import { refreshExpiresMs } from '../auth/auth.service.js';
 import * as accountService from './account.service.js';
 import * as usersService from '../users/users.service.js';
 
 export async function registerHandler(req: AuthRequest, res: Response): Promise<void> {
   const dto = registerSchema.parse(req.body);
   const result = await accountService.registerUser(dto);
+  res.status(201).json({ data: result });
+}
+
+export async function verifyRegisterOtpHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = verifyRegisterOtpSchema.parse(req.body);
+  const result = await accountService.verifyRegistrationOtp(dto);
   if (dto.app_version && dto.client_platform === 'mobile') {
     await usersService.reportClientVersion(String(result.user.id), dto.app_version, dto.client_platform);
   }
-  res.status(201).json({ data: result });
+  res.cookie('refreshToken', result.tokens.refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: refreshExpiresMs(),
+    path: '/',
+  });
+  res.json({
+    data: {
+      tokens: { accessToken: result.tokens.accessToken, expiresIn: result.tokens.expiresIn },
+      user: result.user,
+    },
+  });
+}
+
+export async function resendRegisterOtpHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = resendRegisterOtpSchema.parse(req.body);
+  res.json({ data: await accountService.resendRegistrationOtp(dto) });
 }
 
 export async function forgotPasswordHandler(req: AuthRequest, res: Response): Promise<void> {

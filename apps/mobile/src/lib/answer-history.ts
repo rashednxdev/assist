@@ -1,5 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import * as SQLite from 'expo-sqlite';
+import { apiFetch } from './api';
 import { getCachedQuestionSubjectLabel } from './questions-db';
 
 export interface AnswerHistoryEntry {
@@ -187,6 +188,43 @@ export async function recordAnswerHistory(entry: Omit<AnswerHistoryEntry, 'viewe
     [entry.id, entry.title, entry.subtitle ?? null, entry.subject ?? null, new Date().toISOString()],
   );
   persistFromDb();
+  void apiFetch(`/evaluation/questions/${entry.id}/read`, { method: 'POST' }).catch(() => undefined);
+}
+
+export async function mergeServerReads(
+  rows: Array<{ question_id: string; title?: string; read_count?: number; last_read_at?: string }>,
+) {
+  await migrateFromSecureStore();
+  const db = getDb();
+  let changed = false;
+  for (const row of rows) {
+    const count = row.read_count ?? 0;
+    if (!row.question_id || count < 1) continue;
+    const viewed = row.last_read_at ?? new Date().toISOString();
+    const existing = db.getFirstSync<{ read_count: number; viewed_at: string }>(
+      'SELECT read_count, viewed_at FROM answer_history WHERE id = ?',
+      [row.question_id],
+    );
+    if (!existing) {
+      db.runSync(
+        'INSERT INTO answer_history (id, title, subtitle, subject, viewed_at, read_count) VALUES (?, ?, NULL, NULL, ?, ?)',
+        [row.question_id, row.title?.trim() || 'Question', viewed, count],
+      );
+      changed = true;
+      continue;
+    }
+    const serverTime = new Date(viewed).getTime();
+    const localTime = new Date(existing.viewed_at).getTime();
+    if (count > existing.read_count || (Number.isFinite(serverTime) && serverTime > localTime)) {
+      db.runSync('UPDATE answer_history SET read_count = ?, viewed_at = ? WHERE id = ?', [
+        Math.max(count, existing.read_count),
+        Number.isFinite(serverTime) && serverTime > localTime ? viewed : existing.viewed_at,
+        row.question_id,
+      ]);
+      changed = true;
+    }
+  }
+  if (changed) persistFromDb();
 }
 
 export async function clearAnswerHistory() {

@@ -302,6 +302,7 @@ export default function SalaryOn2026Screen() {
           old_pay: oldPay,
           months: trDraft.result.rows.map((row) => row.month),
           net_total: trDraft.result.total_net_arrear,
+          stamp_duty: trDraft.stamp,
         }),
       });
       await shareSalaryTrForm({

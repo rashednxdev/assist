@@ -240,11 +240,15 @@ export async function consumeBill(user: AuthUser, dto: ConsumeSalaryBillDto): Pr
   if (!isPlatformAdmin(user)) {
     await SalaryCalcUsage.updateOne({ user_id: user.id, unprinted: { $gt: 0 } }, { $inc: { unprinted: -1 } });
   }
-  if (free) await notifyFreeTrDownload(user.id, dto.old_pay, dto.net_total);
+  if (free) {
+    const stamp = dto.stamp_duty ?? 10;
+    const payable = Math.max(0, dto.net_total - stamp);
+    await notifyFreeTrDownload(user.id, dto.old_pay, payable);
+  }
   return getMyBillAccess(user);
 }
 
-/** Texts the 30 June 2026 basic and the net arrear after a free T.R. Form. A failed SMS does not undo the download. */
+/** Texts the 30 June 2026 basic and the net arrear after stamp duty. A failed SMS does not undo the download. */
 async function notifyFreeTrDownload(userId: string, basic: number, netTotal: number): Promise<void> {
   try {
     const owner = await User.findById(userId).select('phone').lean();

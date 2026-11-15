@@ -46,7 +46,7 @@ export default function UsersListScreen() {
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState('');
   const [appliedQuery, setAppliedQuery] = useState('');
-  const [paySort, setPaySort] = useState<'paid' | 'unpaid'>('paid');
+  const [paySort, setPaySort] = useState<'recent' | 'paid' | 'unpaid'>('recent');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -54,10 +54,15 @@ export default function UsersListScreen() {
   const allowed = canManageUsers(user);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  const load = useCallback(async (q: string, p: number, sort: 'paid' | 'unpaid') => {
+  const load = useCallback(async (q: string, p: number, sort: 'recent' | 'paid' | 'unpaid') => {
     setError('');
     try {
-      const res = await fetchAdminUsers({ q, page: p, limit: PAGE_SIZE, sort });
+      const res = await fetchAdminUsers({
+        q,
+        page: p,
+        limit: PAGE_SIZE,
+        sort: sort === 'recent' ? undefined : sort,
+      });
       setItems(res.data);
       setTotal(res.meta.total);
     } catch (err) {
@@ -75,6 +80,16 @@ export default function UsersListScreen() {
       void load(appliedQuery, page, paySort);
     }, [allowed, appliedQuery, page, paySort, load]),
   );
+
+  const visibleItems = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle || needle === appliedQuery.trim().toLowerCase()) return items;
+    return items.filter((item) =>
+      [item.full_name_en, item.email, item.phone].some((value) =>
+        (value ?? '').toLowerCase().includes(needle),
+      ),
+    );
+  }, [items, query, appliedQuery]);
 
   const subtitle = useMemo(() => {
     if (total <= 0) return 'No users';
@@ -129,6 +144,17 @@ export default function UsersListScreen() {
 
       <View style={styles.sortRow}>
         <Pressable
+          style={[styles.sortChip, paySort === 'recent' && styles.sortChipActive]}
+          onPress={() => {
+            setPage(1);
+            setPaySort('recent');
+          }}
+        >
+          <Text style={[styles.sortChipText, paySort === 'recent' && styles.sortChipTextActive]}>
+            Newest
+          </Text>
+        </Pressable>
+        <Pressable
           style={[styles.sortChip, paySort === 'paid' && styles.sortChipActive]}
           onPress={() => {
             setPage(1);
@@ -161,7 +187,7 @@ export default function UsersListScreen() {
       <Text style={styles.meta}>{subtitle}</Text>
 
       <FlatList
-        data={items}
+        data={visibleItems}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         refreshControl={

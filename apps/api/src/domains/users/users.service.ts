@@ -62,11 +62,46 @@ async function serializeUser(user: InstanceType<typeof User>) {
   };
 }
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** List rows only. Skips credentials and exam-subject lookups so the directory stays light. */
+function serializeUserListItem(user: {
+  _id: mongoose.Types.ObjectId;
+  full_name_en: string;
+  full_name_bn?: string;
+  email: string;
+  phone: string;
+  user_type: string;
+  status: string;
+  amount_received?: number;
+  client_app_version?: string | null;
+  client_platform?: 'mobile' | 'web' | null;
+  client_app_version_at?: Date | null;
+  created_at?: Date;
+}) {
+  return {
+    id: String(user._id),
+    full_name_en: user.full_name_en,
+    full_name_bn: user.full_name_bn,
+    email: user.email,
+    phone: user.phone,
+    user_type: user.user_type,
+    status: user.status,
+    amount_received: Number(user.amount_received ?? 0),
+    client_app_version: user.client_app_version ?? null,
+    client_platform: user.client_platform ?? null,
+    client_app_version_at: user.client_app_version_at ?? null,
+    created_at: user.created_at,
+  };
+}
+
 export async function listUsers(filters: {
   user_type?: string;
   status?: string;
   q?: string;
-  /** `paid` = amount_received desc (paid first), default = newest first */
+  /** `paid` = amount_received desc, `unpaid` = amount_received asc, otherwise newest first */
   sort?: string;
   skip: number;
   limit: number;
@@ -75,7 +110,7 @@ export async function listUsers(filters: {
   if (filters.user_type) query.user_type = filters.user_type;
   if (filters.status) query.status = filters.status;
   if (filters.q?.trim()) {
-    const q = filters.q.trim();
+    const q = escapeRegex(filters.q.trim());
     query.$or = [
       { full_name_en: { $regex: q, $options: 'i' } },
       { full_name_bn: { $regex: q, $options: 'i' } },
@@ -91,12 +126,20 @@ export async function listUsers(filters: {
         ? { amount_received: 1, created_at: -1 }
         : { created_at: -1 };
 
+  const limit = Math.min(100, Math.max(1, filters.limit));
   const [items, total] = await Promise.all([
-    User.find(query).sort(sort).skip(filters.skip).limit(filters.limit),
+    User.find(query)
+      .select(
+        'full_name_en full_name_bn email phone user_type status amount_received client_app_version client_platform client_app_version_at created_at',
+      )
+      .sort(sort)
+      .skip(filters.skip)
+      .limit(limit)
+      .lean(),
     User.countDocuments(query),
   ]);
 
-  return { items: await Promise.all(items.map((u) => serializeUser(u))), total };
+  return { items: items.map((u) => serializeUserListItem(u)), total };
 }
 
 export async function getUserById(id: string) {

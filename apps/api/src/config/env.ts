@@ -1,5 +1,10 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { config as loadEnv } from 'dotenv';
 import { z } from 'zod';
-import 'dotenv/config';
+
+// Always read apps/api/.env, even when the process is started from the repo root.
+loadEnv({ path: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../.env') });
 
 const envSchema = z.object({
   PORT: z.coerce.number().default(3001),

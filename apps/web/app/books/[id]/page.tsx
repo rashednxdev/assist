@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert } from '@/components/ui/alert';
 import { RichTextView } from '@/components/books/rich-text-view';
 import { BookContents } from '@/components/books/book-contents';
+import { BookQuestionsButton, BookQuestionsPanel } from '@/components/books/book-questions-panel';
 import { BookReaderGate, useBookReader } from '@/components/books/book-reader-context';
 import { BookContentEditor } from '@/components/books/book-content-editor';
 import {
@@ -32,6 +33,7 @@ function BookDetailBody({
 }) {
   const { bookId, outline, reload } = useBookReader();
   const book = outline?.book;
+  const [questionsOpen, setQuestionsOpen] = useState(false);
   const [publishBusy, setPublishBusy] = useState(false);
   const [publishError, setPublishError] = useState('');
   const [subjects, setSubjects] = useState<BookSubjectTag[]>([]);
@@ -136,6 +138,13 @@ function BookDetailBody({
           )}
         </div>
       )}
+
+      {!editMode ? (
+        <>
+          <BookQuestionsButton onClick={() => setQuestionsOpen(true)} />
+          <BookQuestionsPanel open={questionsOpen} onClose={() => setQuestionsOpen(false)} />
+        </>
+      ) : null}
 
       {!editMode && book.description?.trim() && (
         <div className={`${bookTheme.panel} p-5`}>

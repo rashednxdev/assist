@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { MoreVertical, Search, X } from 'lucide-react';
 import { QUESTION_DIFFICULTIES } from '@ibas/shared-constants';
@@ -44,7 +44,10 @@ export function QuestionBankLearner() {
   const [types, setTypes] = useState<TypeRow[]>([]);
   const [subjects, setSubjects] = useState<Array<{ id: string; label: string }>>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState('');
+  const sentinel = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState('');
   const [applied, setApplied] = useState('');
   const [typeCode, setTypeCode] = useState('');
@@ -55,29 +58,72 @@ export function QuestionBankLearner() {
   const [groupByBooks, setGroupByBooks] = useState(false);
 
   useEffect(() => {
-    setLoading(true);
-    const params = new URLSearchParams();
-    params.set('limit', '100');
-    if (applied.trim()) params.set('q', applied.trim());
-    if (typeCode) params.set('question_type_code', typeCode);
-    if (difficulty) params.set('difficulty', difficulty);
-    if (subjectId) params.set('exam_subject_id', subjectId);
     void Promise.all([
-      apiFetch<{ data: BankItem[] }>(`/questions?${params.toString()}`),
       apiFetch<{ data: TypeRow[] }>('/questions/types'),
       apiFetch<{ data: Array<{ id: string; label: string }> }>('/questions/subject-catalog').catch(() => ({
         data: [] as Array<{ id: string; label: string }>,
       })),
-    ])
-      .then(([list, typeRes, subjectRes]) => {
+    ]).then(([typeRes, subjectRes]) => {
+      setTypes(typeRes.data);
+      setSubjects(subjectRes.data);
+    });
+  }, []);
+
+  function listParams(offset: number) {
+    const params = new URLSearchParams();
+    params.set('limit', '30');
+    params.set('offset', String(offset));
+    if (applied.trim()) params.set('q', applied.trim());
+    if (typeCode) params.set('question_type_code', typeCode);
+    if (difficulty) params.set('difficulty', difficulty);
+    if (subjectId) params.set('exam_subject_id', subjectId);
+    if (bookId) params.set('book_info_id', bookId);
+    return params;
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setItems([]);
+    apiFetch<{ data: BankItem[]; meta?: { has_more?: boolean } }>(`/questions?${listParams(0).toString()}`)
+      .then((list) => {
+        if (cancelled) return;
         setItems(list.data);
-        setTypes(typeRes.data);
-        setSubjects(subjectRes.data);
+        setHasMore(Boolean(list.meta?.has_more));
         setError('');
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load questions'))
-      .finally(() => setLoading(false));
-  }, [applied, typeCode, difficulty, subjectId]);
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load questions');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [applied, typeCode, difficulty, subjectId, bookId]);
+
+  useEffect(() => {
+    if (!hasMore || loading || loadingMore) return;
+    const node = sentinel.current;
+    if (!node) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries[0]?.isIntersecting) return;
+      setLoadingMore(true);
+      apiFetch<{ data: BankItem[]; meta?: { has_more?: boolean } }>(`/questions?${listParams(items.length).toString()}`)
+        .then((list) => {
+          setItems((prev) => {
+            const seen = new Set(prev.map((item) => item.id));
+            return [...prev, ...list.data.filter((item) => !seen.has(item.id))];
+          });
+          setHasMore(Boolean(list.meta?.has_more));
+        })
+        .catch(() => setHasMore(false))
+        .finally(() => setLoadingMore(false));
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMore, loading, loadingMore, items.length, applied, typeCode, difficulty, subjectId, bookId]);
 
   const books = useMemo(() => {
     const map = new Map<string, string>();
@@ -222,6 +268,8 @@ export function QuestionBankLearner() {
             </div>
           );
         })}
+        <div ref={sentinel} className="h-6" />
+        {loadingMore ? <p className="text-center text-xs text-muted">Loading more…</p> : null}
       </div>
     </div>
   );

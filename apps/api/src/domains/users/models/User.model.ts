@@ -181,6 +181,7 @@ const userSchema = new Schema<IUser>(
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } },
 );
 
+userSchema.index({ created_at: -1 });
 userSchema.index({ user_type: 1, status: 1 });
 userSchema.index({ 'workflow_roles.role_code': 1, status: 1 });
 userSchema.index({ office_id: 1 }, { sparse: true });

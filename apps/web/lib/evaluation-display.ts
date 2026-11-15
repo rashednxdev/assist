@@ -6,6 +6,8 @@ export interface QuestionEvalBrief {
   progress_index: number;
   self_rating?: SelfRatingLevel;
   is_correct?: boolean;
+  read_count?: number;
+  last_read_at?: string;
 }
 
 const SELF_RATING_CIRCLE: Record<SelfRatingLevel, string> = {

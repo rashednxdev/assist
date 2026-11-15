@@ -101,7 +101,7 @@ export async function fetchAdminUsers(params?: {
   q?: string;
   page?: number;
   limit?: number;
-  sort?: 'paid' | 'unpaid';
+  sort?: 'paid' | 'unpaid' | 'recent';
 }) {
   const search = new URLSearchParams();
   search.set('page', String(params?.page ?? 1));

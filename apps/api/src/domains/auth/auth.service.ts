@@ -307,7 +307,10 @@ export async function login(dto: LoginDto, ip?: string): Promise<LoginSession | 
     throw unauthorized('Invalid mobile/email or password');
   }
 
-  if (user.status !== 'active' && user.status !== 'pending_verify') {
+  if (user.status === 'pending_verify') {
+    throw unauthorized('Finish registration by entering the code sent to your mobile.');
+  }
+  if (user.status !== 'active') {
     throw unauthorized('Account is not active. Ask an admin to set a temporary password.');
   }
 

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { apiFetch } from '@/lib/api';
 import {
   loadAnswerHistory,
+  mergeServerReads,
   subscribeAnswerHistory,
   type AnswerHistoryEntry,
 } from '@/lib/answer-history';
@@ -16,11 +18,32 @@ export function useAnswerHistory() {
   }, []);
 
   useEffect(() => {
-    void refresh();
-    return subscribeAnswerHistory(() => {
-      void refresh();
+    let cancelled = false;
+    void (async () => {
+      const rows = await loadAnswerHistory();
+      if (cancelled) return;
+      setItems(rows);
+      setReady(true);
+      try {
+        const res = await apiFetch<{
+          data: Array<{ question_id: string; title?: string; read_count?: number; last_read_at?: string }>;
+        }>('/evaluation/history?limit=100');
+        if (!cancelled) await mergeServerReads(res.data);
+      } catch {
+        /* Keep the copy already on this device when the server is unreachable. */
+      }
+    })();
+    const unsubscribe = subscribeAnswerHistory(() => {
+      if (cancelled) return;
+      void loadAnswerHistory().then((rows) => {
+        if (!cancelled) setItems(rows);
+      });
     });
-  }, [refresh]);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
 
   const readCountById = useMemo(() => {
     const map = new Map<string, number>();

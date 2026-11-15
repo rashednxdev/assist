@@ -24,6 +24,7 @@ import {
   type QuestionFormValues,
 } from '@/components/questions/question-editor';
 import { QuestionAnswerView } from '@/components/questions/question-answer-view';
+import { useAnswerRead } from '@/lib/use-answer-read';
 import { ModelAnswerLinkPanel } from '@/components/questions/model-answer-link';
 import { taggedQuestionLocationHref } from '@/lib/book-links';
 import { questionDetailToForm } from '@/lib/question-detail-form';
@@ -105,6 +106,7 @@ export default function QuestionDetailPage() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [showAnswer, setShowAnswer] = useState(false);
+  useAnswerRead(id, showAnswer && !editMode);
 
   const reload = useCallback(() => {
     return apiFetch<{ data: QuestionDetail }>(`/questions/${id}`).then((r) => {

@@ -8,6 +8,9 @@ export interface IUserQuestionEvaluation extends Document {
   is_correct?: boolean;
   self_rating?: SelfRatingLevel;
   progress_index: number;
+  /** How many times this user kept the answer open long enough to count as a read. */
+  read_count: number;
+  last_read_at?: Date;
   updated_at: Date;
 }
 
@@ -19,12 +22,15 @@ const schema = new Schema<IUserQuestionEvaluation>(
     is_correct: { type: Boolean },
     self_rating: { type: String, enum: ['overall', 'understand', 'confidence'] },
     progress_index: { type: Number, required: true, min: 0, max: 100 },
+    read_count: { type: Number, default: 0, min: 0 },
+    last_read_at: { type: Date },
     updated_at: { type: Date, default: Date.now },
   },
   { timestamps: false },
 );
 
 schema.index({ user_id: 1, question_id: 1 }, { unique: true });
+schema.index({ user_id: 1, last_read_at: -1 });
 schema.index({ question_id: 1 });
 
 export const UserQuestionEvaluation = mongoose.model<IUserQuestionEvaluation>(

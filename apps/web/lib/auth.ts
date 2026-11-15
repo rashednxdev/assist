@@ -63,14 +63,15 @@ export function isLoginOtp(data: LoginSessionData | LoginOtpData): data is Login
 
 export interface RegisterResponse {
   data: {
+    pending: true;
+    phone_hint: string;
+  };
+}
+
+export interface RegisterVerifyResponse {
+  data: {
     tokens: { accessToken: string; expiresIn: number };
-    user: AuthUser & {
-      status: string;
-      phone: string;
-      email_verified: boolean;
-      phone_verified: boolean;
-    };
-    demo: { emailOtp: string; phoneOtp: string; expiresInMinutes: number };
+    user: AuthUser & { status: string; phone: string };
   };
 }
 
@@ -197,6 +198,36 @@ export async function registerRequest(body: Record<string, unknown>): Promise<Re
   });
   const json = await parseJsonResponse<RegisterResponse & { error?: { message?: string } }>(res);
   if (!res.ok) throw new Error(json.error?.message ?? 'Registration failed');
+  return json;
+}
+
+export async function verifyRegisterRequest(phone: string, code: string): Promise<RegisterVerifyResponse> {
+  const device_id = getOrCreateDeviceId();
+  const res = await fetch('/api/proxy/v1/auth/register/verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({
+      phone,
+      code,
+      device_id,
+      device_label: 'web:browser',
+      client_platform: 'web',
+    }),
+  });
+  const json = await parseJsonResponse<RegisterVerifyResponse & { error?: { message?: string } }>(res);
+  if (!res.ok) throw new Error(json.error?.message ?? 'That code is not correct.');
+  return json;
+}
+
+export async function resendRegisterRequest(phone: string): Promise<{ data: { sent: true; phone_hint: string } }> {
+  const res = await fetch('/api/proxy/v1/auth/register/resend', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone }),
+  });
+  const json = await parseJsonResponse<{ data: { sent: true; phone_hint: string }; error?: { message?: string } }>(res);
+  if (!res.ok) throw new Error(json.error?.message ?? 'Could not send a new code.');
   return json;
 }
 

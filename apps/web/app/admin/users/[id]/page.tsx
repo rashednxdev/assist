@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { USER_STATUSES, USER_TYPES } from '@ibas/shared-constants';
 import { apiFetch } from '@/lib/api-client';
+import { fetchMe } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,7 +13,7 @@ import { PageHeader } from '@/components/shared/page-header';
 import { Alert } from '@/components/ui/alert';
 import { GeographyCascade } from '@/components/geography/geography-cascade';
 import { TempPasswordDialog } from '@/components/admin/temp-password-dialog';
-import { KeyRound } from 'lucide-react';
+import { KeyRound, Trash2 } from 'lucide-react';
 
 type Tab = 'profile' | 'roles' | 'access' | 'addresses' | 'activity';
 
@@ -121,7 +122,10 @@ const tabs: { id: Tab; label: string }[] = [
 
 export default function EditUserPage() {
   const params = useParams();
+  const router = useRouter();
   const userId = params.id as string;
+  const [canDeleteAccounts, setCanDeleteAccounts] = useState(false);
+  const [selfId, setSelfId] = useState('');
 
   const [tab, setTab] = useState<Tab>('profile');
   const [user, setUser] = useState<UserDetail | null>(null);
@@ -138,6 +142,7 @@ export default function EditUserPage() {
   const [selectedRole, setSelectedRole] = useState('');
   const [accessDraft, setAccessDraft] = useState<Record<string, Partial<ModuleAccess>>>({});
   const [subjectOptions, setSubjectOptions] = useState<ExamSubjectOption[]>([]);
+  const [subjectsLoading, setSubjectsLoading] = useState(true);
 
   const [addrForm, setAddrForm] = useState({
     address_type: 'present' as 'permanent' | 'present' | 'office',
@@ -154,16 +159,48 @@ export default function EditUserPage() {
   }, [userId]);
 
   useEffect(() => {
-    Promise.all([
-      loadUser(),
-      apiFetch<{ data: RoleItem[] }>('/setup/roles').then((r) => setRoles(r.data)),
-      apiFetch<{ data: ModuleItem[] }>('/setup/modules?all=true').then((r) => setModules(r.data)),
-      apiFetch<{ data: ExamSubjectOption[] }>('/users/exam-subject-options')
-        .then((r) => setSubjectOptions(r.data))
-        .catch(() => setSubjectOptions([])),
-    ])
-      .catch(() => setError('Failed to load user'))
-      .finally(() => setLoading(false));
+    fetchMe()
+      .then((res) => {
+        setSelfId(res.data.id);
+        setCanDeleteAccounts(Boolean(res.data.is_super_admin || res.data.user_type === 'system_admin'));
+      })
+      .catch(() => setCanDeleteAccounts(false));
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    loadUser()
+      .catch(() => {
+        if (!cancelled) setError('Failed to load user');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    apiFetch<{ data: RoleItem[] }>('/setup/roles')
+      .then((r) => {
+        if (!cancelled) setRoles(r.data);
+      })
+      .catch(() => undefined);
+    apiFetch<{ data: ModuleItem[] }>('/setup/modules?all=true')
+      .then((r) => {
+        if (!cancelled) setModules(r.data);
+      })
+      .catch(() => undefined);
+    setSubjectsLoading(true);
+    apiFetch<{ data: ExamSubjectOption[] }>('/users/exam-subject-options')
+      .then((r) => {
+        if (!cancelled) setSubjectOptions(r.data);
+      })
+      .catch(() => {
+        if (!cancelled) setSubjectOptions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSubjectsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [loadUser]);
 
   useEffect(() => {
@@ -499,7 +536,9 @@ export default function EditUserPage() {
                 </label>
                 {user.all_exam_subjects === false ? (
                   <div className="max-h-56 space-y-2 overflow-y-auto rounded border border-border p-3">
-                    {subjectOptions.length === 0 ? (
+                    {subjectsLoading ? (
+                      <p className="text-xs text-muted">Loading subjects…</p>
+                    ) : subjectOptions.length === 0 ? (
                       <p className="text-xs text-muted">No exam subjects found.</p>
                     ) : (
                       subjectOptions.map((s) => {
@@ -636,6 +675,33 @@ export default function EditUserPage() {
                 </Button>
               </div>
               <Button type="submit">Save profile</Button>
+              {canDeleteAccounts && user.id !== selfId ? (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+                  <p className="text-sm font-medium text-red-950">Delete this account</p>
+                  <p className="mt-1 text-xs text-red-900">
+                    Removes the account and its records. The same email and mobile number can be used to register again.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-3 border-red-300 text-red-800 hover:bg-red-100"
+                    onClick={() => {
+                      const label = user.full_name_en || user.email;
+                      const ok = window.confirm(
+                        `Permanently delete ${label}? The account and its data will be removed. ${user.email} and ${user.phone} can be used to register again. This cannot be undone.`,
+                      );
+                      if (!ok) return;
+                      setError('');
+                      apiFetch(`/users/${userId}`, { method: 'DELETE' })
+                        .then(() => router.push('/admin/users'))
+                        .catch((err) => setError(err instanceof Error ? err.message : 'Could not delete this account'));
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete account
+                  </Button>
+                </div>
+              ) : null}
             </form>
           </CardContent>
         </Card>

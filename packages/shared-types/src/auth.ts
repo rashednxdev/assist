@@ -83,6 +83,25 @@ export const registerSchema = z
 
 export type RegisterDto = z.infer<typeof registerSchema>;
 
+/** Step 2 of registration: the 6-digit SMS code, then a session is issued. */
+export const verifyRegisterOtpSchema = z.object({
+  phone: z.string().regex(/^01[3-9]\d{8}$/, 'Enter a valid Bangladesh mobile number'),
+  code: z.string().regex(/^\d{6}$/, 'Enter the 6-digit code'),
+  device_id: z.string().min(8).max(128),
+  device_label: z.string().max(120).optional(),
+  app_version: z.string().trim().min(1).max(80).optional(),
+  client_platform: z.enum(['mobile', 'web']).optional(),
+});
+
+export type VerifyRegisterOtpDto = z.infer<typeof verifyRegisterOtpSchema>;
+
+/** Resend the registration SMS while the account is still waiting for the code. */
+export const resendRegisterOtpSchema = z.object({
+  phone: z.string().regex(/^01[3-9]\d{8}$/, 'Enter a valid Bangladesh mobile number'),
+});
+
+export type ResendRegisterOtpDto = z.infer<typeof resendRegisterOtpSchema>;
+
 /** Optional on login/register; also used for POST /account/client-version. */
 export const clientVersionFieldsSchema = z.object({
   app_version: z.string().trim().min(1).max(80),

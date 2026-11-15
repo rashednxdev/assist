@@ -18,6 +18,7 @@ import {
   getBookReaderFullHandler,
   getChapterHandler,
   listChapterQuestionsHandler,
+  listBookQuestionsHandler,
   listChapterQuestionsManageHandler,
   createBookHandler,
   updateBookHandler,
@@ -73,6 +74,7 @@ booksRouter.get('/sub-topics/:subTopicId', requireModuleAccess('BOOKS'), asyncHa
 booksRouter.get('/children', requireModuleAccess('BOOKS'), asyncHandler(getBookChildrenHandler));
 
 booksRouter.get('/', requireModuleAccess('BOOKS'), asyncHandler(listBooksHandler));
+booksRouter.get('/:id/questions', requireModuleAccess('BOOKS'), asyncHandler(listBookQuestionsHandler));
 booksRouter.get('/:id/subject-links', requireModuleAccess('BOOKS'), asyncHandler(listBookSubjectLinksHandler));
 booksRouter.post('/:id/subject-links', requireAdmin, asyncHandler(addBookSubjectLinkHandler));
 booksRouter.patch(

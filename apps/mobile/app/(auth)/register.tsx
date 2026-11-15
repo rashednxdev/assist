@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { AuthScreenShell } from '@/components/auth/AuthScreenShell';
 import { TextField } from '@/components/ui/TextField';
 import { Button } from '@/components/ui/Button';
-import { register } from '@/lib/auth-api';
+import { register, resendRegistrationCode, verifyRegistration } from '@/lib/auth-api';
 import { markModuleWelcomeTipsPending } from '@/lib/module-welcome-tips';
 import { useAuth } from '@/lib/auth-context';
 import { ApiError } from '@/lib/api';
@@ -24,6 +24,9 @@ export default function RegisterScreen() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [step, setStep] = useState<'form' | 'otp'>('form');
+  const [phoneHint, setPhoneHint] = useState('');
+  const [code, setCode] = useState('');
 
   function setField<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -57,7 +60,7 @@ export default function RegisterScreen() {
     }
     setLoading(true);
     try {
-      await register({
+      const res = await register({
         full_name_en: form.full_name_en.trim(),
         email: form.email.trim(),
         phone: form.phone.trim(),
@@ -66,14 +69,68 @@ export default function RegisterScreen() {
         user_type: 'applicant',
         accept_terms: acceptedTerms,
       });
-      await markModuleWelcomeTipsPending();
-      await refreshUser();
-      router.replace('/(app)/home');
+      setPhoneHint(res.phone_hint);
+      setCode('');
+      setStep('otp');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Registration failed. Please try again.');
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleVerify() {
+    setError('');
+    if (code.trim().length !== 6) {
+      setError('Enter the 6-digit code from the text message.');
+      return;
+    }
+    setLoading(true);
+    try {
+      await verifyRegistration(form.phone.trim(), code.trim());
+      await markModuleWelcomeTipsPending();
+      await refreshUser();
+      router.replace('/(app)/home');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'That code is not correct.');
+      setCode('');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleResend() {
+    setError('');
+    setLoading(true);
+    try {
+      const res = await resendRegistrationCode(form.phone.trim());
+      setPhoneHint(res.phone_hint);
+      setCode('');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not send a new code.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (step === 'otp') {
+    return (
+      <AuthScreenShell
+        title="Enter the code"
+        subtitle={`A 6-digit code was sent to ${phoneHint || 'your mobile'}. It expires in 15 minutes.`}
+      >
+        <TextField
+          label="Registration code"
+          value={code}
+          onChangeText={(v) => setCode(v.replace(/[^0-9]/g, '').slice(0, 6))}
+          keyboardType="number-pad"
+          placeholder="••••••"
+        />
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+        <Button title="Verify and continue" onPress={handleVerify} loading={loading} />
+        <Button title="Resend code" variant="secondary" onPress={handleResend} loading={loading} />
+      </AuthScreenShell>
+    );
   }
 
   return (

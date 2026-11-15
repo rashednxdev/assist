@@ -22,6 +22,10 @@ export interface ICredentials extends Document {
   email_otp_expires_at?: Date;
   phone_otp_hash?: string;
   phone_otp_expires_at?: Date;
+  phone_otp_attempts?: number;
+  phone_otp_sent_at?: Date;
+  phone_otp_window_start?: Date;
+  phone_otp_window_count?: number;
   /** "Forgot password" SMS code. Separate from phone_otp_* (account verification) so one flow can't consume the other. */
   reset_otp_hash?: string;
   reset_otp_expires_at?: Date;
@@ -68,6 +72,10 @@ const credentialsSchema = new Schema<ICredentials>(
     email_otp_expires_at: { type: Date },
     phone_otp_hash: { type: String },
     phone_otp_expires_at: { type: Date },
+    phone_otp_attempts: { type: Number },
+    phone_otp_sent_at: { type: Date },
+    phone_otp_window_start: { type: Date },
+    phone_otp_window_count: { type: Number },
     reset_otp_hash: { type: String },
     reset_otp_expires_at: { type: Date },
     reset_otp_attempts: { type: Number },

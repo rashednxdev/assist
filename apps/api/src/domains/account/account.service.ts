@@ -3,6 +3,8 @@ import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 import type {
   RegisterDto,
+  VerifyRegisterOtpDto,
+  ResendRegisterOtpDto,
   OtpVerifyDto,
   ChangePasswordDto,
   UpdateMyProfileDto,
@@ -32,6 +34,10 @@ const REGISTER_OTP_SMS = (code: string) =>
   `Welcome to ProAssist! Your registration OTP is ${code} (valid for 15 mins). Do not share this code with anyone.`;
 
 const OTP_TTL_MS = 15 * 60 * 1000;
+const REG_OTP_COOLDOWN_MS = 60 * 1000;
+const REG_OTP_WINDOW_MS = 15 * 60 * 1000;
+const REG_OTP_MAX_SENDS = 5;
+const REG_OTP_MAX_ATTEMPTS = 5;
 const RESET_OTP_TTL_MS = 15 * 60 * 1000;
 const RESET_COOLDOWN_MS = 60 * 1000;
 const RESET_WINDOW_MS = 15 * 60 * 1000;
@@ -124,64 +130,185 @@ async function activateIfFullyVerified(user: InstanceType<typeof User>) {
   return false;
 }
 
-export async function registerUser(dto: RegisterDto) {
-  const phone = dto.phone.trim();
-  const email = (dto.email?.trim() || `${phone}${PLACEHOLDER_EMAIL_DOMAIN}`).toLowerCase();
-  const exists = await User.findOne({ $or: [{ email }, { phone }] });
-  if (exists) throw badRequest('Mobile number is already registered');
-
-  const user = await User.create({
-    full_name_en: dto.full_name_en,
-    full_name_bn: dto.full_name_bn,
-    email,
-    phone,
-    user_type: dto.user_type,
-    workflow_roles: [],
-    // Phone-only signup: activate immediately (placeholder email is pre-verified).
-    status: 'active',
-    is_verified: true,
-    email_verified: true,
-    phone_verified: true,
-    is_super_admin: false,
-    created_by: new mongoose.Types.ObjectId(),
-  });
-  user.created_by = user._id;
-  await user.save();
-
-  const creds = await Credentials.create({
-    user_id: user._id,
-    password_hash: await hashPassword(dto.password),
-    status: 'active',
-    failed_attempts: 0,
-    password_changed_at: new Date(),
-    two_fa_enabled: false,
-    bound_device_id: dto.device_id,
-    bound_device_at: new Date(),
-    bound_device_label: dto.device_label?.slice(0, 120),
-    allow_multi_device: false,
-    token_version: 0,
-  });
-
-  await assignDefaultWorkflowRoles(user);
+async function sendRegistrationOtp(creds: InstanceType<typeof Credentials>, phone: string) {
+  const now = Date.now();
+  if (
+    creds.phone_otp_hash &&
+    creds.phone_otp_sent_at &&
+    now - creds.phone_otp_sent_at.getTime() < REG_OTP_COOLDOWN_MS
+  ) {
+    const wait = Math.ceil((REG_OTP_COOLDOWN_MS - (now - creds.phone_otp_sent_at.getTime())) / 1000);
+    throw badRequest(`Wait ${wait} seconds before requesting another code.`);
+  }
+  if (!creds.phone_otp_window_start || now - creds.phone_otp_window_start.getTime() > REG_OTP_WINDOW_MS) {
+    creds.phone_otp_window_start = new Date(now);
+    creds.phone_otp_window_count = 0;
+  }
+  if ((creds.phone_otp_window_count ?? 0) >= REG_OTP_MAX_SENDS) {
+    throw badRequest('Too many codes were sent. Wait a few minutes and try again.');
+  }
 
   const code = generateOtp();
   creds.phone_otp_hash = await hashOtp(code);
-  creds.phone_otp_expires_at = new Date(Date.now() + OTP_TTL_MS);
+  creds.phone_otp_expires_at = new Date(now + OTP_TTL_MS);
+  creds.phone_otp_attempts = 0;
+  creds.phone_otp_sent_at = new Date(now);
+  creds.phone_otp_window_count = (creds.phone_otp_window_count ?? 0) + 1;
   await creds.save();
 
-  if (/^01[3-9]\d{8}$/.test(phone)) {
-    try {
-      await sendSms(phone, REGISTER_OTP_SMS(code));
-    } catch (err) {
-      await Credentials.deleteOne({ _id: creds._id });
-      await User.deleteOne({ _id: user._id });
-      throw err;
-    }
+  try {
+    await sendSms(phone, REGISTER_OTP_SMS(code));
+  } catch (err) {
+    creds.phone_otp_hash = undefined;
+    creds.phone_otp_expires_at = undefined;
+    creds.phone_otp_window_count = Math.max(0, (creds.phone_otp_window_count ?? 1) - 1);
+    await creds.save();
+    throw err;
+  }
+}
+
+export async function registerUser(dto: RegisterDto) {
+  const phone = dto.phone.trim();
+  const email = (dto.email?.trim() || `${phone}${PLACEHOLDER_EMAIL_DOMAIN}`).toLowerCase();
+  const byPhone = await User.findOne({ phone });
+  const byEmail = await User.findOne({ email });
+  if (byPhone && byPhone.status !== 'pending_verify') {
+    throw badRequest('Mobile number is already registered');
+  }
+  if (byEmail && (!byPhone || String(byEmail._id) !== String(byPhone._id))) {
+    throw badRequest('Email is already registered');
   }
 
-  const tokens = signTokens(String(user._id), dto.device_id, 0);
+  const created = !byPhone;
+  const user =
+    byPhone ??
+    (await User.create({
+      full_name_en: dto.full_name_en,
+      full_name_bn: dto.full_name_bn,
+      email,
+      phone,
+      user_type: dto.user_type,
+      workflow_roles: [],
+      status: 'pending_verify',
+      is_verified: false,
+      email_verified: true,
+      phone_verified: false,
+      is_super_admin: false,
+      created_by: new mongoose.Types.ObjectId(),
+    }));
 
-  return { tokens, user: serializeUser(user) };
+  if (created) {
+    user.created_by = user._id;
+  } else {
+    user.full_name_en = dto.full_name_en;
+    user.full_name_bn = dto.full_name_bn;
+    user.email = email;
+    user.user_type = dto.user_type;
+    user.status = 'pending_verify';
+    user.is_verified = false;
+    user.phone_verified = false;
+    user.email_verified = true;
+  }
+  await user.save();
+
+  let creds = await Credentials.findOne({ user_id: user._id });
+  if (!creds) {
+    creds = await Credentials.create({
+      user_id: user._id,
+      password_hash: await hashPassword(dto.password),
+      status: 'active',
+      failed_attempts: 0,
+      password_changed_at: new Date(),
+      two_fa_enabled: false,
+      allow_multi_device: false,
+      token_version: 0,
+    });
+  } else {
+    creds.password_hash = await hashPassword(dto.password);
+    creds.password_changed_at = new Date();
+    creds.failed_attempts = 0;
+    creds.status = 'active';
+    creds.locked_until = undefined;
+    await creds.save();
+  }
+
+  try {
+    await sendRegistrationOtp(creds, phone);
+  } catch (err) {
+    if (created) {
+      await Credentials.deleteOne({ _id: creds._id });
+      await User.deleteOne({ _id: user._id });
+    }
+    throw err;
+  }
+
+  logger.info({ userId: user._id }, 'Registration code sent by SMS');
+  return { pending: true as const, phone_hint: maskPhone(phone) };
+}
+
+/** Registration step 2 — the SMS code opens the account and returns a session. */
+export async function verifyRegistrationOtp(dto: VerifyRegisterOtpDto) {
+  const phone = dto.phone.trim();
+  const user = await User.findOne({ phone });
+  if (!user || user.status !== 'pending_verify') {
+    throw badRequest('Start registration again.');
+  }
+  const creds = await Credentials.findOne({ user_id: user._id });
+  if (!creds) throw badRequest('Start registration again.');
+
+  if (!creds.phone_otp_hash || !creds.phone_otp_expires_at || creds.phone_otp_expires_at < new Date()) {
+    throw badRequest('That code has expired. Request a new one.');
+  }
+  if ((creds.phone_otp_attempts ?? 0) >= REG_OTP_MAX_ATTEMPTS) {
+    creds.phone_otp_hash = undefined;
+    creds.phone_otp_expires_at = undefined;
+    await creds.save();
+    throw badRequest('Too many wrong codes. Request a new one.');
+  }
+  if (!(await checkOtp(dto.code, creds.phone_otp_hash))) {
+    creds.phone_otp_attempts = (creds.phone_otp_attempts ?? 0) + 1;
+    const lockedOut = creds.phone_otp_attempts >= REG_OTP_MAX_ATTEMPTS;
+    if (lockedOut) {
+      creds.phone_otp_hash = undefined;
+      creds.phone_otp_expires_at = undefined;
+    }
+    await creds.save();
+    throw badRequest(lockedOut ? 'Too many wrong codes. Request a new one.' : 'That code is not correct.');
+  }
+
+  creds.phone_otp_hash = undefined;
+  creds.phone_otp_expires_at = undefined;
+  creds.phone_otp_attempts = 0;
+  creds.bound_device_id = dto.device_id;
+  creds.bound_device_at = new Date();
+  creds.bound_device_label = dto.device_label?.slice(0, 120);
+  creds.last_login = new Date();
+  await creds.save();
+
+  user.phone_verified = true;
+  user.email_verified = true;
+  await user.save();
+  await activateIfFullyVerified(user);
+  const refreshed = await User.findById(user._id);
+  if (!refreshed) throw notFound('User not found');
+
+  const platform = dto.client_platform === 'web' ? 'web' : 'mobile';
+  const tokens = signTokens(String(refreshed._id), dto.device_id, creds.token_version, platform);
+  logger.info({ userId: refreshed._id }, 'Registration verified by SMS');
+  return { tokens, user: serializeUser(refreshed) };
+}
+
+export async function resendRegistrationOtp(dto: ResendRegisterOtpDto) {
+  const phone = dto.phone.trim();
+  const user = await User.findOne({ phone });
+  if (!user || user.status !== 'pending_verify') {
+    throw badRequest('Start registration again.');
+  }
+  const creds = await Credentials.findOne({ user_id: user._id });
+  if (!creds) throw badRequest('Start registration again.');
+  await sendRegistrationOtp(creds, phone);
+  logger.info({ userId: user._id }, 'Registration code resent by SMS');
+  return { sent: true as const, phone_hint: maskPhone(phone) };
 }
 
 export async function resendOtp(userId: string, channel: 'email' | 'phone') {

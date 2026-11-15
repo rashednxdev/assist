@@ -114,13 +114,7 @@ export async function resendLoginOtp(challenge: string) {
 
 export async function register(body: Omit<RegisterDto, 'device_id' | 'device_label'>) {
   const device_id = await getOrCreateDeviceId();
-  const res = await apiFetch<{
-    data: {
-      tokens: { accessToken: string; expiresIn: number };
-      user: MeUser;
-      demo?: { emailOtp: string; phoneOtp: string };
-    };
-  }>('/auth/register', {
+  const res = await apiFetch<{ data: { pending: true; phone_hint: string } }>('/auth/register', {
     method: 'POST',
     body: JSON.stringify({
       ...body,
@@ -131,8 +125,37 @@ export async function register(body: Omit<RegisterDto, 'device_id' | 'device_lab
       client_platform: 'mobile',
     }),
   });
+  return res.data;
+}
+
+export async function verifyRegistration(phone: string, code: string) {
+  const device_id = await getOrCreateDeviceId();
+  const res = await apiFetch<{
+    data: {
+      tokens: { accessToken: string; expiresIn: number };
+      user: MeUser;
+    };
+  }>('/auth/register/verify', {
+    method: 'POST',
+    body: JSON.stringify({
+      phone,
+      code,
+      device_id,
+      device_label: getDeviceLabel(),
+      app_version: APP_VERSION_LABEL,
+      client_platform: 'mobile',
+    }),
+  });
   await persistToken(res.data.tokens.accessToken);
   await syncClientVersionIfNeeded(res.data.user.id);
+  return res.data;
+}
+
+export async function resendRegistrationCode(phone: string) {
+  const res = await apiFetch<{ data: { sent: true; phone_hint: string } }>('/auth/register/resend', {
+    method: 'POST',
+    body: JSON.stringify({ phone }),
+  });
   return res.data;
 }
 

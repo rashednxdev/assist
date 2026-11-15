@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft } from 'lucide-react';
 import { serializeExplanationSections, type ComparisonTable, type ExplanationSection } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
@@ -12,6 +12,7 @@ import { QuestionEvaluator } from '@/components/evaluation/question-evaluator';
 import { RatingIndicator } from '@/components/evaluation/rating-indicator';
 import { bookTheme } from '@/lib/book-theme';
 import type { QuestionEvalBrief } from '@/lib/evaluation-display';
+import { useAnswerRead } from '@/lib/use-answer-read';
 
 interface ChapterQuestionBrief {
   id: string;
@@ -61,10 +62,14 @@ export function ChapterTaggedQuestions({
   const [questions, setQuestions] = useState<ChapterQuestionBrief[]>([]);
   const [evalMap, setEvalMap] = useState<Map<string, QuestionEvalBrief>>(new Map());
   const [loadingList, setLoadingList] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [listError, setListError] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [question, setQuestion] = useState<QuestionDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const sentinel = useRef<HTMLDivElement>(null);
+  useAnswerRead(selectedId ?? undefined, Boolean(question));
 
   useEffect(() => {
     if (!open) {
@@ -74,33 +79,78 @@ export function ChapterTaggedQuestions({
 
   useEffect(() => {
     if (!open || !chapterId) return;
+    let cancelled = false;
     setLoadingList(true);
     setListError('');
-    apiFetch<{ data: ChapterQuestionBrief[] }>(`/books/chapters/${chapterId}/questions`)
+    setQuestions([]);
+    apiFetch<{ data: ChapterQuestionBrief[]; meta: { has_more: boolean } }>(
+      `/books/chapters/${chapterId}/questions?limit=20&offset=0`,
+    )
       .then(async (res) => {
+        if (cancelled) return;
         setQuestions(res.data);
+        setHasMore(res.meta.has_more);
         if (res.data.length === 0) {
           setEvalMap(new Map());
           return;
         }
-        const ids = res.data.map((q) => q.id).join(',');
         const evalRes = await apiFetch<{ data: QuestionEvalBrief[] }>(
-          `/evaluation/questions/batch?ids=${ids}`,
+          `/evaluation/questions/batch?ids=${res.data.map((q) => q.id).join(',')}`,
         );
+        if (cancelled) return;
         const map = new Map<string, QuestionEvalBrief>();
         for (const row of evalRes.data) {
-          if (row.progress_index > 0 || row.self_rating || row.is_correct !== undefined) {
+          if (row.progress_index > 0 || row.self_rating || row.is_correct !== undefined || (row.read_count ?? 0) > 0) {
             map.set(row.question_id, row);
           }
         }
         setEvalMap(map);
       })
       .catch((err) => {
+        if (cancelled) return;
         setListError(err instanceof Error ? err.message : 'Failed to load questions');
         setQuestions([]);
       })
-      .finally(() => setLoadingList(false));
+      .finally(() => {
+        if (!cancelled) setLoadingList(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [open, chapterId]);
+
+  useEffect(() => {
+    if (!open || !hasMore || loadingList || loadingMore) return;
+    const node = sentinel.current;
+    if (!node) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries[0]?.isIntersecting) return;
+      setLoadingMore(true);
+      apiFetch<{ data: ChapterQuestionBrief[]; meta: { has_more: boolean } }>(
+        `/books/chapters/${chapterId}/questions?limit=20&offset=${questions.length}`,
+      )
+        .then(async (res) => {
+          setQuestions((prev) => {
+            const seen = new Set(prev.map((q) => q.id));
+            return [...prev, ...res.data.filter((q) => !seen.has(q.id))];
+          });
+          setHasMore(res.meta.has_more);
+          if (res.data.length === 0) return;
+          const evalRes = await apiFetch<{ data: QuestionEvalBrief[] }>(
+            `/evaluation/questions/batch?ids=${res.data.map((q) => q.id).join(',')}`,
+          );
+          setEvalMap((prev) => {
+            const next = new Map(prev);
+            for (const row of evalRes.data) next.set(row.question_id, row);
+            return next;
+          });
+        })
+        .catch(() => setHasMore(false))
+        .finally(() => setLoadingMore(false));
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [open, hasMore, loadingList, loadingMore, questions.length, chapterId]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -215,6 +265,8 @@ export function ChapterTaggedQuestions({
                   </button>
                 </li>
               ))}
+              <div ref={sentinel} className="h-4" />
+              {loadingMore ? <p className="text-center text-xs text-muted">Loading more…</p> : null}
             </ul>
           )}
       </div>

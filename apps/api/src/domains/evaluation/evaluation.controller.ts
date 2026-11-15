@@ -27,6 +27,20 @@ export async function batchQuestionEvaluationsHandler(req: AuthRequest, res: Res
   res.json({ data: await evaluationService.getQuestionEvaluationsBatch(userId, questionIds) });
 }
 
+export async function recordQuestionReadHandler(req: AuthRequest, res: Response): Promise<void> {
+  const data = await evaluationService.recordQuestionRead(req.user!.id, String(req.params.questionId));
+  res.json({ data });
+}
+
+export async function listReadingHistoryHandler(req: AuthRequest, res: Response): Promise<void> {
+  const limitRaw = Number(req.query.limit);
+  const offsetRaw = Number(req.query.offset);
+  const limit = Number.isFinite(limitRaw) ? Math.min(100, Math.max(1, Math.floor(limitRaw))) : 40;
+  const offset = Number.isFinite(offsetRaw) ? Math.max(0, Math.floor(offsetRaw)) : 0;
+  const { items, total } = await evaluationService.listReadingHistory(req.user!.id, offset, limit);
+  res.json({ data: items, meta: { total, limit, offset, has_more: offset + items.length < total } });
+}
+
 export async function upsertQuestionEvaluationHandler(req: AuthRequest, res: Response): Promise<void> {
   const userId = req.user!.id;
   const dto = upsertQuestionEvaluationSchema.parse(req.body);

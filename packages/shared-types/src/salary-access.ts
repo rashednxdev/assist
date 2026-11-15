@@ -565,6 +565,8 @@ export type RecordArrearsCalcDto = z.infer<typeof recordArrearsCalcSchema>;
 
 export const consumeSalaryBillSchema = recordArrearsCalcSchema.extend({
   kind: z.enum(SALARY_PRINT_KINDS),
+  /** Stamp duty taken off the net arrear on the T.R. Form. Omitted means the default ৳10. */
+  stamp_duty: z.number().min(0).max(100).optional(),
 });
 export type ConsumeSalaryBillDto = z.infer<typeof consumeSalaryBillSchema>;
 

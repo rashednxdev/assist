@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import { createApp } from './app.js';
 import { connectDb } from './config/db.js';
 import { env } from './config/env.js';
@@ -21,7 +20,10 @@ async function main() {
   await seedLegacyContactVerifications().catch((err) => logger.warn(err, 'Could not seed contact verifications'));
   const app = createApp();
   app.listen(env.PORT, '0.0.0.0', () => {
-    logger.info(`API listening on port ${env.PORT}`);
+    logger.info(
+      { sms: env.SMS_API_KEY ? 'ready' : 'missing' },
+      `API listening on port ${env.PORT}`,
+    );
   });
   if (env.SCHEDULE_RUNNER === 'true') startScheduleRunner();
 }

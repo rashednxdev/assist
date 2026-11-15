@@ -956,54 +956,127 @@ export async function getChapterById(chapterId: string) {
   };
 }
 
-export async function listChapterQuestions(chapterId: string) {
+async function questionIdsForChapters(chapterIds: mongoose.Types.ObjectId[], topicId?: string) {
+  if (chapterIds.length === 0) return [];
+  const topicQuery: Record<string, unknown> = { book_chapter_id: { $in: chapterIds }, is_active: true };
+  if (topicId) topicQuery._id = topicId;
+  const topics = await BookTopic.find(topicQuery).select('_id book_chapter_id sort_order').sort({ sort_order: 1 });
+  const topicIds = topics.map((t) => t._id);
+  const subTopics =
+    topicIds.length > 0
+      ? await BookSubTopic.find({ book_topic_id: { $in: topicIds }, is_active: true }).select('_id book_topic_id')
+      : [];
+  const subTopicIds = subTopics.map((s) => s._id);
+
+  const linkOr = [
+    ...(topicId ? [] : [{ book_chapter_id: { $in: chapterIds } }]),
+    ...(topicIds.length > 0 ? [{ book_topic_id: { $in: topicIds } }] : []),
+    ...(subTopicIds.length > 0 ? [{ book_sub_topic_id: { $in: subTopicIds } }] : []),
+  ];
+  const linkRows = linkOr.length
+    ? await QuestionBookLink.find({ is_active: true, $or: linkOr }).select(
+        'question_id book_chapter_id book_topic_id book_sub_topic_id link_level sort_order',
+      )
+    : [];
+
+  const direct = topicId
+    ? []
+    : await Question.find({
+        book_chapter_id: { $in: chapterIds },
+        is_active: true,
+        is_published: true,
+      }).select('_id book_chapter_id');
+
+  const chapterOrder = new Map(chapterIds.map((id, index) => [String(id), index]));
+  const topicOrder = new Map(topicIds.map((id, index) => [String(id), index]));
+  const ranked = [
+    ...linkRows.map((link) => ({
+      id: String(link.question_id),
+      chapter: chapterOrder.get(String(link.book_chapter_id)) ?? 0,
+      topic: topicOrder.get(String(link.book_topic_id)) ?? 0,
+      sort: link.sort_order ?? 0,
+    })),
+    ...direct.map((q) => ({
+      id: String(q._id),
+      chapter: chapterOrder.get(String(q.book_chapter_id)) ?? 0,
+      topic: 0,
+      sort: 0,
+    })),
+  ].sort((a, b) => a.chapter - b.chapter || a.topic - b.topic || a.sort - b.sort);
+
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  for (const row of ranked) {
+    if (seen.has(row.id)) continue;
+    seen.add(row.id);
+    ids.push(row.id);
+  }
+  return ids;
+}
+
+async function pageQuestionBriefs(idsInOrder: string[], offset: number, limit: number) {
+  const total = idsInOrder.length;
+  const pageIds = idsInOrder.slice(offset, offset + limit);
+  if (pageIds.length === 0) return { items: [], total };
+  const questions = await Question.find({
+    _id: { $in: pageIds },
+    is_active: true,
+    is_published: true,
+  }).select('body_en body_bn marks question_type_code question_type_id difficulty');
+  const byId = new Map(questions.map((q) => [String(q._id), q]));
+  const typeIds = [...new Set(questions.map((q) => String(q.question_type_id)))];
+  const types = typeIds.length ? await QuestionType.find({ _id: { $in: typeIds } }).select('name') : [];
+  const typeMap = new Map(types.map((t) => [String(t._id), t.name]));
+  const items = pageIds.flatMap((id) => {
+    const q = byId.get(id);
+    if (!q) return [];
+    return [
+      {
+        id,
+        question_type_code: q.question_type_code,
+        question_type_name: typeMap.get(String(q.question_type_id)),
+        body_en: q.body_en,
+        body_bn: q.body_bn,
+        marks: q.marks,
+        difficulty: q.difficulty,
+      },
+    ];
+  });
+  return { items, total };
+}
+
+export async function listChapterQuestions(chapterId: string, offset = 0, limit = 20) {
   const chapter = await BookChapter.findById(chapterId);
   if (!chapter || !chapter.is_active) throw notFound('Chapter not found');
+  const ids = await questionIdsForChapters([chapter._id]);
+  return pageQuestionBriefs(ids, offset, limit);
+}
 
-  const chapterOid = chapter._id;
-  const topicIds = await BookTopic.find({ book_chapter_id: chapterOid, is_active: true }).distinct('_id');
-  const subTopicIds =
-    topicIds.length > 0
-      ? await BookSubTopic.find({ book_topic_id: { $in: topicIds }, is_active: true }).distinct('_id')
-      : [];
-
-  const linkRows = await QuestionBookLink.find({
-    is_active: true,
-    $or: [
-      { book_chapter_id: chapterOid },
-      { book_topic_id: { $in: topicIds } },
-      ...(subTopicIds.length > 0 ? [{ book_sub_topic_id: { $in: subTopicIds } }] : []),
-    ],
-  });
-  const linkedIds = [...new Set(linkRows.map((l) => String(l.question_id)))];
-
-  const direct = await Question.find({
-    book_chapter_id: chapterOid,
-    is_active: true,
-    is_published: true,
-  });
-  const allIds = [...new Set([...linkedIds, ...direct.map((q) => String(q._id))])];
-  if (allIds.length === 0) return [];
-
-  const questions = await Question.find({
-    _id: { $in: allIds },
-    is_active: true,
-    is_published: true,
-  }).sort({ question_type_code: 1, updated_at: -1 });
-
-  const typeIds = [...new Set(questions.map((q) => String(q.question_type_id)))];
-  const types = await QuestionType.find({ _id: { $in: typeIds } });
-  const typeMap = new Map(types.map((t) => [String(t._id), t.name]));
-
-  return questions.map((q) => ({
-    id: String(q._id),
-    question_type_code: q.question_type_code,
-    question_type_name: typeMap.get(String(q.question_type_id)),
-    body_en: q.body_en,
-    body_bn: q.body_bn,
-    marks: q.marks,
-    difficulty: q.difficulty,
-  }));
+export async function listBookQuestions(
+  bookId: string,
+  options: { offset?: number; limit?: number; chapterId?: string; topicId?: string } = {},
+) {
+  const book = await BookInfo.findById(bookId).select('_id is_active');
+  if (!book || !book.is_active) throw notFound('Book not found');
+  const offset = Math.max(0, options.offset ?? 0);
+  const limit = Math.min(40, Math.max(1, options.limit ?? 20));
+  let chapterIds: mongoose.Types.ObjectId[] = [];
+  if (options.chapterId) {
+    const chapter = await BookChapter.findOne({
+      _id: options.chapterId,
+      book_info_id: book._id,
+      is_active: true,
+    }).select('_id');
+    if (!chapter) throw notFound('Chapter not found');
+    chapterIds = [chapter._id];
+  } else {
+    const chapters = await BookChapter.find({ book_info_id: book._id, is_active: true })
+      .select('_id')
+      .sort({ sort_order: 1 });
+    chapterIds = chapters.map((c) => c._id);
+  }
+  const ids = await questionIdsForChapters(chapterIds, options.topicId);
+  return pageQuestionBriefs(ids, offset, limit);
 }
 
 export async function listChapterQuestionsForManage(chapterId: string) {

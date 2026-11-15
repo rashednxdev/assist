@@ -179,9 +179,31 @@ export async function getChapterHandler(req: AuthRequest, res: Response): Promis
   res.json({ data });
 }
 
+function pageQuery(req: AuthRequest) {
+  const limitRaw = Number(req.query.limit);
+  const offsetRaw = Number(req.query.offset);
+  const limit = Number.isFinite(limitRaw) ? Math.min(40, Math.max(1, Math.floor(limitRaw))) : 20;
+  const offset = Number.isFinite(offsetRaw) ? Math.max(0, Math.floor(offsetRaw)) : 0;
+  return { limit, offset };
+}
+
 export async function listChapterQuestionsHandler(req: AuthRequest, res: Response): Promise<void> {
-  const data = await booksService.listChapterQuestions(String(req.params.chapterId));
-  res.json({ data });
+  const { limit, offset } = pageQuery(req);
+  const { items, total } = await booksService.listChapterQuestions(String(req.params.chapterId), offset, limit);
+  res.json({ data: items, meta: { total, limit, offset, has_more: offset + items.length < total } });
+}
+
+export async function listBookQuestionsHandler(req: AuthRequest, res: Response): Promise<void> {
+  const { limit, offset } = pageQuery(req);
+  const chapterId = typeof req.query.chapter_id === 'string' ? req.query.chapter_id : undefined;
+  const topicId = typeof req.query.topic_id === 'string' ? req.query.topic_id : undefined;
+  const { items, total } = await booksService.listBookQuestions(String(req.params.id), {
+    offset,
+    limit,
+    chapterId,
+    topicId,
+  });
+  res.json({ data: items, meta: { total, limit, offset, has_more: offset + items.length < total } });
 }
 
 export async function listChapterQuestionsManageHandler(req: AuthRequest, res: Response): Promise<void> {

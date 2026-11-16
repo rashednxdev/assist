@@ -3,7 +3,6 @@ import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages } from 'next-intl/server';
 import { Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
-import { NavigationFeedback } from '@/components/layout/navigation-feedback';
 
 const fontSans = Plus_Jakarta_Sans({
   subsets: ['latin'],
@@ -28,7 +27,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang={locale}>
       <body className={`${fontSans.variable} font-sans antialiased`}>
         <NextIntlClientProvider locale={locale} messages={messages}>
-          <NavigationFeedback />
           {children}
         </NextIntlClientProvider>
       </body>

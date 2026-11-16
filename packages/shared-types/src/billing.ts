@@ -27,6 +27,8 @@ export const accessPackageInputSchema = z
     exam_subject_id: mongoId.optional().or(z.literal('')).nullable(),
     /** Exam Preparation or Live: one package may cover several subjects. A subject may also appear in other packages. */
     exam_subject_ids: z.array(mongoId).max(40).optional().default([]),
+    /** Live class: the named package (Flex, Quick Review) this subject class belongs to. */
+    live_program_id: mongoId.optional().or(z.literal('')).nullable(),
     /** Live class: how many classes of the chosen subject this package includes. */
     class_limit: z.coerce.number().int().min(1).max(500).optional().nullable(),
     duration_days: z.coerce.number().int().min(1, 'At least 1 day').max(3650),
@@ -47,6 +49,16 @@ export const accessPackageInputSchema = z
     }
     if (d.kind === 'live' && d.class_limit == null) {
       ctx.addIssue({ code: 'custom', path: ['class_limit'], message: 'Set how many live classes this package includes' });
+    }
+    if (d.kind === 'live' && d.live_program_id && (d.exam_subject_ids?.length ?? 0) !== 1) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['exam_subject_ids'],
+        message: 'A subject class under a package covers exactly one subject',
+      });
+    }
+    if (d.kind !== 'live' && d.live_program_id) {
+      ctx.addIssue({ code: 'custom', path: ['live_program_id'], message: 'Only Live class packages belong to a live package' });
     }
     if (d.kind !== 'live' && d.class_limit != null) {
       ctx.addIssue({ code: 'custom', path: ['class_limit'], message: 'Only Live class packages have a class count' });
@@ -105,6 +117,9 @@ export interface AccessPackageRecord {
   exam_subject_names?: string[];
   /** Live class packages: classes included for the chosen subject. */
   class_limit?: number;
+  /** Named live package this subject class belongs to. */
+  live_program_id?: string;
+  live_program_name?: string;
   /** Exam Preparation: one subject, a whole part, or (older packages) all of Part 1. */
   scope?: ExamPrepScopeKind;
   duration_days: number;
@@ -171,6 +186,79 @@ export const DEFAULT_BILLING_SETTINGS: BillingSettingsRecord = {
 
 /** A learner can enroll at most this many subjects of one part in a single payment. */
 export const MAX_SUBJECTS_PER_ENROLLMENT = 4;
+
+/** A named live package such as Flex or Quick Review. Subject classes sit under it. */
+export const liveProgramSchema = z.object({
+  name: z.string().trim().min(1, 'Package name is required').max(80),
+  name_bn: z.string().trim().max(80).optional().or(z.literal('')),
+  description: z.string().trim().max(500).optional().or(z.literal('')),
+  /** Percent taken off when this many subjects of the package are enrolled together. One subject is never reduced. */
+  waiver_2: z.coerce.number().min(0).max(90).default(10),
+  waiver_3: z.coerce.number().min(0).max(90).default(0),
+  waiver_4: z.coerce.number().min(0).max(90).default(0),
+  sort_order: z.coerce.number().int().min(0).max(9999).default(100),
+  is_active: z.boolean().default(true),
+});
+export type LiveProgramInput = z.input<typeof liveProgramSchema>;
+
+export interface LiveProgramRecord {
+  id: string;
+  name: string;
+  name_bn?: string;
+  description?: string;
+  waiver_2: number;
+  waiver_3: number;
+  waiver_4: number;
+  sort_order: number;
+  is_active: boolean;
+}
+
+export interface LiveWaiverItem {
+  id: string;
+  programId: string;
+  price: number;
+  /** 1 when the row is one subject of the package. */
+  subjects: number;
+}
+
+/** Price after the package's own waiver for enrolling several subjects together. */
+export function liveSubjectWaiverQuote(
+  items: LiveWaiverItem[],
+  programs: Array<Pick<LiveProgramRecord, 'id' | 'waiver_2' | 'waiver_3' | 'waiver_4'>>,
+): { priceById: Record<string, number>; groups: Array<{ programId: string; count: number; percent: number }> } {
+  const priceById: Record<string, number> = {};
+  const byProgram = new Map<string, LiveWaiverItem[]>();
+  for (const item of items) {
+    if (item.subjects !== 1 || !item.programId) continue;
+    const list = byProgram.get(item.programId) ?? [];
+    list.push(item);
+    byProgram.set(item.programId, list);
+  }
+  const groups: Array<{ programId: string; count: number; percent: number }> = [];
+  for (const [programId, list] of byProgram) {
+    const program = programs.find((p) => p.id === programId);
+    const percent =
+      !program || list.length > MAX_SUBJECTS_PER_ENROLLMENT
+        ? 0
+        : subjectBundlePercent(list.length, {
+            subject_discount_2: program.waiver_2,
+            subject_discount_3: program.waiver_3,
+            subject_discount_4: program.waiver_4,
+          });
+    const next =
+      list.length > MAX_SUBJECTS_PER_ENROLLMENT
+        ? list.map((item) => roundTaka(item.price))
+        : pricesAfterPercent(
+            list.map((item) => item.price),
+            percent,
+          );
+    list.forEach((item, i) => {
+      priceById[item.id] = next[i] ?? roundTaka(item.price);
+    });
+    groups.push({ programId, count: list.length, percent });
+  }
+  return { priceById, groups };
+}
 
 export function subjectBundlePercent(
   count: number,
@@ -440,5 +528,6 @@ export interface BillingCatalog {
   /** False until an admin grants Learning (read). Package requests stay closed. */
   can_request: boolean;
   packages: AccessPackageRecord[];
+  live_programs?: LiveProgramRecord[];
   access: MyAccessSummary;
 }

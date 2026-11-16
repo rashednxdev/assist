@@ -102,6 +102,40 @@ billingRouter.post(
 
 /* --------------------------------- admin --------------------------------- */
 
+billingRouter.get(
+  '/admin/live-programs',
+  requireAdmin,
+  asyncHandler(async (_req: AuthRequest, res: Response) => {
+    res.json({ data: await billing.listLivePrograms(true) });
+  }),
+);
+
+billingRouter.post(
+  '/admin/live-programs',
+  requireAdmin,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    res.status(201).json({ data: await billing.createLiveProgram(req.body) });
+  }),
+);
+
+billingRouter.put(
+  '/admin/live-programs/:id',
+  requireAdmin,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    res.json({ data: await billing.updateLiveProgram(String(req.params.id), req.body) });
+  }),
+);
+
+billingRouter.delete(
+  '/admin/live-programs/:id',
+  requireAdmin,
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    await billing.deleteLiveProgram(String(req.params.id));
+    res.json({ data: { ok: true } });
+  }),
+);
+
+
 billingRouter.post(
   '/admin/packages/bulk-subjects',
   requireAdmin,

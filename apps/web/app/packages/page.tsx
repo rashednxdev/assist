@@ -24,6 +24,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ExamPrepShop } from '@/components/billing/exam-prep-shop';
+import { LiveClassShop } from '@/components/billing/live-class-shop';
 
 const DAY_MS = 86_400_000;
 
@@ -316,6 +317,8 @@ function PackagesContent() {
         <EmptyState title="No packages yet" description="Packages for this section will be available soon." />
       ) : tab === 'exam_prep' && catalog ? (
         <ExamPrepShop catalog={catalog} />
+      ) : tab === 'live' && catalog ? (
+        <LiveClassShop catalog={catalog} />
       ) : (
         grid(inTab)
       )}

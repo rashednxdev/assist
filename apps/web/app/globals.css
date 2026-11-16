@@ -192,20 +192,6 @@ body {
   color: #0a3d5c;
 }
 
-.nav-progress-bar {
-  width: 35%;
-  animation: nav-progress 1s ease-in-out infinite;
-}
-
-@keyframes nav-progress {
-  0% {
-    transform: translateX(-120%);
-  }
-  100% {
-    transform: translateX(320%);
-  }
-}
-
 @media (min-width: 1280px) {
   .salary-page-main {
     display: grid;

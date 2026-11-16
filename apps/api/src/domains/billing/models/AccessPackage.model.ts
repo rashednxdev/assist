@@ -13,6 +13,8 @@ export interface IAccessPackage extends Document {
   exam_subject_ids?: Types.ObjectId[];
   /** Live class: how many classes of the subject this package includes. */
   class_limit?: number | null;
+  /** Named live package (Flex, Quick Review) this subject class belongs to. */
+  live_program_id?: Types.ObjectId | null;
   duration_days: number;
   price: number;
   compare_at_price?: number | null;
@@ -38,6 +40,7 @@ const schema = new Schema<IAccessPackage>(
     exam_subject_id: { type: Schema.Types.ObjectId, ref: 'ExamSubject', default: null },
     exam_subject_ids: { type: [{ type: Schema.Types.ObjectId, ref: 'ExamSubject' }], default: [] },
     class_limit: { type: Number, default: null },
+    live_program_id: { type: Schema.Types.ObjectId, ref: 'LiveProgram', default: null },
     duration_days: { type: Number, required: true, min: 1 },
     price: { type: Number, required: true, min: 0 },
     compare_at_price: { type: Number, default: null },

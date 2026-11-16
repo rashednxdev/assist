@@ -14,6 +14,8 @@ import {
   createOrderSchema,
   demoPaySchema,
   formatBdt,
+  liveProgramSchema,
+  liveSubjectWaiverQuote,
   manualGrantSchema,
   MAX_SUBJECTS_PER_ENROLLMENT,
   roundTaka,
@@ -29,6 +31,7 @@ import {
   type ExamPrepAccessItem,
   type ExamPrepScopeKind,
   type LiveClassBrief,
+  type LiveProgramRecord,
   type MyAccessSummary,
   type PaymentOrderRecord,
 } from '@ibas/shared-types';
@@ -44,6 +47,7 @@ import { formatSmsTaka, PROASSIST_SUPPORT_PHONE, sendSms } from '../../shared/sm
 import { User } from '../users/models/User.model.js';
 import { UserModuleAccess } from '../users/models/UserModuleAccess.model.js';
 import { AccessPackage, type IAccessPackage } from './models/AccessPackage.model.js';
+import { LiveProgram } from './models/LiveProgram.model.js';
 import { BillingSettings } from './models/BillingSettings.model.js';
 import { PaymentOrder, type IPaymentOrder } from './models/PaymentOrder.model.js';
 import { UserEntitlement, type IUserEntitlement } from './models/UserEntitlement.model.js';
@@ -190,6 +194,7 @@ function toPackageRecord(doc: IAccessPackage, names: ScopeNames, legacyPart: str
     exam_subject_ids: (doc.exam_subject_ids ?? []).map(String),
     exam_subject_names: (doc.exam_subject_ids ?? []).map((id) => names.subjects.get(String(id)) ?? ''),
     class_limit: doc.class_limit ?? undefined,
+    live_program_id: doc.live_program_id ? String(doc.live_program_id) : undefined,
     scope,
     duration_days: doc.duration_days,
     price: doc.price,
@@ -227,11 +232,13 @@ export async function listPackagesAdmin(kind?: string): Promise<AccessPackageRec
     ]),
   ]);
   const soldMap = new Map(sold.map((s) => [String(s._id), s.n]));
-  return docs.map((d) => ({
-    ...toPackageRecord(d, names, legacyPart),
-    ...(d.kind === 'live' ? { class_count: d.class_limit ?? counts.get(String(d._id)) ?? 0 } : {}),
-    sold_count: soldMap.get(String(d._id)) ?? 0,
-  }));
+  return withProgramNames(
+    docs.map((d) => ({
+      ...toPackageRecord(d, names, legacyPart),
+      ...(d.kind === 'live' ? { class_count: d.class_limit ?? counts.get(String(d._id)) ?? 0 } : {}),
+      sold_count: soldMap.get(String(d._id)) ?? 0,
+    })),
+  );
 }
 
 async function parsePackage(body: unknown) {
@@ -259,6 +266,8 @@ async function parsePackage(body: unknown) {
   } else if (partId && !(await ExamPart.exists({ _id: partId }))) {
     throw badRequest('Exam part not found');
   }
+  const programId = d.kind === 'live' && d.live_program_id ? d.live_program_id : null;
+  if (programId && !(await LiveProgram.exists({ _id: programId }))) throw badRequest('Live package not found');
   return {
     kind: d.kind,
     name: d.name,
@@ -268,6 +277,7 @@ async function parsePackage(body: unknown) {
     exam_subject_id: subjectId,
     exam_subject_ids: requestedIds,
     class_limit: d.kind === 'live' ? d.class_limit ?? null : null,
+    live_program_id: programId,
     duration_days: d.duration_days,
     price: roundTaka(d.price),
     compare_at_price: d.compare_at_price ? roundTaka(d.compare_at_price) : null,
@@ -634,7 +644,8 @@ export async function getCatalog(user: AuthUser): Promise<BillingCatalog> {
       subject_discount_4: settings.subject_discount_4,
     },
     can_request: isAdminUser(user) || (await hasLearningGrant(user.id)),
-    packages,
+    packages: await withProgramNames(packages),
+    live_programs: await listLivePrograms(false),
     access,
   };
 }
@@ -823,13 +834,17 @@ async function hasLearningGrant(userId: string): Promise<boolean> {
   return Boolean(hit);
 }
 
-/** A bought subject cannot be selected again, in this package or any other. */
+/** A bought subject cannot be selected again, in this package or any other. Live subjects are per named package. */
 async function assertSubjectsAvailable(userId: string, pkg: IAccessPackage): Promise<void> {
+  if (pkg.kind === 'live') {
+    await assertLiveSubjectAvailable(userId, pkg);
+    return;
+  }
   const wanted = subjectIdsOf(pkg);
   const now = new Date();
   const ents = await UserEntitlement.find({
     user_id: userId,
-    kind: pkg.kind === 'live' ? 'live' : pkg.kind,
+    kind: pkg.kind,
     is_revoked: false,
     starts_at: { $lte: now },
     ends_at: { $gt: now },
@@ -848,6 +863,32 @@ async function assertSubjectsAvailable(userId: string, pkg: IAccessPackage): Pro
   }
   if (wanted.some((id) => owned.has(id))) {
     throw badRequest('You already have a subject in this package. It cannot be selected again.');
+  }
+}
+
+async function assertLiveSubjectAvailable(userId: string, pkg: IAccessPackage): Promise<void> {
+  const now = new Date();
+  const ents = await UserEntitlement.find({
+    user_id: userId,
+    kind: 'live',
+    is_revoked: false,
+    starts_at: { $lte: now },
+    ends_at: { $gt: now },
+  })
+    .select('package_id')
+    .lean();
+  if (ents.some((e) => String(e.package_id) === String(pkg._id))) {
+    throw badRequest('You already have this subject class. It cannot be selected again.');
+  }
+  const programId = pkg.live_program_id ? String(pkg.live_program_id) : '';
+  const wanted = subjectIdsOf(pkg);
+  if (!programId || wanted.length === 0 || ents.length === 0) return;
+  const ownedPkgs = await AccessPackage.find({ _id: { $in: ents.map((e) => e.package_id) }, live_program_id: programId })
+    .select('exam_subject_id exam_subject_ids')
+    .lean();
+  const ownedSubjects = new Set(ownedPkgs.flatMap((p) => subjectIdsOf(p)));
+  if (wanted.some((id) => ownedSubjects.has(id))) {
+    throw badRequest('You already have this subject in this live package.');
   }
 }
 
@@ -1106,9 +1147,11 @@ export async function createCart(user: AuthUser, body: unknown): Promise<CartRec
   }
   const seenSubjects = new Set<string>();
   for (const pkg of ordered) {
+    const prefix = pkg.kind === 'live' ? `live:${pkg.live_program_id ? String(pkg.live_program_id) : String(pkg._id)}:` : 'content:';
     for (const id of subjectIdsOf(pkg)) {
-      if (seenSubjects.has(id)) throw badRequest('A subject can only be enrolled once in the same payment.');
-      seenSubjects.add(id);
+      const key = prefix + id;
+      if (seenSubjects.has(key)) throw badRequest('A subject can only be enrolled once in the same payment.');
+      seenSubjects.add(key);
     }
   }
   const settings = await getBillingSettings();
@@ -1123,6 +1166,26 @@ export async function createCart(user: AuthUser, body: unknown): Promise<CartRec
   );
   if (quote.groups.some((g) => g.count > MAX_SUBJECTS_PER_ENROLLMENT)) {
     throw badRequest('Enroll at most 4 subjects of one part at a time. You can enroll the rest later.');
+  }
+  const programIds = [...new Set(ordered.map((p) => (p.live_program_id ? String(p.live_program_id) : '')).filter(Boolean))];
+  const programDocs = programIds.length ? await LiveProgram.find({ _id: { $in: programIds } }).lean() : [];
+  const liveQuote = liveSubjectWaiverQuote(
+    ordered.map((pkg) => ({
+      id: String(pkg._id),
+      programId: pkg.live_program_id ? String(pkg.live_program_id) : '',
+      price: pkg.price,
+      subjects: pkg.kind === 'live' && pkg.live_program_id && subjectIdsOf(pkg).length === 1 ? 1 : 0,
+    })),
+    programDocs.map((p) => ({
+      id: String(p._id),
+      waiver_2: p.waiver_2 ?? 10,
+      waiver_3: p.waiver_3 ?? 0,
+      waiver_4: p.waiver_4 ?? 0,
+    })),
+  );
+  for (const [id, price] of Object.entries(liveQuote.priceById)) quote.priceById[id] = price;
+  if (liveQuote.groups.some((g) => g.count > MAX_SUBJECTS_PER_ENROLLMENT)) {
+    throw badRequest('Enroll at most 4 subjects of one live package at a time. You can enroll the rest later.');
   }
   const subtotal = quote.payable;
   if (!settings.gateway_enabled && subtotal > 0) {
@@ -1349,6 +1412,75 @@ export async function revokeEntitlementForOrder(orderId: string, note: string | 
 }
 
 /* --------------------------------- live class --------------------------------- */
+
+function toProgramRecord(doc: {
+  _id: unknown;
+  name: string;
+  name_bn?: string;
+  description?: string;
+  waiver_2?: number;
+  waiver_3?: number;
+  waiver_4?: number;
+  sort_order?: number;
+  is_active?: boolean;
+}): LiveProgramRecord {
+  return {
+    id: String(doc._id),
+    name: doc.name,
+    name_bn: doc.name_bn || undefined,
+    description: doc.description || undefined,
+    waiver_2: doc.waiver_2 ?? 10,
+    waiver_3: doc.waiver_3 ?? 0,
+    waiver_4: doc.waiver_4 ?? 0,
+    sort_order: doc.sort_order ?? 100,
+    is_active: doc.is_active !== false,
+  };
+}
+
+async function withProgramNames(rows: AccessPackageRecord[]): Promise<AccessPackageRecord[]> {
+  const ids = [...new Set(rows.map((r) => r.live_program_id).filter(Boolean))] as string[];
+  if (ids.length === 0) return rows;
+  const programs = await LiveProgram.find({ _id: { $in: ids } }).select('name').lean();
+  const names = new Map(programs.map((p) => [String(p._id), p.name]));
+  return rows.map((r) => (r.live_program_id ? { ...r, live_program_name: names.get(r.live_program_id) } : r));
+}
+
+export async function listLivePrograms(includeInactive = true): Promise<LiveProgramRecord[]> {
+  const rows = await LiveProgram.find(includeInactive ? {} : { is_active: true }).sort({ sort_order: 1, name: 1 }).lean();
+  return rows.map(toProgramRecord);
+}
+
+export async function createLiveProgram(body: unknown): Promise<LiveProgramRecord> {
+  const parsed = liveProgramSchema.safeParse(body);
+  if (!parsed.success) throw badRequest(zodMessage(parsed.error));
+  const doc = await LiveProgram.create({
+    ...parsed.data,
+    name_bn: parsed.data.name_bn || undefined,
+    description: parsed.data.description || undefined,
+  });
+  return toProgramRecord(doc);
+}
+
+export async function updateLiveProgram(id: string, body: unknown): Promise<LiveProgramRecord> {
+  if (!mongoose.isValidObjectId(id)) throw notFound('Live package not found');
+  const parsed = liveProgramSchema.safeParse(body);
+  if (!parsed.success) throw badRequest(zodMessage(parsed.error));
+  const doc = await LiveProgram.findByIdAndUpdate(
+    id,
+    { ...parsed.data, name_bn: parsed.data.name_bn || undefined, description: parsed.data.description || undefined },
+    { new: true },
+  );
+  if (!doc) throw notFound('Live package not found');
+  return toProgramRecord(doc);
+}
+
+export async function deleteLiveProgram(id: string): Promise<void> {
+  if (!mongoose.isValidObjectId(id)) throw notFound('Live package not found');
+  const used = await AccessPackage.exists({ live_program_id: id, is_deleted: false });
+  if (used) throw badRequest('Remove the subject classes under this package before deleting it.');
+  const doc = await LiveProgram.findByIdAndDelete(id);
+  if (!doc) throw notFound('Live package not found');
+}
 
 /** Package briefs for classes, keyed by package id (used by live-stream listing). */
 export async function livePackageBriefs(packageIds: string[]): Promise<Map<string, { id: string; name: string; price: number; duration_days: number }>> {

@@ -10,6 +10,7 @@ import {
   type ExamPrepPartOption,
   type ExamPrepPartsResponse,
   type LiveClassBrief,
+  type LiveProgramRecord,
 } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { accessDateTime, durationLabel } from '@/lib/billing-format';
@@ -38,6 +39,7 @@ interface FormState {
   exam_subject_id: string;
   exam_subject_ids: string[];
   class_limit: string;
+  live_program_id: string;
   duration_days: string;
   price: string;
   compare_at_price: string;
@@ -56,6 +58,7 @@ function toForm(p?: AccessPackageRecord): FormState {
     exam_subject_id: p?.exam_subject_id ?? '',
     exam_subject_ids: p?.exam_subject_ids?.length ? p.exam_subject_ids : p?.exam_subject_id ? [p.exam_subject_id] : [],
     class_limit: p?.class_limit ? String(p.class_limit) : p?.class_count ? String(p.class_count) : '1',
+    live_program_id: p?.live_program_id ?? '',
     duration_days: String(p?.duration_days ?? 30),
     price: p ? String(p.price) : '',
     compare_at_price: p?.compare_at_price ? String(p.compare_at_price) : '',
@@ -70,6 +73,7 @@ function PackageForm({
   kind,
   initial,
   parts,
+  programs,
   defaultPartId,
   onSaved,
   onCancel,
@@ -77,6 +81,7 @@ function PackageForm({
   kind: AccessPackageKind;
   initial?: AccessPackageRecord;
   parts: ExamPrepPartOption[];
+  programs: LiveProgramRecord[];
   defaultPartId?: string;
   onSaved: () => void;
   onCancel: () => void;
@@ -108,6 +113,7 @@ function PackageForm({
       exam_subject_id: null,
       exam_subject_ids: kind === 'basic' ? [] : f.exam_subject_ids,
       class_limit: kind === 'live' ? Number(f.class_limit || 1) : null,
+      live_program_id: kind === 'live' ? f.live_program_id || null : null,
       duration_days: Number(f.duration_days),
       price: Number(f.price || 0),
       compare_at_price: f.compare_at_price ? Number(f.compare_at_price) : null,
@@ -200,11 +206,22 @@ function PackageForm({
           {kind === 'live' && (
             <>
               <div className="space-y-1.5">
+                <Label htmlFor="pk-program">Package</Label>
+                <select id="pk-program" className={SELECT} value={f.live_program_id} onChange={(e) => set('live_program_id', e.target.value)}>
+                  <option value="">No named package (older style)</option>
+                  {programs.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
                 <Label htmlFor="pk-classes">Number of classes</Label>
                 <Input id="pk-classes" type="number" min={1} value={f.class_limit} onChange={(e) => set('class_limit', e.target.value)} />
               </div>
               <div className="space-y-1.5 sm:col-span-2">
-                <Label>Subject</Label>
+                <Label>{f.live_program_id ? 'Subject of this class' : 'Subjects'}</Label>
                 <div className="grid max-h-40 gap-1.5 overflow-y-auto rounded-lg border border-border p-3 sm:grid-cols-2">
                   {parts.flatMap((p) =>
                     p.subjects.map((s) => {
@@ -212,12 +229,13 @@ function PackageForm({
                       return (
                         <label key={s.id} className="flex items-center gap-2 text-sm">
                           <input
-                            type="checkbox"
+                            type={f.live_program_id ? 'radio' : 'checkbox'}
+                            name="live-subject"
                             checked={on}
                             onChange={() =>
                               set(
                                 'exam_subject_ids',
-                                on ? f.exam_subject_ids.filter((id) => id !== s.id) : [...f.exam_subject_ids, s.id],
+                                f.live_program_id ? [s.id] : on ? f.exam_subject_ids.filter((id) => id !== s.id) : [...f.exam_subject_ids, s.id],
                               )
                             }
                           />
@@ -228,8 +246,8 @@ function PackageForm({
                   )}
                 </div>
                 <p className="text-xs text-muted">
-                  Live class is separate from Books and Question Bank. The learner requests this package, then you accept the payment
-                  before they can join.
+                  Pick the package name first, then one subject. The learner who enrolls that subject joins the classes you assign here.
+                  Enrolling more than one subject of the same package uses that package&apos;s waiver.
                 </p>
               </div>
             </>
@@ -530,9 +548,122 @@ function ClassPicker({ pkg, onDone }: { pkg: AccessPackageRecord; onDone: () => 
   );
 }
 
+function LiveProgramsPanel() {
+  const [rows, setRows] = useState<LiveProgramRecord[] | null>(null);
+  const [name, setName] = useState('');
+  const [waiver2, setWaiver2] = useState('10');
+  const [waiver3, setWaiver3] = useState('0');
+  const [waiver4, setWaiver4] = useState('0');
+  const [editing, setEditing] = useState<string | null>(null);
+  const [error, setError] = useState('');
+
+  async function load() {
+    const r = await apiFetch<{ data: LiveProgramRecord[] }>('/billing/admin/live-programs');
+    setRows(r.data);
+  }
+
+  useEffect(() => {
+    void load().catch((e) => setError(e instanceof Error ? e.message : 'Failed to load packages'));
+  }, []);
+
+  async function save() {
+    setError('');
+    const body = {
+      name,
+      waiver_2: Number(waiver2 || 0),
+      waiver_3: Number(waiver3 || 0),
+      waiver_4: Number(waiver4 || 0),
+      is_active: true,
+      sort_order: 100,
+    };
+    try {
+      await apiFetch(editing ? `/billing/admin/live-programs/${editing}` : '/billing/admin/live-programs', {
+        method: editing ? 'PUT' : 'POST',
+        body: JSON.stringify(body),
+      });
+      setName('');
+      setWaiver2('10');
+      setWaiver3('0');
+      setWaiver4('0');
+      setEditing(null);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed');
+    }
+  }
+
+  async function remove(row: LiveProgramRecord) {
+    if (!window.confirm(`Delete package "${row.name}"? Subject classes must be removed first.`)) return;
+    try {
+      await apiFetch(`/billing/admin/live-programs/${row.id}`, { method: 'DELETE' });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Delete failed');
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Package names</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-muted">
+          Add a package such as Flex or Quick Review. Then add one subject class under it. The waiver applies when a learner enrolls more
+          than one subject of that package in the same payment. One subject is never reduced.
+        </p>
+        {error && <Alert variant="error">{error}</Alert>}
+        <div className="grid gap-2 sm:grid-cols-5">
+          <Input placeholder="Package name" value={name} onChange={(e) => setName(e.target.value)} />
+          <Input type="number" min={0} max={90} value={waiver2} onChange={(e) => setWaiver2(e.target.value)} aria-label="2 subjects waiver %" />
+          <Input type="number" min={0} max={90} value={waiver3} onChange={(e) => setWaiver3(e.target.value)} aria-label="3 subjects waiver %" />
+          <Input type="number" min={0} max={90} value={waiver4} onChange={(e) => setWaiver4(e.target.value)} aria-label="4 subjects waiver %" />
+          <Button type="button" onClick={() => void save()} disabled={!name.trim()}>
+            {editing ? 'Update package' : 'Add package'}
+          </Button>
+        </div>
+        <p className="text-xs text-muted">Waiver percents: 2 subjects, 3 subjects, 4 subjects.</p>
+        <ul className="space-y-1 text-sm">
+          {(rows ?? []).map((row) => (
+            <li key={row.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2">
+              <span>
+                <span className="font-medium">{row.name}</span>
+                <span className="text-muted">
+                  {' '}
+                  · 2 subjects {row.waiver_2}% · 3 subjects {row.waiver_3}% · 4 subjects {row.waiver_4}%
+                </span>
+              </span>
+              <span className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setEditing(row.id);
+                    setName(row.name);
+                    setWaiver2(String(row.waiver_2));
+                    setWaiver3(String(row.waiver_3));
+                    setWaiver4(String(row.waiver_4));
+                  }}
+                >
+                  Edit
+                </Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => void remove(row)}>
+                  Delete
+                </Button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function PackageAdmin({ kind }: { kind: AccessPackageKind }) {
   const [items, setItems] = useState<AccessPackageRecord[] | null>(null);
   const [parts, setParts] = useState<ExamPrepPartOption[]>([]);
+  const [programs, setPrograms] = useState<LiveProgramRecord[]>([]);
   const [partFilter, setPartFilter] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -562,10 +693,15 @@ export function PackageAdmin({ kind }: { kind: AccessPackageKind }) {
     setClassesFor(null);
     setMessage('');
     void load();
-    if (kind === 'exam_prep') {
+    if (kind === 'exam_prep' || kind === 'live') {
       apiFetch<{ data: ExamPrepPartsResponse }>('/exam-prep/parts')
         .then((r) => setParts(r.data.parts))
         .catch(() => setParts([]));
+    }
+    if (kind === 'live') {
+      apiFetch<{ data: LiveProgramRecord[] }>('/billing/admin/live-programs')
+        .then((r) => setPrograms(r.data))
+        .catch(() => setPrograms([]));
     }
   }, [kind]);
 
@@ -590,7 +726,7 @@ export function PackageAdmin({ kind }: { kind: AccessPackageKind }) {
             ? 'Price each subject of a part (or a whole part) by duration. A buyer opens only the subjects they bought; they can tick several and pay once.'
             : kind === 'basic'
               ? 'Plans by month and amount. Users choose one; Schedule and Salary stay free.'
-              : 'Create a package, then assign its classes. Buyers join every class in the package until it expires.'}
+              : 'Add a package name, then a subject class under it. Assign that subject’s classes. A learner who enrolls the subject joins those classes. More than one subject in one payment uses the package waiver.'}
         </p>
         <div className="flex flex-wrap gap-2">
           {kind === 'exam_prep' && (
@@ -615,10 +751,12 @@ export function PackageAdmin({ kind }: { kind: AccessPackageKind }) {
             }}
           >
             <Plus className="h-4 w-4" />
-            New package
+            {kind === 'live' ? 'Add subject class' : 'New package'}
           </Button>
         </div>
       </div>
+
+      {kind === 'live' && <LiveProgramsPanel />}
 
       {kind === 'exam_prep' && parts.length > 1 && (
         <div className="inline-flex flex-wrap rounded-lg border border-border bg-background p-1" role="tablist">
@@ -661,6 +799,7 @@ export function PackageAdmin({ kind }: { kind: AccessPackageKind }) {
           kind={kind}
           initial={editing === 'new' ? undefined : editing}
           parts={parts}
+          programs={programs}
           defaultPartId={partFilter || undefined}
           onCancel={() => setEditing(null)}
           onSaved={() => {
@@ -690,7 +829,8 @@ export function PackageAdmin({ kind }: { kind: AccessPackageKind }) {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase text-muted">
               <tr>
-                <th className="px-3 py-2">Package</th>
+                <th className="px-3 py-2">{kind === 'live' ? 'Subject class' : 'Package'}</th>
+                {kind === 'live' && <th className="px-3 py-2">Package</th>}
                 {kind === 'exam_prep' && <th className="px-3 py-2">Part</th>}
                 {kind === 'exam_prep' && <th className="px-3 py-2">Covers</th>}
                 <th className="px-3 py-2">Duration</th>
@@ -707,7 +847,11 @@ export function PackageAdmin({ kind }: { kind: AccessPackageKind }) {
                   <td className="px-3 py-2">
                     <p className="font-medium">{p.name}</p>
                     {p.is_featured && <Badge className="mt-0.5">Popular</Badge>}
+                    {kind === 'live' && p.exam_subject_names?.[0] && (
+                      <p className="text-xs text-muted">{p.exam_subject_names.filter(Boolean).join(', ')}</p>
+                    )}
                   </td>
+                  {kind === 'live' && <td className="px-3 py-2">{p.live_program_name ?? '—'}</td>}
                   {kind === 'exam_prep' && <td className="px-3 py-2">{p.exam_part_name ?? '—'}</td>}
                   {kind === 'exam_prep' && (
                     <td className="px-3 py-2">

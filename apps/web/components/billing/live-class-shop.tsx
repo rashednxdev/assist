@@ -16,6 +16,7 @@ import { durationLabel } from '@/lib/billing-format';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert } from '@/components/ui/alert';
+import { PackageCopy } from '@/components/billing/package-copy';
 
 const MAX = 4;
 
@@ -78,8 +79,9 @@ function ProgramCard({
       <CardHeader>
         <CardTitle className="text-lg">{program.name}</CardTitle>
         {program.name_bn && <p className="text-sm text-muted">{program.name_bn}</p>}
+        {program.description ? <p className="whitespace-pre-line text-sm leading-relaxed">{program.description}</p> : null}
         <p className="text-sm text-muted">
-          Pick the subjects you want. One subject is the listed price.
+          Pick one or more subjects of this package. Subjects from another package are a separate purchase. One subject is the listed price.
           {program.waiver_2 > 0 ? ` Two subjects are ${program.waiver_2}% less.` : ''}
           {program.waiver_3 > 0 ? ` Three subjects are ${program.waiver_3}% less.` : ''}
           {program.waiver_4 > 0 ? ` Four subjects are ${program.waiver_4}% less.` : ''}
@@ -100,7 +102,7 @@ function ProgramCard({
                     disabled={owned || disabled || (!on && picked.length >= MAX)}
                     onChange={() => toggle(c.id)}
                   />
-                  <span className="min-w-0 flex-1">
+                    <span className="min-w-0 flex-1 space-y-2">
                     <span className="flex flex-wrap items-center gap-2">
                       <span className="font-medium">{subjectLabel(c)}</span>
                       <span className="text-sm text-muted">
@@ -108,7 +110,8 @@ function ProgramCard({
                       </span>
                       {owned && <span className="text-xs font-semibold text-emerald-700">Enrolled</span>}
                     </span>
-                    <span className="text-sm font-semibold">{c.price === 0 ? 'Free' : formatBdt(on ? (quote.priceById[c.id] ?? c.price) : c.price)}</span>
+                    <PackageCopy description={c.description} features={c.features} />
+                    <span className="block text-sm font-semibold">{c.price === 0 ? 'Free' : formatBdt(on ? (quote.priceById[c.id] ?? c.price) : c.price)}</span>
                   </span>
                 </label>
               </li>
@@ -157,8 +160,9 @@ export function LiveClassShop({ catalog }: { catalog: BillingCatalog }) {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {loose.map((p) => (
             <Card key={p.id}>
-              <CardHeader>
+              <CardHeader className="space-y-2">
                 <CardTitle className="text-lg">{p.name}</CardTitle>
+                <PackageCopy description={p.description} features={p.features} />
                 <p className="text-2xl font-bold">{p.price === 0 ? 'Free' : formatBdt(p.price)}</p>
               </CardHeader>
               <CardContent className="space-y-3">

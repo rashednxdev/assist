@@ -16,7 +16,6 @@ import {
 } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
 import * as papersService from './papers.service.js';
-import { getExamSubjectScopeForAuthUser } from '../users/subject-access.service.js';
 import { getExamPrepScope } from '../exam-prep/exam-prep.service.js';
 
 function isAdminUser(user: AuthRequest['user']): boolean {
@@ -58,7 +57,7 @@ export async function getPaperHandler(req: AuthRequest, res: Response): Promise<
 }
 
 export async function getPaperComposeHandler(req: AuthRequest, res: Response): Promise<void> {
-  const subjectScope = await getExamSubjectScopeForAuthUser(req.user);
+  const subjectScope = await getExamPrepScope(req.user, { paid: true });
   res.json({
     data: await papersService.getPaperCompose(String(req.params.id), req.user, subjectScope),
   });

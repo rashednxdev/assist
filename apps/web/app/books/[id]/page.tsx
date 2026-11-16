@@ -119,6 +119,16 @@ function BookDetailBody({
           <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Exam subjects
           </div>
+          {isAdmin && !book.is_published ? (
+            <p className="mb-2 text-sm text-amber-800">
+              This book is still a draft. Tag the enrolled subject, then Publish. Learners do not see drafts.
+            </p>
+          ) : null}
+          {isAdmin && book.is_published && subjects.length === 0 ? (
+            <p className="mb-2 text-sm text-amber-800">
+              No subject is tagged yet. Pick the subject whose label includes the right part, such as Part 2.
+            </p>
+          ) : null}
           {isAdmin ? (
             <BookSubjectTags
               bookId={bookId}

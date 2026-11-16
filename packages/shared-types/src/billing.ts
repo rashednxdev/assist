@@ -18,7 +18,7 @@ export const ACCESS_PACKAGE_KIND_LABELS: Record<AccessPackageKind, string> = {
 export const accessPackageInputSchema = z
   .object({
     kind: z.enum(ACCESS_PACKAGE_KINDS),
-    name: z.string().trim().min(1, 'Name is required').max(120),
+    name: z.string().trim().max(120).optional().or(z.literal('')),
     name_bn: z.string().trim().max(120).optional().or(z.literal('')),
     description: z.string().trim().max(2000).optional().or(z.literal('')),
     /** Exam Preparation: the exam part this price is for. With no subject = every subject of the part. */
@@ -47,15 +47,21 @@ export const accessPackageInputSchema = z
     if (d.kind !== 'exam_prep' && d.exam_part_id) {
       ctx.addIssue({ code: 'custom', path: ['exam_part_id'], message: 'Only Exam Preparation packages have an exam part' });
     }
-    if (d.kind === 'live' && d.class_limit == null) {
-      ctx.addIssue({ code: 'custom', path: ['class_limit'], message: 'Set how many live classes this package includes' });
+    if (d.kind !== 'live' && !d.name?.trim()) {
+      ctx.addIssue({ code: 'custom', path: ['name'], message: 'Name is required' });
     }
-    if (d.kind === 'live' && d.live_program_id && (d.exam_subject_ids?.length ?? 0) !== 1) {
+    if (d.kind === 'live' && !d.live_program_id) {
+      ctx.addIssue({ code: 'custom', path: ['live_program_id'], message: 'Create the live package first, then add one subject under it' });
+    }
+    if (d.kind === 'live' && (d.exam_subject_ids?.length ?? 0) !== 1) {
       ctx.addIssue({
         code: 'custom',
         path: ['exam_subject_ids'],
-        message: 'A subject class under a package covers exactly one subject',
+        message: 'Add one subject at a time',
       });
+    }
+    if (d.kind === 'live' && d.class_limit == null) {
+      ctx.addIssue({ code: 'custom', path: ['class_limit'], message: 'Set how many live classes this package includes' });
     }
     if (d.kind !== 'live' && d.live_program_id) {
       ctx.addIssue({ code: 'custom', path: ['live_program_id'], message: 'Only Live class packages belong to a live package' });
@@ -98,6 +104,7 @@ export interface BulkSubjectPackagesResult {
 export interface LiveClassBrief {
   id: string;
   topic: string;
+  details?: string;
   scheduled_at: string;
   status: string;
   video_platform: 'agora' | 'zoom';
@@ -387,7 +394,7 @@ export const submitBkashClaimSchema = z.object({
   payer_account: z
     .string()
     .trim()
-    .regex(/^(01[3-9]\d{8})?$/, 'Enter a valid mobile number')
+    .regex(/^(01[3-9]\d{8})?$/, 'bKash number must be 11 digits')
     .optional()
     .or(z.literal('')),
 });

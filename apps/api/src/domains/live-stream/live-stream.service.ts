@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import type {
   CreateLiveHostDto,
   CreateLiveStreamDto,
+  ScheduleSubjectClassDto,
   LiveClassAccessType,
   LiveClassPackageBrief,
   LiveHostListItem,
@@ -19,6 +20,7 @@ import type {
 import { cleanLiveStreamSlides, PAID_LIVE_CLASS_UNPAID_MESSAGE, LIVE_PACKAGE_REQUIRED_MESSAGE, cleanLiveStreamRecordedContents, normalizeLiveStreamPresentations, flattenLiveStreamSlides } from '@ibas/shared-types';
 import { loadEntitlementSnapshot } from '../billing/entitlements.service.js';
 import { livePackageBriefs } from '../billing/billing.service.js';
+import { AccessPackage } from '../billing/models/AccessPackage.model.js';
 import { LiveStream } from './models/LiveStream.model.js';
 import { LiveHost } from './models/LiveHost.model.js';
 import { LiveStreamInvite } from './models/LiveStreamInvite.model.js';
@@ -205,8 +207,7 @@ function paymentAccessFor(
   if (isPlatformAdmin(user) || isLearningHost(user)) return { payment_blocked: false as const };
   if (user.id === String(doc.host_user_id)) return { payment_blocked: false as const };
   if (classPackageIds(doc).length > 0) {
-    if (ownsClassPackage(doc, owned)) return { payment_blocked: false as const };
-    if (isPaidClass(doc) ? hasPaid : permissionStatus === 'permitted') return { payment_blocked: false as const };
+    if (ownsClassPackage(doc, owned) || permissionStatus === 'permitted') return { payment_blocked: false as const };
     return { payment_blocked: true as const, payment_required_message: LIVE_PACKAGE_REQUIRED_MESSAGE };
   }
   if (!isPaidClass(doc)) return { payment_blocked: false as const };
@@ -476,11 +477,17 @@ async function permissionFor(
   if (isPlatformAdmin(user) || isLearningHost(user)) {
     return { permission_status: 'permitted', can_join: true, can_host: true };
   }
-  // Buyers of any package this class belongs to may join and watch it.
+  const packaged = classPackageIds(doc).length > 0;
+  // A packaged class opens only for a subject the learner enrolled and an admin approved.
   if (ownsClassPackage(doc, owned)) {
     return { permission_status: 'permitted', can_join: true, can_host: false };
   }
-  // Paid users may join any paid live class without a per-class invite.
+  if (packaged) {
+    const invite = await LiveStreamInvite.findOne({ live_stream_id: sessionId, user_id: userId }).lean();
+    if (invite) return { permission_status: 'permitted', can_join: true, can_host: canHost };
+    return { permission_status: 'not_permitted', can_join: false, can_host: false };
+  }
+  // Paid users may join any paid live class that is not tied to a subject package.
   if (isPaidClass(doc) && hasPaid) {
     return { permission_status: 'permitted', can_join: true, can_host: false };
   }
@@ -887,6 +894,34 @@ export async function createLiveStream(dto: CreateLiveStreamDto, actorId: string
     user_type: 'admin',
     is_super_admin: true,
   });
+}
+
+/** Schedules the next class date for one subject of a live package, up to that subject’s class amount. */
+export async function scheduleSubjectClass(packageId: string, dto: ScheduleSubjectClassDto, actorId: string) {
+  if (!mongoose.isValidObjectId(packageId)) throw notFound('Subject not found');
+  const pkg = await AccessPackage.findOne({ _id: packageId, kind: 'live', is_deleted: false });
+  if (!pkg) throw notFound('Subject not found');
+  const subjectIds = [...new Set([...(pkg.exam_subject_ids ?? []).map(String), pkg.exam_subject_id ? String(pkg.exam_subject_id) : ''].filter(Boolean))];
+  if (subjectIds.length !== 1) throw badRequest('Add one subject to this package before scheduling classes.');
+  const limit = pkg.class_limit ?? 0;
+  if (limit < 1) throw badRequest('Set how many classes this subject includes.');
+  const scheduled = await LiveStream.countDocuments({ is_active: true, package_ids: pkg._id, status: { $ne: 'cancelled' } });
+  if (scheduled >= limit) throw badRequest(`This subject already has its ${limit} classes. Raise the class amount to add another date.`);
+  const created = await createLiveStream(
+    {
+      topic: dto.topic,
+      details: dto.details || undefined,
+      scheduled_at: dto.scheduled_at,
+      exam_subject_id: subjectIds[0],
+      access_type: 'paid',
+      video_platform: 'zoom',
+      auto_record_cloud: false,
+      ...(dto.host_user_id ? { host_user_id: dto.host_user_id } : {}),
+    },
+    actorId,
+  );
+  await LiveStream.updateOne({ _id: created.id }, { $addToSet: { package_ids: pkg._id } });
+  return created;
 }
 
 export async function updateLiveStream(id: string, dto: UpdateLiveStreamDto) {

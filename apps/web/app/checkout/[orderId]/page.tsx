@@ -110,6 +110,7 @@ export default function CheckoutPage() {
     if (trxId.trim().length < 4) return setError('Enter the bKash transaction ID');
     const sent = Number(amount);
     if (!Number.isFinite(sent) || sent <= 0) return setError('Enter the amount you sent');
+    if (sender.trim() && !/^01[3-9]\d{8}$/.test(sender.trim())) return setError('bKash number must be 11 digits');
     setBusy(true);
     try {
       const r = await apiFetch<{ data: PaymentOrderRecord }>(`/billing/orders/${params.orderId}/claim`, {
@@ -273,9 +274,12 @@ export default function CheckoutPage() {
             <input
               id="bk-amount"
               required
+              type="text"
               inputMode="decimal"
+              autoComplete="off"
+              enterKeyHint="done"
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1'))}
               placeholder={String(order.total)}
               className="w-full rounded-lg border-2 border-slate-200 px-3 py-2 outline-none focus:border-[#e2136e]"
             />
@@ -284,9 +288,12 @@ export default function CheckoutPage() {
             Your bKash number <span className="font-normal text-muted">(optional)</span>
             <input
               id="bk-from"
-              inputMode="tel"
+              type="tel"
+              inputMode="numeric"
+              autoComplete="tel"
+              maxLength={11}
               value={sender}
-              onChange={(e) => setSender(e.target.value)}
+              onChange={(e) => setSender(e.target.value.replace(/\D/g, '').slice(0, 11))}
               placeholder="01XXXXXXXXX"
               className="w-full rounded-lg border-2 border-slate-200 px-3 py-2 outline-none focus:border-[#e2136e]"
             />

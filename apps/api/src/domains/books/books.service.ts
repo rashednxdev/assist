@@ -37,6 +37,7 @@ import { ExamSubject } from '../exams/models/ExamSubject.model.js';
 import { ExamPart } from '../exams/models/ExamPart.model.js';
 import { ExamName } from '../exams/models/ExamName.model.js';
 import { cachedBooksList } from '../content-cache/content-cache.service.js';
+import { setCached } from '../content-cache/cache-store.js';
 import {
   subjectObjectIds,
   type ExamSubjectScope,
@@ -242,6 +243,7 @@ export async function deleteBook(id: string) {
   if (!book) throw notFound('Book not found');
   book.is_active = false;
   await book.save();
+  refreshBooksListCache();
   return { deleted: true };
 }
 
@@ -370,6 +372,13 @@ async function listBooksFromDb(filters: { book_type_id?: string; q?: string; is_
   return attachSubjectsToBooks(books.map((b) => serializeBook(b, typeMap[String(b.book_type_id)])));
 }
 
+/** Rewrite the book snapshot after publish or a subject tag so the next list is current. */
+function refreshBooksListCache(): void {
+  void listBooksFromDb({})
+    .then((data) => setCached('books.list', data))
+    .catch(() => undefined);
+}
+
 function filterCachedBooks(
   items: BookListItem[],
   filters: { book_type_id?: string; q?: string; is_published?: boolean },
@@ -410,11 +419,8 @@ export async function listBooks(
   if (!options?.bypassCache) {
     const cached = cachedBooksList<BookListItem>();
     if (cached) {
-      // Cache may predate subject tags — refresh attachments when missing.
-      const needsSubjects = cached.some((b) => !Array.isArray(b.subjects));
-      books = needsSubjects
-        ? await attachSubjectsToBooks(filterCachedBooks(cached, filters))
-        : filterCachedBooks(cached, filters);
+      // Book rows stay cached. Subject tags are read live so a new Part 2 tag shows at once.
+      books = await attachSubjectsToBooks(filterCachedBooks(cached, filters));
       return applySubjectScopeAndSort(books, subjectScope, filters.exam_subject_id);
     }
   }
@@ -482,6 +488,7 @@ export async function addBookSubjectLink(bookId: string, dto: BookSubjectLinkInp
       existing.sort_order = dto.sort_order;
       await existing.save();
     }
+    refreshBooksListCache();
     return {
       id: String(subject._id),
       name: subject.name,
@@ -511,6 +518,7 @@ export async function addBookSubjectLink(bookId: string, dto: BookSubjectLinkInp
     inactive.is_active = true;
     inactive.sort_order = sortOrder;
     await inactive.save();
+    refreshBooksListCache();
     return {
       id: String(subject._id),
       name: subject.name,
@@ -526,6 +534,7 @@ export async function addBookSubjectLink(bookId: string, dto: BookSubjectLinkInp
     is_active: true,
   });
 
+  refreshBooksListCache();
   return {
     id: String(subject._id),
     name: subject.name,
@@ -547,6 +556,7 @@ export async function updateBookSubjectLinkSort(
   if (!link) throw notFound('Book subject link not found');
   link.sort_order = dto.sort_order;
   await link.save();
+  refreshBooksListCache();
   const subject = await ExamSubject.findById(examSubjectId);
   return {
     id: String(examSubjectId),
@@ -565,6 +575,7 @@ export async function removeBookSubjectLink(bookId: string, examSubjectId: strin
   if (!link) throw notFound('Book subject link not found');
   link.is_active = false;
   await link.save();
+  refreshBooksListCache();
   return { deleted: true };
 }
 
@@ -588,6 +599,63 @@ async function assertBookReadable(
     if (!ok) throw forbidden('This book is not available for your allowed subjects.');
   }
   return book;
+}
+
+export type BookReadGuard = { subjectScope?: ExamSubjectScope; requirePublished?: boolean };
+
+/** Block a direct book, chapter, topic, or regulation read outside the learner's subjects. */
+export async function guardBookContent(
+  target: {
+    bookId?: string;
+    partId?: string;
+    chapterId?: string;
+    topicId?: string;
+    subTopicId?: string;
+    regulationId?: string;
+  },
+  guard?: BookReadGuard,
+): Promise<void> {
+  const scope = guard?.subjectScope ?? { mode: 'all' as const };
+  if (scope.mode === 'all' && !guard?.requirePublished) return;
+
+  let bookId = target.bookId;
+  if (!bookId && target.partId) {
+    const part = await BookPart.findById(target.partId).select('book_info_id');
+    if (!part) throw notFound('Part not found');
+    bookId = String(part.book_info_id);
+  }
+  if (!bookId && target.chapterId) {
+    const chapter = await BookChapter.findById(target.chapterId).select('book_info_id');
+    if (!chapter) throw notFound('Chapter not found');
+    bookId = String(chapter.book_info_id);
+  }
+  if (!bookId && target.topicId) {
+    const topic = await BookTopic.findById(target.topicId).select('book_chapter_id');
+    if (!topic) throw notFound('Topic not found');
+    const chapter = await BookChapter.findById(topic.book_chapter_id).select('book_info_id');
+    if (!chapter) throw notFound('Chapter not found');
+    bookId = String(chapter.book_info_id);
+  }
+  if (!bookId && target.subTopicId) {
+    const sub = await BookSubTopic.findById(target.subTopicId).select('book_topic_id');
+    if (!sub) throw notFound('Sub-topic not found');
+    const topic = await BookTopic.findById(sub.book_topic_id).select('book_chapter_id');
+    if (!topic) throw notFound('Topic not found');
+    const chapter = await BookChapter.findById(topic.book_chapter_id).select('book_info_id');
+    if (!chapter) throw notFound('Chapter not found');
+    bookId = String(chapter.book_info_id);
+  }
+  if (!bookId && target.regulationId) {
+    const reg = await Regulation.findById(target.regulationId).select('book_info_id');
+    if (!reg) throw notFound('Regulation not found');
+    if (!reg.book_info_id) {
+      if (scope.mode !== 'all') throw forbidden('This book is not available for your allowed subjects.');
+      return;
+    }
+    bookId = String(reg.book_info_id);
+  }
+  if (!bookId) throw notFound('Book not found');
+  await assertBookReadable(bookId, guard);
 }
 
 export async function getBookById(
@@ -717,6 +785,7 @@ export async function createBook(dto: CreateBookDto) {
     is_published: false,
     tags: dto.tags ?? [],
   });
+  refreshBooksListCache();
   return serializeBook(book, bookType.name);
 }
 
@@ -726,6 +795,7 @@ export async function publishBook(id: string) {
   if (!book || !book.is_active) throw notFound('Book not found');
   book.is_published = true;
   await book.save();
+  refreshBooksListCache();
   const bookType = await BookType.findById(book.book_type_id);
   return serializeBook(book, bookType?.name);
 }
@@ -736,6 +806,7 @@ export async function unpublishBook(id: string) {
   if (!book || !book.is_active) throw notFound('Book not found');
   book.is_published = false;
   await book.save();
+  refreshBooksListCache();
   const bookType = await BookType.findById(book.book_type_id);
   return serializeBook(book, bookType?.name);
 }
@@ -766,6 +837,7 @@ export async function updateBook(id: string, dto: UpdateBookDto) {
     ...(dto.superseded_by !== undefined && { superseded_by: new mongoose.Types.ObjectId(dto.superseded_by) }),
   });
   await book.save();
+  refreshBooksListCache();
   const bookType = await BookType.findById(book.book_type_id);
   return serializeBook(book, bookType?.name);
 }
@@ -1397,14 +1469,27 @@ export async function deleteSubTopic(subTopicId: string) {
   return { deleted: true };
 }
 
-export async function searchRegulations(filters: {
-  q?: string;
-  book_id?: string;
-  regulation_type?: string;
-  payment_related?: boolean;
-  limit: number;
-}) {
+export async function searchRegulations(
+  filters: {
+    q?: string;
+    book_id?: string;
+    regulation_type?: string;
+    payment_related?: boolean;
+    limit: number;
+  },
+  guard?: BookReadGuard,
+) {
   const query: Record<string, unknown> = { is_active: true };
+  const scope = guard?.subjectScope ?? { mode: 'all' as const };
+  if (scope.mode !== 'all') {
+    const subjectIds = subjectObjectIds(scope);
+    if (!subjectIds || subjectIds.length === 0) return [];
+    const links = await BookSubjectLink.find({ exam_subject_id: { $in: subjectIds }, is_active: true }).select('book_info_id');
+    const bookIds = links.map((l) => l.book_info_id);
+    if (bookIds.length === 0) return [];
+    if (filters.book_id && !bookIds.some((id) => String(id) === filters.book_id)) return [];
+    if (!filters.book_id) query.book_info_id = { $in: bookIds };
+  }
   if (filters.book_id) query.book_info_id = filters.book_id;
   if (filters.regulation_type) query.regulation_type = filters.regulation_type;
   if (filters.payment_related !== undefined) query.payment_related = filters.payment_related;

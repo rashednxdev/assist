@@ -48,6 +48,7 @@ import { User } from '../users/models/User.model.js';
 import { UserModuleAccess } from '../users/models/UserModuleAccess.model.js';
 import { AccessPackage, type IAccessPackage } from './models/AccessPackage.model.js';
 import { LiveProgram } from './models/LiveProgram.model.js';
+import { invalidateEnrolledScope } from '../exam-prep/exam-prep.service.js';
 import { BillingSettings } from './models/BillingSettings.model.js';
 import { PaymentOrder, type IPaymentOrder } from './models/PaymentOrder.model.js';
 import { UserEntitlement, type IUserEntitlement } from './models/UserEntitlement.model.js';
@@ -167,10 +168,11 @@ async function primaryPartLabel(): Promise<string> {
   return primary ? partLabel(primary, rows) : 'Part 1';
 }
 
-function briefClass(doc: { _id: unknown; topic: string; scheduled_at: Date; status: string; video_platform?: string }): LiveClassBrief {
+function briefClass(doc: { _id: unknown; topic: string; details?: string; scheduled_at: Date; status: string; video_platform?: string }): LiveClassBrief {
   return {
     id: String(doc._id),
     topic: doc.topic,
+    details: doc.details || undefined,
     scheduled_at: doc.scheduled_at.toISOString(),
     status: doc.status,
     video_platform: 'zoom',
@@ -235,7 +237,7 @@ export async function listPackagesAdmin(kind?: string): Promise<AccessPackageRec
   return withProgramNames(
     docs.map((d) => ({
       ...toPackageRecord(d, names, legacyPart),
-      ...(d.kind === 'live' ? { class_count: d.class_limit ?? counts.get(String(d._id)) ?? 0 } : {}),
+      ...(d.kind === 'live' ? { class_count: counts.get(String(d._id)) ?? 0 } : {}),
       sold_count: soldMap.get(String(d._id)) ?? 0,
     })),
   );
@@ -268,10 +270,19 @@ async function parsePackage(body: unknown) {
   }
   const programId = d.kind === 'live' && d.live_program_id ? d.live_program_id : null;
   if (programId && !(await LiveProgram.exists({ _id: programId }))) throw badRequest('Live package not found');
+  let name = d.name?.trim() || '';
+  let nameBn = d.name_bn || undefined;
+  if (d.kind === 'live' && requestedIds.length === 1) {
+    const subject = await ExamSubject.findById(requestedIds[0]).select('name name_bn').lean();
+    if (!subject) throw badRequest('Exam subject not found');
+    if (!name) name = subject.name;
+    if (!nameBn && subject.name_bn) nameBn = subject.name_bn;
+  }
+  if (!name) throw badRequest('Name is required');
   return {
     kind: d.kind,
-    name: d.name,
-    name_bn: d.name_bn || undefined,
+    name,
+    name_bn: nameBn,
     description: d.description || undefined,
     exam_part_id: partId,
     exam_subject_id: subjectId,
@@ -354,8 +365,22 @@ export async function bulkSubjectPackages(body: unknown, userId: string): Promis
   return result;
 }
 
+async function assertUniqueLiveSubject(programId: string, subjectId: string, exceptId?: string): Promise<void> {
+  const existing = await AccessPackage.exists({
+    kind: 'live',
+    is_deleted: false,
+    live_program_id: programId,
+    exam_subject_ids: subjectId,
+    ...(exceptId ? { _id: { $ne: exceptId } } : {}),
+  });
+  if (existing) throw badRequest('This subject is already under the package. Add a different subject.');
+}
+
 export async function createPackage(body: unknown, userId: string): Promise<AccessPackageRecord> {
   const data = await parsePackage(body);
+  if (data.kind === 'live' && data.live_program_id && data.exam_subject_id) {
+    await assertUniqueLiveSubject(String(data.live_program_id), String(data.exam_subject_id));
+  }
   const doc = await AccessPackage.create({ ...data, created_by: userId, updated_by: userId });
   return recordFor(doc);
 }
@@ -364,6 +389,9 @@ export async function updatePackage(id: string, body: unknown, userId: string): 
   const doc = await loadPackage(id);
   const data = await parsePackage(body);
   if (data.kind !== doc.kind) throw badRequest('The package type cannot change after creation');
+  if (data.kind === 'live' && data.live_program_id && data.exam_subject_id) {
+    await assertUniqueLiveSubject(String(data.live_program_id), String(data.exam_subject_id), id);
+  }
   doc.set({ ...data, updated_by: userId });
   await doc.save();
   return recordFor(doc);
@@ -387,7 +415,7 @@ export async function deletePackage(id: string): Promise<{ archived: boolean }> 
 export async function packageClasses(id: string): Promise<LiveClassBrief[]> {
   const doc = await loadPackage(id);
   const rows = await LiveStream.find({ is_active: true, package_ids: doc._id })
-    .select('topic scheduled_at status video_platform')
+    .select('topic details scheduled_at status video_platform')
     .sort({ scheduled_at: 1 })
     .lean();
   return rows.map(briefClass);
@@ -399,23 +427,34 @@ export async function setPackageClasses(id: string, body: unknown): Promise<Live
   const parsed = setPackageClassesSchema.safeParse(body);
   if (!parsed.success) throw badRequest(zodMessage(parsed.error));
   const ids = [...new Set(parsed.data.class_ids)].map((c) => new mongoose.Types.ObjectId(c));
+  const subjectId = subjectIdsOf(doc)[0];
+  if (subjectId && ids.length) {
+    const classes = await LiveStream.find({ _id: { $in: ids }, is_active: true }).select('exam_subject_id').lean();
+    if (classes.some((c) => !c.exam_subject_id || String(c.exam_subject_id) !== subjectId)) {
+      throw badRequest('Only classes of this subject can be added.');
+    }
+  }
   await LiveStream.updateMany({ package_ids: doc._id, _id: { $nin: ids } }, { $pull: { package_ids: doc._id } });
   if (ids.length) await LiveStream.updateMany({ _id: { $in: ids }, is_active: true }, { $addToSet: { package_ids: doc._id } });
   return packageClasses(id);
 }
 
 /** Classes an admin can put in a package: upcoming plus the last 60 days. */
-export async function liveClassOptions(): Promise<Array<LiveClassBrief & { package_ids: string[] }>> {
+export async function liveClassOptions(): Promise<Array<LiveClassBrief & { package_ids: string[]; exam_subject_id?: string }>> {
   const rows = await LiveStream.find({
     is_active: true,
     status: { $ne: 'cancelled' },
     scheduled_at: { $gte: new Date(Date.now() - 60 * DAY_MS) },
   })
-    .select('topic scheduled_at status video_platform package_ids')
+    .select('topic scheduled_at status video_platform package_ids exam_subject_id')
     .sort({ scheduled_at: 1 })
     .limit(300)
     .lean();
-  return rows.map((r) => ({ ...briefClass(r), package_ids: (r.package_ids ?? []).map(String) }));
+  return rows.map((r) => ({
+    ...briefClass(r),
+    package_ids: (r.package_ids ?? []).map(String),
+    exam_subject_id: r.exam_subject_id ? String(r.exam_subject_id) : undefined,
+  }));
 }
 
 export async function subjectOptions(): Promise<Array<{ id: string; name: string; group: string; exam_part_id: string }>> {
@@ -754,6 +793,7 @@ async function fulfil(o: IPaymentOrder, opts: { notify?: boolean } = {}): Promis
     starts_at: o.access_starts_at,
     ends_at: o.access_ends_at,
   });
+  if (o.kind === 'exam_prep') invalidateEnrolledScope(String(o.user_id));
   await o.save();
   if (opts.notify === false) return;
   const what = o.kind === 'live' ? `live class package "${o.package_name}"` : `${ACCESS_PACKAGE_KIND_LABELS[o.kind]} (${o.package_name})`;
@@ -1138,6 +1178,13 @@ export async function createCart(user: AuthUser, body: unknown): Promise<CartRec
   }
   for (const pkg of pkgs) await assertSubjectsAvailable(user.id, pkg);
   const ordered = ids.map((id) => pkgs.find((p) => String(p._id) === id)!);
+  const liveInCart = ordered.filter((p) => p.kind === 'live');
+  if (liveInCart.length > 1) {
+    const programs = new Set(liveInCart.map((p) => (p.live_program_id ? String(p.live_program_id) : '')));
+    if (programs.size !== 1 || programs.has('')) {
+      throw badRequest('Subjects from different live packages must be purchased separately.');
+    }
+  }
   const names = await scopeNames(ordered);
   const keys = new Set<string>();
   for (const p of ordered) {
@@ -1409,6 +1456,7 @@ export async function revokeEntitlementForOrder(orderId: string, note: string | 
   e.is_revoked = true;
   e.revoked_note = note?.slice(0, 300) || undefined;
   await e.save();
+  if (e.kind === 'exam_prep') invalidateEnrolledScope(String(e.user_id));
 }
 
 /* --------------------------------- live class --------------------------------- */

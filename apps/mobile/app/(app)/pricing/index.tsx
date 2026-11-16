@@ -84,12 +84,6 @@ function PackageCard({
       <Text style={styles.cardTitle}>{pkg.name}</Text>
       {pkg.name_bn ? <Text style={styles.cardTitleBn}>{pkg.name_bn}</Text> : null}
 
-      <View style={styles.priceRow}>
-        <Text style={styles.price}>{pkg.price === 0 ? 'Free' : formatBdt(pkg.price)}</Text>
-        {pkg.compare_at_price ? <Text style={styles.comparePrice}>{formatBdt(pkg.compare_at_price)}</Text> : null}
-        <Text style={styles.per}>/ {durationLabel(pkg.duration_days)}</Text>
-      </View>
-
       {pkg.description ? <Text style={styles.description}>{pkg.description}</Text> : null}
 
       {pkg.features.length > 0 ? (
@@ -102,6 +96,12 @@ function PackageCard({
           ))}
         </View>
       ) : null}
+
+      <View style={styles.priceRow}>
+        <Text style={styles.price}>{pkg.price === 0 ? 'Free' : formatBdt(pkg.price)}</Text>
+        {pkg.compare_at_price ? <Text style={styles.comparePrice}>{formatBdt(pkg.compare_at_price)}</Text> : null}
+        <Text style={styles.per}>/ {durationLabel(pkg.duration_days)}</Text>
+      </View>
 
       {pkg.kind === 'live' ? (
         <View style={styles.liveBox}>

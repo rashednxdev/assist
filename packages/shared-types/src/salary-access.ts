@@ -654,7 +654,7 @@ export interface SalaryContactsRecord {
 }
 
 /** Employees one user can keep in the office staff arrear bill (active and trashed). */
-export const SALARY_MAX_STAFF = 200;
+export const SALARY_MAX_STAFF = 300;
 /** Offices a user prepares staff arrear bills for besides their own; not their registered office. */
 export const SALARY_MAX_STAFF_OFFICES = 20;
 

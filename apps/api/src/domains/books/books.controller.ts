@@ -22,8 +22,18 @@ import {
   updateBookSubjectLinkSchema,
 } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
-import { getExamSubjectScopeForAuthUser } from '../users/subject-access.service.js';
+import { getExamPrepScope } from '../exam-prep/exam-prep.service.js';
 import * as booksService from './books.service.js';
+
+async function bookReadGuard(req: AuthRequest) {
+  const user = req.user;
+  const isAdmin =
+    Boolean(user?.is_super_admin) || user?.user_type === 'system_admin' || user?.user_type === 'admin';
+  return {
+    subjectScope: await getExamPrepScope(user),
+    requirePublished: !isAdmin,
+  };
+}
 
 export async function listBookTypesHandler(_req: AuthRequest, res: Response): Promise<void> {
   const data = await booksService.listBookTypes();
@@ -57,7 +67,7 @@ export async function listBooksHandler(req: AuthRequest, res: Response): Promise
     Boolean(user?.is_super_admin) ||
     user?.user_type === 'system_admin' ||
     user?.user_type === 'admin';
-  const subjectScope = await getExamSubjectScopeForAuthUser(user);
+  const subjectScope = await getExamPrepScope(user);
   // Non-admins (e.g. mobile Book library) only ever see published books, scoped to their subjects.
   const data = await booksService.listBooks(
     { book_type_id, q, exam_subject_id, ...(isAdmin ? {} : { is_published: true }) },
@@ -67,12 +77,13 @@ export async function listBooksHandler(req: AuthRequest, res: Response): Promise
 }
 
 export async function listBookSubjectCatalogHandler(req: AuthRequest, res: Response): Promise<void> {
-  const subjectScope = await getExamSubjectScopeForAuthUser(req.user);
+  const subjectScope = await getExamPrepScope(req.user);
   const data = await booksService.listBookSubjectCatalog(subjectScope);
   res.json({ data });
 }
 
 export async function listBookSubjectLinksHandler(req: AuthRequest, res: Response): Promise<void> {
+  await booksService.guardBookContent({ bookId: String(req.params.id) }, await bookReadGuard(req));
   const data = await booksService.listBookSubjectLinks(String(req.params.id));
   res.json({ data });
 }
@@ -117,7 +128,7 @@ export async function getBookHandler(req: AuthRequest, res: Response): Promise<v
     Boolean(user?.is_super_admin) ||
     user?.user_type === 'system_admin' ||
     user?.user_type === 'admin';
-  const subjectScope = await getExamSubjectScopeForAuthUser(user);
+  const subjectScope = await getExamPrepScope(user);
   const data = await booksService.getBookById(String(req.params.id), {
     subjectScope,
     requirePublished: !isAdmin,
@@ -127,17 +138,24 @@ export async function getBookHandler(req: AuthRequest, res: Response): Promise<v
 
 export async function getBookTreeHandler(req: AuthRequest, res: Response): Promise<void> {
   const { depth } = bookTreeQuerySchema.parse(req.query);
+  await booksService.guardBookContent({ bookId: String(req.params.id) }, await bookReadGuard(req));
   const data = await booksService.getBookTree(String(req.params.id), depth);
   res.json({ data });
 }
 
 export async function getBookChildrenHandler(req: AuthRequest, res: Response): Promise<void> {
   const { type, id } = bookChildrenQuerySchema.parse(req.query);
+  const guard = await bookReadGuard(req);
+  await booksService.guardBookContent(
+    type === 'part' ? { partId: id } : type === 'chapter' ? { chapterId: id } : { topicId: id },
+    guard,
+  );
   const data = await booksService.getBookChildren(type, id);
   res.json({ data });
 }
 
 export async function getTopicHandler(req: AuthRequest, res: Response): Promise<void> {
+  await booksService.guardBookContent({ topicId: String(req.params.topicId) }, await bookReadGuard(req));
   const data = await booksService.getTopicDetail(String(req.params.topicId));
   res.json({ data });
 }
@@ -160,21 +178,25 @@ export async function deleteBookHandler(req: AuthRequest, res: Response): Promis
 }
 
 export async function listChaptersHandler(req: AuthRequest, res: Response): Promise<void> {
+  await booksService.guardBookContent({ bookId: String(req.params.id) }, await bookReadGuard(req));
   const data = await booksService.listChapters(String(req.params.id));
   res.json({ data });
 }
 
 export async function getBookReaderOutlineHandler(req: AuthRequest, res: Response): Promise<void> {
+  await booksService.guardBookContent({ bookId: String(req.params.id) }, await bookReadGuard(req));
   const data = await booksService.getBookReaderOutline(String(req.params.id));
   res.json({ data });
 }
 
 export async function getBookReaderFullHandler(req: AuthRequest, res: Response): Promise<void> {
+  await booksService.guardBookContent({ bookId: String(req.params.id) }, await bookReadGuard(req));
   const data = await booksService.getBookReaderFull(String(req.params.id));
   res.json({ data });
 }
 
 export async function getChapterHandler(req: AuthRequest, res: Response): Promise<void> {
+  await booksService.guardBookContent({ chapterId: String(req.params.chapterId) }, await bookReadGuard(req));
   const data = await booksService.getChapterById(String(req.params.chapterId));
   res.json({ data });
 }
@@ -189,12 +211,14 @@ function pageQuery(req: AuthRequest) {
 
 export async function listChapterQuestionsHandler(req: AuthRequest, res: Response): Promise<void> {
   const { limit, offset } = pageQuery(req);
+  await booksService.guardBookContent({ chapterId: String(req.params.chapterId) }, await bookReadGuard(req));
   const { items, total } = await booksService.listChapterQuestions(String(req.params.chapterId), offset, limit);
   res.json({ data: items, meta: { total, limit, offset, has_more: offset + items.length < total } });
 }
 
 export async function listBookQuestionsHandler(req: AuthRequest, res: Response): Promise<void> {
   const { limit, offset } = pageQuery(req);
+  await booksService.guardBookContent({ bookId: String(req.params.id) }, await bookReadGuard(req));
   const chapterId = typeof req.query.chapter_id === 'string' ? req.query.chapter_id : undefined;
   const topicId = typeof req.query.topic_id === 'string' ? req.query.topic_id : undefined;
   const { items, total } = await booksService.listBookQuestions(String(req.params.id), {
@@ -234,6 +258,7 @@ export async function deleteTopicHandler(req: AuthRequest, res: Response): Promi
 }
 
 export async function getSubTopicHandler(req: AuthRequest, res: Response): Promise<void> {
+  await booksService.guardBookContent({ subTopicId: String(req.params.subTopicId) }, await bookReadGuard(req));
   const data = await booksService.getSubTopicById(String(req.params.subTopicId));
   res.json({ data });
 }
@@ -250,6 +275,7 @@ export async function deleteSubTopicHandler(req: AuthRequest, res: Response): Pr
 }
 
 export async function listBookRegulationsHandler(req: AuthRequest, res: Response): Promise<void> {
+  await booksService.guardBookContent({ bookId: String(req.params.id) }, await bookReadGuard(req));
   const data = await booksService.listRegulationsForBook(String(req.params.id));
   res.json({ data });
 }
@@ -302,16 +328,18 @@ export async function deleteProcessHandler(req: AuthRequest, res: Response): Pro
 
 export async function searchRegulationsHandler(req: AuthRequest, res: Response): Promise<void> {
   const filters = regulationSearchSchema.parse(req.query);
-  const data = await booksService.searchRegulations(filters);
+  const data = await booksService.searchRegulations(filters, await bookReadGuard(req));
   res.json({ data });
 }
 
 export async function getRegulationHandler(req: AuthRequest, res: Response): Promise<void> {
+  await booksService.guardBookContent({ regulationId: String(req.params.id) }, await bookReadGuard(req));
   const data = await booksService.getRegulationById(String(req.params.id));
   res.json({ data });
 }
 
 export async function listAmendmentsHandler(req: AuthRequest, res: Response): Promise<void> {
+  await booksService.guardBookContent({ regulationId: String(req.params.id) }, await bookReadGuard(req));
   const data = await booksService.listAmendments(String(req.params.id));
   res.json({ data });
 }

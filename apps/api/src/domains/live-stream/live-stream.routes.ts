@@ -8,6 +8,7 @@ import {
   addInvitesHandler,
   createLiveHostHandler,
   createLiveStreamHandler,
+  scheduleSubjectClassHandler,
   deleteLiveHostHandler,
   deleteLiveStreamHandler,
   endLiveStreamHandler,
@@ -46,6 +47,7 @@ liveStreamRouter.post('/admin/hosts', requireAdmin, asyncHandler(createLiveHostH
 liveStreamRouter.patch('/admin/hosts/:id', requireAdmin, asyncHandler(updateLiveHostHandler));
 liveStreamRouter.delete('/admin/hosts/:id', requireAdmin, asyncHandler(deleteLiveHostHandler));
 liveStreamRouter.get('/admin/host-options', requireAdmin, asyncHandler(listLiveHostOptionsHandler));
+liveStreamRouter.post('/admin/packages/:packageId/classes', requireAdmin, asyncHandler(scheduleSubjectClassHandler));
 liveStreamRouter.post('/', requireAdmin, asyncHandler(createLiveStreamHandler));
 liveStreamRouter.patch('/:id', requireAdmin, asyncHandler(updateLiveStreamHandler));
 liveStreamRouter.delete('/:id', requireAdmin, asyncHandler(deleteLiveStreamHandler));

@@ -7,14 +7,13 @@ import { ExamPart } from '../exams/models/ExamPart.model.js';
 import { ExamSubject } from '../exams/models/ExamSubject.model.js';
 import { UserEntitlement } from '../billing/models/UserEntitlement.model.js';
 import { User } from '../users/models/User.model.js';
-import { scopeFromUserFields, type ExamSubjectScope } from '../users/subject-access.service.js';
+import { type ExamSubjectScope } from '../users/subject-access.service.js';
 
 /*
- * Exam Preparation runs per exam part. A learner picks a part; every learning module then shows
- * that part's subjects. Paid modules narrow further to the subjects the learner bought: a subject
- * package opens one subject, a part package every subject of the part, and grants made before parts
- * existed (no part on the entitlement) open all of Part 1. Part 1 also keeps content that was never
- * tagged to a subject, so existing material stays where it was.
+ * A learner sees only the subjects on their active Exam Preparation enrollment.
+ * One subject package opens that subject. A whole-part package opens every subject of that part.
+ * Older grants with no part and no subject still open the primary part. Content with no subject
+ * tag stays hidden from learners, so a single-subject enrollment does not pull in the rest of the catalog.
  */
 
 export interface PartRow {
@@ -129,7 +128,7 @@ function later(a: Date | null | undefined, b: Date | null): Date | null {
 export async function ownedExamPrep(
   userId: string,
   rows: PartRow[],
-  legacyPaid: boolean,
+  _legacyPaid: boolean,
   now = new Date(),
 ): Promise<OwnedExamPrep> {
   const owned: OwnedExamPrep = { wholeParts: new Map(), subjects: new Map() };
@@ -154,7 +153,6 @@ export async function ownedExamPrep(
       owned.wholeParts.set(pid, later(owned.wholeParts.get(pid), e.ends_at));
     }
   }
-  if (legacyPaid) for (const pid of primaryIds) owned.wholeParts.set(pid, null);
   return owned;
 }
 
@@ -174,55 +172,78 @@ function selectedPart(rows: PartRow[], partId: unknown): PartRow | undefined {
   return rows.find((r) => r.id === id) ?? rows.find((r) => r.is_primary) ?? rows[0];
 }
 
-function scopeFor(
-  user: ScopeUser,
-  rows: PartRow[],
-  part: PartRow,
-  owned: OwnedExamPrep | null,
-): ExamSubjectScope {
-  const base = scopeFromUserFields({
-    ...user,
-    exam_subject_ids: (user.exam_subject_ids ?? []).map(String),
-  });
-  if (base.mode === 'none') return base;
-  let ids = part.subjects.map((s) => s.id);
-  let includeUntagged = part.is_primary;
-  if (owned && !owned.wholeParts.has(part.id)) {
-    ids = ids.filter((id) => owned.subjects.has(id));
-    includeUntagged = includeUntagged && ids.length > 0;
-  }
-  if (base.mode === 'subset') {
-    const allow = new Set(base.ids);
-    ids = ids.filter((id) => allow.has(id));
-    includeUntagged = false;
-  }
-  if (includeUntagged) {
-    const allowed = new Set(ids);
-    const everySubject = rows.every((r) => r.subjects.every((s) => allowed.has(s.id)));
-    if (everySubject) return { mode: 'all' };
-  }
-  if (ids.length === 0 && !includeUntagged) return { mode: 'none' };
-  return { mode: 'subset', ids, includeUntagged };
+const SCOPE_CACHE_MS = 20_000;
+const scopeCache = new Map<string, { at: number; scope: ExamSubjectScope }>();
+
+export function invalidateEnrolledScope(userId: string): void {
+  scopeCache.delete(String(userId));
 }
 
 /**
- * Subjects a learner sees in Exam Preparation content. `paid` modules (Question Bank, Marathon,
- * Exam Papers…) are limited to what the learner bought; free ones (Question of the Day) follow the
- * selected part only. Admins see everything.
+ * Subjects on the learner's active Exam Preparation enrollments.
+ * One indexed entitlement read; a whole part expands from the cached part list.
+ * Content with no subject tag is not included.
+ */
+export async function enrolledSubjectScope(userId: string): Promise<ExamSubjectScope> {
+  const hit = scopeCache.get(userId);
+  if (hit && Date.now() - hit.at < SCOPE_CACHE_MS) return hit.scope;
+  const now = new Date();
+  const [user, ents] = await Promise.all([
+    User.findById(userId).select('all_exam_subjects exam_subject_ids').lean<{
+      all_exam_subjects?: boolean;
+      exam_subject_ids?: unknown[];
+    }>(),
+    UserEntitlement.find({
+      user_id: userId,
+      kind: 'exam_prep',
+      is_revoked: false,
+      starts_at: { $lte: now },
+      ends_at: { $gt: now },
+    })
+      .select('exam_part_id exam_subject_id exam_subject_ids')
+      .lean(),
+  ]);
+  const ids = new Set<string>();
+  const wholeParts = new Set<string>();
+  let legacyPrimary = false;
+  for (const e of ents) {
+    const subjectIds = [...(e.exam_subject_ids ?? []).map(String), e.exam_subject_id ? String(e.exam_subject_id) : ''].filter(Boolean);
+    if (subjectIds.length > 0) {
+      for (const id of subjectIds) ids.add(id);
+    } else if (e.exam_part_id) {
+      wholeParts.add(String(e.exam_part_id));
+    } else {
+      legacyPrimary = true;
+    }
+  }
+  if (wholeParts.size > 0 || legacyPrimary) {
+    const rows = await loadExamPrepParts();
+    for (const row of rows) {
+      if (wholeParts.has(row.id) || (legacyPrimary && row.is_primary)) {
+        for (const subject of row.subjects) ids.add(subject.id);
+      }
+    }
+  }
+  let list = [...ids];
+  if (user?.all_exam_subjects === false) {
+    const allow = new Set((user.exam_subject_ids ?? []).map(String));
+    list = list.filter((id) => allow.has(id));
+  }
+  const scope: ExamSubjectScope = list.length === 0 ? { mode: 'none' } : { mode: 'subset', ids: list };
+  scopeCache.set(userId, { at: Date.now(), scope });
+  return scope;
+}
+
+/**
+ * Subjects a learner may see in learning content: only the subjects they enrolled.
+ * Admins and hosts see everything. The same scope is used by books, questions, papers and the rest.
  */
 export async function getExamPrepScope(
   authUser: { id: string; is_super_admin?: boolean; user_type?: string } | null | undefined,
-  opts: { paid: boolean },
+  _opts?: { paid?: boolean },
 ): Promise<ExamSubjectScope> {
   if (!authUser || seesAllLearningSubjects(authUser)) return { mode: 'all' };
-  const user = await User.findById(authUser.id).select(USER_FIELDS).lean<ScopeUser>();
-  if (!user) return { mode: 'none' };
-  if (seesAllLearningSubjects(user)) return { mode: 'all' };
-  const rows = await loadExamPrepParts();
-  if (rows.length === 0) return scopeFromUserFields({ ...user, exam_subject_ids: (user.exam_subject_ids ?? []).map(String) });
-  const part = selectedPart(rows, user.exam_prep_part_id)!;
-  const owned = opts.paid ? await ownedExamPrep(authUser.id, rows, Number(user.amount_received ?? 0) > 0) : null;
-  return scopeFor(user, rows, part, owned);
+  return enrolledSubjectScope(authUser.id);
 }
 
 function scopeKey(partId: string, scope: ExamSubjectScope): string {
@@ -268,7 +289,7 @@ export async function listPartsForUser(authUser: {
       owned_count: subjects.filter((s) => s.owned).length,
     };
   });
-  const scope = openLearning || !part ? ({ mode: 'all' } as const) : scopeFor(user, rows, part, owned);
+  const scope = openLearning ? ({ mode: 'all' } as const) : await enrolledSubjectScope(authUser.id);
   return {
     parts,
     selected_part_id: part?.id ?? null,

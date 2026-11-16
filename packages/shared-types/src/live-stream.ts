@@ -98,6 +98,15 @@ export const createLiveStreamSchema = z.object({
   recorded_contents: liveStreamRecordedContentsSchema.optional(),
 });
 
+/** One class date under a live-package subject. The subject’s class amount is the limit. */
+export const scheduleSubjectClassSchema = z.object({
+  topic: z.string().trim().min(3, 'Enter a topic').max(200),
+  details: z.string().trim().max(5000).optional().or(z.literal('')),
+  scheduled_at: z.coerce.date(),
+  host_user_id: mongoId.optional().or(z.literal('')),
+});
+export type ScheduleSubjectClassDto = z.infer<typeof scheduleSubjectClassSchema>;
+
 export const updateLiveStreamSchema = z.object({
   topic: z.string().trim().min(3).max(200).optional(),
   details: z.string().trim().max(5000).optional().nullable(),

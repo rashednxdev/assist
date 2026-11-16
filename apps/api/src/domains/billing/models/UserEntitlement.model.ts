@@ -46,6 +46,7 @@ const schema = new Schema<IUserEntitlement>(
 );
 
 schema.index({ user_id: 1, ends_at: -1 });
+schema.index({ user_id: 1, kind: 1, is_revoked: 1, ends_at: 1 });
 schema.index({ order_id: 1 }, { unique: true, sparse: true });
 
 export const UserEntitlement = mongoose.model<IUserEntitlement>('UserEntitlement', schema, 'user_entitlements');

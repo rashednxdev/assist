@@ -5,14 +5,22 @@ import { ExamSubject } from '../exams/models/ExamSubject.model.js';
 import { User } from '../users/models/User.model.js';
 import { Question } from '../questions/models/Question.model.js';
 import { notFound, badRequest } from '../../shared/errors/AppError.js';
-import { assertExamSubjectAllowed, getExamSubjectScopeForUserId } from '../users/subject-access.service.js';
+import { assertExamSubjectAllowed } from '../users/subject-access.service.js';
+import { getExamPrepScope } from '../exam-prep/exam-prep.service.js';
 
 const MAX_SUBMISSIONS_PER_SUBJECT = 10;
 
 export async function submitUserQuestion(userId: string, dto: SubmitUserQuestionDto) {
   const subject = await ExamSubject.findById(dto.exam_subject_id);
   if (!subject || !subject.is_active) throw notFound('Exam subject not found');
-  assertExamSubjectAllowed(await getExamSubjectScopeForUserId(userId), dto.exam_subject_id);
+  const account = await User.findById(userId).select('user_type is_super_admin').lean<{
+    user_type?: string;
+    is_super_admin?: boolean;
+  }>();
+  assertExamSubjectAllowed(
+    await getExamPrepScope(account ? { id: userId, ...account } : { id: userId }),
+    dto.exam_subject_id,
+  );
 
   const count = await SubmittedQuestion.countDocuments({
     user_id: userId,

@@ -11,13 +11,11 @@ import {
 } from '@ibas/shared-types';
 import type { AuthRequest } from '../../middleware/auth.js';
 import * as syllabusService from './syllabus.service.js';
-import {
-  assertExamSubjectAllowed,
-  getExamSubjectScopeForAuthUser,
-} from '../users/subject-access.service.js';
+import { assertExamSubjectAllowed } from '../users/subject-access.service.js';
+import { getExamPrepScope } from '../exam-prep/exam-prep.service.js';
 
 export async function getSyllabusTreeHandler(req: AuthRequest, res: Response): Promise<void> {
-  const subjectScope = await getExamSubjectScopeForAuthUser(req.user);
+  const subjectScope = await getExamPrepScope(req.user);
   assertExamSubjectAllowed(subjectScope, String(req.params.subjectId));
   res.json({ data: await syllabusService.getSyllabusTree(String(req.params.subjectId)) });
 }

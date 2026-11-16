@@ -75,6 +75,7 @@ function PackageForm({
   parts,
   programs,
   defaultPartId,
+  defaultProgramId,
   onSaved,
   onCancel,
 }: {
@@ -83,12 +84,14 @@ function PackageForm({
   parts: ExamPrepPartOption[];
   programs: LiveProgramRecord[];
   defaultPartId?: string;
+  defaultProgramId?: string;
   onSaved: () => void;
   onCancel: () => void;
 }) {
   const [f, setF] = useState<FormState>(() => {
     const form = toForm(initial);
     if (!initial && kind === 'exam_prep') form.exam_part_id = defaultPartId ?? parts[0]?.id ?? '';
+    if (!initial && kind === 'live' && defaultProgramId) form.live_program_id = defaultProgramId;
     return form;
   });
   const [busy, setBusy] = useState(false);
@@ -102,11 +105,19 @@ function PackageForm({
       setError('Pick the exam part this package is for');
       return;
     }
+    if (kind === 'live' && !f.live_program_id) {
+      setError('Create the package first, then add a subject under it');
+      return;
+    }
+    if (kind === 'live' && f.exam_subject_ids.length !== 1) {
+      setError('Choose one subject');
+      return;
+    }
     setBusy(true);
     setError('');
     const body = {
       kind,
-      name: f.name,
+      name: kind === 'live' ? '' : f.name,
       name_bn: f.name_bn,
       description: f.description,
       exam_part_id: kind === 'exam_prep' ? f.exam_part_id || null : null,
@@ -141,18 +152,24 @@ function PackageForm({
   return (
     <Card className="border-primary/40">
       <CardHeader>
-        <CardTitle className="text-base">{initial ? `Edit “${initial.name}”` : 'New package'}</CardTitle>
+        <CardTitle className="text-base">
+          {kind === 'live' ? (initial ? `Edit “${initial.exam_subject_name || initial.name}”` : 'Add subject') : initial ? `Edit “${initial.name}”` : 'New package'}
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="pk-name">Name</Label>
-            <Input id="pk-name" value={f.name} onChange={(e) => set('name', e.target.value)} placeholder="e.g. SAS Part 1 — 3 months" />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="pk-name-bn">Name (Bangla, optional)</Label>
-            <Input id="pk-name-bn" value={f.name_bn} onChange={(e) => set('name_bn', e.target.value)} />
-          </div>
+          {kind !== 'live' && (
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="pk-name">Name</Label>
+                <Input id="pk-name" value={f.name} onChange={(e) => set('name', e.target.value)} placeholder="e.g. SAS Part 1 — 3 months" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="pk-name-bn">Name (Bangla, optional)</Label>
+                <Input id="pk-name-bn" value={f.name_bn} onChange={(e) => set('name_bn', e.target.value)} />
+              </div>
+            </>
+          )}
           {kind === 'exam_prep' && (
             <>
               <div className="space-y-1.5">
@@ -206,9 +223,14 @@ function PackageForm({
           {kind === 'live' && (
             <>
               <div className="space-y-1.5">
-                <Label htmlFor="pk-program">Package</Label>
-                <select id="pk-program" className={SELECT} value={f.live_program_id} onChange={(e) => set('live_program_id', e.target.value)}>
-                  <option value="">No named package (older style)</option>
+                <Label htmlFor="pk-program">Under package</Label>
+                <select
+                  id="pk-program"
+                  className={SELECT}
+                  value={f.live_program_id}
+                  onChange={(e) => setF((prev) => ({ ...prev, live_program_id: e.target.value, exam_subject_ids: [] }))}
+                >
+                  <option value="">Choose a package…</option>
                   {programs.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}
@@ -221,24 +243,14 @@ function PackageForm({
                 <Input id="pk-classes" type="number" min={1} value={f.class_limit} onChange={(e) => set('class_limit', e.target.value)} />
               </div>
               <div className="space-y-1.5 sm:col-span-2">
-                <Label>{f.live_program_id ? 'Subject of this class' : 'Subjects'}</Label>
+                <Label>Subject</Label>
                 <div className="grid max-h-40 gap-1.5 overflow-y-auto rounded-lg border border-border p-3 sm:grid-cols-2">
                   {parts.flatMap((p) =>
                     p.subjects.map((s) => {
-                      const on = f.exam_subject_ids.includes(s.id);
+                      const on = f.exam_subject_ids[0] === s.id;
                       return (
                         <label key={s.id} className="flex items-center gap-2 text-sm">
-                          <input
-                            type={f.live_program_id ? 'radio' : 'checkbox'}
-                            name="live-subject"
-                            checked={on}
-                            onChange={() =>
-                              set(
-                                'exam_subject_ids',
-                                f.live_program_id ? [s.id] : on ? f.exam_subject_ids.filter((id) => id !== s.id) : [...f.exam_subject_ids, s.id],
-                              )
-                            }
-                          />
+                          <input type="radio" name="live-subject" checked={on} onChange={() => set('exam_subject_ids', [s.id])} />
                           {s.name}
                         </label>
                       );
@@ -246,8 +258,8 @@ function PackageForm({
                   )}
                 </div>
                 <p className="text-xs text-muted">
-                  Pick the package name first, then one subject. The learner who enrolls that subject joins the classes you assign here.
-                  Enrolling more than one subject of the same package uses that package&apos;s waiver.
+                  Add one subject. The learner who enrolls it, once you approve the payment, joins only the classes of that subject.
+                  Several subjects of this same package can be enrolled together. Another package is a separate purchase.
                 </p>
               </div>
             </>
@@ -445,102 +457,207 @@ function BulkSubjectPricing({
   );
 }
 
-type ClassOption = LiveClassBrief & { package_ids: string[] };
+function toLocalInput(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
-function ClassPicker({ pkg, onDone }: { pkg: AccessPackageRecord; onDone: () => void }) {
-  const [options, setOptions] = useState<ClassOption[] | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [q, setQ] = useState('');
+/** Schedule this subject’s allowed classes, one date at a time. */
+function SubjectSchedule({ pkg, onDone }: { pkg: AccessPackageRecord; onDone: () => void }) {
+  const limit = pkg.class_limit ?? 0;
+  const subject = pkg.exam_subject_name || pkg.exam_subject_names?.find(Boolean) || pkg.name;
+  const [rows, setRows] = useState<LiveClassBrief[] | null>(null);
+  const [hosts, setHosts] = useState<Array<{ user_id: string; display_name: string }>>([]);
+  const [topic, setTopic] = useState('');
+  const [details, setDetails] = useState('');
+  const [when, setWhen] = useState('');
+  const [hostUserId, setHostUserId] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
+  async function load() {
+    const r = await apiFetch<{ data: LiveClassBrief[] }>(`/billing/admin/packages/${pkg.id}/classes`);
+    setRows([...r.data].sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at)));
+  }
+
   useEffect(() => {
-    Promise.all([
-      apiFetch<{ data: ClassOption[] }>('/billing/admin/live-class-options'),
-      apiFetch<{ data: LiveClassBrief[] }>(`/billing/admin/packages/${pkg.id}/classes`),
-    ])
-      .then(([opts, current]) => {
-        const byId = new Map(opts.data.map((o) => [o.id, o]));
-        for (const c of current.data) if (!byId.has(c.id)) byId.set(c.id, { ...c, package_ids: [pkg.id] });
-        setOptions([...byId.values()].sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at)));
-        setSelected(new Set(current.data.map((c) => c.id)));
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load classes'));
+    void load().catch((e) => setError(e instanceof Error ? e.message : 'Failed to load classes'));
+    apiFetch<{ data: Array<{ user_id: string; display_name: string }> }>('/live-streams/admin/host-options')
+      .then((r) => setHosts(r.data))
+      .catch(() => setHosts([]));
   }, [pkg.id]);
 
-  const visible = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    return (options ?? []).filter((o) => !term || o.topic.toLowerCase().includes(term));
-  }, [options, q]);
+  const scheduled = rows?.length ?? 0;
+  const full = limit > 0 && scheduled >= limit;
+
+  function resetForm() {
+    setTopic('');
+    setDetails('');
+    setWhen('');
+    setHostUserId('');
+    setEditingId(null);
+  }
 
   async function save() {
+    if (!topic.trim() || !when) {
+      setError('Topic and date are required');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      if (editingId) {
+        await apiFetch(`/live-streams/${editingId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            topic: topic.trim(),
+            details: details.trim(),
+            scheduled_at: new Date(when).toISOString(),
+            ...(hostUserId ? { host_user_id: hostUserId } : {}),
+          }),
+        });
+      } else {
+        await apiFetch(`/live-streams/admin/packages/${pkg.id}/classes`, {
+          method: 'POST',
+          body: JSON.stringify({
+            topic: topic.trim(),
+            details: details.trim(),
+            scheduled_at: new Date(when).toISOString(),
+            ...(hostUserId ? { host_user_id: hostUserId } : {}),
+          }),
+        });
+      }
+      resetForm();
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save this class');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function unlink(id: string) {
+    if (!rows || !window.confirm('Remove this class from the subject?')) return;
     setBusy(true);
     setError('');
     try {
       await apiFetch(`/billing/admin/packages/${pkg.id}/classes`, {
         method: 'PUT',
-        body: JSON.stringify({ class_ids: [...selected] }),
+        body: JSON.stringify({ class_ids: rows.filter((r) => r.id !== id).map((r) => r.id) }),
       });
-      onDone();
+      if (editingId === id) resetForm();
+      await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Save failed');
+      setError(e instanceof Error ? e.message : 'Could not remove the class');
+    } finally {
       setBusy(false);
     }
-  }
-
-  function toggle(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
   }
 
   return (
     <Card className="border-primary/40">
       <CardHeader>
-        <CardTitle className="text-base">Classes in “{pkg.name}”</CardTitle>
+        <CardTitle className="text-base">
+          {subject} · {scheduled} of {limit || '—'} classes
+        </CardTitle>
         <p className="text-sm text-muted">
-          Buyers of this package can join every selected class. A class can belong to more than one package. Shows upcoming classes and
-          those from the last 60 days.
+          Schedule each class on its own date, with the details for this subject. Enrolled learners join only these classes after you approve payment.
         </p>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <Input placeholder="Search classes…" value={q} onChange={(e) => setQ(e.target.value)} />
-        {!options ? (
-          <Skeleton className="h-40 w-full" />
-        ) : visible.length === 0 ? (
-          <p className="text-sm text-muted">No classes found. Create classes in Live class admin first.</p>
+      <CardContent className="space-y-4">
+        {rows === null ? (
+          <Skeleton className="h-24 w-full" />
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-muted">No class dates yet.</p>
         ) : (
-          <ul className="max-h-80 divide-y divide-border overflow-y-auto rounded-md border border-border">
-            {visible.map((o) => {
-              const others = o.package_ids.filter((id) => id !== pkg.id).length;
-              return (
-                <li key={o.id}>
-                  <label className="flex cursor-pointer items-start gap-3 px-3 py-2 hover:bg-slate-50">
-                    <input type="checkbox" className="mt-1" checked={selected.has(o.id)} onChange={() => toggle(o.id)} />
-                    <span className="min-w-0 flex-1 text-sm">
-                      <span className="font-medium">{o.topic}</span>
-                      <span className="block text-xs text-muted">
-                        {accessDateTime(o.scheduled_at)} · {o.status} · {o.video_platform}
-                        {others > 0 ? ` · also in ${others} other package${others === 1 ? '' : 's'}` : ''}
-                      </span>
-                    </span>
-                  </label>
-                </li>
-              );
-            })}
+          <ul className="divide-y divide-border rounded-md border border-border">
+            {rows.map((row, index) => (
+              <li key={row.id} className="space-y-1 px-3 py-2 text-sm">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <p>
+                    <span className="font-medium">Class {index + 1}.</span> {row.topic}
+                    <span className="block text-xs text-muted">{accessDateTime(row.scheduled_at)} · {row.status}</span>
+                  </p>
+                  <span className="flex gap-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setEditingId(row.id);
+                        setTopic(row.topic);
+                        setDetails(row.details ?? '');
+                        setWhen(toLocalInput(row.scheduled_at));
+                      }}
+                    >
+                      Edit
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void unlink(row.id)}>
+                      Remove
+                    </Button>
+                  </span>
+                </div>
+                {row.details ? <p className="whitespace-pre-line text-muted">{row.details}</p> : null}
+              </li>
+            ))}
           </ul>
         )}
+
+        {!full || editingId ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="cls-topic">{editingId ? 'Update topic' : 'Topic'}</Label>
+              <Input id="cls-topic" value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="What this class covers" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="cls-when">Date and time</Label>
+              <Input id="cls-when" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="cls-host">Host</Label>
+              <select id="cls-host" className={SELECT} value={hostUserId} onChange={(e) => setHostUserId(e.target.value)}>
+                <option value="">You (the admin scheduling this)</option>
+                {hosts.map((h) => (
+                  <option key={h.user_id} value={h.user_id}>
+                    {h.display_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="cls-details">Details</Label>
+              <textarea
+                id="cls-details"
+                rows={3}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={details}
+                onChange={(e) => setDetails(e.target.value)}
+                placeholder="What learners should know about this date"
+              />
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-muted">All {limit} classes for this subject are scheduled. Raise the class amount to add another date.</p>
+        )}
+
         {error && <Alert variant="error">{error}</Alert>}
-        <div className="flex items-center gap-2">
-          <Button onClick={save} disabled={busy || !options}>
-            {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-            Save ({selected.size} selected)
-          </Button>
-          <Button variant="outline" onClick={onDone} disabled={busy}>
-            Cancel
+        <div className="flex flex-wrap gap-2">
+          {(!full || editingId) && (
+            <Button type="button" onClick={() => void save()} disabled={busy}>
+              {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+              {editingId ? 'Save class' : 'Add this date'}
+            </Button>
+          )}
+          {editingId && (
+            <Button type="button" variant="outline" disabled={busy} onClick={resetForm}>
+              Cancel edit
+            </Button>
+          )}
+          <Button type="button" variant="outline" onClick={onDone} disabled={busy}>
+            Close
           </Button>
         </div>
       </CardContent>
@@ -548,7 +665,7 @@ function ClassPicker({ pkg, onDone }: { pkg: AccessPackageRecord; onDone: () => 
   );
 }
 
-function LiveProgramsPanel() {
+function LiveProgramsPanel({ onAddSubject }: { onAddSubject: (programId: string) => void }) {
   const [rows, setRows] = useState<LiveProgramRecord[] | null>(null);
   const [name, setName] = useState('');
   const [waiver2, setWaiver2] = useState('10');
@@ -634,6 +751,9 @@ function LiveProgramsPanel() {
                 </span>
               </span>
               <span className="flex gap-2">
+                <Button type="button" size="sm" onClick={() => onAddSubject(row.id)}>
+                  Add subject
+                </Button>
                 <Button
                   type="button"
                   size="sm"
@@ -670,6 +790,7 @@ export function PackageAdmin({ kind }: { kind: AccessPackageKind }) {
   const [editing, setEditing] = useState<AccessPackageRecord | 'new' | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [classesFor, setClassesFor] = useState<AccessPackageRecord | null>(null);
+  const [subjectProgramId, setSubjectProgramId] = useState('');
 
   const shown = useMemo(() => {
     if (!items || kind !== 'exam_prep' || !partFilter) return items;
@@ -726,7 +847,7 @@ export function PackageAdmin({ kind }: { kind: AccessPackageKind }) {
             ? 'Price each subject of a part (or a whole part) by duration. A buyer opens only the subjects they bought; they can tick several and pay once.'
             : kind === 'basic'
               ? 'Plans by month and amount. Users choose one; Schedule and Salary stay free.'
-              : 'Add a package name, then a subject class under it. Assign that subject’s classes. A learner who enrolls the subject joins those classes. More than one subject in one payment uses the package waiver.'}
+              : 'Create the package first. Then add subjects one by one and assign each subject’s classes. Learners enroll one or more subjects of that package. Another package is a separate purchase. After you approve the payment, they join only the classes of the subjects they enrolled.'}
         </p>
         <div className="flex flex-wrap gap-2">
           {kind === 'exam_prep' && (
@@ -743,20 +864,30 @@ export function PackageAdmin({ kind }: { kind: AccessPackageKind }) {
               Price all subjects of a part
             </Button>
           )}
-          <Button
-            onClick={() => {
-              setClassesFor(null);
-              setBulkOpen(false);
-              setEditing('new');
-            }}
-          >
-            <Plus className="h-4 w-4" />
-            {kind === 'live' ? 'Add subject class' : 'New package'}
-          </Button>
+          {kind !== 'live' && (
+            <Button
+              onClick={() => {
+                setClassesFor(null);
+                setBulkOpen(false);
+                setEditing('new');
+              }}
+            >
+              <Plus className="h-4 w-4" />
+              New package
+            </Button>
+          )}
         </div>
       </div>
 
-      {kind === 'live' && <LiveProgramsPanel />}
+      {kind === 'live' && (
+        <LiveProgramsPanel
+          onAddSubject={(programId) => {
+            setClassesFor(null);
+            setSubjectProgramId(programId);
+            setEditing('new');
+          }}
+        />
+      )}
 
       {kind === 'exam_prep' && parts.length > 1 && (
         <div className="inline-flex flex-wrap rounded-lg border border-border bg-background p-1" role="tablist">
@@ -795,12 +926,13 @@ export function PackageAdmin({ kind }: { kind: AccessPackageKind }) {
 
       {editing && (
         <PackageForm
-          key={editing === 'new' ? 'new' : editing.id}
+          key={editing === 'new' ? `new-${subjectProgramId}` : editing.id}
           kind={kind}
           initial={editing === 'new' ? undefined : editing}
           parts={parts}
           programs={programs}
           defaultPartId={partFilter || undefined}
+          defaultProgramId={subjectProgramId}
           onCancel={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
@@ -810,7 +942,7 @@ export function PackageAdmin({ kind }: { kind: AccessPackageKind }) {
       )}
 
       {classesFor && (
-        <ClassPicker
+        <SubjectSchedule
           key={classesFor.id}
           pkg={classesFor}
           onDone={() => {
@@ -835,7 +967,7 @@ export function PackageAdmin({ kind }: { kind: AccessPackageKind }) {
                 {kind === 'exam_prep' && <th className="px-3 py-2">Covers</th>}
                 <th className="px-3 py-2">Duration</th>
                 <th className="px-3 py-2">Price</th>
-                {kind === 'live' && <th className="px-3 py-2">Classes</th>}
+                {kind === 'live' && <th className="px-3 py-2">Scheduled</th>}
                 <th className="px-3 py-2">Sold</th>
                 <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2 text-right">Actions</th>
@@ -865,7 +997,11 @@ export function PackageAdmin({ kind }: { kind: AccessPackageKind }) {
                     {formatBdt(p.price)}
                     {p.compare_at_price ? <span className="ml-1 text-xs text-muted line-through">{formatBdt(p.compare_at_price)}</span> : null}
                   </td>
-                  {kind === 'live' && <td className="px-3 py-2">{p.class_count ?? 0}</td>}
+                  {kind === 'live' && (
+                    <td className="px-3 py-2">
+                      {p.class_count ?? 0} / {p.class_limit ?? 0}
+                    </td>
+                  )}
                   <td className="px-3 py-2">{p.sold_count ?? 0}</td>
                   <td className="px-3 py-2">
                     <Badge variant={p.is_active ? 'success' : 'secondary'}>{p.is_active ? 'On sale' : 'Hidden'}</Badge>
@@ -882,7 +1018,7 @@ export function PackageAdmin({ kind }: { kind: AccessPackageKind }) {
                           }}
                         >
                           <Video className="h-4 w-4" />
-                          Classes
+                          Schedule
                         </Button>
                       )}
                       <Button

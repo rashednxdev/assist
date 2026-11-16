@@ -2,6 +2,7 @@ import type { Response } from 'express';
 import {
   createLiveHostSchema,
   createLiveStreamSchema,
+  scheduleSubjectClassSchema,
   joinLiveStreamSchema,
   liveStreamInvitesSchema,
   liveStreamRevokeInvitesSchema,
@@ -122,6 +123,12 @@ export async function listAdminLiveStreamsHandler(req: AuthRequest, res: Respons
     video_platform: platformFromQuery(req),
   });
   res.json({ data: items, meta: { page, limit, total } });
+}
+
+export async function scheduleSubjectClassHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = scheduleSubjectClassSchema.parse(req.body);
+  const data = await liveStreamService.scheduleSubjectClass(String(req.params.packageId), dto, req.user!.id);
+  res.status(201).json({ data });
 }
 
 export async function createLiveStreamHandler(req: AuthRequest, res: Response): Promise<void> {

@@ -330,16 +330,18 @@ export async function getExamTree(examNameId: string, subjectScope: ExamSubjectS
   const subjects = await ExamSubject.find({ exam_part_id: { $in: partIds }, is_active: true });
   const typeMap = new Map(types.map((t) => [String(t._id), t.name]));
 
-  const partsWithSubjects = parts.map((p) => ({
-    ...serializeExamPart(p),
-    subjects: filterByExamSubjectScope(
-      subjects
-        .filter((s) => String(s.exam_part_id) === String(p._id))
-        .map((s) => serializeExamSubject(s, typeMap.get(String(s.exam_type_id)))),
-      (s) => s.id,
-      subjectScope,
-    ),
-  }));
+  const partsWithSubjects = parts
+    .map((p) => ({
+      ...serializeExamPart(p),
+      subjects: filterByExamSubjectScope(
+        subjects
+          .filter((s) => String(s.exam_part_id) === String(p._id))
+          .map((s) => serializeExamSubject(s, typeMap.get(String(s.exam_type_id)))),
+        (s) => s.id,
+        subjectScope,
+      ),
+    }))
+    .filter((p) => subjectScope.mode === 'all' || p.subjects.length > 0);
 
   return {
     department: department ? serializeDepartment(department) : null,

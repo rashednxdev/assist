@@ -100,7 +100,8 @@ interface OverviewTree {
   types: TypeRow[];
 }
 
-const STEPS: Step[] = ['department', 'authority', 'exam', 'session', 'part', 'type', 'subject'];
+const DAILY_STEPS: Step[] = ['part', 'subject'];
+const PROGRAM_STEPS: Step[] = ['department', 'authority', 'exam', 'session', 'type'];
 
 const STEP_LABELS: Record<Step, string> = {
   department: 'Department',
@@ -132,7 +133,8 @@ const emptySubject = { name: '', name_bn: '', total_marks: 100, total_marks_bn: 
 export default function ExamsAdminPage() {
   const router = useRouter();
   const [allowed, setAllowed] = useState<boolean | null>(null);
-  const [step, setStep] = useState<Step>('department');
+  const [step, setStep] = useState<Step>('subject');
+  const [showProgram, setShowProgram] = useState(false);
   const [formMode, setFormMode] = useState<FormMode>('create');
   const [editId, setEditId] = useState('');
   const [busy, setBusy] = useState(false);
@@ -588,8 +590,8 @@ export default function ExamsAdminPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Exam setup wizard"
-        description="Create, view, and update department → authority → exam → session/year/training → part → type → subject."
+        title="Exam setup"
+        description="Pick the exam on the left, then add parts and subjects. Department, authority, and type stay under More setup."
         action={
           <Button asChild variant="outline" size="sm">
             <Link href="/exams">
@@ -599,6 +601,15 @@ export default function ExamsAdminPage() {
           </Button>
         }
       />
+
+      <div className="rounded-xl border border-border bg-surface px-4 py-3 text-sm">
+        <p className="font-medium">A learner sees a book only after these three steps</p>
+        <ol className="mt-2 list-decimal space-y-1 pl-5 text-muted">
+          <li>Create the subject here, under the right part (Part 2 is not Part 1).</li>
+          <li>Open that book and tag this exact subject. The label shows the exam, the part, and the subject.</li>
+          <li>Publish the book. A draft stays hidden, even when the subject tag is correct.</li>
+        </ol>
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-5">
         <Card className="lg:col-span-2">
@@ -733,7 +744,7 @@ export default function ExamsAdminPage() {
                     </ul>
                   </div>
                 )}
-                {overview.types.map((t) => (
+                {showProgram && overview.types.map((t) => (
                   <div key={t.id} className="rounded-lg border border-border p-2">
                     <span className="font-medium">Type:</span> {t.name}
                     {t.code && <Badge variant="outline" className="ml-2">{t.code}</Badge>}
@@ -756,9 +767,27 @@ export default function ExamsAdminPage() {
                         </span>
                       )}
                     </div>
-                    <Button type="button" size="sm" variant="ghost" className="mt-1 h-7 px-2" onClick={() => { goToStep('part'); loadForEdit('part', p.id); }}>
-                      <Pencil className="h-3 w-3" /> Edit part
-                    </Button>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      <Button type="button" size="sm" variant="ghost" className="h-7 px-2" onClick={() => { goToStep('part'); loadForEdit('part', p.id); }}>
+                        <Pencil className="h-3 w-3" /> Edit part
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2"
+                        onClick={() => {
+                          setSelectedExam(overview.exam.id);
+                          setSelectedPart(p.id);
+                          setStep('subject');
+                          setEditId('');
+                          setFormMode('create');
+                          setSubjectForm(emptySubject);
+                        }}
+                      >
+                        <Plus className="h-3 w-3" /> Add subject
+                      </Button>
+                    </div>
                     {p.subjects.length > 0 && (
                       <ul className="mt-2 space-y-1 border-t border-border pt-2">
                         {p.subjects.map((s) => (
@@ -793,12 +822,26 @@ export default function ExamsAdminPage() {
         </Card>
 
         <div className="space-y-4 lg:col-span-3">
-          <div className="flex flex-wrap gap-2">
-            {STEPS.map((s) => (
-              <Button key={s} size="sm" variant={step === s ? 'default' : 'outline'} onClick={() => goToStep(s)}>
-                {STEP_LABELS[s]}
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-2">
+              {DAILY_STEPS.map((s) => (
+                <Button key={s} size="sm" variant={step === s ? 'default' : 'outline'} onClick={() => goToStep(s)}>
+                  {STEP_LABELS[s]}
+                </Button>
+              ))}
+              <Button type="button" size="sm" variant="ghost" onClick={() => setShowProgram((v) => !v)}>
+                {showProgram ? 'Hide setup' : 'More setup'}
               </Button>
-            ))}
+            </div>
+            {showProgram && (
+              <div className="flex flex-wrap gap-2">
+                {PROGRAM_STEPS.map((s) => (
+                  <Button key={s} size="sm" variant={step === s ? 'default' : 'outline'} onClick={() => goToStep(s)}>
+                    {STEP_LABELS[s]}
+                  </Button>
+                ))}
+              </div>
+            )}
           </div>
 
           {message && <Alert variant="success">{message}</Alert>}
@@ -1123,7 +1166,15 @@ export default function ExamsAdminPage() {
 
                 {step === 'subject' && (
                   <>
-                    {editPicker('subject', subjects.map((s) => ({ id: s.id, label: s.name })))}
+                    {editPicker(
+                      'subject',
+                      subjects
+                        .filter((s) => !selectedPart || s.exam_part_id === selectedPart)
+                        .map((s) => {
+                          const part = parts.find((p) => p.id === s.exam_part_id);
+                          return { id: s.id, label: part ? `Part ${part.part_number} · ${s.name}` : s.name };
+                        }),
+                    )}
                     <div className="space-y-1.5">
                       <Label htmlFor="subj-exam">Exam program</Label>
                       <select
@@ -1181,7 +1232,7 @@ export default function ExamsAdminPage() {
                       </div>
                     </div>
                     <p className="text-xs text-muted">
-                      One subject per part and type. Set session/year when creating question papers.
+                      Choose Part 2 before you save, or the subject lands on the wrong part. Tag books on the book page, then publish.
                     </p>
                     <div className="space-y-1.5">
                       <Label htmlFor="subj-name">Subject name</Label>

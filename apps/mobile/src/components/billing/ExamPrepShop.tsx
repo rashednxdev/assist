@@ -262,17 +262,18 @@ export function ExamPrepShop({ basket }: { basket: ExamPrepBasket }) {
                     ) : null}
                   </View>
                   <Text style={styles.bundleName}>{p.name}</Text>
-                  <View style={styles.priceRow}>
-                    <Text style={styles.price}>{p.price === 0 ? 'Free' : formatBdt(p.price)}</Text>
-                    {p.compare_at_price ? <Text style={styles.compare}>{formatBdt(p.compare_at_price)}</Text> : null}
-                    <Text style={styles.small}>/ {durationLabel(p.duration_days)}</Text>
-                  </View>
-                  {p.features.slice(0, 4).map((f) => (
+                  {p.description ? <Text style={styles.small}>{p.description}</Text> : null}
+                  {p.features.map((f) => (
                     <View key={f} style={styles.feature}>
                       <Ionicons name="checkmark" size={14} color={colors.primary} />
                       <Text style={styles.featureText}>{f}</Text>
                     </View>
                   ))}
+                  <View style={styles.priceRow}>
+                    <Text style={styles.price}>{p.price === 0 ? 'Free' : formatBdt(p.price)}</Text>
+                    {p.compare_at_price ? <Text style={styles.compare}>{formatBdt(p.compare_at_price)}</Text> : null}
+                    <Text style={styles.small}>/ {durationLabel(p.duration_days)}</Text>
+                  </View>
                 </View>
               </Pressable>
             );
@@ -308,6 +309,15 @@ export function ExamPrepShop({ basket }: { basket: ExamPrepBasket }) {
                     />
                     <Text style={styles.subjectName}>{s.name}</Text>
                   </View>
+                  {s.packages.find((p) => p.description?.trim())?.description ? (
+                    <Text style={styles.small}>{s.packages.find((p) => p.description?.trim())?.description}</Text>
+                  ) : null}
+                  {[...new Set(s.packages.flatMap((p) => p.features))].map((f) => (
+                    <View key={f} style={styles.feature}>
+                      <Ionicons name="checkmark" size={14} color={colors.primary} />
+                      <Text style={styles.featureText}>{f}</Text>
+                    </View>
+                  ))}
                   {until ? <Text style={styles.activeText}>Active until {accessDate(until)}</Text> : null}
                   <View style={styles.chips}>
                     {s.packages.map((p) => {

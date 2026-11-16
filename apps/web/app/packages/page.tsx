@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { CalendarClock, Check, CheckCircle2, Loader2, ShieldCheck, Sparkles, Video, X } from 'lucide-react';
+import { CalendarClock, CheckCircle2, Loader2, ShieldCheck, Sparkles, Video, X } from 'lucide-react';
 import type { AccessPackageKind } from '@ibas/shared-constants';
 import {
   computeCharge,
@@ -25,6 +25,7 @@ import { Alert } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ExamPrepShop } from '@/components/billing/exam-prep-shop';
 import { LiveClassShop } from '@/components/billing/live-class-shop';
+import { PackageCopy } from '@/components/billing/package-copy';
 
 const DAY_MS = 86_400_000;
 
@@ -64,6 +65,7 @@ function PackageCard({
         </div>
         <CardTitle className="text-lg">{pkg.name}</CardTitle>
         {pkg.name_bn && <p className="text-sm text-muted">{pkg.name_bn}</p>}
+        <PackageCopy description={pkg.description} features={pkg.features} />
         <div className="flex items-baseline gap-2">
           <span className="text-3xl font-bold">{pkg.price === 0 ? 'Free' : formatBdt(pkg.price)}</span>
           {pkg.compare_at_price ? (
@@ -73,17 +75,6 @@ function PackageCard({
         </div>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col gap-4">
-        {pkg.description && <p className="whitespace-pre-line text-sm text-muted">{pkg.description}</p>}
-        {pkg.features.length > 0 && (
-          <ul className="space-y-1.5 text-sm">
-            {pkg.features.map((f) => (
-              <li key={f} className="flex gap-2">
-                <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                {f}
-              </li>
-            ))}
-          </ul>
-        )}
         {pkg.kind === 'live' && (
           <div className="space-y-2 rounded-lg bg-slate-50 p-3 text-sm">
             <p className="flex items-center gap-2 font-medium">

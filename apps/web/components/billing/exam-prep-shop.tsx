@@ -21,6 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert } from '@/components/ui/alert';
+import { PackageCopy } from '@/components/billing/package-copy';
 
 interface Group {
   id: string;
@@ -361,6 +362,7 @@ export function ExamPrepShop({ catalog }: { catalog: BillingCatalog }) {
                       {p.scope === 'legacy' && <Badge variant="secondary">All subjects</Badge>}
                     </div>
                     <CardTitle className="text-lg">{p.name}</CardTitle>
+                    <PackageCopy description={p.description} features={p.features} />
                     <div className="flex items-baseline gap-2">
                       <span className="text-3xl font-bold">{p.price === 0 ? 'Free' : formatBdt(p.price)}</span>
                       {p.compare_at_price ? (
@@ -370,17 +372,6 @@ export function ExamPrepShop({ catalog }: { catalog: BillingCatalog }) {
                     </div>
                   </CardHeader>
                   <CardContent className="flex flex-1 flex-col gap-4">
-                    {p.description && <p className="whitespace-pre-line text-sm text-muted">{p.description}</p>}
-                    {p.features.length > 0 && (
-                      <ul className="space-y-1.5 text-sm">
-                        {p.features.map((f) => (
-                          <li key={f} className="flex gap-2">
-                            <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                            {f}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
                     <Button
                       className="mt-auto w-full"
                       variant={on ? 'outline' : 'default'}
@@ -424,6 +415,7 @@ export function ExamPrepShop({ catalog }: { catalog: BillingCatalog }) {
                   <CardHeader className="space-y-2">
                     <CardTitle className="text-lg">{p.name}</CardTitle>
                     <p className="text-sm text-muted">{(p.exam_subject_names ?? []).filter(Boolean).join(', ')}</p>
+                    <PackageCopy description={p.description} features={p.features} />
                     <p className="text-2xl font-bold">{p.price === 0 ? 'Free' : formatBdt(p.price)}</p>
                   </CardHeader>
                   <CardContent>
@@ -486,6 +478,10 @@ export function ExamPrepShop({ catalog }: { catalog: BillingCatalog }) {
                         {s.name}
                         {until && <Badge variant="success">Active until {accessDate(until)}</Badge>}
                       </p>
+                      <PackageCopy
+                        description={s.packages.find((p) => p.description?.trim())?.description}
+                        features={[...new Set(s.packages.flatMap((p) => p.features))]}
+                      />
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {s.packages.map((p) => {

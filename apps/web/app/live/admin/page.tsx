@@ -25,6 +25,8 @@ interface LiveRow {
   host_name?: string;
   exam_subject_name?: string;
   access_type?: 'free' | 'paid';
+  free_audience?: 'all' | 'selected';
+  recording_audience?: 'off' | 'all' | 'attended' | 'enrolled';
 }
 
 interface SubjectOption {
@@ -64,7 +66,7 @@ export default function LiveStreamAdminPage() {
   const [topic, setTopic] = useState('');
   const [details, setDetails] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
-  const [accessType, setAccessType] = useState<'free' | 'paid'>('free');
+  const [accessChoice, setAccessChoice] = useState<'free-all' | 'free-selected' | 'paid'>('free-all');
   const [examSubjectId, setExamSubjectId] = useState('');
   const [hostUserId, setHostUserId] = useState('');
   const [subjects, setSubjects] = useState<SubjectOption[]>([]);
@@ -109,7 +111,8 @@ export default function LiveStreamAdminPage() {
           topic: topic.trim(),
           details: details.trim() || undefined,
           scheduled_at: new Date(scheduledAt).toISOString(),
-          access_type: accessType,
+          access_type: accessChoice === 'paid' ? 'paid' : 'free',
+          free_audience: accessChoice === 'free-all' ? 'all' : 'selected',
           ...(examSubjectId ? { exam_subject_id: examSubjectId } : {}),
           ...(hostUserId ? { host_user_id: hostUserId } : {}),
         }),
@@ -125,6 +128,19 @@ export default function LiveStreamAdminPage() {
       setError(err instanceof Error ? err.message : 'Failed to create');
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function setRecording(itemId: string, recording_audience: 'off' | 'all' | 'attended' | 'enrolled') {
+    setItems((prev) => prev.map((row) => (row.id === itemId ? { ...row, recording_audience } : row)));
+    try {
+      await apiFetch(`/live-streams/${itemId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ recording_audience }),
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update the recording');
+      await load();
     }
   }
 
@@ -220,15 +236,16 @@ export default function LiveStreamAdminPage() {
             <Label htmlFor="live-access">Access</Label>
             <select
               id="live-access"
-              value={accessType}
-              onChange={(e) => setAccessType(e.target.value === 'paid' ? 'paid' : 'free')}
+              value={accessChoice}
+              onChange={(e) => setAccessChoice(e.target.value === 'paid' ? 'paid' : e.target.value === 'free-selected' ? 'free-selected' : 'free-all')}
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
-              <option value="free">Free — invited users only</option>
-              <option value="paid">Paid — all paid users (no invite needed)</option>
+              <option value="free-all">Free — all users after login</option>
+              <option value="free-selected">Free — selected users only</option>
+              <option value="paid">Paid — enrolled users</option>
             </select>
             <p className="text-xs text-muted">
-              Mark users paid/unpaid under Admin → Users (amount received &gt; 0).
+              A free class does not need enrollment. Selected users are chosen on the class page.
             </p>
           </div>
           <div className="space-y-1.5 sm:col-span-2">
@@ -281,11 +298,33 @@ export default function LiveStreamAdminPage() {
                   <div className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-400">
                     {item.status}
                     {item.exam_subject_name ? ` · ${item.exam_subject_name}` : ''}
-                    {item.access_type === 'paid' ? ' · Paid class' : ' · Free class'}
+                    {item.access_type === 'paid'
+                      ? ' · Paid class'
+                      : item.free_audience === 'all'
+                        ? ' · Free for all users'
+                        : ' · Free for selected users'}
                     {item.host_name ? ` · Host: ${item.host_name}` : ''}
                     {typeof item.invite_count === 'number' ? ` · ${item.invite_count} invited` : ''}
                   </div>
                 </Link>
+                <label className="shrink-0 text-xs text-slate-500">
+                  Previous recording
+                  <select
+                    aria-label={`Recording for ${item.topic}`}
+                    className="mt-1 flex h-9 w-40 rounded-md border border-input bg-background px-2 text-sm text-slate-900"
+                    value={item.recording_audience ?? 'off'}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      const audience = value === 'all' || value === 'attended' || value === 'enrolled' ? value : 'off';
+                      void setRecording(item.id, audience);
+                    }}
+                  >
+                    <option value="off">Off</option>
+                    <option value="all">All users</option>
+                    <option value="attended">Attended users</option>
+                    <option value="enrolled">Enrolled users</option>
+                  </select>
+                </label>
                 <div className="flex shrink-0 gap-1">
                   <Button
                     type="button"

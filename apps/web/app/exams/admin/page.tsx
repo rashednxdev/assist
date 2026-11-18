@@ -805,6 +805,7 @@ export default function ExamsAdminPage() {
                               <Button asChild size="sm" variant="outline" className="h-7 px-2">
                                 <Link href={`/exams/subjects/${s.id}/syllabus`}>
                                   <BookMarked className="h-3 w-3" />
+                                  Syllabus
                                 </Link>
                               </Button>
                             </div>
@@ -1267,6 +1268,14 @@ export default function ExamsAdminPage() {
                   <Button type="submit" disabled={busy}>
                     {busy ? 'Saving…' : formMode === 'edit' ? 'Update' : step === 'subject' ? 'Create & open syllabus' : 'Save & continue'}
                   </Button>
+                  {step === 'subject' && formMode === 'edit' && editId ? (
+                    <Button asChild type="button" variant="outline">
+                      <Link href={`/exams/subjects/${editId}/syllabus`}>
+                        <BookMarked className="h-4 w-4" />
+                        Input syllabus
+                      </Link>
+                    </Button>
+                  ) : null}
                   {formMode === 'edit' && (
                     <Button type="button" variant="outline" onClick={() => resetStepForm(step)}>
                       Cancel edit

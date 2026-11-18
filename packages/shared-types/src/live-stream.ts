@@ -15,6 +15,14 @@ const mongoId = z.string().regex(/^[a-f\d]{24}$/i);
 export const LIVE_CLASS_ACCESS_TYPES = ['free', 'paid'] as const;
 export type LiveClassAccessType = (typeof LIVE_CLASS_ACCESS_TYPES)[number];
 
+/** Free class: every signed-in user, or only the users an admin selects. Enrollment is not required. */
+export const FREE_CLASS_AUDIENCES = ['all', 'selected'] as const;
+export type FreeClassAudience = (typeof FREE_CLASS_AUDIENCES)[number];
+
+/** Who may open a previous class recording. `off` hides it from learners. */
+export const RECORDING_AUDIENCES = ['off', 'all', 'attended', 'enrolled'] as const;
+export type RecordingAudience = (typeof RECORDING_AUDIENCES)[number];
+
 /** Shown to unpaid users when a class is marked Paid. */
 export const PAID_LIVE_CLASS_UNPAID_MESSAGE =
   'This Live Class only for Paid User. You are unpaid Mode. Pay to Enjoy Live Class.';
@@ -86,8 +94,12 @@ export const createLiveStreamSchema = z.object({
   /** @deprecated Prefer `presentations` — kept for older clients. */
   slides: liveStreamSlidesSchema.optional(),
   presentations: liveStreamPresentationsSchema.optional(),
-  /** `free` = everyone invited; `paid` = only users with payment may join/watch. */
+  /** `free` = no enrollment; `paid` = only an enrolled subject opens the class. */
   access_type: z.enum(LIVE_CLASS_ACCESS_TYPES).optional().default('free'),
+  /** When the class is free: `all` after login, or `selected` users only. */
+  free_audience: z.enum(FREE_CLASS_AUDIENCES).optional().default('selected'),
+  /** Previous recording: off, every user, people who attended, or enrolled users. */
+  recording_audience: z.enum(RECORDING_AUDIENCES).optional().default('off'),
   /** `agora` (default) or `zoom` — selects the video provider for this class. */
   video_platform: z.enum(LIVE_VIDEO_PLATFORMS).optional().default('zoom'),
   /**
@@ -121,6 +133,8 @@ export const updateLiveStreamSchema = z.object({
   slides: liveStreamSlidesSchema.optional(),
   presentations: liveStreamPresentationsSchema.optional(),
   access_type: z.enum(LIVE_CLASS_ACCESS_TYPES).optional(),
+  free_audience: z.enum(FREE_CLASS_AUDIENCES).optional(),
+  recording_audience: z.enum(RECORDING_AUDIENCES).optional(),
   /** Toggle cloud auto-record before the meeting is live (Zoom). */
   auto_record_cloud: z.boolean().optional(),
   /** Previous-class YouTube links (download from Zoom cloud → upload to YouTube → paste here). */
@@ -488,6 +502,10 @@ export interface LiveStreamListItem {
   allow_guest_video?: boolean;
   /** `free` or `paid` — paid classes block unpaid learners. */
   access_type: LiveClassAccessType;
+  /** Free class audience. Ignored when the class is paid. */
+  free_audience?: FreeClassAudience;
+  /** Who can open this class after it has ended. */
+  recording_audience?: RecordingAudience;
   /** True when this user is unpaid and the class requires payment. */
   payment_blocked?: boolean;
   payment_required_message?: string;

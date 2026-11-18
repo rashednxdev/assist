@@ -3,6 +3,18 @@ import { SYLLABUS_REF_LEVELS } from '@ibas/shared-constants';
 
 const mongoId = z.string().regex(/^[a-f\d]{24}$/i);
 
+/** Topic and sub-topic notes: one point per line, at most 12. */
+const syllabusDescription = z
+  .string()
+  .optional()
+  .superRefine((value, ctx) => {
+    if (!value?.trim()) return;
+    const lines = value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    if (lines.length > 12) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Enter at most 12 lines' });
+    }
+  });
+
 export const createSyllabusGroupSchema = z.object({
   exam_subject_id: mongoId,
   name: z.string().min(1),
@@ -18,7 +30,7 @@ const syllabusTopicFieldsSchema = z.object({
   syllabus_group_id: mongoId.optional(),
   exam_subject_id: mongoId.optional(),
   name: z.string().min(1),
-  description: z.string().optional(),
+  description: syllabusDescription,
   marks_weightage: z.number().min(0).optional(),
   sort_order: z.number().int().positive().optional(),
 });
@@ -38,7 +50,7 @@ export const updateSyllabusTopicSchema = syllabusTopicFieldsSchema.partial().ext
 export const createSyllabusSubTopicSchema = z.object({
   syllabus_topic_id: mongoId,
   name: z.string().min(1),
-  description: z.string().optional(),
+  description: syllabusDescription,
   sort_order: z.number().int().positive().optional(),
 });
 

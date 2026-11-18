@@ -101,6 +101,17 @@ const emptyRef = {
   relevance_note: '',
 };
 
+function descriptionLines(text?: string): string[] {
+  return (text ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function capDescription(value: string): string {
+  return value.replace(/\r\n/g, '\n').split('\n').slice(0, 12).join('\n');
+}
+
 function refLabel(ref: SyllabusRef) {
   const parts = [ref.book_short_name];
   if (ref.chapter_number) parts.push(`Ch. ${ref.chapter_number}`);
@@ -303,7 +314,7 @@ export default function SyllabusPage() {
     try {
       const body = {
         name: topicForm.name,
-        description: topicForm.description || undefined,
+        description: descriptionLines(topicForm.description).join('\n') || undefined,
         marks_weightage: topicForm.marks_weightage,
       };
       if (editTopicId) {
@@ -335,7 +346,7 @@ export default function SyllabusPage() {
     try {
       const body = {
         name: subTopicForm.name,
-        description: subTopicForm.description || undefined,
+        description: descriptionLines(subTopicForm.description).join('\n') || undefined,
       };
       if (editSubTopicId) {
         await apiFetch(`/syllabus/sub-topics/${editSubTopicId}`, { method: 'PATCH', body: JSON.stringify(body) });
@@ -539,7 +550,13 @@ export default function SyllabusPage() {
         <div className="flex items-start justify-between gap-2">
           <div>
             <div className="font-medium">{topic.name}</div>
-            {topic.description && <p className="mt-1 text-sm text-muted">{topic.description}</p>}
+            {descriptionLines(topic.description).length > 0 && (
+              <ul className="mt-1 list-disc space-y-0.5 pl-4 text-sm text-muted">
+                {descriptionLines(topic.description).map((line, index) => (
+                  <li key={`${index}-${line}`}>{line}</li>
+                ))}
+              </ul>
+            )}
             {topic.marks_weightage != null && (
               <Badge variant="outline" className="mt-2">
                 {topic.marks_weightage} marks
@@ -571,7 +588,16 @@ export default function SyllabusPage() {
                   key={st.id}
                   className="flex items-center justify-between gap-2 rounded-md bg-slate-50 px-2 py-1 text-sm"
                 >
-                  <span>{st.name}</span>
+                  <span>
+                    {st.name}
+                    {descriptionLines(st.description).length > 0 && (
+                      <ul className="mt-0.5 list-disc pl-4 text-xs text-muted">
+                        {descriptionLines(st.description).map((line, index) => (
+                          <li key={`${index}-${line}`}>{line}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </span>
                   {isAdmin && (
                     <div className="flex gap-1">
                       <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => startEditSubTopic(st, topic.id)}>
@@ -685,7 +711,7 @@ export default function SyllabusPage() {
       {isAdmin && (
         <Card>
           <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
-            <CardTitle className="text-base">Manage syllabus</CardTitle>
+            <CardTitle className="text-base">Input syllabus</CardTitle>
             {(editGroupId || editTopicId || editSubTopicId || editRefId) && (
               <Button type="button" size="sm" variant="outline" onClick={clearEdits}>
                 <X className="h-4 w-4" /> Cancel edit
@@ -761,11 +787,16 @@ export default function SyllabusPage() {
                     onChange={(e) => setTopicForm((f) => ({ ...f, marks_weightage: Number(e.target.value) }))}
                   />
                 </div>
-                <OutlinedInput
-                  label="Description (optional)"
-                  value={topicForm.description}
-                  onChange={(e) => setTopicForm((f) => ({ ...f, description: e.target.value }))}
-                />
+                <label className="block space-y-1.5 text-sm font-medium" htmlFor="topic-desc">
+                  Description (one per line, up to 12)
+                  <textarea
+                    id="topic-desc"
+                    rows={4}
+                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm font-normal"
+                    value={topicForm.description}
+                    onChange={(e) => setTopicForm((f) => ({ ...f, description: capDescription(e.target.value) }))}
+                  />
+                </label>
                 <Button type="submit" size="sm">
                   {editTopicId ? 'Update topic' : 'Add topic'}
                 </Button>
@@ -793,11 +824,16 @@ export default function SyllabusPage() {
                   onChange={(e) => setSubTopicForm((f) => ({ ...f, name: e.target.value }))}
                   required
                 />
-                <OutlinedInput
-                  label="Description (optional)"
-                  value={subTopicForm.description}
-                  onChange={(e) => setSubTopicForm((f) => ({ ...f, description: e.target.value }))}
-                />
+                <label className="block space-y-1.5 text-sm font-medium" htmlFor="subtopic-desc">
+                  Description (one per line, up to 12)
+                  <textarea
+                    id="subtopic-desc"
+                    rows={4}
+                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm font-normal"
+                    value={subTopicForm.description}
+                    onChange={(e) => setSubTopicForm((f) => ({ ...f, description: capDescription(e.target.value) }))}
+                  />
+                </label>
                 <Button type="submit" size="sm">
                   {editSubTopicId ? 'Update sub-topic' : 'Add sub-topic'}
                 </Button>

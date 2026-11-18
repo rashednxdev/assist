@@ -4,6 +4,8 @@ import type {
   CreateLiveStreamDto,
   ScheduleSubjectClassDto,
   LiveClassAccessType,
+  FreeClassAudience,
+  RecordingAudience,
   LiveClassPackageBrief,
   LiveHostListItem,
   LiveHostOption,
@@ -175,6 +177,18 @@ function isPaidClass(doc: { access_type?: string }) {
   return doc.access_type === 'paid';
 }
 
+function freeAudienceOf(doc: { access_type?: string; free_audience?: string }): FreeClassAudience {
+  if (isPaidClass(doc)) return 'selected';
+  return doc.free_audience === 'all' ? 'all' : 'selected';
+}
+
+function recordingAudienceOf(doc: { recording_audience?: string }): RecordingAudience {
+  if (doc.recording_audience === 'all' || doc.recording_audience === 'attended' || doc.recording_audience === 'enrolled') {
+    return doc.recording_audience;
+  }
+  return 'off';
+}
+
 /** Legacy: marked paid by an admin. */
 async function userHasPaid(user: { id: string; is_super_admin?: boolean; user_type?: string }) {
   if (isPlatformAdmin(user) || isLearningHost(user)) return true;
@@ -206,6 +220,10 @@ function paymentAccessFor(
 ) {
   if (isPlatformAdmin(user) || isLearningHost(user)) return { payment_blocked: false as const };
   if (user.id === String(doc.host_user_id)) return { payment_blocked: false as const };
+  if (!isPaidClass(doc)) {
+    if (freeAudienceOf(doc) === 'all' || permissionStatus === 'permitted') return { payment_blocked: false as const };
+    return { payment_blocked: true as const, payment_required_message: 'This free class is only for selected users.' };
+  }
   if (classPackageIds(doc).length > 0) {
     if (ownsClassPackage(doc, owned) || permissionStatus === 'permitted') return { payment_blocked: false as const };
     return { payment_blocked: true as const, payment_required_message: LIVE_PACKAGE_REQUIRED_MESSAGE };
@@ -358,22 +376,21 @@ export function isPreviousClass(doc: {
 }
 
 /**
- * Previous-class recordings/presentations:
- * - Admins/hosts anytime
- * - Paid users without invite
- * - Invitees (unpaid) on free previous classes
+ * Previous-class recording. Admins and the host always can.
+ * Learners follow the class switch: off, all users, people who attended, or enrolled users.
  */
 function canViewPresentation(
-  doc: { status: string; scheduled_at: Date | string; host_user_id: unknown },
+  doc: { status: string; scheduled_at: Date | string; host_user_id: unknown; recording_audience?: string },
   user: { id: string; is_super_admin?: boolean; user_type?: string },
-  permissionStatus: LivePermissionStatus,
-  hasPaid: boolean,
+  opts: { attended: boolean; enrolled: boolean },
 ): boolean {
   if (isPlatformAdmin(user) || isLearningHost(user)) return true;
   if (user.id === String(doc.host_user_id)) return true;
-  if (isPreviousClass(doc) && hasPaid) return true;
-  if (permissionStatus === 'not_permitted') return false;
-  if (isPreviousClass(doc)) return true;
+  if (!isPreviousClass(doc)) return false;
+  const audience = recordingAudienceOf(doc);
+  if (audience === 'all') return true;
+  if (audience === 'attended') return opts.attended;
+  if (audience === 'enrolled') return opts.enrolled;
   return false;
 }
 
@@ -477,6 +494,14 @@ async function permissionFor(
   if (isPlatformAdmin(user) || isLearningHost(user)) {
     return { permission_status: 'permitted', can_join: true, can_host: true };
   }
+  if (!isPaidClass(doc) && freeAudienceOf(doc) === 'all') {
+    return { permission_status: 'permitted', can_join: true, can_host: false };
+  }
+  if (!isPaidClass(doc)) {
+    const selected = await LiveStreamInvite.findOne({ live_stream_id: sessionId, user_id: userId }).lean();
+    if (selected) return { permission_status: 'permitted', can_join: true, can_host: false };
+    return { permission_status: 'not_permitted', can_join: false, can_host: false };
+  }
   const packaged = classPackageIds(doc).length > 0;
   // A packaged class opens only for a subject the learner enrolled and an admin approved.
   if (ownsClassPackage(doc, owned)) {
@@ -490,15 +515,6 @@ async function permissionFor(
   // Paid users may join any paid live class that is not tied to a subject package.
   if (isPaidClass(doc) && hasPaid) {
     return { permission_status: 'permitted', can_join: true, can_host: false };
-  }
-  // Paid users may open any previous class (recordings) without invite.
-  if (
-    hasPaid &&
-    doc.status != null &&
-    doc.scheduled_at != null &&
-    isPreviousClass({ status: doc.status, scheduled_at: doc.scheduled_at })
-  ) {
-    return { permission_status: 'permitted', can_join: false, can_host: false };
   }
   const invite = await LiveStreamInvite.findOne({
     live_stream_id: sessionId,
@@ -538,6 +554,8 @@ function serializeBase(doc: InstanceType<typeof LiveStream>, includeSlides = tru
     allow_guest_speech: Boolean(doc.allow_guest_speech),
     allow_guest_video: Boolean(doc.allow_guest_video),
     access_type: liveClassAccessType(doc),
+    free_audience: freeAudienceOf(doc),
+    recording_audience: recordingAudienceOf(doc),
     auto_record_cloud: Boolean(doc.auto_record_cloud),
     recorded_content_count: recorded.length,
     ...(includeSlides
@@ -575,6 +593,16 @@ export async function listLiveStreamsForUser(
   const hasPaid = await userHasPaid(user);
   const owned = await ownedLivePackages(user);
   const packagesOf = await packageBriefsFor(items, owned);
+  const attendedIds = new Set(
+    (
+      await LiveStreamGuest.find({
+        user_id: user.id,
+        live_stream_id: { $in: items.map((item) => item._id) },
+      })
+        .select('live_stream_id')
+        .lean()
+    ).map((row) => String(row.live_stream_id)),
+  );
   const result: LiveStreamListItem[] = [];
   for (const doc of items) {
     const perm = await permissionFor(doc, user.id, user, hasPaid, owned);
@@ -584,9 +612,11 @@ export async function listLiveStreamsForUser(
     const recorded = serializeRecordedContents(doc.recorded_contents);
     const payment = paymentAccessFor(doc, user, hasPaid, owned, perm.permission_status);
     const packages = packagesOf(doc);
-    const viewPresentation =
-      !payment.payment_blocked &&
-      canViewPresentation(doc, user, perm.permission_status, hasPaid);
+    const viewPresentation = canViewPresentation(doc, user, {
+      attended: attendedIds.has(String(doc._id)),
+      enrolled: ownsClassPackage(doc, owned),
+    });
+    if (perm.permission_status === 'not_permitted' && !viewPresentation) continue;
     const examSubjectId = doc.exam_subject_id ? String(doc.exam_subject_id) : undefined;
     result.push({
       id: String(doc._id),
@@ -609,10 +639,12 @@ export async function listLiveStreamsForUser(
       is_previous: previous,
       slide_count: slides.length,
       presentation_count: presentations.length,
-      recorded_content_count: recorded.length,
+      recorded_content_count: viewPresentation ? recorded.length : 0,
       allow_guest_messages: Boolean(doc.allow_guest_messages),
       allow_guest_speech: Boolean(doc.allow_guest_speech),
       access_type: liveClassAccessType(doc),
+      free_audience: freeAudienceOf(doc),
+      recording_audience: recordingAudienceOf(doc),
       auto_record_cloud: Boolean(doc.auto_record_cloud),
       payment_blocked: payment.payment_blocked,
       ...(payment.payment_blocked
@@ -645,9 +677,14 @@ export async function getLiveStreamForUser(
   const recorded = serializeRecordedContents(doc.recorded_contents);
   const payment = paymentAccessFor(doc, user, hasPaid, owned, perm.permission_status);
   const packages = (await packageBriefsFor([doc], owned))(doc);
-  const viewPresentation =
-    !payment.payment_blocked &&
-    canViewPresentation(doc, user, perm.permission_status, hasPaid);
+  const attended = await LiveStreamGuest.exists({ live_stream_id: doc._id, user_id: user.id });
+  const viewPresentation = canViewPresentation(doc, user, {
+    attended: Boolean(attended),
+    enrolled: ownsClassPackage(doc, owned),
+  });
+  if (perm.permission_status === 'not_permitted' && !viewPresentation) {
+    throw forbidden('This class is not available for your account.');
+  }
   return {
     ...serializeBase(doc, false),
     slides: viewPresentation ? slides : [],
@@ -655,7 +692,7 @@ export async function getLiveStreamForUser(
     slide_count: slides.length,
     presentation_count: presentations.length,
     recorded_contents: viewPresentation ? recorded : [],
-    recorded_content_count: recorded.length,
+    recorded_content_count: viewPresentation ? recorded.length : 0,
     can_view_presentation: viewPresentation,
     host_name,
     ...(examSubjectId
@@ -877,6 +914,8 @@ export async function createLiveStream(dto: CreateLiveStreamDto, actorId: string
     presentations,
     slides: flattenLiveStreamSlides({ presentations }),
     access_type: dto.access_type === 'paid' ? 'paid' : 'free',
+    free_audience: dto.access_type === 'paid' ? 'selected' : dto.free_audience === 'all' ? 'all' : 'selected',
+    recording_audience: dto.recording_audience ?? 'off',
     auto_record_cloud: Boolean(dto.auto_record_cloud),
     recorded_contents: dto.recorded_contents
       ? serializeRecordedContents(dto.recorded_contents)
@@ -914,6 +953,8 @@ export async function scheduleSubjectClass(packageId: string, dto: ScheduleSubje
       scheduled_at: dto.scheduled_at,
       exam_subject_id: subjectIds[0],
       access_type: 'paid',
+      free_audience: 'selected',
+      recording_audience: 'off',
       video_platform: 'zoom',
       auto_record_cloud: false,
       ...(dto.host_user_id ? { host_user_id: dto.host_user_id } : {}),
@@ -964,6 +1005,12 @@ export async function updateLiveStream(id: string, dto: UpdateLiveStreamDto) {
   }
   if (dto.access_type !== undefined) {
     doc.access_type = dto.access_type === 'paid' ? 'paid' : 'free';
+  }
+  if (dto.free_audience !== undefined) {
+    doc.free_audience = dto.free_audience === 'all' ? 'all' : 'selected';
+  }
+  if (dto.recording_audience !== undefined) {
+    doc.recording_audience = dto.recording_audience;
   }
   if (dto.status !== undefined) {
     doc.status = dto.status;

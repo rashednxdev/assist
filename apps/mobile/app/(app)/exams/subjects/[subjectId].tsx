@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ScrollView, View, Text, StyleSheet, Pressable } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, Pressable, type StyleProp, type TextStyle } from 'react-native';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { BookBadge } from '@/components/books/BookBadge';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
@@ -24,6 +24,19 @@ function referenceHref(ref: SyllabusReference) {
   return null;
 }
 
+function DescriptionLines({ text, style }: { text?: string; style: StyleProp<TextStyle> }) {
+  const lines = (text ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return null;
+  return lines.map((line, index) => (
+    <Text key={`${index}-${line}`} style={style}>
+      {line}
+    </Text>
+  ));
+}
+
 function TopicCard({ topic }: { topic: SyllabusTopic }) {
   const router = useRouter();
 
@@ -36,7 +49,7 @@ function TopicCard({ topic }: { topic: SyllabusTopic }) {
         ) : null}
       </View>
 
-      {topic.description?.trim() ? <Text style={styles.topicDesc}>{topic.description}</Text> : null}
+      <DescriptionLines text={topic.description} style={styles.topicDesc} />
 
       {topic.sub_topics.length > 0 && (
         <View style={styles.subSection}>
@@ -44,7 +57,7 @@ function TopicCard({ topic }: { topic: SyllabusTopic }) {
           {topic.sub_topics.map((sub) => (
             <View key={sub.id} style={styles.subTopicRow}>
               <Text style={styles.subTopicName}>{sub.name}</Text>
-              {sub.description?.trim() ? <Text style={styles.subTopicDesc}>{sub.description}</Text> : null}
+              <DescriptionLines text={sub.description} style={styles.subTopicDesc} />
             </View>
           ))}
         </View>

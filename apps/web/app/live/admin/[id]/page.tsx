@@ -53,6 +53,7 @@ interface SessionDetail {
   exam_subject_id?: string;
   exam_subject_name?: string;
   access_type?: 'free' | 'paid';
+  free_audience?: 'all' | 'selected';
   video_platform?: 'agora' | 'zoom';
   auto_record_cloud?: boolean;
   recorded_contents?: LiveStreamRecordedContent[];
@@ -141,6 +142,7 @@ export default function LiveStreamAdminDetailPage() {
   const [editDetails, setEditDetails] = useState('');
   const [editWhen, setEditWhen] = useState('');
   const [editAccessType, setEditAccessType] = useState<'free' | 'paid'>('free');
+  const [editFreeAudience, setEditFreeAudience] = useState<'all' | 'selected'>('selected');
   const [editSubjectId, setEditSubjectId] = useState('');
   const [editHostUserId, setEditHostUserId] = useState('');
   const [subjects, setSubjects] = useState<SubjectOption[]>([]);
@@ -167,6 +169,7 @@ export default function LiveStreamAdminDetailPage() {
       setEditDetails(s.data.details ?? '');
       setEditWhen(toDatetimeLocal(s.data.scheduled_at));
       setEditAccessType(s.data.access_type === 'paid' ? 'paid' : 'free');
+      setEditFreeAudience(s.data.free_audience === 'all' ? 'all' : 'selected');
       setEditSubjectId(s.data.exam_subject_id ?? '');
       setEditHostUserId(s.data.host_user_id ?? '');
       setAutoRecordCloud(Boolean(s.data.auto_record_cloud));
@@ -254,6 +257,7 @@ export default function LiveStreamAdminDetailPage() {
           details: editDetails.trim() || null,
           scheduled_at: new Date(editWhen).toISOString(),
           access_type: editAccessType,
+          free_audience: editAccessType === 'free' ? editFreeAudience : 'selected',
           exam_subject_id: editSubjectId || null,
           ...(editHostUserId ? { host_user_id: editHostUserId } : {}),
           ...(session?.video_platform === 'zoom' ? { auto_record_cloud: autoRecordCloud } : {}),
@@ -542,13 +546,24 @@ export default function LiveStreamAdminDetailPage() {
             <Label htmlFor="edit-access">Access</Label>
             <select
               id="edit-access"
-              value={editAccessType}
-              onChange={(e) => setEditAccessType(e.target.value === 'paid' ? 'paid' : 'free')}
+              value={editAccessType === 'paid' ? 'paid' : editFreeAudience === 'all' ? 'free-all' : 'free-selected'}
+              onChange={(e) => {
+                if (e.target.value === 'paid') {
+                  setEditAccessType('paid');
+                  return;
+                }
+                setEditAccessType('free');
+                setEditFreeAudience(e.target.value === 'free-all' ? 'all' : 'selected');
+              }}
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
-              <option value="free">Free — all invited users</option>
-              <option value="paid">Paid — paid users only</option>
+              <option value="free-all">Free — all users after login</option>
+              <option value="free-selected">Free — selected users only</option>
+              <option value="paid">Paid — enrolled users</option>
             </select>
+            {editAccessType === 'free' && editFreeAudience === 'selected' ? (
+              <p className="text-xs text-muted">Choose those users under User access. They do not need to enroll.</p>
+            ) : null}
           </div>
           {session.video_platform === 'zoom' ? (
             <div className="space-y-1.5 sm:col-span-2">
@@ -1087,7 +1102,9 @@ export default function LiveStreamAdminDetailPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">User access (batch)</CardTitle>
+          <CardTitle className="text-base">
+            {session.access_type !== 'paid' && session.free_audience !== 'all' ? 'Selected users' : 'User access (batch)'}
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap items-end gap-3">

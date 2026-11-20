@@ -119,7 +119,17 @@ export const otpVerifySchema = z.object({
   code: z.string().length(6),
 });
 
-/** Step 2 of sign-in: the 6-digit code sent by SMS after the password is accepted. */
+/** Step 1 of the web sign-in: send a 6-digit code to a Bangladesh mobile. */
+export const loginCodeSchema = z.object({
+  phone: z.string().regex(/^01[3-9]\d{8}$/, 'Enter a valid Bangladesh mobile number'),
+  device_id: z.string().min(8).max(128),
+  device_label: z.string().max(120).optional(),
+  client_platform: z.enum(['mobile', 'web']).optional(),
+});
+
+export type LoginCodeDto = z.infer<typeof loginCodeSchema>;
+
+/** Step 2 of sign-in: the 6-digit code sent by SMS. */
 export const loginOtpSchema = z.object({
   challenge: z.string().min(20),
   code: z.string().regex(/^\d{6}$/, 'Enter the 6-digit code'),

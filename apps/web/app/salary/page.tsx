@@ -10,18 +10,13 @@ import {
   HeartHandshake,
   CircleHelp,
   History,
-  LayoutDashboard,
-  LogOut,
-  Wallet,
   ReceiptText,
   Share2,
   Users,
 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { logoutRequest } from '@/lib/auth';
-import { hasLearningWebAccess, LEARNING_HOME } from '@/lib/learning-access';
 import { useSalaryUser } from '@/components/salary/salary-auth-gate';
 import { SalaryHelpRail } from '@/components/salary/salary-help-rail';
+import { SalaryLocaleToggle } from '@/components/salary/salary-locale-toggle';
 import { SalaryTrNoticeDialog, trNoticeIsActive } from '@/components/salary/salary-tr-notice-dialog';
 import { readSalaryLocale, writeSalaryLocale } from '@/lib/salary-locale';
 import { isPlatformAdmin } from '@/lib/capabilities';
@@ -144,7 +139,7 @@ interface Ctx {
 }
 
 const STAGE_HEADER: Record<Salary2026Result['phase'], { bar: string; n: number }> = {
-  '2026-07-01': { bar: 'bg-emerald-600', n: 1 },
+  '2026-07-01': { bar: 'bg-[#1566b8]', n: 1 },
   '2027-01-01': { bar: 'bg-amber-600', n: 2 },
   '2027-07-01': { bar: 'bg-violet-600', n: 3 },
 };
@@ -154,26 +149,6 @@ function RichText({ segments }: { segments: Segments }) {
     <>
       {segments.map(([text, bold], i) => (bold ? <strong key={i}>{text}</strong> : <span key={i}>{text}</span>))}
     </>
-  );
-}
-
-function SalaryLocaleToggle({ value, onChange }: { value: SalaryLocale; onChange: (v: SalaryLocale) => void }) {
-  return (
-    <div className="inline-flex items-center rounded-lg border border-white/30 bg-white/5 p-0.5 text-sm print:hidden" role="group" aria-label="Language">
-      {(['en', 'bn'] as const).map((loc) => (
-        <button
-          key={loc}
-          type="button"
-          onClick={() => onChange(loc)}
-          aria-pressed={value === loc}
-          className={`rounded-md px-2.5 py-1 font-medium transition-colors ${
-            value === loc ? 'bg-white text-[#0b3d2e]' : 'text-white/80 hover:text-white'
-          }`}
-        >
-          {loc === 'en' ? 'EN' : 'বাং'}
-        </button>
-      ))}
-    </div>
   );
 }
 
@@ -207,11 +182,11 @@ function ResultStat({
   return (
     <div
       className={`salary-print-stat rounded-xl border p-4 ${
-        emphasize ? 'salary-print-stat-emphasis border-emerald-300 bg-emerald-50' : 'border-border bg-slate-50/80'
+        emphasize ? 'salary-print-stat-emphasis border-[#c5dff6] bg-[#f4f9fd]' : 'border-border bg-slate-50/80'
       }`}
     >
       <div className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</div>
-      <div className={`mt-1 font-semibold ${emphasize ? 'text-2xl text-emerald-900' : 'text-lg'}`}>
+      <div className={`mt-1 font-semibold ${emphasize ? 'text-2xl text-[#0a2f5b]' : 'text-lg'}`}>
         {value}
       </div>
     </div>
@@ -237,23 +212,23 @@ function StageTotalAllowanceSummary({
   const netPayable = basicPlusAllowances - gpf;
 
   return (
-    <div className="rounded-xl border border-teal-200 bg-teal-50/50 p-3 sm:p-4">
+    <div className="rounded-xl border border-[#d7e4ee] bg-[#f4f9fd]/50 p-3 sm:p-4">
       <div className="grid gap-2 sm:grid-cols-2">
         <div className="rounded-lg border border-border bg-white px-3 py-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">{t.basic}</p>
           <p className="mt-0.5 font-mono text-lg font-bold text-slate-900">{tk(stageBasic)}</p>
           <p className="text-[11px] text-muted">{t.basicNote}</p>
         </div>
-        <div className="rounded-lg border border-teal-300 bg-teal-100/80 px-3 py-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-teal-900">{t.totalAllowance}</p>
-          <p className="mt-0.5 font-mono text-lg font-bold text-teal-950">{tk(fixedAllowancesTotal)}</p>
-          <p className="text-[11px] text-teal-800/80">{t.fixedOnBasic}</p>
+        <div className="rounded-lg border border-[#c5dff6] bg-[#eaf4fc]/80 px-3 py-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#0a2f5b]">{t.totalAllowance}</p>
+          <p className="mt-0.5 font-mono text-lg font-bold text-[#0a2f5b]">{tk(fixedAllowancesTotal)}</p>
+          <p className="text-[11px] text-[#0a2f5b]/80">{t.fixedOnBasic}</p>
         </div>
       </div>
-      <div className="mt-2 rounded-lg border border-emerald-300 bg-emerald-100/80 px-3 py-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-900">{t.basicPlusAllowance}</p>
-        <p className="mt-0.5 font-mono text-lg font-bold text-emerald-950">{tk(basicPlusAllowances)}</p>
-        <p className="text-[11px] text-emerald-800/80">
+      <div className="mt-2 rounded-lg border border-[#c5dff6] bg-[#eaf4fc]/80 px-3 py-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-[#0a2f5b]">{t.basicPlusAllowance}</p>
+        <p className="mt-0.5 font-mono text-lg font-bold text-[#0a2f5b]">{tk(basicPlusAllowances)}</p>
+        <p className="text-[11px] text-[#0a2f5b]/80">
           {tk(stageBasic)} + {tk(fixedAllowancesTotal)}
         </p>
       </div>
@@ -455,10 +430,10 @@ function GrossResultCard({ ctx, gross }: { ctx: Ctx; gross: EmployeeGrossResult 
   const allowanceOnlyTotal = allowanceLines.reduce((sum, row) => sum + row.amount, 0);
 
   return (
-    <Card className="salary-print-avoid-break overflow-hidden border border-teal-200 shadow-sm">
-      <div className="bg-teal-700 px-4 py-2.5 text-white sm:px-5">
+    <Card className="salary-print-avoid-break overflow-hidden border border-[#d7e4ee] shadow-sm">
+      <div className="bg-[#0a2f5b] px-4 py-2.5 text-white sm:px-5">
         <div className="text-sm font-bold">{t.totalAllowance}</div>
-        <p className="mt-0.5 text-xs text-teal-100/90">{t.grossSub(num(gross.grade), housingText(locale, gross))}</p>
+        <p className="mt-0.5 text-xs text-[#c5dff6]/90">{t.grossSub(num(gross.grade), housingText(locale, gross))}</p>
       </div>
       <CardContent className="space-y-4 p-4 sm:p-5">
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
@@ -489,11 +464,11 @@ function GrossResultCard({ ctx, gross }: { ctx: Ctx; gross: EmployeeGrossResult 
                   </tr>
                 );
               })}
-              <tr className="border-t-2 border-teal-200 bg-teal-50">
-                <td className="px-3 py-2.5 font-bold text-teal-950" colSpan={2}>
+              <tr className="border-t-2 border-[#d7e4ee] bg-[#f4f9fd]">
+                <td className="px-3 py-2.5 font-bold text-[#0a2f5b]" colSpan={2}>
                   {t.totalAllowance}
                 </td>
-                <td className="px-3 py-2.5 text-right font-mono text-lg font-bold text-teal-900">
+                <td className="px-3 py-2.5 text-right font-mono text-lg font-bold text-[#0a2f5b]">
                   {num(formatTaka(allowanceOnlyTotal))}
                 </td>
               </tr>
@@ -550,10 +525,10 @@ function SalarySummaryCard({
   const hasPayChange = results.some((r) => r.pay_change_effective_date && r.new_pay_before_pay_change != null);
 
   return (
-    <Card className="salary-print-avoid-break overflow-hidden border border-emerald-300 shadow-sm">
-      <div className="bg-emerald-700 px-4 py-2.5 text-white sm:px-5">
+    <Card className="salary-print-avoid-break overflow-hidden border border-[#c5dff6] shadow-sm">
+      <div className="bg-[#0a2f5b] px-4 py-2.5 text-white sm:px-5">
         <div className="text-sm font-bold">{t.summaryTitle}</div>
-        <p className="mt-0.5 text-xs text-emerald-100/90">{t.summarySub(localNum(locale, grade), tk(oldPay))}</p>
+        <p className="mt-0.5 text-xs text-[#c5dff6]/90">{t.summarySub(localNum(locale, grade), tk(oldPay))}</p>
       </div>
       <CardContent className="space-y-3 p-4 sm:p-5">
         <div className={`grid gap-3 ${hasPayChange ? 'sm:grid-cols-1' : 'sm:grid-cols-3'}`}>
@@ -586,10 +561,10 @@ function SalarySummaryCard({
           })}
         </div>
         {SHOW_ALLOWANCES ? (
-          <div className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2">
+          <div className="rounded-lg border border-[#d7e4ee] bg-[#f4f9fd] px-3 py-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-sm font-semibold text-teal-900">{t.summaryAllowance}</span>
-              <span className="font-mono text-lg font-bold text-teal-950">{tk(allowancesTotal)}</span>
+              <span className="text-sm font-semibold text-[#0a2f5b]">{t.summaryAllowance}</span>
+              <span className="font-mono text-lg font-bold text-[#0a2f5b]">{tk(allowancesTotal)}</span>
             </div>
             <p className="mt-1 text-xs font-medium text-amber-800">{t.allowanceInputNote}</p>
           </div>
@@ -649,10 +624,7 @@ export default function SalaryOn2026Page() {
   const staffRef = useRef<HTMLDivElement>(null);
   const [scrollRequest, setScrollRequest] = useState<{ ref: React.RefObject<HTMLDivElement | null> } | null>(null);
 
-  const router = useRouter();
   const me = useSalaryUser();
-  const showLearningLink = hasLearningWebAccess(me);
-  const showBillAccessLink = isPlatformAdmin(me);
   const t = salaryCopy(locale);
   const ctx: Ctx = { t, locale };
   const num = (v: string | number) => localNum(locale, v);
@@ -1094,11 +1066,6 @@ export default function SalaryOn2026Page() {
     else setPrintMode(target);
   }
 
-  async function handleLogout() {
-    await logoutRequest();
-    router.replace('/login');
-  }
-
   async function handleShare() {
     const url = typeof window !== 'undefined' ? window.location.href : '/salary';
     try {
@@ -1125,89 +1092,48 @@ export default function SalaryOn2026Page() {
   return (
     <div
       lang={locale}
-      className={`salary-print-root flex min-h-screen flex-col bg-[#f4f7f5] text-slate-900${
-        printMode ? ` salary-print-mode-${printMode}` : ''
-      }`}
+      className={`salary-print-root space-y-6 text-slate-900${printMode ? ` salary-print-mode-${printMode}` : ''}`}
     >
-      <header className="border-b border-emerald-900/10 bg-[#0b3d2e] text-white">
-        <div className="mx-auto flex max-w-[88rem] items-center justify-between gap-4 px-4 py-3 sm:px-6">
-          <Link href="/salary" className="min-w-0">
-            <div className="text-sm font-bold tracking-wide">ProAssist</div>
-            <div className="text-[11px] text-emerald-100/80">{t.brandSub}</div>
-          </Link>
-          <div className="flex items-center gap-2">
-            <SalaryLocaleToggle value={locale} onChange={changeLocale} />
-            <Link
-              href="/salary/questions"
-              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-white/30 bg-white/5 px-2.5 text-sm font-medium text-white hover:bg-white/15 print:hidden"
-            >
-              <CircleHelp className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{locale === 'bn' ? 'প্রশ্ন' : 'Questions'}</span>
-            </Link>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => void handleShare()}
-              className="gap-1.5 border-white/30 bg-white/5 text-white hover:bg-white/15 hover:text-white print:hidden"
-            >
-              <Share2 className="h-3.5 w-3.5" />
-              {t.shareBtn}
-            </Button>
-            {billAccess && salaryCanSeeDownloads(billAccess) ? (
-              <Link
-                href="/salary/downloads"
-                aria-label={t.myDownloadsBtn}
-                title={t.myDownloadsBtn}
-                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-white/30 bg-white/5 px-2.5 text-sm font-medium text-white hover:bg-white/15 print:hidden"
-              >
-                <History className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">{t.myDownloadsBtn}</span>
-              </Link>
-            ) : null}
-            {showLearningLink ? (
-              <Link
-                href={LEARNING_HOME}
-                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-white/30 bg-white/5 px-2.5 text-sm font-medium text-white hover:bg-white/15 print:hidden"
-              >
-                <LayoutDashboard className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Learning</span>
-              </Link>
-            ) : null}
-            {showBillAccessLink ? (
-              <Link
-                href="/admin/salary-access"
-                aria-label="Salary bill access"
-                title="Salary bill access"
-                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-white/30 bg-white/5 px-2.5 text-sm font-medium text-white hover:bg-white/15 print:hidden"
-              >
-                <Wallet className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Salary bill access</span>
-              </Link>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => void handleLogout()}
-              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-white/30 bg-white/5 px-2.5 text-sm font-medium text-white hover:bg-white/15 print:hidden"
-              aria-label="Sign out"
-            >
-              <LogOut className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Sign out</span>
-            </button>
-          </div>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="salary-print-hero min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#1566b8]">{t.heroKicker}</p>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-[#0a2f5b] sm:text-3xl">{t.heroTitle}</h1>
+          <p className="salary-hero-badge mt-1 text-sm text-slate-600">{t.heroBadge}</p>
+          {shareNote ? <p className="mt-1 text-xs text-[#156f4d] print:hidden">{shareNote}</p> : null}
         </div>
-      </header>
-
-      <div className="salary-print-hero border-b border-emerald-200 bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-600">
-        <div className="mx-auto max-w-[88rem] px-4 py-3 text-center sm:px-6 sm:py-4">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-100/90">{t.heroKicker}</p>
-          <h1 className="mt-1 text-balance text-lg font-extrabold leading-snug text-white sm:text-xl">{t.heroTitle}</h1>
-          <p className="salary-hero-badge mx-auto mt-1.5 max-w-3xl text-xs font-semibold text-emerald-50 sm:text-sm">{t.heroBadge}</p>
-          {shareNote ? <p className="mt-1 text-xs text-emerald-100 print:hidden">{shareNote}</p> : null}
+        <div className="flex flex-wrap items-center gap-2 print:hidden">
+          <SalaryLocaleToggle value={locale} onChange={changeLocale} />
+          <Link
+            href="/salary/questions"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-[#d7e4ee] bg-white px-4 py-2 text-xs font-semibold text-[#0a2f5b] hover:border-[#1566b8]"
+          >
+            <CircleHelp className="h-4 w-4 text-[#1566b8]" />
+            {locale === 'bn' ? 'প্রশ্ন' : 'Questions'}
+          </Link>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void handleShare()}
+            className="gap-1.5 rounded-xl border-[#d7e4ee] bg-white text-xs font-semibold text-[#0a2f5b] hover:border-[#1566b8] hover:bg-white hover:text-[#0a2f5b]"
+          >
+            <Share2 className="h-4 w-4 text-[#1566b8]" />
+            {t.shareBtn}
+          </Button>
+          {billAccess && salaryCanSeeDownloads(billAccess) ? (
+            <Link
+              href="/salary/downloads"
+              aria-label={t.myDownloadsBtn}
+              title={t.myDownloadsBtn}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-[#0a2f5b] px-4 py-2 text-xs font-semibold text-white hover:bg-[#1566b8]"
+            >
+              <History className="h-4 w-4" />
+              <span>{t.myDownloadsBtn}</span>
+            </Link>
+          ) : null}
         </div>
       </div>
 
-      <main className="salary-page-main mx-auto w-full max-w-[88rem] flex-1 space-y-6 px-4 py-6 sm:px-6 sm:py-8 xl:space-y-0">
+      <div className="salary-page-main w-full space-y-6 xl:space-y-0">
         <SalaryPrintMeta t={t} info={printInfo} preparedOn={preparedOn} />
 
         <aside className="salary-help-rail salary-print-hide">
@@ -1227,7 +1153,7 @@ export default function SalaryOn2026Page() {
                   </Label>
                   <select
                     id="grade"
-                    className="flex h-11 w-full rounded-md border-2 border-emerald-400 bg-emerald-50/60 px-3 text-base font-semibold ring-2 ring-emerald-200 focus:border-emerald-500 focus:outline-none focus:ring-emerald-300"
+                    className="flex h-11 w-full rounded-md border-2 border-[#7eb6ea] bg-[#f4f9fd]/60 px-3 text-base font-semibold ring-2 ring-[#d7e4ee] focus:border-[#1566b8] focus:outline-none focus:ring-[#c5dff6]"
                     value={grade ?? ''}
                     onChange={(e) => {
                       const g = e.target.value === '' ? null : (Number(e.target.value) as PayGrade);
@@ -1253,7 +1179,7 @@ export default function SalaryOn2026Page() {
                   <select
                     id="basic"
                     disabled={!grade}
-                    className="flex h-11 w-full rounded-md border-2 border-emerald-400 bg-emerald-50/60 px-3 text-base font-semibold tabular-nums ring-2 ring-emerald-200 focus:border-emerald-500 focus:outline-none focus:ring-emerald-300 disabled:cursor-not-allowed disabled:border-border disabled:bg-slate-100 disabled:ring-0"
+                    className="flex h-11 w-full rounded-md border-2 border-[#7eb6ea] bg-[#f4f9fd]/60 px-3 text-base font-semibold tabular-nums ring-2 ring-[#d7e4ee] focus:border-[#1566b8] focus:outline-none focus:ring-[#c5dff6] disabled:cursor-not-allowed disabled:border-border disabled:bg-slate-100 disabled:ring-0"
                     value={oldPay > 0 ? oldPay : ''}
                     onChange={(e) => {
                       setOldPay(Number(e.target.value) || 0);
@@ -1272,7 +1198,7 @@ export default function SalaryOn2026Page() {
                 </div>
               </div>
               {grade && stepNo > 0 ? (
-                <p className="inline-flex items-center gap-2 rounded-md bg-emerald-100 px-2.5 py-1 text-sm font-semibold text-emerald-900">
+                <p className="inline-flex items-center gap-2 rounded-md bg-[#eaf4fc] px-2.5 py-1 text-sm font-semibold text-[#0a2f5b]">
                   {t.gradeFound(num(grade), num(stepNo))}
                   {isFixedPayGrade(grade) ? <span className="text-xs font-medium">{t.fixedPay}</span> : null}
                 </p>
@@ -1308,7 +1234,7 @@ export default function SalaryOn2026Page() {
               </div>
             </div>
 
-            <div className="space-y-4 rounded-xl border border-teal-200 bg-teal-50/40 p-4">
+            <div className="space-y-4 rounded-xl border border-[#d7e4ee] bg-[#f4f9fd]/40 p-4">
               <fieldset className="space-y-2">
                 <legend className="text-sm font-bold text-slate-800">{t.housing}</legend>
                 <label className="flex cursor-pointer items-start gap-2 text-sm">
@@ -1350,7 +1276,7 @@ export default function SalaryOn2026Page() {
                     className={
                       hraMissing && !hraArea
                         ? 'flex h-10 w-full rounded-md border-2 border-[#b71c1c] bg-red-50 px-3 text-sm font-semibold text-[#b71c1c] ring-2 ring-red-200 focus:border-[#b71c1c] focus:outline-none focus:ring-2 focus:ring-red-300'
-                        : 'flex h-10 w-full rounded-md border border-teal-300 bg-white px-3 text-sm font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-200'
+                        : 'flex h-10 w-full rounded-md border border-[#c5dff6] bg-white px-3 text-sm font-medium focus:border-[#1566b8] focus:outline-none focus:ring-2 focus:ring-[#d7e4ee]'
                     }
                     value={hraArea}
                     onChange={(e) => {
@@ -1452,7 +1378,7 @@ export default function SalaryOn2026Page() {
                       </Label>
                       <select
                         id="educationChildren"
-                        className="flex h-10 w-full rounded-md border border-teal-300 bg-white px-3 text-sm font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-200"
+                        className="flex h-10 w-full rounded-md border border-[#c5dff6] bg-white px-3 text-sm font-medium focus:border-[#1566b8] focus:outline-none focus:ring-2 focus:ring-[#d7e4ee]"
                         value={educationChildren}
                         onChange={(e) => {
                           setEducationChildren(Number(e.target.value) as EducationChildren);
@@ -1506,14 +1432,14 @@ export default function SalaryOn2026Page() {
                       inputMode="decimal"
                       autoComplete="off"
                       placeholder={t.gpfPlaceholder}
-                      className="border-teal-300 bg-white font-medium tabular-nums focus-visible:border-teal-500 focus-visible:ring-teal-200"
+                      className="border-[#c5dff6] bg-white font-medium tabular-nums focus-visible:border-[#1566b8] focus-visible:ring-[#d7e4ee]"
                       value={gpfDeductionInput}
                       onChange={(e) => setGpfDeductionInput(e.target.value)}
                     />
                     <p className="text-xs text-muted">{t.gpfHint(gpfDeduction > 0 ? tk(gpfDeduction) : null)}</p>
                   </div>
 
-                  <p className="text-xs text-teal-900/80">{t.grossNote}</p>
+                  <p className="text-xs text-[#0a2f5b]/80">{t.grossNote}</p>
                 </div>
               ) : null}
             </div>
@@ -1675,17 +1601,7 @@ export default function SalaryOn2026Page() {
             </div>
           </section>
         ) : null}
-      </main>
-
-      <footer className="mt-auto border-t border-emerald-900/10 bg-[#0b3d2e] text-emerald-50">
-        <div className="mx-auto flex max-w-[88rem] flex-col gap-2 px-4 py-5 text-center sm:flex-row sm:items-center sm:justify-between sm:text-left sm:px-6">
-          <div>
-            <div className="text-sm font-bold text-white">ProAssist</div>
-            <div className="text-xs text-emerald-100/75">{t.footerTagline}</div>
-          </div>
-          <div className="text-xs text-emerald-100/70">{t.footerNote}</div>
-        </div>
-      </footer>
+      </div>
 
       <p className="salary-print-footer hidden">
         <span className="font-semibold">Calculate By: www.proassistbd.com</span>

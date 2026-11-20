@@ -11,6 +11,7 @@ import { Alert } from '@/components/ui/alert';
 import { useSalaryUser } from '@/components/salary/salary-auth-gate';
 import { useSalaryOffice } from '@/components/salary/salary-office-gate';
 import { SalaryPrintReportView } from '@/components/salary/salary-print-report';
+import { SalaryLocaleToggle } from '@/components/salary/salary-locale-toggle';
 
 function ProfileFact({
   icon: Icon,
@@ -22,10 +23,10 @@ function ProfileFact({
   value: string;
 }) {
   return (
-    <div className="flex min-w-0 items-start gap-2.5 rounded-xl bg-emerald-50/80 px-3 py-2 ring-1 ring-emerald-100">
-      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" aria-hidden />
+    <div className="flex min-w-0 items-start gap-2.5 rounded-xl bg-[#f4f9fd]/80 px-3 py-2 ring-1 ring-[#d7e8f8]">
+      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-[#0a2f5b]" aria-hidden />
       <div className="min-w-0">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800">{label}</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-[#0a2f5b]">{label}</p>
         <p className="truncate text-sm font-semibold text-slate-900">{value}</p>
       </div>
     </div>
@@ -61,42 +62,19 @@ export default function SalaryMyDownloadsPage() {
   const officeLabel = office?.label?.trim() || '';
 
   return (
-    <div lang={locale} className="flex min-h-screen flex-col bg-[#f4f7f5] text-slate-900">
-      <header className="border-b border-emerald-900/10 bg-[#0b3d2e] text-white">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
-          <Link href="/salary" className="min-w-0">
-            <div className="text-sm font-bold tracking-wide">ProAssist</div>
-            <div className="text-[11px] text-emerald-100/80">{t.brandSub}</div>
+    <div lang={locale} className="space-y-6 text-slate-900">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <Link href="/salary" className="inline-flex items-center gap-1.5 text-sm font-medium text-[#1566b8] hover:underline">
+            <ArrowLeft className="h-3.5 w-3.5" />
+            {t.backToSalary}
           </Link>
-          <div className="flex items-center gap-2">
-            <div className="inline-flex items-center rounded-lg border border-white/30 bg-white/5 p-0.5 text-sm" role="group" aria-label="Language">
-              {(['en', 'bn'] as const).map((loc) => (
-                <button
-                  key={loc}
-                  type="button"
-                  onClick={() => changeLocale(loc)}
-                  aria-pressed={locale === loc}
-                  className={`rounded-md px-2.5 py-1 font-medium transition-colors ${
-                    locale === loc ? 'bg-white text-[#0b3d2e]' : 'text-white/80 hover:text-white'
-                  }`}
-                >
-                  {loc === 'en' ? 'EN' : 'বাং'}
-                </button>
-              ))}
-            </div>
-            <Link
-              href="/salary"
-              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-white/30 bg-white/5 px-2.5 text-sm font-medium text-white hover:bg-white/15"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{t.backToSalary}</span>
-            </Link>
-          </div>
         </div>
-      </header>
+        <SalaryLocaleToggle value={locale} onChange={changeLocale} />
+      </div>
 
-      <main className="mx-auto w-full max-w-5xl flex-1 space-y-4 px-4 py-6 sm:px-6 sm:py-8">
-        <section className="rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm sm:p-5">
+      <div className="space-y-4">
+        <section className="rounded-2xl border border-[#d7e4ee] bg-white p-4 shadow-sm sm:p-5">
           <h1 className="flex items-center gap-2 text-lg font-bold text-[#0b3d2e]">
             <History className="h-5 w-5" />
             {t.myDownloadsTitle}
@@ -109,7 +87,7 @@ export default function SalaryMyDownloadsPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm sm:p-5">
+        <section className="rounded-2xl border border-[#d7e4ee] bg-white p-4 shadow-sm sm:p-5">
           <p className="text-sm text-slate-600">{t.myDownloadsIntro}</p>
           <div className="mt-4">
             {loadError ? (
@@ -123,7 +101,7 @@ export default function SalaryMyDownloadsPage() {
             )}
           </div>
         </section>
-      </main>
+      </div>
     </div>
   );
 }

@@ -55,7 +55,7 @@ export function QuestionBankLearner() {
   const [subjectId, setSubjectId] = useState('');
   const [bookId, setBookId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [groupByBooks, setGroupByBooks] = useState(false);
+  const [groupByBooks, setGroupByBooks] = useState(true);
 
   useEffect(() => {
     void Promise.all([
@@ -93,7 +93,7 @@ export function QuestionBankLearner() {
         setError('');
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load questions');
+        if (!cancelled) setError(err instanceof Error ? err.message : 'প্রশ্ন লোড করা যায়নি');
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -142,8 +142,8 @@ export function QuestionBankLearner() {
     if (!groupByBooks) return rows;
     return [...rows].sort((a, b) => {
       const an = bookOf(a)?.name ?? 'zzz';
-      const bn = bookOf(b)?.name ?? 'zzz';
-      const bookCmp = an.localeCompare(bn);
+      const bnName = bookOf(b)?.name ?? 'zzz';
+      const bookCmp = an.localeCompare(bnName);
       if (bookCmp !== 0) return bookCmp;
       return (a.chapter_number ?? '').localeCompare(b.chapter_number ?? '', undefined, { numeric: true });
     });
@@ -156,70 +156,149 @@ export function QuestionBankLearner() {
   let lastChapter = '';
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Question Bank</h1>
-        <p className="mt-1 text-sm text-muted">Subjects you have access to. Group by Books & Tools when you want chapter order.</p>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-[#0a2f5b] sm:text-3xl">অনুশীলন ও প্রশ্নব্যাংক</h1>
+          <p className="mt-1 text-sm text-slate-600">
+            আপনার এনরোল করা বিষয়ের সকল লিখিত ও নৈর্ব্যক্তিক প্রশ্ন বই ও অধ্যায় অনুসারে দেখুন।
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/exam-prep"
+            className="rounded-xl bg-[#1566b8] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#0f5294]"
+          >
+            বিষয়ভিত্তিক প্রস্তুতি
+          </Link>
+          <Link
+            href="/papers"
+            className="rounded-xl border border-[#d7e4ee] bg-white px-3.5 py-2 text-xs font-semibold text-[#0a2f5b] hover:bg-[#eaf3fc]"
+          >
+            মডেল টেস্ট
+          </Link>
+        </div>
       </div>
 
-      <form
-        className="flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          setApplied(query);
-          setMenuOpen(false);
-        }}
-      >
-        <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search questions..." className="pl-9" />
-        </div>
-        <Button type="submit">Search</Button>
-        <Button type="button" variant={menuOpen ? 'default' : 'outline'} size="sm" className="h-10 w-10 px-0" aria-label="Books and tools options" onClick={() => setMenuOpen((v) => !v)}>
-          <MoreVertical className="h-4 w-4" />
-        </Button>
-      </form>
+      <div className="space-y-3 rounded-2xl border border-[#d7e4ee] bg-white p-4 shadow-xs">
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setApplied(query);
+            setMenuOpen(false);
+          }}
+        >
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="প্রশ্ন খুঁজুন..."
+              className="border-[#d7e4ee] bg-[#f4f9fd] pl-9 focus:bg-white"
+            />
+          </div>
+          <Button type="submit" className="bg-[#1566b8] hover:bg-[#0f5294]">খুঁজুন</Button>
+          <Button
+            type="button"
+            variant={menuOpen ? 'default' : 'outline'}
+            size="sm"
+            className="h-10 w-10 px-0"
+            aria-label="বই ও ফিল্টার"
+            onClick={() => setMenuOpen((v) => !v)}
+          >
+            <MoreVertical className="h-4 w-4" />
+          </Button>
+        </form>
 
-      {subjects.length > 0 ? (
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          <button type="button" onClick={() => setSubjectId('')} className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold ${!subjectId ? 'border-[#0f5c8c] bg-[#0f5c8c] text-white' : 'border-[#e2e8f0] bg-white text-[#64748b]'}`}>
-            All subjects
-          </button>
-          {subjects.map((s) => (
-            <button key={s.id} type="button" onClick={() => setSubjectId(s.id)} className={`max-w-[220px] shrink-0 truncate rounded-full border px-3 py-1.5 text-xs font-semibold ${subjectId === s.id ? 'border-[#0f5c8c] bg-[#0f5c8c] text-white' : 'border-[#e2e8f0] bg-white text-[#64748b]'}`}>
-              {s.label}
+        {subjects.length > 0 ? (
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            <button
+              type="button"
+              onClick={() => setSubjectId('')}
+              className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
+                !subjectId ? 'bg-[#1566b8] text-white' : 'bg-[#f4f9fd] text-[#0a2f5b] hover:bg-[#e5f0fb]'
+              }`}
+            >
+              সব বিষয়
             </button>
-          ))}
-        </div>
-      ) : null}
+            {subjects.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => setSubjectId(s.id)}
+                className={`max-w-[240px] shrink-0 truncate rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
+                  subjectId === s.id ? 'bg-[#1566b8] text-white' : 'bg-[#f4f9fd] text-[#0a2f5b] hover:bg-[#e5f0fb]'
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
 
-      <div className="flex flex-wrap gap-2">
-        <select className="h-9 rounded-md border border-input bg-background px-2 text-sm" value={typeCode} onChange={(e) => setTypeCode(e.target.value)} aria-label="Question type">
-          <option value="">All types</option>
-          {types.map((t) => (
-            <option key={t.code} value={t.code}>{t.name}</option>
-          ))}
-        </select>
-        <select className="h-9 rounded-md border border-input bg-background px-2 text-sm" value={difficulty} onChange={(e) => setDifficulty(e.target.value)} aria-label="Difficulty">
-          <option value="">All levels</option>
-          {QUESTION_DIFFICULTIES.map((d) => (
-            <option key={d} value={d}>{d}</option>
-          ))}
-        </select>
-        <label className="inline-flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={groupByBooks} onChange={(e) => setGroupByBooks(e.target.checked)} />
-          Group by Books & Tools
-        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            className="h-9 rounded-xl border border-[#d7e4ee] bg-[#f4f9fd] px-3 text-xs font-semibold text-[#0a2f5b]"
+            value={typeCode}
+            onChange={(e) => setTypeCode(e.target.value)}
+            aria-label="প্রশ্নের ধরন"
+          >
+            <option value="">সব ধরন</option>
+            {types.map((t) => (
+              <option key={t.code} value={t.code}>{t.name}</option>
+            ))}
+          </select>
+          <select
+            className="h-9 rounded-xl border border-[#d7e4ee] bg-[#f4f9fd] px-3 text-xs font-semibold text-[#0a2f5b]"
+            value={difficulty}
+            onChange={(e) => setDifficulty(e.target.value)}
+            aria-label="কঠিনতার স্তর"
+          >
+            <option value="">সব স্তর</option>
+            {QUESTION_DIFFICULTIES.map((d) => (
+              <option key={d} value={d}>{d}</option>
+            ))}
+          </select>
+          <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-[#0a2f5b]">
+            <input
+              type="checkbox"
+              className="accent-[#1566b8]"
+              checked={groupByBooks}
+              onChange={(e) => setGroupByBooks(e.target.checked)}
+            />
+            বই ও অধ্যায় অনুসারে সাজান
+          </label>
+        </div>
       </div>
 
       {menuOpen ? (
-        <div className="max-h-64 space-y-1 overflow-y-auto rounded-xl border border-border bg-surface p-3">
-          <p className="text-sm font-semibold">Books & Tools</p>
-          <button type="button" className={`block w-full rounded-lg px-2 py-1.5 text-left text-sm ${!bookId ? 'bg-primary/10 font-semibold text-primary' : ''}`} onClick={() => { setBookId(null); setMenuOpen(false); }}>
-            All books
+        <div className="max-h-64 space-y-1 overflow-y-auto rounded-2xl border border-[#d7e4ee] bg-white p-3 shadow-xs">
+          <p className="px-2 py-1 text-xs font-bold text-[#0a2f5b]">বই নির্বাচন করুন</p>
+          <button
+            type="button"
+            className={`block w-full rounded-lg px-2.5 py-1.5 text-left text-xs ${
+              !bookId ? 'bg-[#eaf3fc] font-bold text-[#1566b8]' : 'text-slate-700'
+            }`}
+            onClick={() => {
+              setBookId(null);
+              setMenuOpen(false);
+            }}
+          >
+            সব বই
           </button>
           {books.map((b) => (
-            <button key={b.id} type="button" className={`block w-full rounded-lg px-2 py-1.5 text-left text-sm ${bookId === b.id ? 'bg-primary/10 font-semibold text-primary' : ''}`} onClick={() => { setBookId(b.id); setMenuOpen(false); }}>
+            <button
+              key={b.id}
+              type="button"
+              className={`block w-full rounded-lg px-2.5 py-1.5 text-left text-xs ${
+                bookId === b.id ? 'bg-[#eaf3fc] font-bold text-[#1566b8]' : 'text-slate-700'
+              }`}
+              onClick={() => {
+                setBookId(b.id);
+                setMenuOpen(false);
+              }}
+            >
               {b.name}
             </button>
           ))}
@@ -229,23 +308,35 @@ export function QuestionBankLearner() {
       {selectedBook || selectedSubject ? (
         <div className="flex flex-wrap gap-2">
           {selectedSubject ? (
-            <button type="button" className="inline-flex items-center gap-1 rounded-full bg-[#e8f3fa] px-3 py-1 text-sm font-semibold text-[#0f5c8c]" onClick={() => setSubjectId('')}>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 rounded-full bg-[#eaf3fc] px-3 py-1 text-xs font-semibold text-[#1566b8]"
+              onClick={() => setSubjectId('')}
+            >
               {selectedSubject} <X className="h-3.5 w-3.5" />
             </button>
           ) : null}
           {selectedBook ? (
-            <button type="button" className="inline-flex items-center gap-1 rounded-full bg-[#e8f3fa] px-3 py-1 text-sm font-semibold text-[#0f5c8c]" onClick={() => setBookId(null)}>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 rounded-full bg-[#eaf3fc] px-3 py-1 text-xs font-semibold text-[#1566b8]"
+              onClick={() => setBookId(null)}
+            >
               {selectedBook} <X className="h-3.5 w-3.5" />
             </button>
           ) : null}
         </div>
       ) : null}
 
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      {loading ? <p className="text-sm text-muted">Loading Question Bank…</p> : null}
-      {!loading && filtered.length === 0 ? <p className="text-sm text-muted">No questions for this filter.</p> : null}
+      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      {loading ? <p className="text-sm text-slate-500">প্রশ্নব্যাংক লোড হচ্ছে…</p> : null}
+      {!loading && filtered.length === 0 ? (
+        <div className="rounded-2xl border border-[#d7e4ee] bg-white p-6 text-center text-sm text-slate-500">
+          এই ফিল্টারে কোনো প্রশ্ন পাওয়া যায়নি।
+        </div>
+      ) : null}
 
-      <div className="space-y-2">
+      <div className="space-y-2.5">
         {filtered.map((item) => {
           const book = bookOf(item);
           const chapter = [item.chapter_number, item.chapter_name].filter(Boolean).join(': ');
@@ -255,11 +346,14 @@ export function QuestionBankLearner() {
           if (groupByBooks) lastChapter = chapter;
           return (
             <div key={item.id}>
-              {showBook ? <p className="pt-3 text-lg font-extrabold text-[#0f5c8c]">{book?.name}</p> : null}
-              {showChapter ? <p className="text-sm font-bold text-[#64748b]">{chapter}</p> : null}
-              <Link href={`/questions/${item.id}`} className="block rounded-[14px] border border-[#e2e8f0] bg-white p-4 hover:border-[#0f5c8c]/40">
-                <p className="line-clamp-3 text-sm leading-5 text-[#0f172a]">{plain(item.body_en)}</p>
-                <div className="mt-2 flex flex-wrap gap-1">
+              {showBook ? <p className="pt-3 pb-1 text-base font-bold text-[#0a2f5b]">{book?.name}</p> : null}
+              {showChapter ? <p className="pb-1 text-xs font-semibold text-[#1566b8]">{chapter}</p> : null}
+              <Link
+                href={`/questions/${item.id}`}
+                className="block rounded-2xl border border-[#d7e4ee] bg-white p-4 shadow-2xs transition hover:border-[#1566b8]"
+              >
+                <p className="line-clamp-3 text-sm leading-relaxed text-[#0a2f5b]">{plain(item.body_en)}</p>
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
                   {item.question_type_name ? <Badge variant="secondary">{item.question_type_name}</Badge> : null}
                   <Badge variant="outline">{item.difficulty}</Badge>
                   {!groupByBooks && book ? <Badge variant="outline">{book.name}</Badge> : null}
@@ -269,7 +363,7 @@ export function QuestionBankLearner() {
           );
         })}
         <div ref={sentinel} className="h-6" />
-        {loadingMore ? <p className="text-center text-xs text-muted">Loading more…</p> : null}
+        {loadingMore ? <p className="text-center text-xs text-slate-500">আরও প্রশ্ন লোড হচ্ছে…</p> : null}
       </div>
     </div>
   );

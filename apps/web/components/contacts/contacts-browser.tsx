@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { ArrowRight, BookUser, Building2, Crown, EyeOff, GraduationCap, Home, Layers, Network, Search, Star, Users, X } from 'lucide-react';
+import { ArrowRight, BookUser, Building2, Crown, EyeOff, GraduationCap, Heart, Home, Layers, Network, Search, Star, Users, X } from 'lucide-react';
 import type { ContactFavorites, ContactOverview } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
@@ -285,6 +285,9 @@ export function ContactsBrowser() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Link href="/community/blood-bank" className="inline-flex items-center gap-2 rounded-xl bg-white/15 px-4 py-2 text-sm font-semibold text-white hover:bg-white/25">
+              <Heart className="h-4 w-4" /> ব্লাড ব্যাংক
+            </Link>
             <Link href="/contacts/departments" className="inline-flex items-center gap-2 rounded-xl bg-white/15 px-4 py-2 text-sm font-semibold text-white hover:bg-white/25">
               <Network className="h-4 w-4" /> Other departments
             </Link>

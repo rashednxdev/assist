@@ -49,18 +49,18 @@ export default function RegulationsSearchPage() {
         <Button asChild variant="ghost" size="sm">
           <Link href="/books">
             <ArrowLeft className="h-4 w-4" />
-            Books
+            রুলস লাইব্রেরি
           </Link>
         </Button>
       </div>
 
-      <PageHeader title="Regulation search" description="Find rules by number, title, or keyword." />
+      <PageHeader title="নিয়ম খুঁজুন" description="নিয়ম নম্বর, শিরোনাম বা সূত্র দিয়ে খুঁজুন। তারিখ ও পুরোনো সংস্করণও দেখা যায়।" />
 
       <Card>
         <CardHeader className="border-b border-border pb-4">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Search className="h-5 w-5 text-primary" />
-            Search
+            নিয়ম খুঁজুন
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 p-4">
@@ -74,11 +74,11 @@ export default function RegulationsSearchPage() {
             <Input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="e.g. GFR-45, receipts, treasury..."
+              placeholder="নিয়ম নম্বর বা শিরোনাম"
               className="flex-1"
             />
             <Button type="submit" disabled={loading}>
-              Search
+              খুঁজুন
             </Button>
           </form>
 
@@ -88,7 +88,7 @@ export default function RegulationsSearchPage() {
               <Skeleton className="h-14 w-full" />
             </div>
           ) : items.length === 0 && searched ? (
-            <EmptyState title="No regulations found" description="Try a different search term." />
+            <EmptyState title="কোনো নিয়ম পাওয়া যায়নি" description="অন্য শব্দ দিয়ে আবার খুঁজুন।" />
           ) : (
             <ul className="divide-y divide-border rounded-xl border border-border">
               {items.map((r) => (
@@ -103,8 +103,13 @@ export default function RegulationsSearchPage() {
                       <span className="text-sm">{r.title}</span>
                     </div>
                     <div className="flex flex-wrap gap-1">
+                      {r.effective_date ? (
+                        <Badge variant="secondary">
+                          {new Date(r.effective_date).toLocaleDateString('bn-BD', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </Badge>
+                      ) : null}
                       <Badge variant="outline">{r.regulation_type}</Badge>
-                      {r.is_amended && <Badge variant="warning">Amended</Badge>}
+                      {r.is_amended && <Badge variant="warning">সংশোধিত</Badge>}
                       {r.payment_related && <Badge variant="secondary">Payment</Badge>}
                     </div>
                   </Link>

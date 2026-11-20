@@ -1,8 +1,8 @@
 import type { Response } from 'express';
-import { loginOtpResendSchema, loginOtpSchema, loginSchema } from '@ibas/shared-types';
+import { loginCodeSchema, loginOtpResendSchema, loginOtpSchema, loginSchema } from '@ibas/shared-types';
 import { LEARNING_PRIVILEGE_MODULE_CODES, moduleAccessGroup } from '@ibas/shared-constants';
 import type { AuthRequest } from '../../middleware/auth.js';
-import { completeLoginOtp, login, refreshExpiresMs, resendLoginOtp, type LoginSession } from './auth.service.js';
+import { completeLoginOtp, login, refreshExpiresMs, requestLoginCode, resendLoginOtp, type LoginSession } from './auth.service.js';
 import { User } from '../users/models/User.model.js';
 import { Credentials } from '../users/models/Credentials.model.js';
 import * as usersService from '../users/users.service.js';
@@ -80,6 +80,19 @@ export async function loginHandler(req: AuthRequest, res: Response): Promise<voi
     return;
   }
   await respondWithSession(res, result, dto);
+}
+
+export async function loginCodeHandler(req: AuthRequest, res: Response): Promise<void> {
+  const dto = loginCodeSchema.parse(req.body);
+  const result = await requestLoginCode(dto);
+  res.json({
+    data: {
+      otp_required: true,
+      challenge: result.challenge,
+      phone_hint: result.phoneHint,
+      expires_in: result.expiresIn,
+    },
+  });
 }
 
 export async function loginOtpHandler(req: AuthRequest, res: Response): Promise<void> {

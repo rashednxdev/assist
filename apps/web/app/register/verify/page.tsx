@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -45,7 +45,7 @@ export default function RegisterVerifyPage() {
         setPhoneDone(r.data.phone_verified);
         if (r.data.status === 'active' && r.data.is_verified) {
           sessionStorage.removeItem('ibas_register_demo');
-          router.replace('/dashboard');
+          router.replace('/learning');
         }
       })
       .catch(() => router.replace('/login'));
@@ -64,7 +64,7 @@ export default function RegisterVerifyPage() {
       setMessage(`${channel === 'email' ? 'Email' : 'Phone'} verified successfully`);
       if (res.data.activated) {
         sessionStorage.removeItem('ibas_register_demo');
-        router.push('/dashboard');
+        router.push('/learning');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Verification failed');
@@ -118,12 +118,12 @@ export default function RegisterVerifyPage() {
             {demo && (
               <div className="rounded-lg border border-dashed border-primary/40 bg-primary-muted/50 p-4 text-sm">
                 <p className="font-semibold text-primary-dark">Demo verification codes</p>
-                <p className="mt-2">
+                <div className="mt-2">
                   Email ({demo.email}): <Badge variant="secondary">{demo.emailOtp}</Badge>
-                </p>
-                <p className="mt-1">
+                </div>
+                <div className="mt-1">
                   Phone ({demo.phone}): <Badge variant="secondary">{demo.phoneOtp}</Badge>
-                </p>
+                </div>
               </div>
             )}
 
@@ -207,7 +207,7 @@ export default function RegisterVerifyPage() {
 
             {emailDone && phoneDone && (
               <Button className="w-full" asChild>
-                <Link href="/dashboard">Go to dashboard</Link>
+                <Link href="/learning">Go to Home</Link>
               </Button>
             )}
           </CardContent>

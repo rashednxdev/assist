@@ -54,7 +54,7 @@ export default function QotdDatesPage() {
       <PageHeader
         title="Questions of the Day"
         description="Daily subject-wise questions. Open a date to read its questions and answers."
-        backHref="/dashboard"
+        backHref="/learning"
       />
 
       {error && <Alert variant="error">{error}</Alert>}

@@ -177,7 +177,7 @@ export function exceptionalToStaffDto(
 }
 
 const gradeSelectClass =
-  'flex h-11 w-full rounded-md border-2 border-emerald-400 bg-emerald-50/60 px-3 text-base font-semibold ring-2 ring-emerald-200 focus:border-emerald-500 focus:outline-none focus:ring-emerald-300 disabled:cursor-not-allowed disabled:border-border disabled:bg-slate-100 disabled:ring-0';
+  'flex h-11 w-full rounded-md border-2 border-[#7eb6ea] bg-[#f4f9fd]/60 px-3 text-base font-semibold ring-2 ring-[#d7e4ee] focus:border-[#1566b8] focus:outline-none focus:ring-[#c5dff6] disabled:cursor-not-allowed disabled:border-border disabled:bg-slate-100 disabled:ring-0';
 
 function validateDraft(
   draft: ExceptionalDraft,
@@ -441,7 +441,7 @@ export function SalaryExceptionalIssuesField({
                 </label>
                 {draft.payChangeOn ? (
                   <div className="space-y-3 pl-6">
-                    <fieldset className="space-y-2 rounded-md border border-emerald-200 bg-emerald-50/40 p-3">
+                    <fieldset className="space-y-2 rounded-md border border-[#d7e4ee] bg-[#f4f9fd]/40 p-3">
                       <legend className="px-1 text-sm font-bold text-slate-900">{t.exPayFixedTitle}</legend>
                       <div className="flex flex-wrap gap-4">
                         <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
@@ -490,7 +490,7 @@ export function SalaryExceptionalIssuesField({
                         id="ex-pay-date"
                         type="date"
                         min="2026-07-01"
-                        className="flex h-11 w-full rounded-md border-2 border-emerald-400 bg-emerald-50/60 px-3 text-base font-semibold ring-2 ring-emerald-200 focus:border-emerald-500 focus:outline-none focus:ring-emerald-300"
+                        className="flex h-11 w-full rounded-md border-2 border-[#7eb6ea] bg-[#f4f9fd]/60 px-3 text-base font-semibold ring-2 ring-[#d7e4ee] focus:border-[#1566b8] focus:outline-none focus:ring-[#c5dff6]"
                         value={draft.payChangeDate}
                         onChange={(e) => setDraft((d) => ({ ...d, payChangeDate: e.target.value }))}
                       />

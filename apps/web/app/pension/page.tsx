@@ -47,6 +47,7 @@ import { CalcLocaleProvider, useCalcLocale } from '@/components/shared/calc-loca
 import { LocaleSwitcher } from '@/components/shared/locale-switcher';
 import type { AppLocale } from '@/i18n/config';
 import { PageHeader } from '@/components/shared/page-header';
+import { CalculatorTabs } from '@/components/shared/calculator-tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -680,6 +681,7 @@ function PensionCalculatorInner() {
 
   return (
     <div className="space-y-6">
+      <CalculatorTabs active="pension" />
       <PageHeader
         title={t('title')}
         description={t('description')}

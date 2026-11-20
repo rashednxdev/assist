@@ -13,7 +13,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const admin = isPlatformAdmin(me);
 
   useEffect(() => {
-    if (ready && me && !admin) router.replace('/dashboard');
+    if (ready && me && !admin) router.replace('/learning');
   }, [ready, me, admin, router]);
 
   if (!ready || !admin) {

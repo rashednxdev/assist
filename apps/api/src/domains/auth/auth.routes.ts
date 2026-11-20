@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
 import { asyncHandler } from '../../shared/asyncHandler.js';
-import { loginHandler, loginOtpHandler, loginOtpResendHandler, logoutHandler, meHandler } from './auth.controller.js';
+import { loginCodeHandler, loginHandler, loginOtpHandler, loginOtpResendHandler, logoutHandler, meHandler } from './auth.controller.js';
 import {
   registerHandler,
   verifyRegisterOtpHandler,
@@ -17,6 +17,7 @@ authRouter.post('/register', asyncHandler(registerHandler));
 authRouter.post('/register/verify', asyncHandler(verifyRegisterOtpHandler));
 authRouter.post('/register/resend', asyncHandler(resendRegisterOtpHandler));
 authRouter.post('/login', asyncHandler(loginHandler));
+authRouter.post('/login/code', asyncHandler(loginCodeHandler));
 authRouter.post('/login/otp', asyncHandler(loginOtpHandler));
 authRouter.post('/login/otp/resend', asyncHandler(loginOtpResendHandler));
 authRouter.post('/logout', asyncHandler(logoutHandler));

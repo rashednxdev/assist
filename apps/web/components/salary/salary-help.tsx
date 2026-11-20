@@ -258,12 +258,12 @@ export function SalaryHelp({
   return (
     <section
       id="salary-help"
-      className="salary-print-hide scroll-mt-4 overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-sm"
+      className="salary-print-hide scroll-mt-4 overflow-hidden rounded-2xl border border-[#d7e4ee] bg-white shadow-sm"
     >
-      <div className="border-b border-emerald-100 bg-gradient-to-r from-emerald-50 via-white to-teal-50 px-4 py-4 sm:px-5">
+      <div className="border-b border-[#d7e8f8] bg-gradient-to-r from-[#f4f9fd] via-white to-[#f4f9fd] px-4 py-4 sm:px-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">
+            <p className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-[0.16em] text-[#0a2f5b]">
               <CircleHelp className="h-3.5 w-3.5" aria-hidden />
               {t.kicker}
             </p>
@@ -271,14 +271,14 @@ export function SalaryHelp({
             <p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-600">{t.subtitle}</p>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
-            <Button asChild size="sm" variant="outline" className="border-emerald-200 bg-white">
+            <Button asChild size="sm" variant="outline" className="border-[#d7e4ee] bg-white">
               <Link href="/salary#salary-calculator">
                 <Calculator className="h-3.5 w-3.5" />
                 {t.toCalculator}
               </Link>
             </Button>
             {isAdmin ? (
-              <Button asChild size="sm" className="bg-emerald-700 hover:bg-emerald-800">
+              <Button asChild size="sm" className="bg-[#0a2f5b] hover:bg-[#0a2f5b]">
                 <Link href="/admin/salary-help">{t.manage}</Link>
               </Button>
             ) : null}
@@ -300,12 +300,12 @@ export function SalaryHelp({
               placeholder={t.askPlaceholder}
               maxLength={500}
               autoComplete="off"
-              className="h-11 w-full rounded-xl border border-emerald-200 bg-white px-3 text-sm shadow-sm outline-none ring-emerald-200 placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2"
+              className="h-11 w-full rounded-xl border border-[#d7e4ee] bg-white px-3 text-sm shadow-sm outline-none ring-[#d7e4ee] placeholder:text-slate-400 focus:border-[#1566b8] focus:ring-2"
             />
             <Button
               type="submit"
               disabled={submitting || question.trim().length < 8 || blocked}
-              className="h-11 shrink-0 bg-emerald-700 hover:bg-emerald-800"
+              className="h-11 shrink-0 bg-[#0a2f5b] hover:bg-[#0a2f5b]"
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : showAnswer ? null : <Send className="h-4 w-4" />}
               {submitting ? t.sending : showAnswer ? t.showAnswer : blocked ? t.alreadyShort : t.ask}
@@ -314,8 +314,8 @@ export function SalaryHelp({
           <p className="mt-1.5 text-xs text-slate-500">{t.suggestHint}</p>
 
           {suggestions.length > 0 ? (
-            <div className="mt-2 overflow-hidden rounded-xl border border-emerald-200 bg-white shadow-lg">
-              <p className="border-b border-emerald-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-emerald-700">
+            <div className="mt-2 overflow-hidden rounded-xl border border-[#d7e4ee] bg-white shadow-lg">
+              <p className="border-b border-[#eaf4fc] px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-[#0a2f5b]">
                 {t.suggestions}
               </p>
               <ul>
@@ -323,7 +323,7 @@ export function SalaryHelp({
                   <li key={item.id}>
                     <button
                       type="button"
-                      className="flex w-full items-start justify-between gap-3 px-3 py-2.5 text-left hover:bg-emerald-50"
+                      className="flex w-full items-start justify-between gap-3 px-3 py-2.5 text-left hover:bg-[#f4f9fd]"
                       onClick={() => {
                         if (item.status === 'published') focusFaq(item.id);
                         else {
@@ -336,7 +336,7 @@ export function SalaryHelp({
                         <span className="block text-sm font-medium text-slate-900">{item.label}</span>
                         <span className="text-xs text-slate-500">{item.status === 'published' ? t.answerReady : t.alreadyAsked}</span>
                       </span>
-                      <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+                      <span className="shrink-0 rounded-full bg-[#eaf4fc] px-2 py-0.5 text-xs font-semibold text-[#0a2f5b]">
                         {matchLabel(locale, item.score)}
                       </span>
                     </button>
@@ -357,7 +357,7 @@ export function SalaryHelp({
           <ul className="mt-3 space-y-1.5">
             <li className="text-xs font-semibold text-slate-500">{t.waiting}</li>
             {mine.map((item) => (
-              <li key={item.id} className="flex items-start justify-between gap-3 rounded-lg bg-white/80 px-3 py-2 text-sm ring-1 ring-emerald-100">
+              <li key={item.id} className="flex items-start justify-between gap-3 rounded-lg bg-white/80 px-3 py-2 text-sm ring-1 ring-[#d7e8f8]">
                 <span className="min-w-0 text-slate-800">{pick(locale, item.question_bn, item.question_en)}</span>
                 <span className={`shrink-0 text-xs font-semibold ${item.status === 'rejected' ? 'text-rose-700' : 'text-amber-700'}`}>
                   {item.status === 'rejected' ? t.rejected : t.alreadyShort}
@@ -404,8 +404,8 @@ export function SalaryHelp({
               </ul>
             )}
           </div>
-          <div className={`border-t border-emerald-100 bg-slate-50/70 lg:border-l lg:border-t-0 ${fullPage ? '' : 'max-h-80 overflow-y-auto'}`}>
-            <h3 className="sticky top-0 z-10 border-b border-emerald-100 bg-slate-50/95 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-emerald-800 backdrop-blur">
+          <div className={`border-t border-[#d7e8f8] bg-slate-50/70 lg:border-l lg:border-t-0 ${fullPage ? '' : 'max-h-80 overflow-y-auto'}`}>
+            <h3 className="sticky top-0 z-10 border-b border-[#d7e8f8] bg-slate-50/95 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-[#0a2f5b] backdrop-blur">
               {t.circulars}
             </h3>
             {circulars.related.length + circulars.rest.length === 0 ? (
@@ -449,18 +449,18 @@ function FaqRow({
   const question = pick(locale, item.question_bn, item.question_en);
   const answer = pick(locale, item.answer_bn, item.answer_en);
   return (
-    <li id={`salary-faq-${item.id}`} className="scroll-mt-24 border-b border-emerald-50 last:border-b-0">
+    <li id={`salary-faq-${item.id}`} className="scroll-mt-24 border-b border-[#eaf4fc] last:border-b-0">
       <button
         type="button"
-        className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-emerald-50/60"
+        className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-[#f4f9fd]/60"
         aria-expanded={open}
         onClick={onToggle}
       >
-        <ChevronDown className={`mt-0.5 h-4 w-4 shrink-0 text-emerald-700 transition ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`mt-0.5 h-4 w-4 shrink-0 text-[#0a2f5b] transition ${open ? 'rotate-180' : ''}`} />
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-semibold text-slate-900">{question}</span>
           {item.pinned ? (
-            <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
+            <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-[#0a2f5b]">
               <Pin className="h-3 w-3" />
               {pinnedLabel}
             </span>
@@ -478,7 +478,7 @@ function FaqRow({
                   href={circular.source_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-900 ring-1 ring-teal-200 hover:bg-teal-100"
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-[#f4f9fd] px-2.5 py-1 text-xs font-semibold text-[#0a2f5b] ring-1 ring-[#d7e4ee] hover:bg-[#eaf4fc]"
                 >
                   <span className="truncate">{pick(locale, circular.title_bn, circular.title_en)}</span>
                   <ExternalLink className="h-3 w-3 shrink-0" />
@@ -508,11 +508,11 @@ function CircularRow({
   const title = pick(locale, item.title_bn, item.title_en);
   const summary = pick(locale, item.summary_bn, item.summary_en);
   return (
-    <li id={`salary-circular-${item.id}`} className={`rounded-xl bg-white p-3 shadow-sm ring-1 ${related ? 'ring-emerald-300' : 'ring-slate-200'}`}>
+    <li id={`salary-circular-${item.id}`} className={`rounded-xl bg-white p-3 shadow-sm ring-1 ${related ? 'ring-[#c5dff6]' : 'ring-slate-200'}`}>
       <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-slate-500">
         <span>{formatDay(locale, item.publish_date)}</span>
         {item.circular_no ? <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-700">{digits(locale, item.circular_no)}</span> : null}
-        {related ? <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-800">{relatedLabel}</span> : null}
+        {related ? <span className="rounded bg-[#eaf4fc] px-1.5 py-0.5 text-[#0a2f5b]">{relatedLabel}</span> : null}
       </div>
       <p className="mt-1 text-sm font-semibold leading-snug text-slate-900">{title}</p>
       <p className="mt-0.5 text-xs text-slate-500">{item.source_name}</p>
@@ -521,7 +521,7 @@ function CircularRow({
         href={item.source_url}
         target="_blank"
         rel="noopener noreferrer"
-        className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-emerald-800 hover:underline"
+        className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-[#0a2f5b] hover:underline"
       >
         {openLabel}
         <ExternalLink className="h-3 w-3" />

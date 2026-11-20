@@ -1,5 +1,6 @@
 import type { AuthUser, ModuleAccessGrant, ModuleStop } from '@ibas/shared-types';
 import { parseJsonResponse } from './parse-json-response';
+import { resetArrearPrompt } from './arrear-prompt';
 
 const TOKEN_KEY = 'ibas_access_token';
 const DEVICE_ID_KEY = 'ibas_device_id';
@@ -16,6 +17,8 @@ export function setAccessToken(token: string): void {
 export function clearAccessToken(): void {
   localStorage.removeItem(TOKEN_KEY);
   clearMeCache();
+  // A new sign-in starts a new browsing session for the Home arrear-bill prompt.
+  resetArrearPrompt();
 }
 
 function randomId(): string {
@@ -130,6 +133,24 @@ export async function resetPasswordRequest(body: {
   });
   const json = await parseJsonResponse<{ data: { success: true }; error?: { message?: string } }>(res);
   if (!res.ok) throw new Error(json.error?.message ?? 'Could not reset the password.');
+}
+
+export async function requestLoginCode(phone: string): Promise<{ data: LoginOtpData }> {
+  const device_id = getOrCreateDeviceId();
+  const res = await fetch('/api/proxy/v1/auth/login/code', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({
+      phone,
+      device_id,
+      device_label: 'web:browser',
+      client_platform: 'web',
+    }),
+  });
+  const json = await parseJsonResponse<{ data: LoginOtpData; error?: { message?: string } }>(res);
+  if (!res.ok) throw new Error(json.error?.message ?? 'কোড পাঠানো যায়নি।');
+  return json;
 }
 
 export async function verifyLoginOtp(challenge: string, code: string): Promise<{ data: LoginSessionData }> {

@@ -37,7 +37,6 @@ const LEARNING_ROUTE_PREFIXES = [
   '/live',
   '/live-room',
   '/progress',
-  '/dashboard',
 ] as const;
 
 function pathMatches(pathname: string, prefix: string): boolean {
@@ -84,10 +83,11 @@ export function canHostLive(
   );
 }
 
+/** Every signed-in user lands on Home after login; access to each module is checked on its own page. */
 export function homePathFor(
-  user: Pick<MeUser, 'is_super_admin' | 'user_type' | 'module_access'> | null | undefined,
+  _user?: Pick<MeUser, 'is_super_admin' | 'user_type' | 'module_access'> | null,
 ): string {
-  return hasLearningWebAccess(user) ? LEARNING_HOME : SALARY_HOME;
+  return LEARNING_HOME;
 }
 
 export function isPublicSignedInPath(pathname: string): boolean {

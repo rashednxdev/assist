@@ -2,13 +2,11 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Send } from 'lucide-react';
+import { Send, Sparkles } from 'lucide-react';
 import type { MySubmittedQuestionRecord } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { formatDateTimeDdMmYyyy } from '@/lib/date-display';
-import { PageHeader } from '@/components/shared/page-header';
-import { EmptyState } from '@/components/shared/empty-state';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { toBanglaDigits } from '@/lib/bangla-format';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Alert } from '@/components/ui/alert';
@@ -26,12 +24,12 @@ interface ExamTree {
 }
 
 const selectClass =
-  'flex h-10 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:opacity-50';
+  'flex h-10 w-full rounded-xl border border-[#d7e4ee] bg-[#f4f9fd] px-3 py-2 text-sm text-[#0a2f5b] outline-none focus:border-[#1566b8] focus:bg-white disabled:opacity-50';
 
 const STATUS_BADGE: Record<string, { label: string; variant: 'warning' | 'success' | 'destructive' }> = {
-  pending: { label: 'Pending review', variant: 'warning' },
-  accepted: { label: 'Answered', variant: 'success' },
-  rejected: { label: 'Rejected', variant: 'destructive' },
+  pending: { label: 'পর্যালোচনাধীন', variant: 'warning' },
+  accepted: { label: 'উত্তর দেওয়া হয়েছে', variant: 'success' },
+  rejected: { label: 'বাতিল', variant: 'destructive' },
 };
 
 export default function UserQuestionsPage() {
@@ -56,7 +54,7 @@ export default function UserQuestionsPage() {
         setMine(res.data);
         setMineError('');
       })
-      .catch((err) => setMineError(err instanceof Error ? err.message : 'Failed to load submissions'))
+      .catch((err) => setMineError(err instanceof Error ? err.message : 'পূর্বের প্রশ্ন লোড করা যায়নি'))
       .finally(() => setLoadingMine(false));
   }, []);
 
@@ -74,7 +72,7 @@ export default function UserQuestionsPage() {
     setLoadingSubjects(true);
     apiFetch<{ data: ExamTree }>(`/exams/names/${examId}/tree`)
       .then((res) => setSubjects(res.data.parts.flatMap((p) => p.subjects)))
-      .catch(() => setError('Could not load subjects for this exam.'))
+      .catch(() => setError('বিষয় তালিকা লোড করা যায়নি।'))
       .finally(() => setLoadingSubjects(false));
   }, [examId]);
 
@@ -83,11 +81,11 @@ export default function UserQuestionsPage() {
     setError('');
     setSuccess('');
     if (!subjectId) {
-      setError('Select a subject first');
+      setError('প্রথমে একটি বিষয় নির্বাচন করুন');
       return;
     }
     if (body.trim().length < 5) {
-      setError('Please write a more complete question');
+      setError('অনুগ্রহ করে আপনার প্রশ্নটি বিস্তারিত লিখুন');
       return;
     }
     setSubmitting(true);
@@ -97,10 +95,10 @@ export default function UserQuestionsPage() {
         body: JSON.stringify({ exam_subject_id: subjectId, body: body.trim() }),
       });
       setBody('');
-      setSuccess('Your question has been submitted for review.');
+      setSuccess('আপনার প্রশ্নটি সফলভাবে জমা হয়েছে। পর্যালোচনার পর উত্তর যুক্ত হবে।');
       loadMine();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to submit');
+      setError(err instanceof Error ? err.message : 'প্রশ্ন জমা দেওয়া যায়নি');
     } finally {
       setSubmitting(false);
     }
@@ -108,103 +106,122 @@ export default function UserQuestionsPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <PageHeader
-        title="Submit a Question"
-        description="Can't find a question? Submit it for a subject — an admin will review and answer it."
-        backHref="/dashboard"
-      />
+      <div className="rounded-2xl border border-[#c7dff4] bg-[#eaf3fc] p-5 sm:p-6">
+        <div className="flex items-start gap-3.5">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#1566b8] text-white">
+            <Sparkles className="h-5 w-5" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-[#0a2f5b] sm:text-2xl">Ask ProAssist</h1>
+            <p className="mt-1 text-sm text-slate-600">
+              সার্ভিস রুলস, ফিন্যান্সিয়াল রুলস বা পরীক্ষার কোনো প্রশ্ন খুঁজে না পেলে বিষয় নির্বাচন করে পাঠান — অভিজ্ঞ প্যানেল পর্যালোচনা করে উত্তর যুক্ত করবেন।
+            </p>
+          </div>
+        </div>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">New question</CardTitle>
-          <CardDescription>Pick the exam and subject, then write your question.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form className="space-y-4" onSubmit={submit}>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="uq-exam">Exam</Label>
-                <select id="uq-exam" className={selectClass} value={examId} onChange={(e) => setExamId(e.target.value)}>
-                  <option value="">Select exam…</option>
-                  {exams.map((x) => (
-                    <option key={x.id} value={x.id}>
-                      {x.short_name ? `${x.short_name} — ${x.name}` : x.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="uq-subject">Subject</Label>
-                <select
-                  id="uq-subject"
-                  className={selectClass}
-                  value={subjectId}
-                  disabled={!examId || loadingSubjects}
-                  onChange={(e) => setSubjectId(e.target.value)}
-                >
-                  <option value="">{loadingSubjects ? 'Loading…' : 'Select subject…'}</option>
-                  {subjects.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+      <section className="rounded-2xl border border-[#d7e4ee] bg-white p-5 shadow-xs sm:p-6">
+        <h2 className="text-base font-bold text-[#0a2f5b]">নতুন প্রশ্ন পাঠান</h2>
+        <p className="mt-0.5 text-xs text-slate-500">পরীক্ষা ও বিষয় নির্বাচন করে আপনার প্রশ্নটি স্পষ্টভাবে লিখুন।</p>
+
+        <form className="mt-4 space-y-4" onSubmit={submit}>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="uq-exam" className="text-xs font-semibold text-[#0a2f5b]">পরীক্ষা</Label>
+              <select id="uq-exam" className={selectClass} value={examId} onChange={(e) => setExamId(e.target.value)}>
+                <option value="">পরীক্ষা নির্বাচন করুন…</option>
+                {exams.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.short_name ? `${x.short_name} — ${x.name}` : x.name}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="uq-body">Question</Label>
-              <textarea
-                id="uq-body"
-                rows={5}
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                placeholder="Write your question here…"
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-              />
+              <Label htmlFor="uq-subject" className="text-xs font-semibold text-[#0a2f5b]">বিষয়</Label>
+              <select
+                id="uq-subject"
+                className={selectClass}
+                value={subjectId}
+                disabled={!examId || loadingSubjects}
+                onChange={(e) => setSubjectId(e.target.value)}
+              >
+                <option value="">{loadingSubjects ? 'লোড হচ্ছে…' : 'বিষয় নির্বাচন করুন…'}</option>
+                {subjects.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
             </div>
-            {error && <Alert variant="error">{error}</Alert>}
-            {success && <Alert variant="success">{success}</Alert>}
-            <Button type="submit" disabled={submitting}>
-              <Send className="h-4 w-4" />
-              {submitting ? 'Submitting…' : 'Submit question'}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="uq-body" className="text-xs font-semibold text-[#0a2f5b]">আপনার প্রশ্ন</Label>
+            <textarea
+              id="uq-body"
+              rows={5}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder="বিধি বা অধ্যায়ের উল্লেখসহ আপনার প্রশ্নটি এখানে লিখুন…"
+              className="w-full rounded-xl border border-[#d7e4ee] bg-[#f4f9fd] px-3.5 py-2.5 text-sm text-[#0a2f5b] outline-none focus:border-[#1566b8] focus:bg-white"
+            />
+          </div>
+
+          {error ? <Alert variant="error">{error}</Alert> : null}
+          {success ? <Alert variant="success">{success}</Alert> : null}
+
+          <Button
+            type="submit"
+            disabled={submitting}
+            className="rounded-xl bg-[#1566b8] px-5 text-white hover:bg-[#0f5294]"
+          >
+            <Send className="h-4 w-4" />
+            {submitting ? 'পাঠানো হচ্ছে…' : 'প্রশ্ন জমা দিন'}
+          </Button>
+        </form>
+      </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">My submissions</h2>
-        {mineError && <Alert variant="error">{mineError}</Alert>}
+        <h2 className="text-base font-bold text-[#0a2f5b]">আপনার পাঠানো প্রশ্নসমূহ</h2>
+        {mineError ? <Alert variant="error">{mineError}</Alert> : null}
         {loadingMine ? (
-          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-24 w-full rounded-2xl" />
         ) : mine.length === 0 ? (
-          !mineError && <EmptyState title="No submissions yet" description="Questions you submit will appear here." />
+          !mineError ? (
+            <div className="rounded-2xl border border-[#d7e4ee] bg-white p-6 text-center text-sm text-slate-500">
+              আপনি এখনো কোনো প্রশ্ন পাঠাননি।
+            </div>
+          ) : null
         ) : (
           mine.map((q) => {
             const status = STATUS_BADGE[q.status] ?? { label: q.status, variant: 'warning' as const };
             return (
-              <Card key={q.id}>
-                <CardContent className="space-y-2 pt-5">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-sm font-medium text-muted">{q.subject_name}</span>
-                    <Badge variant={status.variant}>{status.label}</Badge>
-                  </div>
-                  <p className="whitespace-pre-line text-sm">{q.body}</p>
-                  {q.admin_note && (
-                    <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                      <span className="font-semibold">Admin note:</span> {q.admin_note}
-                    </p>
-                  )}
-                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
-                    <span>{formatDateTimeDdMmYyyy(q.created_at)}</span>
-                    {q.linked_question_id && (
-                      <Link href={`/questions/${q.linked_question_id}`} className="font-semibold text-primary hover:underline">
-                        View answer
-                      </Link>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+              <div key={q.id} className="space-y-2 rounded-2xl border border-[#d7e4ee] bg-white p-5 shadow-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="rounded-full bg-[#eaf3fc] px-2.5 py-0.5 text-xs font-semibold text-[#1566b8]">
+                    {q.subject_name}
+                  </span>
+                  <Badge variant={status.variant}>{status.label}</Badge>
+                </div>
+                <p className="whitespace-pre-line text-sm text-[#0a2f5b]">{q.body}</p>
+                {q.admin_note ? (
+                  <p className="rounded-xl bg-[#f4f9fd] px-3.5 py-2.5 text-xs text-slate-700">
+                    <span className="font-bold text-[#0a2f5b]">মন্তব্য:</span> {q.admin_note}
+                  </p>
+                ) : null}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs text-slate-500">
+                  <span>{toBanglaDigits(formatDateTimeDdMmYyyy(q.created_at))}</span>
+                  {q.linked_question_id ? (
+                    <Link
+                      href={`/questions/${q.linked_question_id}`}
+                      className="font-semibold text-[#1566b8] hover:underline"
+                    >
+                      সম্পূর্ণ উত্তর দেখুন →
+                    </Link>
+                  ) : null}
+                </div>
+              </div>
             );
           })
         )}

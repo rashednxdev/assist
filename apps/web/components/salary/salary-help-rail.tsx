@@ -76,32 +76,32 @@ export function SalaryHelpRail({ locale, isAdmin }: { locale: SalaryLocale; isAd
     <div className="space-y-3">
       <a
         href={`tel:${SALARY_CONTACT_NO}`}
-        className="flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-[1.225rem] font-bold leading-snug text-emerald-950 shadow-sm hover:bg-emerald-50"
+        className="flex items-center justify-center gap-2 rounded-xl border border-[#d7e4ee] bg-white px-3 py-2.5 text-[1.225rem] font-bold leading-snug text-[#0a2f5b] shadow-sm hover:bg-[#f4f9fd]"
       >
-        <Phone className="h-[1.4rem] w-[1.4rem] shrink-0 text-emerald-700" aria-hidden />
+        <Phone className="h-[1.4rem] w-[1.4rem] shrink-0 text-[#0a2f5b]" aria-hidden />
         <span>Contact No: {SALARY_CONTACT_NO}</span>
       </a>
       <div className="grid grid-cols-2 gap-2 xl:hidden">
         <Link
           href="/salary/questions"
-          className="flex min-w-0 items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-white px-2 py-2.5 text-center text-sm font-bold leading-tight text-emerald-900 shadow-sm hover:bg-emerald-50"
+          className="flex min-w-0 items-center justify-center gap-1.5 rounded-xl border border-[#d7e4ee] bg-white px-2 py-2.5 text-center text-sm font-bold leading-tight text-[#0a2f5b] shadow-sm hover:bg-[#f4f9fd]"
         >
           <CircleHelp className="h-4 w-4 shrink-0" />
           {t.help}
         </Link>
         <Link
           href="/salary/guide"
-          className="flex min-w-0 items-center justify-center gap-1.5 rounded-xl border border-teal-200 bg-white px-2 py-2.5 text-center text-sm font-bold leading-tight text-teal-900 shadow-sm hover:bg-teal-50"
+          className="flex min-w-0 items-center justify-center gap-1.5 rounded-xl border border-[#d7e4ee] bg-white px-2 py-2.5 text-center text-sm font-bold leading-tight text-[#0a2f5b] shadow-sm hover:bg-[#f4f9fd]"
         >
           <BookOpenText className="h-4 w-4 shrink-0" />
           {t.instructions}
         </Link>
       </div>
 
-      <section className="hidden overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-sm xl:block">
-        <div className="border-b border-emerald-100 bg-gradient-to-r from-emerald-50 to-teal-50 px-4 py-3">
+      <section className="hidden overflow-hidden rounded-2xl border border-[#d7e4ee] bg-white shadow-sm xl:block">
+        <div className="border-b border-[#d7e8f8] bg-gradient-to-r from-[#f4f9fd] to-[#f4f9fd] px-4 py-3">
           <h2 className="inline-flex items-center gap-1.5 text-base font-extrabold text-slate-900">
-            <CircleHelp className="h-4 w-4 text-emerald-700" aria-hidden />
+            <CircleHelp className="h-4 w-4 text-[#0a2f5b]" aria-hidden />
             {t.help}
           </h2>
           <p className="mt-0.5 text-xs text-slate-600">{t.title}</p>
@@ -123,18 +123,18 @@ export function SalaryHelpRail({ locale, isAdmin }: { locale: SalaryLocale; isAd
         ) : (
           <ul>
             {preview.map((item) => (
-              <li key={item.id} className="border-b border-emerald-50 last:border-b-0">
+              <li key={item.id} className="border-b border-[#eaf4fc] last:border-b-0">
                 <Link
                   href={`/salary/questions#salary-faq-${item.id}`}
-                  className="flex items-start gap-2 px-4 py-2.5 text-left hover:bg-emerald-50"
+                  className="flex items-start gap-2 px-4 py-2.5 text-left hover:bg-[#f4f9fd]"
                 >
-                  <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
+                  <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-[#0a2f5b]" />
                   <span className="min-w-0 flex-1">
                     <span className="line-clamp-2 text-sm font-semibold text-slate-900">
                       {pick(locale, item.question_bn, item.question_en)}
                     </span>
                     {item.pinned ? (
-                      <span className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
+                      <span className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-semibold text-[#0a2f5b]">
                         <Pin className="h-3 w-3" />
                         {t.pinned}
                       </span>
@@ -146,11 +146,11 @@ export function SalaryHelpRail({ locale, isAdmin }: { locale: SalaryLocale; isAd
           </ul>
         )}
 
-        <div className="flex gap-2 border-t border-emerald-100 bg-slate-50/80 p-3">
-          <Button asChild variant="outline" size="sm" className="flex-1 border-emerald-200 bg-white">
+        <div className="flex gap-2 border-t border-[#d7e8f8] bg-slate-50/80 p-3">
+          <Button asChild variant="outline" size="sm" className="flex-1 border-[#d7e4ee] bg-white">
             <Link href="/salary/questions">{t.all}</Link>
           </Button>
-          <Button asChild variant="outline" size="sm" className="flex-1 border-emerald-200 bg-white">
+          <Button asChild variant="outline" size="sm" className="flex-1 border-[#d7e4ee] bg-white">
             <Link href="/salary/questions#salary-ask">{t.ask}</Link>
           </Button>
         </div>
@@ -163,16 +163,16 @@ export function SalaryHelpRail({ locale, isAdmin }: { locale: SalaryLocale; isAd
         ) : null}
       </section>
 
-      <section className="hidden rounded-2xl border border-teal-200 bg-white p-4 shadow-sm xl:block">
-        <Link href="/salary/guide" className="block hover:text-teal-950">
+      <section className="hidden rounded-2xl border border-[#d7e4ee] bg-white p-4 shadow-sm xl:block">
+        <Link href="/salary/guide" className="block hover:text-[#0a2f5b]">
           <h2 className="inline-flex items-center gap-1.5 text-base font-extrabold text-slate-900">
-            <BookOpenText className="h-4 w-4 text-teal-700" aria-hidden />
+            <BookOpenText className="h-4 w-4 text-[#0a2f5b]" aria-hidden />
             {t.instructions}
           </h2>
           <p className="mt-1 text-xs leading-relaxed text-slate-600">{t.hint}</p>
         </Link>
         {isAdmin ? (
-          <Link href="/admin/salary-help?tab=guide" className="mt-2 inline-block text-xs font-semibold text-teal-800 hover:underline">
+          <Link href="/admin/salary-help?tab=guide" className="mt-2 inline-block text-xs font-semibold text-[#0a2f5b] hover:underline">
             {t.editGuide}
           </Link>
         ) : null}

@@ -263,7 +263,7 @@ export function ScheduleTypesAdmin() {
                 <div key={t.id} className={cn('flex flex-wrap items-center gap-3 p-3 text-sm', !t.is_active && 'bg-slate-50 text-muted')}>
                   <span className="h-4 w-4 shrink-0 rounded-full" style={{ background: t.color }} />
                   <div className="min-w-0 flex-1">
-                    <p className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium text-foreground">{t.label}</span>
                       {t.label_bn && <span className="text-muted">{t.label_bn}</span>}
                       <code className="rounded bg-slate-100 px-1.5 text-xs">{t.code}</code>
@@ -274,7 +274,7 @@ export function ScheduleTypesAdmin() {
                       )}
                       {!t.is_active && <Badge variant="warning">Inactive</Badge>}
                       {t.allow_personal ? <Badge variant="outline">Personal OK</Badge> : null}
-                    </p>
+                    </div>
                     <p className="text-xs text-muted">
                       {t.description ? `${t.description} · ` : ''}
                       {t.default_reminders.length ? t.default_reminders.map(reminderLabel).join(', ') : 'No default reminders'}

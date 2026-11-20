@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Pencil, Plus, Trash2, X } from 'lucide-react';
+import { CheckCircle2, ClipboardCheck, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { fetchMe } from '@/lib/auth';
+import { toBanglaDigits } from '@/lib/bangla-format';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -72,6 +73,10 @@ const emptyEditForm = {
   instructions: '',
 };
 
+function bn(n: number | string): string {
+  return toBanglaDigits(String(n));
+}
+
 export default function PapersPage() {
   const [papers, setPapers] = useState<PaperItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -85,6 +90,7 @@ export default function PapersPage() {
   const [examId, setExamId] = useState('');
   const [sessionId, setSessionId] = useState('');
   const [subjectId, setSubjectId] = useState('');
+  const [learnerSubjectPill, setLearnerSubjectPill] = useState('all');
   const [published, setPublished] = useState('');
   const [editingId, setEditingId] = useState('');
   const [editForm, setEditForm] = useState(emptyEditForm);
@@ -173,6 +179,21 @@ export default function PapersPage() {
       .catch(() => setEditSubjects([]));
   }, [editForm.examId]);
 
+  const learnerSubjects = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of papers) {
+      if (p.exam_subject_id && p.exam_subject_name) {
+        map.set(p.exam_subject_id, p.exam_subject_name);
+      }
+    }
+    return [...map.entries()].map(([id, name]) => ({ id, name }));
+  }, [papers]);
+
+  const visibleLearnerPapers = useMemo(() => {
+    if (learnerSubjectPill === 'all') return papers;
+    return papers.filter((p) => p.exam_subject_id === learnerSubjectPill);
+  }, [papers, learnerSubjectPill]);
+
   async function openEdit(paper: PaperItem) {
     setEditError('');
     setEditMessage('');
@@ -257,28 +278,162 @@ export default function PapersPage() {
     }
   }
 
+  /* =========================================================
+   * LEARNER VIEW — PDF Page 16 (মডেল টেস্ট 2-Column Layout)
+   * ========================================================= */
+  if (!isAdmin) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-[#0a2f5b] sm:text-3xl">মডেল টেস্ট ও বিগত প্রশ্নপত্র</h1>
+            <p className="mt-1 text-sm text-slate-600">সময় ধরে পূর্ণাঙ্গ মডেল টেস্ট ও বিগত বছরের প্রশ্ন সেট অনুশীলন করুন।</p>
+          </div>
+          <Link
+            href="/exam-prep"
+            className="rounded-xl border border-[#d7e4ee] bg-white px-4 py-2 text-xs font-semibold text-[#1566b8] hover:bg-[#eaf3fc]"
+          >
+            অধ্যায়ভিত্তিক MCQ অনুশীলন →
+          </Link>
+        </div>
+
+        {/* Subject Filter Pills */}
+        {learnerSubjects.length > 0 ? (
+          <div className="flex flex-wrap gap-2 rounded-2xl border border-[#d7e4ee] bg-white p-3.5 shadow-xs">
+            <button
+              type="button"
+              onClick={() => setLearnerSubjectPill('all')}
+              className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
+                learnerSubjectPill === 'all'
+                  ? 'bg-[#1566b8] text-white'
+                  : 'bg-[#f4f9fd] text-[#0a2f5b] hover:bg-[#e5f0fb]'
+              }`}
+            >
+              সব বিষয় ({bn(papers.length)})
+            </button>
+            {learnerSubjects.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => setLearnerSubjectPill(s.id)}
+                className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
+                  learnerSubjectPill === s.id
+                    ? 'bg-[#1566b8] text-white'
+                    : 'bg-[#f4f9fd] text-[#0a2f5b] hover:bg-[#e5f0fb]'
+                }`}
+              >
+                {s.name}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="grid items-start gap-6 lg:grid-cols-[1fr_320px]">
+          <div className="space-y-3.5">
+            {loading ? (
+              <>
+                <Skeleton className="h-28 w-full rounded-2xl" />
+                <Skeleton className="h-28 w-full rounded-2xl" />
+              </>
+            ) : visibleLearnerPapers.length === 0 ? (
+              <div className="rounded-2xl border border-[#d7e4ee] bg-white p-8 text-center text-sm text-slate-500">
+                এখনো কোনো প্রকাশিত মডেল টেস্ট বা প্রশ্নপত্র পাওয়া যায়নি।
+              </div>
+            ) : (
+              visibleLearnerPapers.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex flex-col justify-between gap-4 rounded-2xl border border-[#d7e4ee] bg-white p-5 shadow-xs transition hover:border-[#7eb6ea] sm:flex-row sm:items-center"
+                >
+                  <div className="flex min-w-0 items-start gap-4">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#eaf3fc] text-[#1566b8]">
+                      <ClipboardCheck className="h-6 w-6" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full bg-[#e8f8ef] px-2.5 py-0.5 text-[11px] font-bold text-[#156f4d]">
+                          উপলব্ধ
+                        </span>
+                        {p.is_exam_of_week ? (
+                          <span className="rounded-full bg-[#fff3d6] px-2.5 py-0.5 text-[11px] font-bold text-[#b45309]">
+                            সপ্তাহের বিশেষ পরীক্ষা
+                          </span>
+                        ) : null}
+                        {p.paper_type_name ? (
+                          <span className="rounded-full bg-[#eaf3fc] px-2.5 py-0.5 text-[11px] font-semibold text-[#1566b8]">
+                            {p.paper_type_name}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <h2 className="mt-1.5 text-base font-bold text-[#0a2f5b]">{p.name}</h2>
+
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        {[p.exam_short_name, p.exam_subject_name, p.session_label_bn ?? p.session_label_en ?? p.session_year]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </p>
+
+                      <p className="mt-1.5 text-xs font-medium text-slate-600">
+                        {bn(p.question_count)}টি প্রশ্ন · {bn(p.duration_minutes)} মিনিট · পূর্ণমান {bn(p.total_marks)} · পাস নম্বর{' '}
+                        {bn(p.pass_marks)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <Link
+                    href={`/papers/${p.id}`}
+                    className="inline-flex shrink-0 items-center justify-center rounded-xl bg-[#1566b8] px-5 py-2.5 text-xs font-semibold text-white hover:bg-[#0f5294]"
+                  >
+                    শুরু করুন
+                  </Link>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Right Column: পরীক্ষার নির্দেশনা (PDF Page 16) */}
+          <aside className="rounded-2xl border border-[#d7e4ee] bg-white p-5 shadow-xs lg:sticky lg:top-20">
+            <h2 className="text-base font-bold text-[#0a2f5b]">পরীক্ষার নির্দেশনা</h2>
+            <ul className="mt-4 space-y-3 text-xs leading-relaxed text-slate-600">
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#1566b8]" />
+                <span>প্রতিটি প্রশ্নপত্রের নির্ধারিত সময় ও পূর্ণমান কার্ডে উল্লেখ আছে।</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#1566b8]" />
+                <span>প্রশ্নপত্রে প্রবেশ করে বিভাগওয়ারী সব প্রশ্ন দেখা ও অনুশীলন করা যাবে।</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#1566b8]" />
+                <span>অধ্যায়ভিত্তিক তাৎক্ষণিক স্কোর ও ভুল প্রশ্নের রি-টেস্ট দিতে ‘পরীক্ষা প্রস্তুতি’ মেনু ব্যবহার করুন।</span>
+              </li>
+            </ul>
+          </aside>
+        </div>
+      </div>
+    );
+  }
+
+  /* =========================================================
+   * ADMIN VIEW — Unchanged Full Composer / Management Controls
+   * ========================================================= */
   return (
     <div className="space-y-6">
       <PageHeader
         title="Question papers"
-        description={
-          isAdmin
-            ? 'Compose, section, and publish practice and exam papers.'
-            : 'Browse published practice and exam papers.'
-        }
+        description="Compose, section, and publish practice and exam papers."
         action={
-          isAdmin ? (
-            <Button asChild size="sm">
-              <Link href="/papers/new">
-                <Plus className="h-4 w-4" />
-                New paper
-              </Link>
-            </Button>
-          ) : undefined
+          <Button asChild size="sm">
+            <Link href="/papers/new">
+              <Plus className="h-4 w-4" />
+              New paper
+            </Link>
+          </Button>
         }
       />
 
-      {isAdmin && editingId && (
+      {editingId && (
         <Card className="border-primary/30">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-base">Edit paper details</CardTitle>
@@ -488,20 +643,18 @@ export default function PapersPage() {
               ))}
             </select>
           </div>
-          {isAdmin && (
-            <div>
-              <Label>Status</Label>
-              <select
-                value={published}
-                onChange={(e) => setPublished(e.target.value)}
-                className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              >
-                <option value="">All</option>
-                <option value="true">Published</option>
-                <option value="false">Draft</option>
-              </select>
-            </div>
-          )}
+          <div>
+            <Label>Status</Label>
+            <select
+              value={published}
+              onChange={(e) => setPublished(e.target.value)}
+              className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              <option value="">All</option>
+              <option value="true">Published</option>
+              <option value="false">Draft</option>
+            </select>
+          </div>
           <div className="flex items-end">
             <Button onClick={() => load(subjectId || undefined, sessionId || undefined, published)} className="w-full">
               Apply
@@ -519,18 +672,12 @@ export default function PapersPage() {
         </div>
       ) : papers.length === 0 ? (
         <EmptyState
-          title={isAdmin ? 'No papers yet' : 'No published papers'}
-          description={
-            isAdmin
-              ? 'Create a paper and add published questions from the question bank.'
-              : 'Published papers will appear here when they are available.'
-          }
+          title="No papers yet"
+          description="Create a paper and add published questions from the question bank."
           action={
-            isAdmin ? (
-              <Button asChild>
-                <Link href="/papers/new">Create paper</Link>
-              </Button>
-            ) : undefined
+            <Button asChild>
+              <Link href="/papers/new">Create paper</Link>
+            </Button>
           }
         />
       ) : (
@@ -541,7 +688,7 @@ export default function PapersPage() {
                 <div>
                   <CardTitle className="text-base">
                     <Link
-                      href={isAdmin && !p.is_published ? `/papers/${p.id}/edit` : `/papers/${p.id}`}
+                      href={!p.is_published ? `/papers/${p.id}/edit` : `/papers/${p.id}`}
                       className="hover:underline"
                     >
                       {p.name}
@@ -558,23 +705,21 @@ export default function PapersPage() {
                     {p.is_published ? 'Published' : 'Draft'}
                   </Badge>
                   {p.is_exam_of_week && <Badge className="bg-red-600 text-white">Exam of the Week</Badge>}
-                  {isAdmin && (
-                    <div className="flex items-center gap-1">
-                      <Button type="button" size="sm" variant="ghost" className="h-7 px-2" onClick={() => openEdit(p)}>
-                        <Pencil className="h-3 w-3" /> Edit
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 px-2 text-destructive hover:text-destructive"
-                        disabled={deletingId === p.id}
-                        onClick={() => removePaper(p)}
-                      >
-                        <Trash2 className="h-3 w-3" /> {deletingId === p.id ? 'Deleting…' : 'Delete'}
-                      </Button>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-1">
+                    <Button type="button" size="sm" variant="ghost" className="h-7 px-2" onClick={() => openEdit(p)}>
+                      <Pencil className="h-3 w-3" /> Edit
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-destructive hover:text-destructive"
+                      disabled={deletingId === p.id}
+                      onClick={() => removePaper(p)}
+                    >
+                      <Trash2 className="h-3 w-3" /> {deletingId === p.id ? 'Deleting…' : 'Delete'}
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="flex flex-wrap gap-2 text-sm text-muted">

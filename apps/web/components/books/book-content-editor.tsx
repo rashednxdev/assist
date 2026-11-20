@@ -16,6 +16,8 @@ import { STATIC_REF_PAGE_OPTIONS } from '@/lib/static-ref-pages';
 import { ComparisonTableModal } from '@/components/questions/comparison-table-modal';
 import { ProcessModal, type ProcessDraft } from '@/components/books/process-modal';
 import { ProcessFlowPreview } from '@/components/books/process-flow-preview';
+import { RichEditor } from '@/components/ui/rich-editor';
+import { toEditorHtml } from '@/lib/rich-html';
 
 // Stable reference used only as a fallback seed for the table modal — re-creating this inline on
 // every render would make the modal's initialValue prop change identity each render, which resets
@@ -828,7 +830,7 @@ export function BookContentEditor({
                         name: c.name,
                         chapter_number: c.chapter_number,
                         sub_name: c.sub_name ?? '',
-                        description: c.description?.replace(/<[^>]+>/g, ' ').trim() ?? '',
+                        description: toEditorHtml(c.description),
                       });
                     }}>Edit</Button>
                     <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive" disabled={busy} onClick={() => removeChapter(c.id)}>Remove</Button>
@@ -841,7 +843,7 @@ export function BookContentEditor({
                 <p className="text-xs font-semibold text-muted">Edit chapter</p>
                 <Input disabled={busy} value={editChapterForm.chapter_number} placeholder="Chapter no." onChange={(e) => setEditChapterForm({ ...editChapterForm, chapter_number: e.target.value })} />
                 <Input disabled={busy} value={editChapterForm.name} placeholder="Title (optional)" onChange={(e) => setEditChapterForm({ ...editChapterForm, name: e.target.value })} />
-                <textarea className="ibas-textarea text-sm" disabled={busy} value={editChapterForm.description} placeholder="Description" onChange={(e) => setEditChapterForm({ ...editChapterForm, description: e.target.value })} />
+                <RichEditor disabled={busy} value={editChapterForm.description} placeholder="Description" onChange={(html) => setEditChapterForm((f) => ({ ...f, description: html }))} />
                 <div className="flex gap-2">
                   <Button size="sm" disabled={busy} onClick={saveChapterEdit}>Save</Button>
                   <Button size="sm" variant="ghost" onClick={() => setEditChapterId(null)}>Cancel</Button>
@@ -852,7 +854,7 @@ export function BookContentEditor({
               <p className="text-xs font-semibold text-muted">Add chapter</p>
               <Input disabled={busy} value={chapterForm.chapter_number} placeholder="e.g. IV" onChange={(e) => setChapterForm({ ...chapterForm, chapter_number: e.target.value })} />
               <Input disabled={busy} value={chapterForm.name} placeholder="Chapter title (optional)" onChange={(e) => setChapterForm({ ...chapterForm, name: e.target.value })} />
-              <textarea className="ibas-textarea text-sm" disabled={busy} value={chapterForm.description} placeholder="Description (optional)" onChange={(e) => setChapterForm({ ...chapterForm, description: e.target.value })} />
+              <RichEditor disabled={busy} value={chapterForm.description} placeholder="Description (optional)" onChange={(html) => setChapterForm((f) => ({ ...f, description: html }))} />
               <Button size="sm" disabled={busy} onClick={addChapter}>Add chapter</Button>
             </div>
           </CardContent>
@@ -888,7 +890,7 @@ export function BookContentEditor({
                             name: t.name ?? '',
                             rule_number: t.rule_number ?? '',
                             sub_name: t.sub_name ?? '',
-                            description: t.description?.replace(/<[^>]+>/g, ' ').trim() ?? '',
+                            description: toEditorHtml(t.description),
                             note: t.note ?? '',
                             content_link: t.content_link ?? '',
                           });
@@ -923,7 +925,7 @@ export function BookContentEditor({
                     <p className="text-xs font-semibold text-muted">Edit rule</p>
                     <Input disabled={busy} value={editTopicForm.rule_number} placeholder="Rule no. (optional)" onChange={(e) => setEditTopicForm({ ...editTopicForm, rule_number: e.target.value })} />
                     <Input disabled={busy} value={editTopicForm.name} placeholder="Title (optional)" onChange={(e) => setEditTopicForm({ ...editTopicForm, name: e.target.value })} />
-                    <textarea className="ibas-textarea text-sm" disabled={busy} value={editTopicForm.description} placeholder="Details (optional)" onChange={(e) => setEditTopicForm({ ...editTopicForm, description: e.target.value })} />
+                    <RichEditor disabled={busy} value={editTopicForm.description} placeholder="Details (optional)" onChange={(html) => setEditTopicForm((f) => ({ ...f, description: html }))} />
                     <Input disabled={busy} value={editTopicForm.note} placeholder="Note / cross-ref" onChange={(e) => setEditTopicForm({ ...editTopicForm, note: e.target.value })} />
                     <select
                       className="ibas-select text-sm"
@@ -1006,7 +1008,7 @@ export function BookContentEditor({
                   <p className="text-xs font-semibold text-muted">Add rule</p>
                   <Input disabled={busy} value={topicForm.rule_number} placeholder="Rule no. e.g. 45 (optional)" onChange={(e) => setTopicForm({ ...topicForm, rule_number: e.target.value })} />
                   <Input disabled={busy} value={topicForm.name} placeholder="Title (optional)" onChange={(e) => setTopicForm({ ...topicForm, name: e.target.value })} />
-                  <textarea className="ibas-textarea text-sm" disabled={busy} value={topicForm.description} placeholder="Details (fill rule no., title, or details)" onChange={(e) => setTopicForm({ ...topicForm, description: e.target.value })} />
+                  <RichEditor disabled={busy} value={topicForm.description} placeholder="Details (fill rule no., title, or details)" onChange={(html) => setTopicForm((f) => ({ ...f, description: html }))} />
                   <select
                     className="ibas-select text-sm"
                     disabled={busy}
@@ -1114,7 +1116,7 @@ export function BookContentEditor({
                           setEditSubForm({
                             name: st.name ?? '',
                             rule_number: st.rule_number ?? '',
-                            description: st.description?.replace(/<[^>]+>/g, ' ').trim() ?? '',
+                            description: toEditorHtml(st.description),
                             note: st.note ?? '',
                           });
                         }}>Edit</Button>
@@ -1127,7 +1129,7 @@ export function BookContentEditor({
                   <div className="rounded-lg border border-dashed p-3 space-y-2">
                     <Input disabled={busy} value={editSubForm.rule_number} placeholder="Sub-rule no." onChange={(e) => setEditSubForm({ ...editSubForm, rule_number: e.target.value })} />
                     <Input disabled={busy} value={editSubForm.name} placeholder="Title (optional)" onChange={(e) => setEditSubForm({ ...editSubForm, name: e.target.value })} />
-                    <textarea className="ibas-textarea text-sm" disabled={busy} value={editSubForm.description} placeholder="Details (optional)" onChange={(e) => setEditSubForm({ ...editSubForm, description: e.target.value })} />
+                    <RichEditor disabled={busy} value={editSubForm.description} placeholder="Details (optional)" onChange={(html) => setEditSubForm((f) => ({ ...f, description: html }))} />
                     <div className="flex gap-2">
                       <Button size="sm" disabled={busy} onClick={saveSubEdit}>Save</Button>
                       <Button size="sm" variant="ghost" onClick={() => setEditSubId(null)}>Cancel</Button>
@@ -1137,7 +1139,7 @@ export function BookContentEditor({
                 <div className="rounded-lg border border-dashed p-3 space-y-2">
                   <Input disabled={busy} value={subForm.rule_number} placeholder="Sub-rule no. e.g. 45(1) (optional)" onChange={(e) => setSubForm({ ...subForm, rule_number: e.target.value })} />
                   <Input disabled={busy} value={subForm.name} placeholder="Title (optional)" onChange={(e) => setSubForm({ ...subForm, name: e.target.value })} />
-                  <textarea className="ibas-textarea text-sm" disabled={busy} value={subForm.description} placeholder="Details (fill sub-rule no., title, or details)" onChange={(e) => setSubForm({ ...subForm, description: e.target.value })} />
+                  <RichEditor disabled={busy} value={subForm.description} placeholder="Details (fill sub-rule no., title, or details)" onChange={(html) => setSubForm((f) => ({ ...f, description: html }))} />
                   <Button
                     size="sm"
                     disabled={

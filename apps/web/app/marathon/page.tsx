@@ -78,14 +78,20 @@ export default function MarathonReviewPage() {
   const [showAll, setShowAll] = useState(false);
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
   const [bookId, setBookId] = useState('');
+  const [subjectId, setSubjectId] = useState('');
+
+  useEffect(() => {
+    setSubjectId(new URLSearchParams(window.location.search).get('exam_subject_id') ?? '');
+  }, []);
 
   const fetchPage = useCallback(
     (offset: number) => {
       const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) });
       if (query) params.set('q', query);
+      if (subjectId) params.set('exam_subject_id', subjectId);
       return apiFetch<MarathonResponse>(`/questions/marathon-review?${params.toString()}`);
     },
-    [query],
+    [query, subjectId],
   );
 
   useEffect(() => {
@@ -154,7 +160,7 @@ export default function MarathonReviewPage() {
       <PageHeader
         title="Marathon Review"
         description="Short questions & answers from Books & Tools — reveal each answer or show them all."
-        backHref="/dashboard"
+        backHref="/learning"
         action={
           <Button size="sm" variant={showAll ? 'default' : 'outline'} onClick={() => setShowAll((v) => !v)}>
             {showAll ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}

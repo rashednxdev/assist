@@ -3,7 +3,7 @@
 import { useLayoutEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { clearAccessToken, fetchMe, getAccessToken, peekMe } from '@/lib/auth';
-import { SALARY_HOME, isSalaryOnlyUser } from '@/lib/salary-only';
+import { LEARNING_HOME, isSalaryOnlyUser } from '@/lib/salary-only';
 import { Skeleton } from '@/components/ui/skeleton';
 
 /** Minimal chrome for the Live Class control room (opened in a new tab). */
@@ -19,7 +19,7 @@ export default function LiveRoomLayout({ children }: { children: React.ReactNode
     }
     const open = (user: Parameters<typeof isSalaryOnlyUser>[0]) => {
       if (!live) return;
-      if (isSalaryOnlyUser(user)) router.replace(SALARY_HOME);
+      if (isSalaryOnlyUser(user)) router.replace(LEARNING_HOME);
       else setReady(true);
     };
     const cached = peekMe();

@@ -23,6 +23,7 @@ import { joiningModeLabel, buildJoiningRulesLocalized } from '@/lib/joining-i18n
 import { CalcLocaleProvider } from '@/components/shared/calc-locale-provider';
 import { LocaleSwitcher } from '@/components/shared/locale-switcher';
 import { PageHeader } from '@/components/shared/page-header';
+import { CalculatorTabs } from '@/components/shared/calculator-tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -146,6 +147,7 @@ function JoiningPeriodInner() {
 
   return (
     <div className="space-y-6">
+      <CalculatorTabs active="joining" />
       <PageHeader
         title={t('title')}
         description={t('description')}

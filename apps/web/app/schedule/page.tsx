@@ -52,11 +52,11 @@ function OccurrenceRow({ o, onOpen }: { o: ScheduleOccurrence; onOpen: (o: Sched
         style={{ background: typeColor(o.kind) }}
       />
       <div className="min-w-0 flex-1">
-        <p className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className={cn('font-medium', cancelled && 'text-muted line-through')}>{o.title}</span>
           {cancelled && <Badge variant="destructive">Cancelled</Badge>}
           {o.status === 'postponed' && <Badge variant="warning">Postponed</Badge>}
-        </p>
+        </div>
         {o.status === 'postponed' && o.original_date && (
           <p className="text-xs text-amber-800">Was {slotText(o.original_date, o.original_time)}</p>
         )}

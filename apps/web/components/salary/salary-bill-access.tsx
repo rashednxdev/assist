@@ -299,7 +299,7 @@ export function SalaryBillAccessPanel({
                 {t.accessBillsUnit(num(access.bills_used))}
               </td>
               <td
-                className={`px-3 py-2 text-right font-bold tabular-nums ${access.remaining > 0 ? 'text-emerald-700' : 'text-red-700'}`}
+                className={`px-3 py-2 text-right font-bold tabular-nums ${access.remaining > 0 ? 'text-[#0a2f5b]' : 'text-red-700'}`}
               >
                 {t.accessBillsUnit(num(access.remaining))}
               </td>

@@ -48,16 +48,16 @@ function GuideBody({ locale, isAdmin }: { locale: SalaryLocale; isAdmin: boolean
   const html = locale === 'bn' ? guide?.body_bn || guide?.body_en || '' : guide?.body_en || guide?.body_bn || '';
 
   return (
-    <article className="overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-sm">
-      <div className="border-b border-emerald-100 bg-gradient-to-r from-emerald-50 via-white to-teal-50 px-5 py-4">
-        <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">{t.kicker}</p>
+    <article className="overflow-hidden rounded-2xl border border-[#d7e4ee] bg-white shadow-sm">
+      <div className="border-b border-[#d7e8f8] bg-gradient-to-r from-[#f4f9fd] via-white to-[#f4f9fd] px-5 py-4">
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#0a2f5b]">{t.kicker}</p>
         <div className="mt-1 flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-xl font-extrabold text-slate-900 sm:text-2xl">{t.title}</h1>
             <p className="mt-1 text-sm text-slate-600">{t.subtitle}</p>
           </div>
           {isAdmin ? (
-            <Button asChild size="sm" className="bg-emerald-700 hover:bg-emerald-800">
+            <Button asChild size="sm" className="bg-[#0a2f5b] hover:bg-[#0a2f5b]">
               <Link href="/admin/salary-help?tab=guide">{t.edit}</Link>
             </Button>
           ) : null}

@@ -23,9 +23,9 @@ function daysUntil(dateStr: string): number {
 }
 
 function countdownLabel(days: number): string {
-  if (days > 0) return `${days} day${days === 1 ? '' : 's'} left`;
-  if (days === 0) return 'Today';
-  return `${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} ago`;
+  if (days > 0) return `${days} দিন বাকি`;
+  if (days === 0) return 'আজ';
+  return `${Math.abs(days)} দিন আগে`;
 }
 
 /** Nearest upcoming exam(s) from the Exam Routine module, shown as a countdown on the dashboard. */
@@ -50,9 +50,9 @@ export function ExamRoutineCountdown() {
 
   return (
     <div>
-      <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold">
+        <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold">
         <Timer className="h-5 w-5 text-amber-600" />
-        Exam countdown
+        সামনের পরীক্ষা
       </h2>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {upcoming.map((r) => (
@@ -63,7 +63,7 @@ export function ExamRoutineCountdown() {
               </CardHeader>
               <CardContent>
                 <p className="text-3xl font-bold text-amber-700">{countdownLabel(r.days)}</p>
-                <p className="mt-1 text-sm text-muted">Starts {formatDdMmYyyy(r.start_date)}</p>
+                <p className="mt-1 text-sm text-muted">শুরু {formatDdMmYyyy(r.start_date)}</p>
               </CardContent>
             </Card>
           </Link>

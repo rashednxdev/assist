@@ -13,6 +13,9 @@ export interface ReaderBook {
   description: string;
   edition?: string;
   published_by?: string;
+  effective_date?: string;
+  publish_date?: string;
+  is_superseded?: boolean;
   language: string;
   tags: string[];
   book_type_name?: string;

@@ -214,6 +214,7 @@ export type LinkQuestionSearchQuery = z.infer<typeof linkQuestionSearchQuerySche
 
 export const marathonReviewQuerySchema = z.object({
   q: z.string().optional(),
+  exam_subject_id: z.string().regex(/^[a-f\d]{24}$/i).optional(),
   /** Page size (load first N, then request more with offset). */
   limit: z.coerce.number().int().min(1).max(100).default(50),
   /** How many rows to skip (for sequential / paginated loads). */

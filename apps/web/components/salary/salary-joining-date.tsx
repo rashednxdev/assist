@@ -51,7 +51,7 @@ export function SalaryJoiningDateField({
       />
       <p
         className={`text-xs ${
-          !valid ? 'text-muted' : value < SALARY_INCREMENT_CUTOFF_DATE ? 'font-medium text-emerald-700' : 'font-medium text-amber-800'
+          !valid ? 'text-muted' : value < SALARY_INCREMENT_CUTOFF_DATE ? 'font-medium text-[#0a2f5b]' : 'font-medium text-amber-800'
         }`}
       >
         {note}

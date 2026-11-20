@@ -3,29 +3,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useTranslations } from 'next-intl';
-import { ChevronDown, ChevronLeft, LogOut, Menu, X } from 'lucide-react';
+import { Bell, CheckCircle2, ChevronLeft, HelpCircle, LogOut, Menu, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { BrandMark } from '@/components/brand/brand-mark';
 import { logoutRequest, fetchMe, getAccessToken, clearAccessToken, SET_PASSWORD_PATH, type MeUser } from '@/lib/auth';
 import { adminNavGroupsFor, isPlatformAdmin, learningModuleAccess } from '@/lib/capabilities';
-import {
-  LEARNING_HOME,
-  SALARY_HOME,
-  canHostLive,
-  hasLearningWebAccess,
-  isLearningModulePath,
-  isPublicSignedInPath,
-  isSalaryOnlyUser,
-} from '@/lib/learning-access';
-import { Skeleton } from '@/components/ui/skeleton';
+import { LEARNING_HOME, canHostLive, isLearningModulePath } from '@/lib/learning-access';
 import {
   hostLiveNavItem,
   learningPrimaryNav,
   salaryBillAccessNavItem,
-  salaryPrimaryNav,
   type NavItem,
 } from './nav-config';
+import { ProfileMenu } from './profile-menu';
 
 const MODULE_ROUTES: { prefix: string; code: string }[] = [
   { prefix: '/books', code: 'BOOKS' },
@@ -38,45 +29,43 @@ const MODULE_ROUTES: { prefix: string; code: string }[] = [
   { prefix: '/marathon', code: 'QUESTIONS' },
   { prefix: '/user-questions', code: 'USER_QUESTIONS' },
   { prefix: '/live-room', code: 'LIVE_STREAM' },
-  { prefix: '/live', code: 'LIVE_STREAM' },
 ];
 
 function matchesPath(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-function TopLink({
+function SideLink({
   item,
   active,
   onNavigate,
 }: {
   item: NavItem;
   active: boolean;
-  onNavigate?: () => void;
+  onNavigate?: (event: React.MouseEvent<HTMLAnchorElement>, item: NavItem) => void;
 }) {
   const Icon = item.icon;
   return (
     <Link
       href={item.href}
-      onClick={onNavigate}
+      onClick={(event) => onNavigate?.(event, item)}
       className={cn(
-        'inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition-colors',
-        active ? 'bg-primary/10 text-primary' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900',
+        'flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-colors',
+        active
+          ? 'bg-[#1566b8] font-semibold text-white shadow-sm'
+          : 'text-white/80 hover:bg-white/10 hover:text-white',
       )}
     >
       <Icon className="h-4 w-4 shrink-0" />
-      <span className="whitespace-nowrap">{item.label}</span>
+      <span className="min-w-0 leading-snug">{item.label}</span>
     </Link>
   );
 }
 
+/** Every signed-in user gets the same primary menu; module access is enforced per page / API. */
 function primaryNavFor(me: MeUser | null): NavItem[] {
-  if (!me) return salaryPrimaryNav;
-  const base = !hasLearningWebAccess(me)
-    ? salaryPrimaryNav
-    : canHostLive(me)
-      ? [...learningPrimaryNav, hostLiveNavItem]
-      : [...learningPrimaryNav];
+  if (!me) return [...learningPrimaryNav];
+  const base = canHostLive(me) ? [...learningPrimaryNav, hostLiveNavItem] : [...learningPrimaryNav];
   if (!isPlatformAdmin(me) || base.some((item) => item.href === salaryBillAccessNavItem.href)) return base;
   const salaryAt = base.findIndex((item) => item.href === '/salary');
   const at = salaryAt >= 0 ? salaryAt + 1 : base.length;
@@ -86,15 +75,13 @@ function primaryNavFor(me: MeUser | null): NavItem[] {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const tAuth = useTranslations('auth');
-  const tApp = useTranslations('app');
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [adminOpen, setAdminOpen] = useState(false);
   const [me, setMe] = useState<MeUser | null>(null);
+  const [lockedLabel, setLockedLabel] = useState('');
+  const [topSearch, setTopSearch] = useState('');
 
   useEffect(() => {
     setMobileOpen(false);
-    setAdminOpen(false);
   }, [pathname]);
 
   useEffect(() => {
@@ -116,21 +103,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       });
   }, [router]);
 
-  const learningAccess = hasLearningWebAccess(me);
-  const blocked = isSalaryOnlyUser(me) && !isPublicSignedInPath(pathname);
-
   useEffect(() => {
-    if (blocked) router.replace(SALARY_HOME);
-  }, [blocked, router]);
-
-  useEffect(() => {
-    if (!me || blocked) return;
+    if (!me) return;
     const hit = MODULE_ROUTES.find((r) => pathname === r.prefix || pathname.startsWith(`${r.prefix}/`));
     if (!hit) return;
     if (learningModuleAccess(me, hit.code).state !== 'open') router.replace(LEARNING_HOME);
-  }, [me, pathname, blocked, router]);
+  }, [me, pathname, router]);
 
   const primaryLinks = useMemo(() => primaryNavFor(me), [me]);
+
+  function handleNav(event: React.MouseEvent<HTMLAnchorElement>, item: NavItem) {
+    if (item.moduleCode && me && learningModuleAccess(me, item.moduleCode).state !== 'open') {
+      event.preventDefault();
+      setLockedLabel(item.label);
+      setMobileOpen(false);
+      return;
+    }
+    setLockedLabel('');
+    setMobileOpen(false);
+  }
 
   const adminNav = useMemo(() => {
     if (!me) return [];
@@ -156,171 +147,192 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     router.replace('/login');
   }
 
-  const activePrimary =
-    primaryLinks
-      .map((i) => i.href)
+  function handleTopSearch(e: React.FormEvent) {
+    e.preventDefault();
+    const q = topSearch.trim();
+    if (!q) {
+      router.push('/exam-prep');
+      return;
+    }
+    router.push(`/exam-prep?q=${encodeURIComponent(q)}`);
+  }
+
+  const activeHref =
+    [...primaryLinks, ...adminNav.flatMap((group) => group.items)]
+      .map((item) => item.href)
       .filter((href) => matchesPath(pathname, href))
       .sort((a, b) => b.length - a.length)[0] ?? null;
 
+  const homeHref = LEARNING_HOME;
+  const hasPaidAccess = Boolean(me && (me.has_paid || isPlatformAdmin(me)));
+
+  function renderNav(items: NavItem[]) {
+    return items.map((item) => (
+      <SideLink key={item.href} item={item} active={item.href === activeHref} onNavigate={handleNav} />
+    ));
+  }
+
+  function ShellMenu() {
+    return (
+      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
+        {renderNav(primaryLinks)}
+        {showAdmin
+          ? adminNav.map((group) => (
+              <div key={group.title} className="pt-4">
+                <p className="mb-1 px-3.5 text-[11px] font-semibold uppercase tracking-wide text-white/45">{group.title}</p>
+                {renderNav(group.items)}
+              </div>
+            ))
+          : null}
+      </nav>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-40 border-b border-border bg-surface/95 backdrop-blur-md print:hidden">
-        <div className="mx-auto flex min-h-14 max-w-7xl flex-wrap items-center gap-2 px-4 py-2 sm:px-6 lg:px-8">
-          <button
-            type="button"
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-foreground lg:hidden"
-            onClick={() => setMobileOpen(true)}
-            aria-label="Open menu"
+    <div className="min-h-screen bg-[#f4f9fd] lg:flex">
+      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col bg-[#0a2f5b] print:hidden lg:flex">
+        <Link href={homeHref} className="border-b border-white/10 px-5 py-4">
+          <BrandMark tone="white" />
+        </Link>
+        <ShellMenu />
+        <div className="space-y-1 border-t border-white/10 p-3">
+          <Link
+            href="/contacts"
+            className="flex items-center gap-2.5 rounded-xl px-3.5 py-2 text-sm font-medium text-white/75 transition-colors hover:bg-white/10 hover:text-white"
           >
-            <Menu className="h-5 w-5" />
-          </button>
-
-          <Link href={learningAccess ? LEARNING_HOME : SALARY_HOME} className="min-w-0 shrink-0">
-            <p className="truncate text-sm font-bold text-foreground sm:text-base">{tApp('name')}</p>
+            <HelpCircle className="h-4 w-4 shrink-0" />
+            <span>Help</span>
           </Link>
-
-          <nav className="ml-2 hidden min-w-0 flex-1 flex-wrap items-center gap-1 lg:flex">
-            {primaryLinks.map((item) => (
-              <TopLink key={item.href} item={item} active={item.href === activePrimary} />
-            ))}
-          </nav>
-          {showAdmin ? (
-            <div className="relative hidden lg:block">
-              <button
-                type="button"
-                className={cn(
-                  'inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-semibold',
-                  adminOpen || pathname.startsWith('/admin') || pathname.includes('/admin')
-                    ? 'bg-slate-900 text-white'
-                    : 'text-slate-700 hover:bg-slate-100',
-                )}
-                onClick={() => setAdminOpen((v) => !v)}
-              >
-                Admin
-                <ChevronDown className="h-4 w-4" />
-              </button>
-              {adminOpen ? (
-                <div className="absolute right-0 top-full z-50 mt-2 w-[42rem] max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-surface p-3 shadow-xl">
-                  <div className={cn('grid gap-4', adminNav.length > 1 ? 'sm:grid-cols-2' : 'grid-cols-1')}>
-                    {adminNav.map((group) => (
-                      <div key={group.title}>
-                        <p className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
-                          {group.title}
-                        </p>
-                        <div className="space-y-0.5">
-                          {group.items.map((item) => {
-                            const Icon = item.icon;
-                            const active = matchesPath(pathname, item.href);
-                            return (
-                              <Link
-                                key={`${group.title}-${item.href}`}
-                                href={item.href}
-                                onClick={() => setAdminOpen(false)}
-                                className={cn(
-                                  'flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium',
-                                  active ? 'bg-primary/10 text-primary' : 'text-slate-700 hover:bg-slate-50',
-                                )}
-                              >
-                                <Icon className="h-4 w-4 shrink-0" />
-                                <span>{item.label}</span>
-                              </Link>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
           <Button
             variant="ghost"
             size="sm"
-            className="ml-auto gap-2 text-muted hover:text-foreground"
+            className="w-full justify-start gap-2.5 rounded-xl px-3.5 text-white/75 hover:bg-white/10 hover:text-white"
             onClick={() => void handleLogout()}
           >
             <LogOut className="h-4 w-4" />
-            <span className="hidden sm:inline">{tAuth('logout')}</span>
+            Sign out
           </Button>
         </div>
-      </header>
+      </aside>
 
-      {mobileOpen ? (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <button
-            type="button"
-            className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
-            onClick={() => setMobileOpen(false)}
-            aria-label="Close menu"
-          />
-          <aside className="relative flex h-full w-[min(100%,300px)] flex-col bg-surface shadow-xl">
-            <div className="flex items-center justify-between border-b border-border px-4 py-4">
-              <p className="font-bold">{tApp('name')}</p>
-              <button
-                type="button"
-                className="rounded-lg p-2 text-muted hover:bg-slate-100"
-                onClick={() => setMobileOpen(false)}
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-              {primaryLinks.map((item) => (
-                <TopLink
-                  key={item.href}
-                  item={item}
-                  active={item.href === activePrimary}
-                  onNavigate={() => setMobileOpen(false)}
-                />
-              ))}
-              {showAdmin
-                ? adminNav.map((group) => (
-                    <div key={group.title} className="pt-4">
-                      <p className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wide text-muted">
-                        {group.title}
-                      </p>
-                      {group.items.map((item) => {
-                        const Icon = item.icon;
-                        return (
-                          <Link
-                            key={`${group.title}-${item.href}`}
-                            href={item.href}
-                            onClick={() => setMobileOpen(false)}
-                            className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                          >
-                            <Icon className="h-4 w-4" />
-                            {item.label}
-                          </Link>
-                        );
-                      })}
-                    </div>
-                  ))
-                : null}
-            </nav>
-          </aside>
-        </div>
-      ) : null}
-
-      <main>
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 print:max-w-none print:p-0">
-          {me && isLearningModulePath(pathname) ? (
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* PDF Unified White Top Bar (Desktop + Mobile) */}
+        <header className="sticky top-0 z-40 flex h-16 items-center justify-between gap-3 border-b border-[#d7e4ee] bg-white px-4 sm:px-6 lg:px-8 print:hidden">
+          <div className="flex items-center gap-3 lg:hidden">
             <button
               type="button"
-              className="mb-4 inline-flex items-center gap-1 text-sm font-medium text-primary hover:text-primary-dark print:hidden"
-              onClick={() => {
-                if (window.history.length > 1) router.back();
-                else router.push(LEARNING_HOME);
-              }}
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#d7e4ee] text-[#0a2f5b]"
+              onClick={() => setMobileOpen(true)}
+              aria-label="মেনু খুলুন"
             >
-              <ChevronLeft className="h-4 w-4" />
-              Back
+              <Menu className="h-5 w-5" />
             </button>
-          ) : null}
-          {blocked ? <Skeleton className="h-32 w-full rounded-2xl" /> : children}
-        </div>
-      </main>
+            <Link href={homeHref} className="shrink-0">
+              <BrandMark />
+            </Link>
+          </div>
+
+          <form onSubmit={handleTopSearch} className="hidden max-w-xl flex-1 sm:block">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="search"
+                value={topSearch}
+                onChange={(e) => setTopSearch(e.target.value)}
+                placeholder="বিষয়, নিয়ম বা প্রশ্ন খুঁজুন..."
+                className="h-10 w-full rounded-full border border-[#d7e4ee] bg-[#f4f9fd] pl-10 pr-4 text-sm text-[#0a2f5b] placeholder:text-slate-400 outline-none transition focus:border-[#1566b8] focus:bg-white focus:ring-2 focus:ring-[#1566b8]/15"
+              />
+            </div>
+          </form>
+
+          <div className="ml-auto flex items-center gap-2.5 sm:gap-3">
+            <Link
+              href="/circulars"
+              className="relative flex h-9 w-9 items-center justify-center rounded-full border border-[#d7e4ee] bg-[#f4f9fd] text-[#0a2f5b] transition hover:border-[#1566b8]/40 hover:bg-[#d7e8f8]/40"
+              aria-label="সর্বশেষ সংবাদ ও বিজ্ঞপ্তি"
+              title="সর্বশেষ সংবাদ ও বিজ্ঞপ্তি"
+            >
+              <Bell className="h-4 w-4" />
+              <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#2aabb8]" />
+            </Link>
+
+            <Link
+              href={hasPaidAccess ? '/settings/payments' : '/packages'}
+              className={cn(
+                'hidden items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition sm:inline-flex',
+                hasPaidAccess
+                  ? 'bg-[#e6f6f8] text-[#0e7490] hover:bg-[#d2f0f4]'
+                  : 'bg-[#d7e8f8] text-[#1566b8] hover:bg-[#c3ddf6]',
+              )}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              {hasPaidAccess ? 'Enrolled' : 'Get a course'}
+            </Link>
+
+            <ProfileMenu me={me} onLogout={() => void handleLogout()} />
+          </div>
+        </header>
+
+        {mobileOpen ? (
+          <div className="fixed inset-0 z-50 lg:hidden">
+            <button
+              type="button"
+              className="absolute inset-0 bg-slate-900/50"
+              onClick={() => setMobileOpen(false)}
+              aria-label="মেনু বন্ধ করুন"
+            />
+            <aside className="relative flex h-full w-[min(100%,300px)] flex-col bg-[#0a2f5b] text-white">
+              <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
+                <BrandMark tone="white" />
+                <button type="button" className="rounded-lg p-2 text-white/80 hover:bg-white/10" onClick={() => setMobileOpen(false)}>
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <ShellMenu />
+              <div className="border-t border-white/10 p-3">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full justify-start gap-2 text-white/80 hover:bg-white/10 hover:text-white"
+                  onClick={() => void handleLogout()}
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sign out
+                </Button>
+              </div>
+            </aside>
+          </div>
+        ) : null}
+
+        <main className="flex-1">
+          <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 print:max-w-none print:p-0">
+            {lockedLabel ? (
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#f3d7a1] bg-[#fff8ee] px-4 py-3 text-sm text-[#0a2f5b] print:hidden">
+                <p>
+                  <span className="font-semibold">{lockedLabel}</span> খুলতে প্যাকেজে এনরোল করতে হবে।
+                </p>
+                <Link href="/packages" className="font-semibold text-[#1566b8] hover:underline" onClick={() => setLockedLabel('')}>
+                  কোর্স দেখুন →
+                </Link>
+              </div>
+            ) : null}
+            {me && isLearningModulePath(pathname) && pathname !== '/exam-prep' && pathname !== '/live' ? (
+              <button
+                type="button"
+                className="mb-4 inline-flex items-center gap-1 text-sm font-medium text-[#1566b8] hover:text-[#0f5294] print:hidden"
+                onClick={() => {
+                  if (window.history.length > 1) router.back();
+                  else router.push(LEARNING_HOME);
+                }}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                পেছনে
+              </button>
+            ) : null}
+            {children}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

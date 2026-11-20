@@ -1661,7 +1661,7 @@ export async function listQuestions(
 
 /** Published MCQs linked to books/chapters, with explanations for marathon review. */
 export async function listMarathonReview(
-  filters: { q?: string; limit?: number; offset?: number } = {},
+  filters: { q?: string; limit?: number; offset?: number; exam_subject_id?: string } = {},
   options?: { subjectScope?: ExamSubjectScope },
 ) {
   const limit = Math.min(100, Math.max(1, filters.limit ?? 50));
@@ -1672,6 +1672,13 @@ export async function listMarathonReview(
     is_published: true,
     question_type_code: 'MCQ',
   };
+  if (filters.exam_subject_id && mongoose.isValidObjectId(filters.exam_subject_id)) {
+    const linked = await QuestionSubjectLink.find({
+      exam_subject_id: filters.exam_subject_id,
+      is_active: true,
+    }).distinct('question_id');
+    query._id = { $in: linked };
+  }
   const scopeFilter = await questionScopeFilter(options?.subjectScope ?? { mode: 'all' });
   if (!(await applyQuestionScopeFilter(query, scopeFilter))) {
     return { items: [], total: 0, limit, offset };

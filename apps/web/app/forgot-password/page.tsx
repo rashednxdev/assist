@@ -5,16 +5,24 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { PasswordInput } from '@/components/ui/password-input';
 import { FormField } from '@/components/shared/form-field';
 import { Alert } from '@/components/ui/alert';
-import { LoginShowcasePanel } from '@/components/auth/login-showcase-panel';
+import { AuthSplit } from '@/components/auth/auth-split';
+import { BrandMark } from '@/components/brand/brand-mark';
 import { forgotPasswordRequest, resetPasswordRequest, verifyResetCode } from '@/lib/auth';
+import { toBanglaDigits } from '@/lib/bangla-format';
 
 const OTP_LENGTH = 6;
 
 function emptyDigits(): string[] {
   return Array.from({ length: OTP_LENGTH }, () => '');
+}
+
+function formatTimer(sec: number): string {
+  const m = String(Math.floor(sec / 60)).padStart(2, '0');
+  const s = String(sec % 60).padStart(2, '0');
+  return toBanglaDigits(`${m}:${s}`);
 }
 
 function OtpSquares({
@@ -52,7 +60,7 @@ function OtpSquares({
   }
 
   return (
-    <div className="flex justify-center gap-2 sm:gap-2.5" role="group" aria-label="Verification code">
+    <div className="flex justify-center gap-2 sm:gap-2.5" role="group" aria-label="যাচাইকরণ কোড">
       {digits.map((digit, index) => (
         <input
           key={index}
@@ -63,8 +71,8 @@ function OtpSquares({
           disabled={disabled}
           inputMode="numeric"
           autoComplete={index === 0 ? 'one-time-code' : 'off'}
-          aria-label={`Digit ${index + 1}`}
-          className="h-14 w-11 rounded-lg border-2 border-border bg-white text-center text-xl font-semibold text-foreground shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-60 sm:h-[3.75rem] sm:w-12"
+          aria-label={`ডিজিট ${index + 1}`}
+          className="h-13 w-11 rounded-xl border-2 border-[#d7e4ee] bg-[#f4f9fd] text-center text-xl font-bold text-[#0a2f5b] outline-none transition focus:border-[#1566b8] focus:bg-white focus:ring-2 focus:ring-[#1566b8]/20 disabled:opacity-60 sm:h-14 sm:w-12"
           onChange={(e) => writeFrom(index, e.target.value)}
           onFocus={(e) => e.target.select()}
           onPaste={(e) => {
@@ -124,7 +132,6 @@ export default function ForgotPasswordPage() {
     if (step !== 'otp' || loading || code.length !== OTP_LENGTH || checkedCode.current === code) return;
     checkedCode.current = code;
     void checkCode(code);
-    // checkCode is recreated each render; the code value is the trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code, step]);
 
@@ -140,7 +147,7 @@ export default function ForgotPasswordPage() {
       setStep('otp');
       setResendIn(60);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not send a reset code.');
+      setError(err instanceof Error ? err.message : 'রিসেট কোড পাঠানো যায়নি।');
     } finally {
       setLoading(false);
     }
@@ -153,7 +160,7 @@ export default function ForgotPasswordPage() {
       await verifyResetCode(phone.trim(), nextCode);
       setStep('password');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'That code is not correct.');
+      setError(err instanceof Error ? err.message : 'কোডটি মেলেনি। অনুগ্রহ করে আবার চেষ্টা করুন।');
       setDigits(emptyDigits());
       checkedCode.current = '';
     } finally {
@@ -174,116 +181,142 @@ export default function ForgotPasswordPage() {
       });
       router.replace('/login');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not reset the password.');
+      setError(err instanceof Error ? err.message : 'পাসওয়ার্ড পরিবর্তন করা যায়নি।');
     } finally {
       setLoading(false);
     }
   }
 
-  const title = step === 'password' ? 'Choose a new password' : step === 'otp' ? 'Enter the code' : 'Forgot password';
+  const title =
+    step === 'password' ? 'নতুন পাসওয়ার্ড নির্ধারণ করুন' : step === 'otp' ? 'কোড লিখুন' : 'পাসওয়ার্ড রিসেট করুন';
 
   return (
-    <div className="flex min-h-screen flex-col lg:flex-row">
-      <LoginShowcasePanel />
-      <div className="flex flex-1 items-center justify-center bg-background p-4 sm:p-8">
-        <Card className="w-full max-w-md border-0 shadow-lg sm:border">
-          <CardHeader className="space-y-1 pb-2">
-            <CardTitle className="text-2xl">{title}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {step === 'phone' ? (
-              <form onSubmit={sendCode} className="space-y-5">
-                <p className="text-sm text-muted">Enter the mobile number on your account. We will text a 6-digit code.</p>
-                <FormField label="Mobile" htmlFor="phone" required>
-                  <Input
-                    id="phone"
-                    inputMode="tel"
-                    autoComplete="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="01XXXXXXXXX"
-                    pattern="01[3-9][0-9]{8}"
-                    required
-                    autoFocus
-                  />
-                </FormField>
-                {error ? <Alert variant="error">{error}</Alert> : null}
-                <Button type="submit" className="h-11 w-full text-base" disabled={loading}>
-                  {loading ? 'Sending…' : 'Send code'}
-                </Button>
-                <p className="text-center text-sm">
-                  <Link href="/login" className="font-medium text-primary hover:underline">
-                    Back to sign in
-                  </Link>
-                </p>
-              </form>
-            ) : null}
+    <AuthSplit>
+      <div className="w-full max-w-[430px] rounded-2xl border border-[#d7e4ee] bg-white p-6 shadow-sm sm:p-8">
+        <div className="mb-4 lg:hidden">
+          <BrandMark />
+        </div>
 
-            {step === 'otp' ? (
-              <div className="space-y-5">
-                <p className="text-center text-sm text-muted">
-                  A 6-digit code was sent to <span className="font-semibold text-foreground">{phoneHint}</span>. It expires
-                  in 15 minutes.
-                </p>
-                <OtpSquares digits={digits} onChange={setDigits} disabled={loading} />
-                {loading ? <p className="text-center text-sm text-muted">Checking the code…</p> : null}
-                {error ? <Alert variant="error">{error}</Alert> : null}
-                <div className="flex items-center justify-between text-sm">
-                  <Link href="/login" className="text-muted hover:underline">
-                    Back to sign in
-                  </Link>
-                  <button
-                    type="button"
-                    className="font-medium text-primary hover:underline disabled:opacity-50"
-                    disabled={loading || resendIn > 0}
-                    onClick={() => void sendCode()}
-                  >
-                    {resendIn > 0 ? `Resend in ${resendIn}s` : 'Resend code'}
-                  </button>
-                </div>
-              </div>
-            ) : null}
+        <h1 className="text-2xl font-bold tracking-tight text-[#0a2f5b]">{title}</h1>
 
-            {step === 'password' ? (
-              <form onSubmit={handleReset} className="space-y-5">
-                <p className="text-sm text-muted">The code is correct. Choose a new password for this account.</p>
-                <FormField label="New password" htmlFor="password" required>
-                  <Input
-                    id="password"
-                    type="password"
-                    autoComplete="new-password"
-                    minLength={8}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    autoFocus
-                  />
-                </FormField>
-                <FormField label="Confirm password" htmlFor="confirm" required>
-                  <Input
-                    id="confirm"
-                    type="password"
-                    autoComplete="new-password"
-                    minLength={8}
-                    value={confirm}
-                    onChange={(e) => setConfirm(e.target.value)}
-                    required
-                  />
-                </FormField>
-                {error ? <Alert variant="error">{error}</Alert> : null}
-                <Button type="submit" className="h-11 w-full text-base" disabled={loading || password.length < 8}>
-                  {loading ? 'Saving…' : 'Save password'}
-                </Button>
-                <p className="text-center text-sm">
-                  <Link href="/login" className="font-medium text-primary hover:underline">
-                    Back to sign in
-                  </Link>
-                </p>
-              </form>
-            ) : null}
-          </CardContent>
-        </Card>
+        {step === 'phone' ? (
+          <form onSubmit={sendCode} className="mt-4 space-y-5">
+            <p className="text-sm text-slate-600">
+              আপনার নিবন্ধিত মোবাইল নম্বর দিন। আমরা ৬ সংখ্যার যাচাইকরণ কোড পাঠাব।
+            </p>
+            <FormField label="মোবাইল নম্বর" htmlFor="phone" required>
+              <Input
+                id="phone"
+                inputMode="tel"
+                autoComplete="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="01XXXXXXXXX"
+                pattern="01[3-9][0-9]{8}"
+                required
+                autoFocus
+                className="h-11 rounded-xl border-[#d7e4ee] bg-[#f4f9fd] focus:bg-white"
+              />
+            </FormField>
+            {error ? <Alert variant="error">{error}</Alert> : null}
+            <Button
+              type="submit"
+              className="h-11 w-full rounded-xl bg-[#1566b8] text-base font-semibold text-white hover:bg-[#0f5294]"
+              disabled={loading}
+            >
+              {loading ? 'কোড পাঠানো হচ্ছে…' : 'যাচাইকরণ কোড পাঠান'}
+            </Button>
+            <p className="text-center text-sm">
+              <Link href="/login" className="font-semibold text-[#1566b8] hover:underline">
+                সাইন ইন পেজে ফিরে যান
+              </Link>
+            </p>
+          </form>
+        ) : null}
+
+        {step === 'otp' ? (
+          <div className="mt-4 space-y-5">
+            <p className="text-sm text-slate-600">
+              <span className="font-bold text-[#0a2f5b]">{phoneHint}</span> নম্বরে পাঠানো ৬ সংখ্যার কোডটি দিন।{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setError('');
+                  setStep('phone');
+                }}
+                className="font-semibold text-[#1566b8] hover:underline"
+              >
+                নম্বর পরিবর্তন করুন
+              </button>
+            </p>
+
+            <OtpSquares digits={digits} onChange={setDigits} disabled={loading} />
+
+            {loading ? <p className="text-center text-xs text-slate-500">কোড যাচাই করা হচ্ছে…</p> : null}
+            {error ? <Alert variant="error">{error}</Alert> : null}
+
+            <Button
+              type="button"
+              disabled={loading || code.length !== OTP_LENGTH}
+              onClick={() => void checkCode(code)}
+              className="h-11 w-full rounded-xl bg-[#1566b8] text-sm font-semibold text-white hover:bg-[#0f5294]"
+            >
+              যাচাই করুন
+            </Button>
+
+            <div className="flex items-center justify-between text-xs">
+              <Link href="/login" className="font-medium text-slate-500 hover:text-[#0a2f5b]">
+                সাইন ইনে ফিরুন
+              </Link>
+              <button
+                type="button"
+                className="font-semibold text-[#1566b8] hover:underline disabled:text-slate-400 disabled:no-underline"
+                disabled={loading || resendIn > 0}
+                onClick={() => void sendCode()}
+              >
+                {resendIn > 0 ? `${formatTimer(resendIn)} পরে আবার পাঠানো যাবে` : 'আবার কোড পাঠান'}
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {step === 'password' ? (
+          <form onSubmit={handleReset} className="mt-4 space-y-4">
+            <p className="text-sm text-slate-600">কোড যাচাই সম্পন্ন হয়েছে। এখন নতুন পাসওয়ার্ড দিন।</p>
+            <FormField label="নতুন পাসওয়ার্ড" htmlFor="password" required>
+              <PasswordInput
+                id="password"
+                autoComplete="new-password"
+                minLength={8}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoFocus
+                className="h-11 rounded-xl border-[#d7e4ee] bg-[#f4f9fd] focus:bg-white"
+              />
+            </FormField>
+            <FormField label="পাসওয়ার্ড নিশ্চিত করুন" htmlFor="confirm" required>
+              <PasswordInput
+                id="confirm"
+                autoComplete="new-password"
+                minLength={8}
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                required
+                className="h-11 rounded-xl border-[#d7e4ee] bg-[#f4f9fd] focus:bg-white"
+              />
+            </FormField>
+            {error ? <Alert variant="error">{error}</Alert> : null}
+            <Button
+              type="submit"
+              className="h-11 w-full rounded-xl bg-[#1566b8] text-base font-semibold text-white hover:bg-[#0f5294]"
+              disabled={loading || password.length < 8}
+            >
+              {loading ? 'সংরক্ষণ হচ্ছে…' : 'পাসওয়ার্ড সংরক্ষণ করুন'}
+            </Button>
+          </form>
+        ) : null}
       </div>
-    </div>
+    </AuthSplit>
   );
 }

@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import type { LoginDto, LoginOtpDto } from '@ibas/shared-types';
+import type { LoginCodeDto, LoginDto, LoginOtpDto } from '@ibas/shared-types';
 import { env } from '../../config/env.js';
 import { AppError, badRequest, forbidden, unauthorized } from '../../shared/errors/AppError.js';
 import { sendSms } from '../../shared/sms.js';
@@ -321,6 +321,26 @@ export async function login(dto: LoginDto, ip?: string): Promise<LoginSession | 
 
   const platform: SessionPlatform = isWebLogin(dto) ? 'web' : 'mobile';
   return issueSession(user, credentials, dto, platform, ip);
+}
+
+/** Web sign-in step 1: text a 6-digit code to the account's mobile. No password. */
+export async function requestLoginCode(dto: LoginCodeDto): Promise<LoginOtpChallenge> {
+  const user = await User.findOne({ phone: dto.phone });
+  const credentials = user ? await Credentials.findOne({ user_id: user._id }) : null;
+  if (!user || !credentials || !hasLoginMobile(user.phone)) {
+    throw unauthorized('এই নম্বরে কোনো অ্যাকাউন্ট নেই।');
+  }
+  if (credentials.status === 'locked' && credentials.locked_until && credentials.locked_until > new Date()) {
+    throw unauthorized('অনেকবার ভুল হয়েছে। কিছুক্ষণ পরে আবার চেষ্টা করুন।');
+  }
+  if (user.status === 'pending_verify') {
+    throw unauthorized('রেজিস্ট্রেশনের কোড দিয়ে অ্যাকাউন্ট চালু করুন।');
+  }
+  if (user.status !== 'active') {
+    throw unauthorized('অ্যাকাউন্ট চালু নেই। অ্যাডমিনের কাছে যোগাযোগ করুন।');
+  }
+  const platform: SessionPlatform = dto.client_platform === 'mobile' ? 'mobile' : 'web';
+  return sendLoginCode(user, credentials, dto.device_id, platform);
 }
 
 export async function completeLoginOtp(dto: LoginOtpDto, ip?: string): Promise<LoginSession> {

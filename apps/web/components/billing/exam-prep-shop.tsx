@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, CheckCircle2, Layers, Loader2, ShoppingCart, Sparkles, X } from 'lucide-react';
 import {
@@ -16,8 +16,8 @@ import {
 } from '@ibas/shared-types';
 import { apiFetch } from '@/lib/api-client';
 import { accessDate, durationLabel } from '@/lib/billing-format';
+import { toBanglaDigits } from '@/lib/bangla-format';
 import { cn } from '@/lib/utils';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert } from '@/components/ui/alert';
@@ -37,6 +37,10 @@ interface SubjectRow {
 }
 
 const LEGACY_GROUP = 'legacy';
+
+function bn(n: number | string): string {
+  return toBanglaDigits(String(n));
+}
 
 function bundleKey(groupId: string): string {
   return `bundle|${groupId}`;
@@ -69,19 +73,26 @@ function buildGroups(parts: ExamPrepPartOption[], packages: AccessPackageRecord[
   for (const p of packages) {
     const id = p.exam_part_id ?? LEGACY_GROUP;
     if (!groups.has(id)) {
-      groups.set(id, { id, label: p.exam_part_name ?? 'All subjects', isPrimary: !p.exam_part_id, subjectOrder: [] });
+      groups.set(id, { id, label: p.exam_part_name ?? 'সকল বিষয়', isPrimary: !p.exam_part_id, subjectOrder: [] });
     }
   }
   return [...groups.values()];
 }
 
-export function ExamPrepShop({ catalog }: { catalog: BillingCatalog }) {
+export function ExamPrepShop({
+  catalog,
+  focusSubjectId,
+}: {
+  catalog: BillingCatalog;
+  focusSubjectId?: string;
+}) {
   const router = useRouter();
   const [parts, setParts] = useState<ExamPrepPartOption[] | null>(null);
   const [active, setActive] = useState('');
   const [picked, setPicked] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const didAutoFocus = useRef(false);
 
   const packages = useMemo(() => catalog.packages.filter((p) => p.kind === 'exam_prep'), [catalog]);
 
@@ -89,10 +100,17 @@ export function ExamPrepShop({ catalog }: { catalog: BillingCatalog }) {
     apiFetch<{ data: { parts: ExamPrepPartOption[]; selected_part_id: string | null } }>('/exam-prep/parts')
       .then((r) => {
         setParts(r.data.parts);
+        if (focusSubjectId) {
+          const hit = r.data.parts.find((p) => p.subjects.some((s) => s.id === focusSubjectId));
+          if (hit) {
+            setActive(hit.id);
+            return;
+          }
+        }
         if (r.data.selected_part_id) setActive(r.data.selected_part_id);
       })
       .catch(() => setParts([]));
-  }, []);
+  }, [focusSubjectId]);
 
   const groups = useMemo(() => {
     const all = buildGroups(parts ?? [], packages);
@@ -118,7 +136,7 @@ export function ExamPrepShop({ catalog }: { catalog: BillingCatalog }) {
       if (ids.length !== 1) continue;
       if (p.exam_part_id ? p.exam_part_id !== group.id : !group.isPrimary) continue;
       const subjectId = ids[0]!;
-      const row = rows.get(subjectId) ?? { id: subjectId, name: p.exam_subject_names?.[0] || p.exam_subject_name || 'Subject', packages: [] };
+      const row = rows.get(subjectId) ?? { id: subjectId, name: p.exam_subject_names?.[0] || p.exam_subject_name || 'বিষয়', packages: [] };
       row.packages.push(p);
       rows.set(subjectId, row);
     }
@@ -139,6 +157,17 @@ export function ExamPrepShop({ catalog }: { catalog: BillingCatalog }) {
       partUntil(groupId),
       access.filter((a) => a.exam_subject_id === subjectId).reduce<string | undefined>((m, a) => later(m, a.until), undefined),
     );
+
+  // Pre-select the requested subject's first package if navigated from Subject Summary
+  useEffect(() => {
+    if (!focusSubjectId || didAutoFocus.current || !group || !catalog.can_request) return;
+    const row = subjects.find((s) => s.id === focusSubjectId);
+    if (row && row.packages[0] && !subjectUntil(group.id, row.id)) {
+      didAutoFocus.current = true;
+      setPicked((cur) => ({ ...cur, [subjectKey(row.id)]: row.packages[0]!.id }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusSubjectId, group, subjects, catalog.can_request]);
 
   const byId = useMemo(() => new Map(packages.map((p) => [p.id, p])), [packages]);
   const chosen = useMemo(
@@ -223,7 +252,7 @@ export function ExamPrepShop({ catalog }: { catalog: BillingCatalog }) {
       return;
     }
     if (picked[key] == null && selectedInPart(partOf(pkg), picked) >= MAX_SUBJECTS_PER_ENROLLMENT) {
-      setError('You can enroll up to 4 subjects of one part at a time. Enroll the rest later.');
+      setError('একবারে একটি পার্টের সর্বোচ্চ ৪টি বিষয়ে এনরোল করা যাবে। বাকিগুলো পরে নেওয়া যাবে।');
       return;
     }
     setError('');
@@ -263,7 +292,7 @@ export function ExamPrepShop({ catalog }: { catalog: BillingCatalog }) {
       });
       router.push(`/checkout/cart/${r.data.cart_id}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not start the payment');
+      setError(e instanceof Error ? e.message : 'চেকআউট শুরু করা যায়নি');
       setBusy(false);
     }
   }
@@ -287,7 +316,7 @@ export function ExamPrepShop({ catalog }: { catalog: BillingCatalog }) {
 
   return (
     <div className="space-y-6 pb-28">
-      {groups.length > 1 && (
+      {groups.length > 1 ? (
         <div className="flex flex-wrap gap-2">
           {groups.map((g) => {
             const count =
@@ -303,124 +332,151 @@ export function ExamPrepShop({ catalog }: { catalog: BillingCatalog }) {
                 type="button"
                 onClick={() => setActive(g.id)}
                 className={cn(
-                  'flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition-colors',
-                  g.id === group.id ? 'border-primary bg-primary text-white' : 'border-border bg-surface hover:bg-slate-50',
+                  'flex items-center gap-2 rounded-xl border px-4 py-2 text-xs font-bold transition-colors',
+                  g.id === group.id
+                    ? 'border-[#1566b8] bg-[#1566b8] text-white'
+                    : 'border-[#d7e4ee] bg-white text-[#0a2f5b] hover:border-[#1566b8]',
                 )}
               >
                 <Layers className="h-4 w-4" />
                 {g.label}
-                {count > 0 && (
+                {count > 0 ? (
                   <span
                     className={cn(
-                      'rounded-full px-1.5 text-xs',
-                      g.id === group.id ? 'bg-white/25 text-white' : 'bg-primary-muted text-primary-dark',
+                      'rounded-full px-1.5 text-[11px]',
+                      g.id === group.id ? 'bg-white/25 text-white' : 'bg-[#eaf3fc] text-[#1566b8]',
                     )}
                   >
-                    {count}
+                    {bn(count)}
                   </span>
-                )}
+                ) : null}
               </button>
             );
           })}
         </div>
-      )}
+      ) : null}
 
       {groupUntil ? (
         <Alert variant="success">
           <CheckCircle2 className="mr-1 inline h-4 w-4" />
-          You have every subject of <strong>{group.label}</strong> until <strong>{accessDate(groupUntil)}</strong>. Buying again
-          extends it.
+          আপনার <strong>{group.label}</strong>-এর সকল বিষয়ে <strong>{accessDate(groupUntil)}</strong> পর্যন্ত অ্যাক্সেস চালু আছে।
         </Alert>
       ) : ownedSubjects > 0 ? (
         <Alert variant="success">
           <CheckCircle2 className="mr-1 inline h-4 w-4" />
-          You own {ownedSubjects} of {subjects.length} subject{subjects.length === 1 ? '' : 's'} in {group.label}.
+          {group.label}-এর {bn(subjects.length)}টির মধ্যে {bn(ownedSubjects)}টি বিষয়ে আপনার অ্যাক্সেস চালু আছে।
         </Alert>
       ) : null}
 
-      {bundles.length > 0 && (
-        <section className="space-y-3">
+      {bundles.length > 0 ? (
+        <section className="space-y-3.5">
           <div>
-            <h2 className="text-lg font-semibold">Whole {group.label}</h2>
-            <p className="text-sm text-muted">One package that opens every subject of {group.label}.</p>
+            <h2 className="text-lg font-bold text-[#0a2f5b]">পূর্ণ পার্ট প্যাকেজ · {group.label}</h2>
+            <p className="text-xs text-slate-600">{group.label}-এর সকল বিষয় একত্রে আনলক হবে।</p>
           </div>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {bundles.map((p) => {
               const on = bundlePicked === p.id;
               const save = bundleSaving(p);
               return (
-                <Card key={p.id} className={cn('flex flex-col', on ? 'ring-2 ring-primary' : p.is_featured && 'ring-1 ring-primary/40')}>
-                  <CardHeader className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      {p.is_featured && (
-                        <Badge>
-                          <Sparkles className="mr-1 h-3 w-3" />
-                          Popular
-                        </Badge>
-                      )}
-                      {save > 0 && <Badge variant="success">Save {formatBdt(save)}</Badge>}
-                      {p.scope === 'legacy' && <Badge variant="secondary">All subjects</Badge>}
-                    </div>
-                    <CardTitle className="text-lg">{p.name}</CardTitle>
-                    <PackageCopy description={p.description} features={p.features} />
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-3xl font-bold">{p.price === 0 ? 'Free' : formatBdt(p.price)}</span>
-                      {p.compare_at_price ? (
-                        <span className="text-sm text-muted line-through">{formatBdt(p.compare_at_price)}</span>
+                <div
+                  key={p.id}
+                  className={cn(
+                    'flex flex-col overflow-hidden rounded-2xl border border-[#d7e4ee] bg-white shadow-xs transition',
+                    on ? 'ring-2 ring-[#1566b8]' : p.is_featured && 'ring-1 ring-[#1566b8]/40',
+                  )}
+                >
+                  <div className="flex h-20 items-center justify-between bg-[#0a2f5b] px-5 text-white">
+                    <span className="rounded-full bg-white/15 px-2.5 py-0.5 text-[11px] font-semibold">
+                      পূর্ণ পার্ট
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {p.is_featured ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[#1566b8] px-2.5 py-0.5 text-[11px] font-semibold">
+                          <Sparkles className="h-3 w-3" />
+                          জনপ্রিয়
+                        </span>
                       ) : null}
-                      <span className="text-sm text-muted">/ {durationLabel(p.duration_days)}</span>
+                      {save > 0 ? (
+                        <span className="rounded-full bg-[#e8f8ef] px-2.5 py-0.5 text-[11px] font-bold text-[#156f4d]">
+                          সাশ্রয় {formatBdt(save)}
+                        </span>
+                      ) : null}
                     </div>
-                  </CardHeader>
-                  <CardContent className="flex flex-1 flex-col gap-4">
-                    <Button
-                      className="mt-auto w-full"
-                      variant={on ? 'outline' : 'default'}
-                      disabled={!catalog.can_request || alreadyOwned(p)}
-                      onClick={() => toggleBundle(p)}
-                    >
-                      {on ? (
-                        <>
-                          <X className="h-4 w-4" />
-                          Remove from basket
-                        </>
-                      ) : (
-                        <>
-                          <ShoppingCart className="h-4 w-4" />
-                          {groupUntil ? 'Extend' : 'Add to basket'}
-                        </>
-                      )}
-                    </Button>
-                  </CardContent>
-                </Card>
+                  </div>
+                  <div className="flex flex-1 flex-col justify-between p-5">
+                    <div className="space-y-2">
+                      <h3 className="text-lg font-bold text-[#0a2f5b]">{p.name_bn?.trim() || p.name}</h3>
+                      <PackageCopy description={p.description} features={p.features} />
+                    </div>
+                    <div className="mt-4 space-y-3 border-t border-[#eef4f9] pt-3.5">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-2xl font-extrabold text-[#0a2f5b]">
+                          {p.price === 0 ? 'ফ্রি' : formatBdt(p.price)}
+                        </span>
+                        {p.compare_at_price ? (
+                          <span className="text-xs text-slate-400 line-through">{formatBdt(p.compare_at_price)}</span>
+                        ) : null}
+                        <span className="text-xs text-slate-500">/ {durationLabel(p.duration_days)}</span>
+                      </div>
+                      <Button
+                        className={cn(
+                          'w-full rounded-xl',
+                          !on && 'bg-[#1566b8] hover:bg-[#0f5294]',
+                        )}
+                        variant={on ? 'outline' : 'default'}
+                        disabled={!catalog.can_request || alreadyOwned(p)}
+                        onClick={() => toggleBundle(p)}
+                      >
+                        {on ? (
+                          <>
+                            <X className="h-4 w-4" />
+                            তালিকা থেকে সরান
+                          </>
+                        ) : (
+                          <>
+                            <ShoppingCart className="h-4 w-4" />
+                            {groupUntil ? 'মেয়াদ বাড়ান' : 'তালিকায় যুক্ত করুন'}
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               );
             })}
           </div>
         </section>
-      )}
+      ) : null}
 
-      {combos.length > 0 && (
+      {combos.length > 0 ? (
         <section className="space-y-3">
           <div>
-            <h2 className="text-lg font-semibold">Subject packages</h2>
-            <p className="text-sm text-muted">
-              A package can include more than one subject. If you already have any of those subjects, it cannot be selected again.
-            </p>
+            <h2 className="text-lg font-bold text-[#0a2f5b]">যৌথ বিষয় প্যাকেজ</h2>
+            <p className="text-xs text-slate-600">একাধিক বিষয় একত্রে যুক্ত প্যাকেজসমূহ।</p>
           </div>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {combos.map((p) => {
               const on = picked[p.id] === p.id;
               const owned = alreadyOwned(p);
               return (
-                <Card key={p.id} className={cn('flex flex-col', on && 'ring-2 ring-primary', owned && 'opacity-60')}>
-                  <CardHeader className="space-y-2">
-                    <CardTitle className="text-lg">{p.name}</CardTitle>
-                    <p className="text-sm text-muted">{(p.exam_subject_names ?? []).filter(Boolean).join(', ')}</p>
+                <div
+                  key={p.id}
+                  className={cn(
+                    'flex flex-col justify-between rounded-2xl border border-[#d7e4ee] bg-white p-5',
+                    on && 'ring-2 ring-[#1566b8]',
+                    owned && 'opacity-60',
+                  )}
+                >
+                  <div className="space-y-2">
+                    <h3 className="text-lg font-bold text-[#0a2f5b]">{p.name_bn?.trim() || p.name}</h3>
+                    <p className="text-xs text-slate-500">{(p.exam_subject_names ?? []).filter(Boolean).join(', ')}</p>
                     <PackageCopy description={p.description} features={p.features} />
-                    <p className="text-2xl font-bold">{p.price === 0 ? 'Free' : formatBdt(p.price)}</p>
-                  </CardHeader>
-                  <CardContent>
+                  </div>
+                  <div className="mt-4 space-y-3 border-t border-[#eef4f9] pt-3">
+                    <p className="text-2xl font-extrabold text-[#0a2f5b]">{p.price === 0 ? 'ফ্রি' : formatBdt(p.price)}</p>
                     <Button
-                      className="w-full"
+                      className={cn('w-full rounded-xl', !on && 'bg-[#1566b8] hover:bg-[#0f5294]')}
                       variant={on ? 'outline' : 'default'}
                       disabled={!catalog.can_request || owned}
                       onClick={() =>
@@ -432,52 +488,61 @@ export function ExamPrepShop({ catalog }: { catalog: BillingCatalog }) {
                         })
                       }
                     >
-                      {owned ? 'Already included' : on ? 'Remove from basket' : 'Add to basket'}
+                      {owned ? 'ইতোমধ্যে এনরোল করা' : on ? 'তালিকা থেকে সরান' : 'তালিকায় যুক্ত করুন'}
                     </Button>
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
               );
             })}
           </div>
         </section>
-      )}
+      ) : null}
 
-      {subjects.length > 0 && (
-        <section className="space-y-3">
+      {subjects.length > 0 ? (
+        <section className="space-y-3.5">
           <div className="flex flex-wrap items-end justify-between gap-2">
             <div>
-              <h2 className="text-lg font-semibold">{bundles.length > 0 ? 'Or pick subjects' : `Subjects of ${group.label}`}</h2>
-              <p className="text-sm text-muted">
-                Tick the subjects you need. One subject stays at full price. Together, 2 subjects of this part are{' '}
-                {catalog.settings.subject_discount_2}% less, 3 are {catalog.settings.subject_discount_3}% less, and 4 are{' '}
-                {catalog.settings.subject_discount_4}% less. A subject you already have cannot be selected again.
+              <h2 className="text-lg font-bold text-[#0a2f5b]">
+                {bundles.length > 0 ? 'অথবা আলাদা বিষয় বেছে নিন' : `${group.label}-এর বিষয়সমূহ`}
+              </h2>
+              <p className="text-xs text-slate-600">
+                প্রয়োজনীয় বিষয় টিক দিন। একসাথে ২টি বিষয়ে {bn(catalog.settings.subject_discount_2)}% ছাড়
+                {catalog.settings.subject_discount_3 > 0 ? `, ৩টিতে ${bn(catalog.settings.subject_discount_3)}% ছাড়` : ''}
+                {catalog.settings.subject_discount_4 > 0 ? `, ৪টিতে ${bn(catalog.settings.subject_discount_4)}% ছাড়` : ''}।
               </p>
             </div>
-            {!bundlePicked && subjects.length > 1 && pickedInGroup < Math.min(MAX_SUBJECTS_PER_ENROLLMENT, subjects.length) && (
-              <Button variant="outline" size="sm" onClick={pickAllSubjects}>
-                Select up to {MAX_SUBJECTS_PER_ENROLLMENT}
+            {!bundlePicked && subjects.length > 1 && pickedInGroup < Math.min(MAX_SUBJECTS_PER_ENROLLMENT, subjects.length) ? (
+              <Button variant="outline" size="sm" className="rounded-xl border-[#1566b8] text-[#1566b8]" onClick={pickAllSubjects}>
+                সর্বোচ্চ {bn(MAX_SUBJECTS_PER_ENROLLMENT)}টি বেছে নিন
               </Button>
-            )}
+            ) : null}
           </div>
-          {bundlePicked && (
-            <Alert variant="info">Every subject is included in the whole-part package in your basket.</Alert>
-          )}
-          <Card>
-            <ul className="divide-y divide-border">
+
+          {bundlePicked ? (
+            <Alert variant="info">আপনার নির্বাচিত পূর্ণ পার্ট প্যাকেজে সকল বিষয় ইতোমধ্যে অন্তর্ভুক্ত রয়েছে।</Alert>
+          ) : null}
+
+          <div className="overflow-hidden rounded-2xl border border-[#d7e4ee] bg-white shadow-xs">
+            <ul className="divide-y divide-[#eef4f9]">
               {subjects.map((s) => {
                 const until = subjectUntil(group.id, s.id);
                 const sel = picked[subjectKey(s.id)];
+                const isFocused = focusSubjectId === s.id;
                 return (
                   <li
                     key={s.id}
-                    className={cn('flex flex-col gap-3 p-4 sm:flex-row sm:items-center', bundlePicked && 'opacity-50')}
+                    className={cn(
+                      'flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:p-5',
+                      bundlePicked && 'opacity-50',
+                      isFocused && 'bg-[#f4f9fd]',
+                    )}
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="flex flex-wrap items-center gap-2 font-medium">
-                        {sel && <CheckCircle2 className="h-4 w-4 text-primary" />}
-                        {s.name}
-                        {until && <Badge variant="success">Active until {accessDate(until)}</Badge>}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-2 font-bold text-[#0a2f5b]">
+                        {sel ? <CheckCircle2 className="h-4 w-4 text-[#1566b8]" /> : null}
+                        <span>{s.name}</span>
+                        {until ? <Badge variant="success">চালু ({accessDate(until)} পর্যন্ত)</Badge> : null}
+                      </div>
                       <PackageCopy
                         description={s.packages.find((p) => p.description?.trim())?.description}
                         features={[...new Set(s.packages.flatMap((p) => p.features))]}
@@ -495,17 +560,17 @@ export function ExamPrepShop({ catalog }: { catalog: BillingCatalog }) {
                             onClick={() => toggleSubject(s.id, p)}
                             aria-pressed={on}
                             className={cn(
-                              'flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors disabled:cursor-not-allowed',
+                              'flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50',
                               on
-                                ? 'border-primary bg-primary text-white'
-                                : 'border-border bg-surface hover:border-primary hover:bg-primary-muted/40',
+                                ? 'border-[#1566b8] bg-[#1566b8] text-white'
+                                : 'border-[#d7e4ee] bg-[#f4f9fd] text-[#0a2f5b] hover:border-[#1566b8]',
                             )}
                           >
-                            {on && <Check className="h-3.5 w-3.5" />}
-                            <span className="font-semibold">{p.price === 0 ? 'Free' : formatBdt(p.price)}</span>
-                            <span className={on ? 'text-white/80' : 'text-muted'}>/ {durationLabel(p.duration_days)}</span>
+                            {on ? <Check className="h-3.5 w-3.5" /> : null}
+                            <span className="font-bold">{p.price === 0 ? 'ফ্রি' : formatBdt(p.price)}</span>
+                            <span className={on ? 'text-white/80' : 'text-slate-500'}>/ {durationLabel(p.duration_days)}</span>
                             {p.compare_at_price ? (
-                              <span className={cn('text-xs line-through', on ? 'text-white/70' : 'text-muted')}>
+                              <span className={cn('text-[11px] line-through', on ? 'text-white/70' : 'text-slate-400')}>
                                 {formatBdt(p.compare_at_price)}
                               </span>
                             ) : null}
@@ -517,26 +582,19 @@ export function ExamPrepShop({ catalog }: { catalog: BillingCatalog }) {
                 );
               })}
             </ul>
-          </Card>
+          </div>
         </section>
-      )}
+      ) : null}
 
-      <p className="text-xs text-muted">
-        Access starts today, or when your current access to the same subject or part ends. Live classes are sold separately in
-        the Live class tab; Question of the Day stays free.
-      </p>
-
-      {chosen.length > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface/95 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] backdrop-blur">
-          <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center">
+      {chosen.length > 0 ? (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[#d7e4ee] bg-white/95 shadow-[0_-4px_20px_rgba(10,47,91,0.08)] backdrop-blur-md">
+          <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center">
             <div className="min-w-0 flex-1 text-sm">
-              <p className="font-semibold">
-                {chosen.length} package{chosen.length === 1 ? '' : 's'} in basket
-              </p>
-              <p className="truncate text-muted">
+              <p className="font-bold text-[#0a2f5b]">{bn(chosen.length)}টি প্যাকেজ নির্বাচিত</p>
+              <p className="truncate text-xs text-slate-600">
                 {quote.saving > 0 ? (
                   <>
-                    <span className="line-through">{formatBdt(quote.full)}</span> {formatBdt(subtotal)} ({formatBdt(quote.saving)} less)
+                    <span className="line-through">{formatBdt(quote.full)}</span> {formatBdt(subtotal)} ({formatBdt(quote.saving)} সাশ্রয়)
                   </>
                 ) : (
                   formatBdt(subtotal)
@@ -544,25 +602,25 @@ export function ExamPrepShop({ catalog }: { catalog: BillingCatalog }) {
                 {charge > 0 ? ` + ${catalog.settings.charge_label} ${formatBdt(charge)}` : ''} ·{' '}
                 {chosen.map((p) => p.exam_subject_name ?? p.exam_part_name ?? p.name).join(', ')}
               </p>
-              {error && <p className="text-destructive">{error}</p>}
-              {paused && <p className="text-destructive">Online payments are paused right now.</p>}
+              {error ? <p className="text-xs text-red-600">{error}</p> : null}
+              {paused ? <p className="text-xs text-red-600">অনলাইন পেমেন্ট সাময়িকভাবে বন্ধ আছে।</p> : null}
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" disabled={busy} onClick={() => setPicked({})}>
-                Clear
+              <Button variant="outline" className="rounded-xl" disabled={busy} onClick={() => setPicked({})}>
+                মুছে ফেলুন
               </Button>
               <Button
-                className="bg-[#e2136e] text-white hover:bg-[#c10f5d]"
+                className="rounded-xl bg-[#1566b8] text-white hover:bg-[#0f5294]"
                 disabled={busy || paused}
-                onClick={checkout}
+                onClick={() => void checkout()}
               >
-                {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-                {total === 0 ? 'Get it free' : `Continue · ${formatBdt(total)}`}
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {total === 0 ? 'ফ্রি চালু করুন' : `চেকআউট · ${formatBdt(total)}`}
               </Button>
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

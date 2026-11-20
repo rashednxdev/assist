@@ -8,15 +8,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { chapterHeading } from '@/lib/book-display';
 import { STATIC_REF_PAGE_OPTIONS } from '@/lib/static-ref-pages';
+import { RichEditor } from '@/components/ui/rich-editor';
+import { toEditorHtml } from '@/lib/rich-html';
 
 function wrapHtml(text: string) {
   const t = text.trim();
   if (!t) return '';
   return t.startsWith('<') ? t : `<p>${t}</p>`;
-}
-
-function stripHtml(html?: string) {
-  return html?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() ?? '';
 }
 
 export type ChapterOption = {
@@ -72,7 +70,7 @@ export function ChapterInlineEdit({
     chapter_number: initial.chapter_number,
     name: initial.name,
     sub_name: initial.sub_name ?? '',
-    description: stripHtml(initial.description),
+    description: toEditorHtml(initial.description),
   });
 
   async function save() {
@@ -126,12 +124,7 @@ export function ChapterInlineEdit({
         />
       </Field>
       <Field label="Description">
-        <textarea
-          className="ibas-textarea text-sm min-h-[88px]"
-          disabled={busy}
-          value={form.description}
-          onChange={(e) => setForm({ ...form, description: e.target.value })}
-        />
+        <RichEditor disabled={busy} value={form.description} onChange={(html) => setForm((f) => ({ ...f, description: html }))} />
       </Field>
     </InlineFormShell>
   );
@@ -165,7 +158,7 @@ export function TopicInlineEdit({
     rule_number: initial.rule_number ?? '',
     name: initial.name ?? '',
     sub_name: initial.sub_name ?? '',
-    description: stripHtml(initial.description),
+    description: toEditorHtml(initial.description),
     note: initial.note ?? '',
     content_link: initial.content_link ?? '',
     book_chapter_id: currentChapterId,
@@ -276,12 +269,7 @@ export function TopicInlineEdit({
         </p>
       </Field>
       <Field label="Details">
-        <textarea
-          className="ibas-textarea text-sm min-h-[88px]"
-          disabled={busy}
-          value={form.description}
-          onChange={(e) => setForm({ ...form, description: e.target.value })}
-        />
+        <RichEditor disabled={busy} value={form.description} onChange={(html) => setForm((f) => ({ ...f, description: html }))} />
       </Field>
       <Field label="Note / cross-ref">
         <Input
@@ -315,7 +303,7 @@ export function SubTopicInlineEdit({
   const [form, setForm] = useState({
     rule_number: initial.rule_number ?? '',
     name: initial.name ?? '',
-    description: stripHtml(initial.description),
+    description: toEditorHtml(initial.description),
     note: initial.note ?? '',
   });
 
@@ -359,12 +347,7 @@ export function SubTopicInlineEdit({
         </Field>
       </div>
       <Field label="Details">
-        <textarea
-          className="ibas-textarea text-sm min-h-[88px]"
-          disabled={busy}
-          value={form.description}
-          onChange={(e) => setForm({ ...form, description: e.target.value })}
-        />
+        <RichEditor disabled={busy} value={form.description} onChange={(html) => setForm((f) => ({ ...f, description: html }))} />
       </Field>
       <Field label="Note / cross-ref">
         <Input

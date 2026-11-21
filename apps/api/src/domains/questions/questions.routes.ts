@@ -39,6 +39,7 @@ import {
   batchPermanentlyDeleteQuestionsHandler,
   batchUnpublishQuestionsHandler,
   batchSubmitForQualityCheckQuestionsHandler,
+  batchSubmitForPublishQuestionsHandler,
   submitQuestionForQualityCheckHandler,
   returnQuestionToDraftHandler,
   publishQuestionHandler,
@@ -190,6 +191,11 @@ questionsRouter.post(
   '/batch-submit-for-quality-check',
   requireAdmin,
   asyncHandler(batchSubmitForQualityCheckQuestionsHandler),
+);
+questionsRouter.post(
+  '/batch-submit-for-publish',
+  requireAdmin,
+  asyncHandler(batchSubmitForPublishQuestionsHandler),
 );
 questionsRouter.post(
   '/batch-subject-links',

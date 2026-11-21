@@ -159,8 +159,8 @@ export default function MarathonReviewPage() {
     <div className="mx-auto max-w-4xl space-y-6">
       <PageHeader
         title="Marathon Review"
-        description="Short questions & answers from Books & Tools — reveal each answer or show them all."
-        backHref="/learning"
+        description="Published MCQs from subject-linked books & chapters — reveal each answer or show them all."
+        backHref={subjectId ? `/exam-prep/${subjectId}` : '/learning'}
         action={
           <Button size="sm" variant={showAll ? 'default' : 'outline'} onClick={() => setShowAll((v) => !v)}>
             {showAll ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -213,7 +213,12 @@ export default function MarathonReviewPage() {
           <Skeleton className="h-20 w-full" />
         </div>
       ) : items.length === 0 ? (
-        !error && <EmptyState title={query ? 'No matching questions' : 'No questions available'} />
+        !error && (
+          <EmptyState
+            title={query ? 'No matching questions' : 'No book/subject MCQs yet'}
+            description="Publish MCQs under a chapter of a book linked to this subject, then they appear here."
+          />
+        )
       ) : (
         <>
           <p className="text-sm text-muted">

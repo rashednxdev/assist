@@ -215,6 +215,8 @@ export type LinkQuestionSearchQuery = z.infer<typeof linkQuestionSearchQuerySche
 export const marathonReviewQuerySchema = z.object({
   q: z.string().optional(),
   exam_subject_id: z.string().regex(/^[a-f\d]{24}$/i).optional(),
+  /** Limit to one Books & Tools book (must be subject-linked when used with exam_subject_id). */
+  book_info_id: z.string().regex(/^[a-f\d]{24}$/i).optional(),
   /** Page size (load first N, then request more with offset). */
   limit: z.coerce.number().int().min(1).max(100).default(50),
   /** How many rows to skip (for sequential / paginated loads). */

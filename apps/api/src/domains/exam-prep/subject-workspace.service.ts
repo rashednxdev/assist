@@ -28,7 +28,10 @@ import { QuestionAnswer } from '../questions/models/QuestionAnswer.model.js';
 import { QuestionAnswerDetail } from '../questions/models/QuestionAnswerDetail.model.js';
 import { QuestionBookLink } from '../questions/models/QuestionBookLink.model.js';
 import { QuestionOption } from '../questions/models/QuestionOption.model.js';
-import { QuestionSubjectLink } from '../questions/models/QuestionSubjectLink.model.js';
+import {
+  questionIdsForSubjects,
+  questionIdsGroupedBySubject,
+} from '../questions/questions.service.js';
 import { listPartsForUser } from './exam-prep.service.js';
 
 const WRITTEN_LIMIT = 400;
@@ -86,7 +89,7 @@ async function summaries(user: { id: string; is_super_admin?: boolean; user_type
 
   const [
     bookRows,
-    subjectQuestionRows,
+    questionsBySubjectIds,
     paperRows,
     pastClassRows,
     upcomingStreams,
@@ -101,31 +104,8 @@ async function summaries(user: { id: string; is_super_admin?: boolean; user_type
       { $match: { 'book.is_published': true, 'book.is_active': true } },
       { $group: { _id: '$exam_subject_id', n: { $sum: 1 } } },
     ]),
-    QuestionSubjectLink.aggregate<{
-      _id: unknown;
-      writtenIds: mongoose.Types.ObjectId[];
-      mcqIds: mongoose.Types.ObjectId[];
-    }>([
-      { $match: { exam_subject_id: { $in: oids }, is_active: true } },
-      { $lookup: { from: 'questions', localField: 'question_id', foreignField: '_id', as: 'question' } },
-      { $unwind: '$question' },
-      { $match: { 'question.is_published': true, 'question.is_active': true } },
-      {
-        $group: {
-          _id: '$exam_subject_id',
-          writtenIds: {
-            $push: {
-              $cond: [{ $in: ['$question.question_type_code', OBJECTIVE] }, '$$REMOVE', '$question._id'],
-            },
-          },
-          mcqIds: {
-            $push: {
-              $cond: [{ $eq: ['$question.question_type_code', 'MCQ'] }, '$question._id', '$$REMOVE'],
-            },
-          },
-        },
-      },
-    ]),
+    // Include book-chapter linked MCQs/written — not only direct QuestionSubjectLink tags.
+    questionIdsGroupedBySubject(ids),
     PaperDetail.aggregate<{ _id: unknown; n: number }>([
       { $match: { exam_subject_id: { $in: oids }, is_published: true, is_active: true } },
       { $group: { _id: '$exam_subject_id', n: { $sum: 1 } } },
@@ -174,11 +154,37 @@ async function summaries(user: { id: string; is_super_admin?: boolean; user_type
       : Promise.resolve([]),
   ]);
 
-  const allQuestionOids = [
-    ...new Set(
-      subjectQuestionRows.flatMap((r) => [...r.writtenIds.map(String), ...r.mcqIds.map(String)]),
-    ),
-  ].map(oid);
+  const allQuestionIdStrs = [
+    ...new Set([...questionsBySubjectIds.values()].flatMap((set) => [...set])),
+  ];
+  const allQuestionOids = allQuestionIdStrs.filter((id) => mongoose.isValidObjectId(id)).map(oid);
+
+  const publishedQuestions =
+    allQuestionOids.length > 0
+      ? await Question.find({
+          _id: { $in: allQuestionOids },
+          is_published: true,
+          is_active: true,
+        })
+          .select('_id question_type_code')
+          .lean()
+      : [];
+  const publishedTypeById = new Map(
+    publishedQuestions.map((q) => [String(q._id), q.question_type_code as string]),
+  );
+
+  const questionsBySubject = new Map<string, { writtenIds: string[]; mcqIds: string[] }>();
+  for (const [subjectId, qids] of questionsBySubjectIds) {
+    const writtenIds: string[] = [];
+    const mcqIds: string[] = [];
+    for (const qid of qids) {
+      const code = publishedTypeById.get(qid);
+      if (!code) continue;
+      if (code === 'MCQ') mcqIds.push(qid);
+      else if (!OBJECTIVE.includes(code)) writtenIds.push(qid);
+    }
+    questionsBySubject.set(subjectId, { writtenIds, mcqIds });
+  }
 
   const userEvaluations =
     mongoose.isValidObjectId(user.id) && allQuestionOids.length > 0
@@ -194,7 +200,6 @@ async function summaries(user: { id: string; is_super_admin?: boolean; user_type
   const books = countMap(bookRows);
   const papers = countMap(paperRows);
   const past = countMap(pastClassRows);
-  const questionsBySubject = new Map(subjectQuestionRows.map((row) => [String(row._id), row]));
 
   const upcomingCountBySubject = new Map<string, number>();
   const nextClassBySubject = new Map<string, PreparationNextClassBrief>();
@@ -378,16 +383,19 @@ export async function preparationWorkspace(
   const subject = await subjectOrThrow(user, subjectId);
   const subjectOid = oid(subjectId);
 
-  const [bookLinks, qLinks] = await Promise.all([
+  const [bookLinks, subjectQuestionIdSet] = await Promise.all([
     BookSubjectLink.find({ exam_subject_id: subjectOid, is_active: true })
       .select('book_info_id sort_order')
       .sort({ sort_order: 1 })
       .lean(),
-    QuestionSubjectLink.find({ exam_subject_id: subjectOid, is_active: true }).select('question_id').lean(),
+    // Direct subject tags + published questions under books linked to this subject.
+    questionIdsForSubjects([subjectId]),
   ]);
 
   const subjectBookIds = bookLinks.map((link) => link.book_info_id);
-  const questionIds = qLinks.map((link) => link.question_id);
+  const questionIds = [...subjectQuestionIdSet]
+    .filter((id) => mongoose.isValidObjectId(id))
+    .map(oid);
 
   const [booksDocs, questions] = await Promise.all([
     BookInfo.find({ _id: { $in: subjectBookIds }, is_published: true, is_active: true })
@@ -694,15 +702,21 @@ export async function chapterPractice(
     throw notFound('Chapter not found');
   }
 
-  const links = await QuestionSubjectLink.find({ exam_subject_id: oid(subjectId), is_active: true }).select('question_id').lean();
-  const allMcqs = await Question.find({
-    _id: { $in: links.map((link) => link.question_id) },
-    question_type_code: 'MCQ',
-    is_published: true,
-    is_active: true,
-  })
-    .select('body_bn body_en marks book_chapter_id')
-    .lean();
+  const subjectQuestionIdSet = await questionIdsForSubjects([subjectId]);
+  const subjectQuestionOids = [...subjectQuestionIdSet]
+    .filter((id) => mongoose.isValidObjectId(id))
+    .map(oid);
+  const allMcqs =
+    subjectQuestionOids.length > 0
+      ? await Question.find({
+          _id: { $in: subjectQuestionOids },
+          question_type_code: 'MCQ',
+          is_published: true,
+          is_active: true,
+        })
+          .select('body_bn body_en marks book_chapter_id')
+          .lean()
+      : [];
 
   const chapterByQuestion = await resolveChapterIdsByQuestion(allMcqs);
   let questions = allMcqs.filter((q) => {

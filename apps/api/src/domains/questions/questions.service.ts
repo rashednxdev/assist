@@ -83,24 +83,99 @@ async function chapterIdsOfSubjectBooks(subjectIds: string[]): Promise<mongoose.
   return BookChapter.distinct('_id', { book_info_id: { $in: bookIds } });
 }
 
+/**
+ * Per-subject question ids: direct `QuestionSubjectLink` tags, plus questions whose primary
+ * `book_chapter_id` or active `QuestionBookLink` points at a chapter of a book tagged to that subject.
+ * Exam Prep / Marathon use this so publishing under a book chapter is enough — a separate subject tag is optional.
+ */
+export async function questionIdsGroupedBySubject(
+  subjectIds: string[],
+): Promise<Map<string, Set<string>>> {
+  const map = new Map<string, Set<string>>();
+  for (const id of subjectIds) map.set(id, new Set());
+  if (subjectIds.length === 0) return map;
+
+  const subjectOids = subjectIds.map((id) => new mongoose.Types.ObjectId(id));
+  const [directLinks, bookSubjectLinks] = await Promise.all([
+    QuestionSubjectLink.find({ exam_subject_id: { $in: subjectOids }, is_active: true })
+      .select('exam_subject_id question_id')
+      .lean(),
+    BookSubjectLink.find({ exam_subject_id: { $in: subjectOids }, is_active: true })
+      .select('exam_subject_id book_info_id')
+      .lean(),
+  ]);
+
+  for (const link of directLinks) {
+    map.get(String(link.exam_subject_id))?.add(String(link.question_id));
+  }
+
+  const booksBySubject = new Map<string, mongoose.Types.ObjectId[]>();
+  const allBookIds: mongoose.Types.ObjectId[] = [];
+  for (const link of bookSubjectLinks) {
+    const sid = String(link.exam_subject_id);
+    const bid = link.book_info_id as mongoose.Types.ObjectId;
+    const list = booksBySubject.get(sid) ?? [];
+    list.push(bid);
+    booksBySubject.set(sid, list);
+    allBookIds.push(bid);
+  }
+  if (allBookIds.length === 0) return map;
+
+  const chapters = await BookChapter.find({ book_info_id: { $in: allBookIds } })
+    .select('_id book_info_id')
+    .lean();
+  if (chapters.length === 0) return map;
+
+  const chaptersByBook = new Map<string, mongoose.Types.ObjectId[]>();
+  for (const ch of chapters) {
+    const bid = String(ch.book_info_id);
+    const list = chaptersByBook.get(bid) ?? [];
+    list.push(ch._id);
+    chaptersByBook.set(bid, list);
+  }
+
+  const chapterToSubjects = new Map<string, string[]>();
+  for (const [sid, bookIds] of booksBySubject) {
+    for (const bid of bookIds) {
+      for (const cid of chaptersByBook.get(String(bid)) ?? []) {
+        const key = String(cid);
+        const list = chapterToSubjects.get(key) ?? [];
+        if (!list.includes(sid)) list.push(sid);
+        chapterToSubjects.set(key, list);
+      }
+    }
+  }
+
+  const allChapterIds = chapters.map((c) => c._id);
+  const [primaryQs, linkedQs] = await Promise.all([
+    Question.find({ book_chapter_id: { $in: allChapterIds } }).select('_id book_chapter_id').lean(),
+    QuestionBookLink.find({ book_chapter_id: { $in: allChapterIds }, is_active: true })
+      .select('question_id book_chapter_id')
+      .lean(),
+  ]);
+
+  for (const q of primaryQs) {
+    if (!q.book_chapter_id) continue;
+    for (const sid of chapterToSubjects.get(String(q.book_chapter_id)) ?? []) {
+      map.get(sid)?.add(String(q._id));
+    }
+  }
+  for (const link of linkedQs) {
+    if (!link.book_chapter_id) continue;
+    for (const sid of chapterToSubjects.get(String(link.book_chapter_id)) ?? []) {
+      map.get(sid)?.add(String(link.question_id));
+    }
+  }
+
+  return map;
+}
+
 /** Questions of these subjects: tagged to the subject directly, or on a book tagged to the subject. */
 export async function questionIdsForSubjects(subjectIds: string[]): Promise<Set<string>> {
-  if (subjectIds.length === 0) return new Set();
-  const [tagged, chapterIds] = await Promise.all([
-    QuestionSubjectLink.distinct('question_id', {
-      exam_subject_id: { $in: subjectIds.map((id) => new mongoose.Types.ObjectId(id)) },
-      is_active: true,
-    }),
-    chapterIdsOfSubjectBooks(subjectIds),
-  ]);
-  const ids = new Set(tagged.map(String));
-  if (chapterIds.length) {
-    const [primary, linked] = await Promise.all([
-      Question.distinct('_id', { book_chapter_id: { $in: chapterIds } }),
-      QuestionBookLink.distinct('question_id', { book_chapter_id: { $in: chapterIds }, is_active: true }),
-    ]);
-    for (const id of primary) ids.add(String(id));
-    for (const id of linked) ids.add(String(id));
+  const grouped = await questionIdsGroupedBySubject(subjectIds);
+  const ids = new Set<string>();
+  for (const set of grouped.values()) {
+    for (const id of set) ids.add(id);
   }
   return ids;
 }
@@ -1659,9 +1734,19 @@ export async function listQuestions(
   return { items: result, total, limit, offset };
 }
 
-/** Published MCQs linked to books/chapters, with explanations for marathon review. */
+/**
+ * Published MCQs linked to subject books/chapters, with explanations for marathon review.
+ * Only book+subject related questions are returned (orphan MCQs without a book chapter, or
+ * books not linked to any exam subject, are excluded).
+ */
 export async function listMarathonReview(
-  filters: { q?: string; limit?: number; offset?: number; exam_subject_id?: string } = {},
+  filters: {
+    q?: string;
+    limit?: number;
+    offset?: number;
+    exam_subject_id?: string;
+    book_info_id?: string;
+  } = {},
   options?: { subjectScope?: ExamSubjectScope },
 ) {
   const limit = Math.min(100, Math.max(1, filters.limit ?? 50));
@@ -1673,11 +1758,14 @@ export async function listMarathonReview(
     question_type_code: 'MCQ',
   };
   if (filters.exam_subject_id && mongoose.isValidObjectId(filters.exam_subject_id)) {
-    const linked = await QuestionSubjectLink.find({
-      exam_subject_id: filters.exam_subject_id,
-      is_active: true,
-    }).distinct('question_id');
-    query._id = { $in: linked };
+    // Same scope as Exam Prep: subject tags + questions under books linked to the subject.
+    const linked = await questionIdsForSubjects([filters.exam_subject_id]);
+    if (linked.size === 0) {
+      return { items: [], total: 0, limit, offset };
+    }
+    query._id = {
+      $in: [...linked].filter((id) => mongoose.isValidObjectId(id)).map((id) => new mongoose.Types.ObjectId(id)),
+    };
   }
   const scopeFilter = await questionScopeFilter(options?.subjectScope ?? { mode: 'all' });
   if (!(await applyQuestionScopeFilter(query, scopeFilter))) {
@@ -1739,8 +1827,36 @@ export async function listMarathonReview(
   const chapterMap = new Map(chapters.map((c) => [String(c._id), c]));
 
   const bookIds = [...new Set(chapters.map((c) => String(c.book_info_id)))];
+  const bookOids = bookIds.filter((id) => mongoose.isValidObjectId(id)).map((id) => new mongoose.Types.ObjectId(id));
+
+  // Marathon is books+subjects only: keep books that are tagged to at least one exam subject
+  // (and optionally the selected subject / book filter).
+  let allowedBookIds = new Set<string>();
+  if (bookOids.length > 0) {
+    const bookSubjectQuery: Record<string, unknown> = {
+      book_info_id: { $in: bookOids },
+      is_active: true,
+    };
+    if (filters.exam_subject_id && mongoose.isValidObjectId(filters.exam_subject_id)) {
+      bookSubjectQuery.exam_subject_id = new mongoose.Types.ObjectId(filters.exam_subject_id);
+    }
+    const subjectLinkedBooks = await BookSubjectLink.distinct('book_info_id', bookSubjectQuery);
+    allowedBookIds = new Set(subjectLinkedBooks.map(String));
+  }
+  if (filters.book_info_id && mongoose.isValidObjectId(filters.book_info_id)) {
+    if (!allowedBookIds.has(filters.book_info_id)) {
+      return { items: [], total: 0, limit, offset };
+    }
+    allowedBookIds = new Set([filters.book_info_id]);
+  }
+
   const books =
-    bookIds.length > 0 ? await BookInfo.find({ _id: { $in: bookIds }, is_active: true }) : [];
+    allowedBookIds.size > 0
+      ? await BookInfo.find({
+          _id: { $in: [...allowedBookIds].map((id) => new mongoose.Types.ObjectId(id)) },
+          is_active: true,
+        })
+      : [];
   const bookMap = new Map(books.map((b) => [String(b._id), b]));
 
   type LightRow = {
@@ -2612,6 +2728,22 @@ export async function batchSubmitForQualityCheckQuestions(ids: string[], userId:
   const submitted = results.filter((r) => r.submitted).length;
   const failed = results.filter((r) => r.error).length;
   return { submitted, failed, results };
+}
+
+/** Quality_check -> published for each id (skips/reports any that aren't ready to publish). */
+export async function batchSubmitForPublishQuestions(ids: string[], userId: string) {
+  const results: Array<{ id: string; published?: boolean; error?: string }> = [];
+  for (const id of ids) {
+    try {
+      await publishQuestion(id, userId);
+      results.push({ id, published: true });
+    } catch (err) {
+      results.push({ id, error: err instanceof Error ? err.message : 'Submit for publish failed' });
+    }
+  }
+  const published = results.filter((r) => r.published).length;
+  const failed = results.filter((r) => r.error).length;
+  return { published, failed, results };
 }
 
 /** List soft-deleted questions for the trash page. */

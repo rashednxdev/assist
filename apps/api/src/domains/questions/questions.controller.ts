@@ -256,6 +256,15 @@ export async function batchSubmitForQualityCheckQuestionsHandler(
   res.json({ data });
 }
 
+export async function batchSubmitForPublishQuestionsHandler(
+  req: AuthRequest,
+  res: Response,
+): Promise<void> {
+  const dto = batchQuestionIdsSchema.parse(req.body);
+  const data = await questionsService.batchSubmitForPublishQuestions(dto.ids, req.user!.id);
+  res.json({ data });
+}
+
 export async function submitQuestionForQualityCheckHandler(
   req: AuthRequest,
   res: Response,

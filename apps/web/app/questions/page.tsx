@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, ChevronRight, EyeOff, HelpCircle, ListChecks, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, EyeOff, HelpCircle, ListChecks, Pencil, Plus, Search, Trash2, Upload } from 'lucide-react';
 import {
   QUESTION_DIFFICULTIES,
   QUESTION_REVIEW_STATUSES,
@@ -15,6 +15,7 @@ import {
   confirmBatchTrash,
   confirmBatchUnpublish,
   confirmBatchSubmitForQualityCheck,
+  confirmBatchSubmitForPublish,
 } from '@/lib/confirm-action';
 import { fetchMe } from '@/lib/auth';
 import { isPlatformAdmin } from '@/lib/capabilities';
@@ -454,6 +455,36 @@ export default function QuestionsPage() {
       load();
     } catch (err) {
       setListErr(err instanceof Error ? err.message : 'Batch unpublish failed');
+    } finally {
+      setBatchBusy(false);
+    }
+  }
+
+  async function batchSubmitForPublish() {
+    if (selectedIds.length === 0) return;
+    if (!confirmBatchSubmitForPublish(selectedIds.length)) return;
+    setListErr('');
+    setListMsg('');
+    setBatchBusy(true);
+    try {
+      const res = await apiFetch<{ data: { published: number; failed: number } }>(
+        '/questions/batch-submit-for-publish',
+        {
+          method: 'POST',
+          body: JSON.stringify({ ids: selectedIds }),
+        },
+      );
+      const { published, failed } = res.data;
+      setListMsg(
+        failed > 0
+          ? `Published ${published}; ${failed} skipped or failed`
+          : `Published ${published} question${published === 1 ? '' : 's'}`,
+      );
+      if (failed > 0) setListErr(`${failed} question(s) could not be published (not in quality check, or incomplete?)`);
+      setSelectedIds([]);
+      load();
+    } catch (err) {
+      setListErr(err instanceof Error ? err.message : 'Batch submit for publish failed');
     } finally {
       setBatchBusy(false);
     }
@@ -900,6 +931,16 @@ export default function QuestionsPage() {
               >
                 <ListChecks className="h-4 w-4" />
                 Submit for quality check ({selectedIds.length})
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={selectedIds.length === 0 || batchBusy}
+                onClick={() => void batchSubmitForPublish()}
+              >
+                <Upload className="h-4 w-4" />
+                Submit for publish ({selectedIds.length})
               </Button>
               <Button
                 type="button"

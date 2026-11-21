@@ -46,3 +46,10 @@ export function confirmBatchSubmitForQualityCheck(count: number): boolean {
     `Submit ${count} selected question${count === 1 ? '' : 's'} for quality check? Only draft questions will be moved; others will be skipped.`,
   );
 }
+
+export function confirmBatchSubmitForPublish(count: number): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.confirm(
+    `Submit ${count} selected question${count === 1 ? '' : 's'} for publish? Only questions in quality check with complete answers will be published; others will be skipped.`,
+  );
+}

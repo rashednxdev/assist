@@ -42,11 +42,6 @@ pnpm dev
 
 ## Default login (after seed)
 
-| Field | Value |
-|-------|-------|
-| Email | `admin@ibas.gov.bd` |
-| Password | `Admin@123456` |
-
 ## Project structure
 
 ```

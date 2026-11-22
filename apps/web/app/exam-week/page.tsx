@@ -29,7 +29,7 @@ export default function ExamWeeksPage() {
       <PageHeader
         title="Exams of the Week"
         description="Featured exam papers, grouped by week."
-        backHref="/learning"
+        backHref="/home"
       />
 
       {error && <Alert variant="error">{error}</Alert>}

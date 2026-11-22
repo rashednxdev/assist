@@ -30,7 +30,7 @@ export default function SetPasswordPage() {
     fetchMe()
       .then((res) => {
         if (!res.data.must_change_password) {
-          router.replace('/learning');
+          router.replace('/home');
           return;
         }
         setName(res.data.full_name_en);
@@ -53,7 +53,7 @@ export default function SetPasswordPage() {
     setBusy(true);
     try {
       await apiFetch('/account/set-new-password', { method: 'POST', body: JSON.stringify(parsed.data) });
-      router.replace('/learning');
+      router.replace('/home');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save the password');
       setBusy(false);

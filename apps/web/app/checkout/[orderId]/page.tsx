@@ -13,7 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 const OPEN_HREF: Record<PaymentOrderRecord['kind'], { href: string; label: string }> = {
   exam_prep: { href: '/exam-prep', label: 'শেখা শুরু করুন' },
-  basic: { href: '/learning', label: 'হোমে যান' },
+  basic: { href: '/home', label: 'হোমে যান' },
   live: { href: '/live', label: 'লাইভ ক্লাসে যান' },
 };
 
@@ -248,7 +248,7 @@ export default function CheckoutPage() {
               কোর্স দেখুন
             </Link>
             <Link
-              href="/learning"
+              href="/home"
               className="flex h-11 flex-1 items-center justify-center rounded-xl border border-[#d7e4ee] text-sm font-semibold text-[#0a2f5b]"
             >
               হোমে ফিরে যান
@@ -283,7 +283,7 @@ export default function CheckoutPage() {
             >
               আমার কোর্স দেখুন
             </Link>
-            <Link href="/learning" className="inline-block text-xs font-semibold text-slate-500 hover:text-[#0a2f5b]">
+            <Link href="/home" className="inline-block text-xs font-semibold text-slate-500 hover:text-[#0a2f5b]">
               হোমে ফিরে যান
             </Link>
           </div>

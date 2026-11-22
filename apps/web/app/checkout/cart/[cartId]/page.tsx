@@ -256,7 +256,7 @@ export default function CartCheckoutPage() {
             >
               আমার কোর্স দেখুন
             </Link>
-            <Link href="/learning" className="inline-block text-xs font-semibold text-slate-500 hover:text-[#0a2f5b]">
+            <Link href="/home" className="inline-block text-xs font-semibold text-slate-500 hover:text-[#0a2f5b]">
               হোমে ফিরে যান
             </Link>
           </div>

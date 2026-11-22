@@ -38,6 +38,7 @@ interface SessionDetail {
   scheduled_at: string;
   status: LiveStreamStatus;
   host_name?: string;
+  support_name?: string;
   exam_subject_name?: string;
   permission_status: LivePermissionStatus;
   can_join: boolean;
@@ -319,7 +320,7 @@ export default function ZoomStreamWatchPage() {
   return (
     <div className="space-y-6">
       <nav className="flex flex-wrap items-center gap-1.5 text-xs font-medium text-slate-500">
-        <Link href="/learning" className="hover:text-[#1566b8]">হোম</Link>
+        <Link href="/home" className="hover:text-[#1566b8]">হোম</Link>
         <ChevronRight className="h-3.5 w-3.5" />
         <Link href="/live" className="hover:text-[#1566b8]">লাইভ ক্লাস</Link>
         <ChevronRight className="h-3.5 w-3.5" />
@@ -463,6 +464,15 @@ export default function ZoomStreamWatchPage() {
                   <dd className="font-semibold text-[#0a2f5b]">{hostLabel}</dd>
                 </div>
               </div>
+              {session.support_name?.trim() ? (
+                <div className="flex items-start gap-2.5">
+                  <UserCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#1566b8]" />
+                  <div>
+                    <dt className="text-xs text-slate-500">সহ-হোস্ট</dt>
+                    <dd className="font-semibold text-[#0a2f5b]">{session.support_name.trim()}</dd>
+                  </div>
+                </div>
+              ) : null}
               <div className="flex items-start gap-2.5">
                 <Calendar className="mt-0.5 h-4 w-4 shrink-0 text-[#1566b8]" />
                 <div>

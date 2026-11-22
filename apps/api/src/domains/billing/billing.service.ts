@@ -41,6 +41,7 @@ import { logger } from '../../shared/logger.js';
 import { ExamPart } from '../exams/models/ExamPart.model.js';
 import { ExamSubject } from '../exams/models/ExamSubject.model.js';
 import { loadExamPrepParts, partLabel } from '../exam-prep/exam-prep.service.js';
+import { LiveHost } from '../live-stream/models/LiveHost.model.js';
 import { LiveStream } from '../live-stream/models/LiveStream.model.js';
 import { deliverSystemNotification } from '../notifications/notifications.service.js';
 import { formatSmsTaka, PROASSIST_SUPPORT_PHONE, sendSms } from '../../shared/sms.js';
@@ -168,7 +169,24 @@ async function primaryPartLabel(): Promise<string> {
   return primary ? partLabel(primary, rows) : 'Part 1';
 }
 
-function briefClass(doc: { _id: unknown; topic: string; details?: string; scheduled_at: Date; status: string; video_platform?: string }): LiveClassBrief {
+function briefClass(
+  doc: {
+    _id: unknown;
+    topic: string;
+    details?: string;
+    scheduled_at: Date;
+    status: string;
+    video_platform?: string;
+    host_user_id?: unknown;
+    support_user_id?: unknown;
+    access_type?: string;
+    free_audience?: string;
+    recording_audience?: string;
+    auto_record_cloud?: boolean;
+    exam_subject_id?: unknown;
+  },
+  names?: { host?: string; support?: string },
+): LiveClassBrief {
   return {
     id: String(doc._id),
     topic: doc.topic,
@@ -176,6 +194,22 @@ function briefClass(doc: { _id: unknown; topic: string; details?: string; schedu
     scheduled_at: doc.scheduled_at.toISOString(),
     status: doc.status,
     video_platform: 'zoom',
+    host_user_id: doc.host_user_id ? String(doc.host_user_id) : undefined,
+    host_name: names?.host,
+    support_user_id: doc.support_user_id ? String(doc.support_user_id) : undefined,
+    support_name: names?.support,
+    access_type: doc.access_type === 'paid' ? 'paid' : doc.access_type === 'free' ? 'free' : undefined,
+    free_audience:
+      doc.free_audience === 'all' || doc.free_audience === 'selected' ? doc.free_audience : undefined,
+    recording_audience:
+      doc.recording_audience === 'off' ||
+      doc.recording_audience === 'all' ||
+      doc.recording_audience === 'attended' ||
+      doc.recording_audience === 'enrolled'
+        ? doc.recording_audience
+        : undefined,
+    auto_record_cloud: Boolean(doc.auto_record_cloud),
+    exam_subject_id: doc.exam_subject_id ? String(doc.exam_subject_id) : undefined,
   };
 }
 
@@ -415,10 +449,41 @@ export async function deletePackage(id: string): Promise<{ archived: boolean }> 
 export async function packageClasses(id: string): Promise<LiveClassBrief[]> {
   const doc = await loadPackage(id);
   const rows = await LiveStream.find({ is_active: true, package_ids: doc._id })
-    .select('topic details scheduled_at status video_platform')
+    .select(
+      'topic details scheduled_at status video_platform host_user_id support_user_id access_type free_audience recording_audience auto_record_cloud exam_subject_id',
+    )
     .sort({ scheduled_at: 1 })
     .lean();
-  return rows.map(briefClass);
+
+  const peopleIds = [
+    ...new Set(
+      rows.flatMap((r) =>
+        [r.host_user_id, r.support_user_id].filter(Boolean).map((v) => String(v)),
+      ),
+    ),
+  ];
+  const nameById = new Map<string, string>();
+  if (peopleIds.length > 0) {
+    const [hosts, users] = await Promise.all([
+      LiveHost.find({ user_id: { $in: peopleIds } }).select('user_id display_name').lean(),
+      User.find({ _id: { $in: peopleIds } }).select('full_name_en full_name_bn').lean(),
+    ]);
+    for (const u of users) {
+      const label = (u.full_name_bn || u.full_name_en || '').trim();
+      if (label) nameById.set(String(u._id), label);
+    }
+    for (const h of hosts) {
+      const label = h.display_name?.trim();
+      if (label) nameById.set(String(h.user_id), label);
+    }
+  }
+
+  return rows.map((r) =>
+    briefClass(r, {
+      host: r.host_user_id ? nameById.get(String(r.host_user_id)) : undefined,
+      support: r.support_user_id ? nameById.get(String(r.support_user_id)) : undefined,
+    }),
+  );
 }
 
 export async function setPackageClasses(id: string, body: unknown): Promise<LiveClassBrief[]> {
@@ -667,7 +732,7 @@ export async function getCatalog(user: AuthUser): Promise<BillingCatalog> {
       upcoming_classes: upcoming
         .filter((c) => (c.package_ids ?? []).some((p) => String(p) === String(d._id)))
         .slice(0, 5)
-        .map(briefClass),
+        .map((c) => briefClass(c)),
     };
   });
   return {

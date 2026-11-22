@@ -559,11 +559,11 @@ export default function LiveStreamAdminDetailPage() {
             >
               <option value="free-all">Free — all users after login</option>
               <option value="free-selected">Free — selected users only</option>
-              <option value="paid">Paid — enrolled users</option>
+              <option value="paid">Paid (label) — still open to all after login</option>
             </select>
-            {editAccessType === 'free' && editFreeAudience === 'selected' ? (
-              <p className="text-xs text-muted">Choose those users under User access. They do not need to enroll.</p>
-            ) : null}
+            <p className="text-xs text-muted">
+              Learners can join any live class after login; package enrollment is not required.
+            </p>
           </div>
           {session.video_platform === 'zoom' ? (
             <div className="space-y-1.5 sm:col-span-2">

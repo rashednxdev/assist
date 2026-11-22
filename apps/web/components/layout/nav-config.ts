@@ -18,7 +18,6 @@ import {
   ShoppingBag,
   Wallet,
   Building2,
-  Calculator,
   Radio,
   HelpCircle,
   PlayCircle,
@@ -42,7 +41,7 @@ export interface NavGroup {
   adminOnly?: boolean;
 }
 
-/** Top-bar link for platform admins, same level as Learning. */
+/** Top-bar link for platform admins, same level as Home. */
 export const salaryBillAccessNavItem: NavItem = {
   href: '/admin/salary-access',
   label: 'Salary bill access',
@@ -54,18 +53,14 @@ export const salaryBillAccessNavItem: NavItem = {
  * Primary learner sidebar. Labels are always English, whatever the page language.
  * Same menu for every signed-in user.
  */
+/** Learner sidebar — heavy extras (news, community, calendar, directory, calculator) omitted so they are not prefetched. */
 export const learningPrimaryNav: NavItem[] = [
-  { href: '/learning', label: 'Home', icon: Home },
-  { href: '/circulars', label: 'Latest News', icon: Bell },
+  { href: '/home', label: 'Home', icon: Home },
   { href: '/exam-prep', label: 'Exam Preparations', icon: GraduationCap },
   { href: '/live', label: 'Live Classes', icon: Video },
   { href: '/packages', label: 'Courses', icon: ShoppingBag },
   { href: '/settings/payments', label: 'My Courses', icon: PlayCircle },
   { href: '/books', label: 'Rules Library', icon: BookOpen, moduleCode: 'BOOKS' },
-  { href: '/salary', label: 'Calculator', icon: Calculator },
-  { href: '/exam-routine', label: 'Calendar', icon: CalendarClock, moduleCode: 'EXAM_ROUTINE' },
-  { href: '/community', label: 'Community', icon: MessageCircle },
-  { href: '/contacts', label: 'Directory & Blood Bank', icon: Users },
   { href: '/user-questions', label: 'Ask ProAssist', icon: Sparkles, moduleCode: 'USER_QUESTIONS' },
   { href: '/settings/profile', label: 'Settings', icon: Settings },
 ];

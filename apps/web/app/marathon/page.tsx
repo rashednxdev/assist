@@ -160,7 +160,7 @@ export default function MarathonReviewPage() {
       <PageHeader
         title="Marathon Review"
         description="Published MCQs from subject-linked books & chapters — reveal each answer or show them all."
-        backHref={subjectId ? `/exam-prep/${subjectId}` : '/learning'}
+        backHref={subjectId ? `/exam-prep/${subjectId}` : '/home'}
         action={
           <Button size="sm" variant={showAll ? 'default' : 'outline'} onClick={() => setShowAll((v) => !v)}>
             {showAll ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}

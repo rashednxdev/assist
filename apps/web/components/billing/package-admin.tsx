@@ -464,7 +464,14 @@ function toLocalInput(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/** Schedule this subject’s allowed classes, one date at a time. */
+function statusBadgeClass(status: string) {
+  if (status === 'live') return 'bg-emerald-100 text-emerald-800';
+  if (status === 'paused') return 'bg-amber-100 text-amber-800';
+  if (status === 'ended' || status === 'cancelled') return 'bg-slate-100 text-slate-600';
+  return 'bg-sky-100 text-sky-800';
+}
+
+/** Schedule and manage this subject’s classes: host, co-host, free/paid, edit, delete. */
 function SubjectSchedule({ pkg, onDone }: { pkg: AccessPackageRecord; onDone: () => void }) {
   const limit = pkg.class_limit ?? 0;
   const subject = pkg.exam_subject_name || pkg.exam_subject_names?.find(Boolean) || pkg.name;
@@ -474,6 +481,9 @@ function SubjectSchedule({ pkg, onDone }: { pkg: AccessPackageRecord; onDone: ()
   const [details, setDetails] = useState('');
   const [when, setWhen] = useState('');
   const [hostUserId, setHostUserId] = useState('');
+  const [supportUserId, setSupportUserId] = useState('');
+  const [accessType, setAccessType] = useState<'free' | 'paid'>('paid');
+  const [autoRecord, setAutoRecord] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -498,7 +508,21 @@ function SubjectSchedule({ pkg, onDone }: { pkg: AccessPackageRecord; onDone: ()
     setDetails('');
     setWhen('');
     setHostUserId('');
+    setSupportUserId('');
+    setAccessType('paid');
+    setAutoRecord(false);
     setEditingId(null);
+  }
+
+  function startEdit(row: LiveClassBrief) {
+    setEditingId(row.id);
+    setTopic(row.topic);
+    setDetails(row.details ?? '');
+    setWhen(toLocalInput(row.scheduled_at));
+    setHostUserId(row.host_user_id ?? '');
+    setSupportUserId(row.support_user_id ?? '');
+    setAccessType(row.access_type === 'free' ? 'free' : 'paid');
+    setAutoRecord(Boolean(row.auto_record_cloud));
   }
 
   async function save() {
@@ -508,26 +532,26 @@ function SubjectSchedule({ pkg, onDone }: { pkg: AccessPackageRecord; onDone: ()
     }
     setBusy(true);
     setError('');
+    const payload = {
+      topic: topic.trim(),
+      details: details.trim(),
+      scheduled_at: new Date(when).toISOString(),
+      access_type: accessType,
+      free_audience: accessType === 'free' ? 'all' : 'selected',
+      auto_record_cloud: autoRecord,
+      ...(hostUserId ? { host_user_id: hostUserId } : {}),
+      support_user_id: supportUserId || null,
+    };
     try {
       if (editingId) {
         await apiFetch(`/live-streams/${editingId}`, {
           method: 'PATCH',
-          body: JSON.stringify({
-            topic: topic.trim(),
-            details: details.trim(),
-            scheduled_at: new Date(when).toISOString(),
-            ...(hostUserId ? { host_user_id: hostUserId } : {}),
-          }),
+          body: JSON.stringify(payload),
         });
       } else {
         await apiFetch(`/live-streams/admin/packages/${pkg.id}/classes`, {
           method: 'POST',
-          body: JSON.stringify({
-            topic: topic.trim(),
-            details: details.trim(),
-            scheduled_at: new Date(when).toISOString(),
-            ...(hostUserId ? { host_user_id: hostUserId } : {}),
-          }),
+          body: JSON.stringify(payload),
         });
       }
       resetForm();
@@ -539,8 +563,8 @@ function SubjectSchedule({ pkg, onDone }: { pkg: AccessPackageRecord; onDone: ()
     }
   }
 
-  async function unlink(id: string) {
-    if (!rows || !window.confirm('Remove this class from the subject?')) return;
+  async function unlinkOnly(id: string) {
+    if (!rows || !window.confirm('Unlink this class from the package? The class itself will stay in Live admin.')) return;
     setBusy(true);
     setError('');
     try {
@@ -551,7 +575,28 @@ function SubjectSchedule({ pkg, onDone }: { pkg: AccessPackageRecord; onDone: ()
       if (editingId === id) resetForm();
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not remove the class');
+      setError(e instanceof Error ? e.message : 'Could not unlink the class');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteClass(id: string) {
+    if (
+      !window.confirm(
+        'Delete this class permanently from the package and hide it from learners? This cannot be undone from here.',
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      await apiFetch(`/live-streams/${id}`, { method: 'DELETE' });
+      if (editingId === id) resetForm();
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not delete the class');
     } finally {
       setBusy(false);
     }
@@ -564,83 +609,179 @@ function SubjectSchedule({ pkg, onDone }: { pkg: AccessPackageRecord; onDone: ()
           {subject} · {scheduled} of {limit || '—'} classes
         </CardTitle>
         <p className="text-sm text-muted">
-          Schedule each class on its own date, with the details for this subject. Enrolled learners join only these classes after you approve payment.
+          Add, edit, or delete scheduled classes for this subject. Details show host, co-host, and notes line by line.
+          Live classes are open to every signed-in user.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
         {rows === null ? (
           <Skeleton className="h-24 w-full" />
         ) : rows.length === 0 ? (
-          <p className="text-sm text-muted">No class dates yet.</p>
+          <p className="text-sm text-muted">No class dates yet. Use the form below to add the first one.</p>
         ) : (
           <ul className="divide-y divide-border rounded-md border border-border">
             {rows.map((row, index) => (
-              <li key={row.id} className="space-y-1 px-3 py-2 text-sm">
+              <li key={row.id} className="space-y-2 px-3 py-3 text-sm">
                 <div className="flex flex-wrap items-start justify-between gap-2">
-                  <p>
-                    <span className="font-medium">Class {index + 1}.</span> {row.topic}
-                    <span className="block text-xs text-muted">{accessDateTime(row.scheduled_at)} · {row.status}</span>
-                  </p>
-                  <span className="flex gap-1">
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <p className="font-semibold text-foreground">
+                      Class {index + 1}. {row.topic}
+                    </p>
+                    <p className="text-xs text-muted">{accessDateTime(row.scheduled_at)}</p>
+                    <div className="flex flex-wrap gap-1.5 pt-0.5">
+                      <Badge className={statusBadgeClass(row.status)}>{row.status}</Badge>
+                      <Badge variant={row.access_type === 'free' ? 'success' : 'secondary'}>
+                        {row.access_type === 'free' ? 'Free class' : 'Paid / package'}
+                      </Badge>
+                      {row.auto_record_cloud ? <Badge variant="outline">Cloud record</Badge> : null}
+                    </div>
+                    <div className="rounded-md border border-border/70 bg-muted/30 px-2.5 py-2 text-xs leading-relaxed text-muted">
+                      <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-muted">Details</p>
+                      <p>
+                        <span className="font-semibold text-foreground">Host:</span>{' '}
+                        {row.host_name || row.host_user_id || '—'}
+                      </p>
+                      <p>
+                        <span className="font-semibold text-foreground">Co-host:</span>{' '}
+                        {row.support_name || row.support_user_id || '—'}
+                      </p>
+                      {row.details?.trim() ? (
+                        <p className="mt-1 whitespace-pre-line border-t border-border/60 pt-1 text-muted">
+                          {row.details.trim()}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                  <span className="flex flex-wrap gap-1">
+                    <Button type="button" size="sm" variant="outline" asChild>
+                      <a href={`/live/admin/${row.id}`} target="_blank" rel="noreferrer">
+                        Full details
+                      </a>
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" onClick={() => startEdit(row)}>
+                      <Pencil className="h-3.5 w-3.5" />
+                      Edit
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void unlinkOnly(row.id)}>
+                      Unlink
+                    </Button>
                     <Button
                       type="button"
                       size="sm"
                       variant="outline"
-                      onClick={() => {
-                        setEditingId(row.id);
-                        setTopic(row.topic);
-                        setDetails(row.details ?? '');
-                        setWhen(toLocalInput(row.scheduled_at));
-                      }}
+                      className="text-red-600 hover:bg-red-50"
+                      disabled={busy}
+                      onClick={() => void deleteClass(row.id)}
                     >
-                      Edit
-                    </Button>
-                    <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void unlink(row.id)}>
-                      Remove
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Delete
                     </Button>
                   </span>
                 </div>
-                {row.details ? <p className="whitespace-pre-line text-muted">{row.details}</p> : null}
               </li>
             ))}
           </ul>
         )}
 
         {!full || editingId ? (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="cls-topic">{editingId ? 'Update topic' : 'Topic'}</Label>
-              <Input id="cls-topic" value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="What this class covers" />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="cls-when">Date and time</Label>
-              <Input id="cls-when" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="cls-host">Host</Label>
-              <select id="cls-host" className={SELECT} value={hostUserId} onChange={(e) => setHostUserId(e.target.value)}>
-                <option value="">You (the admin scheduling this)</option>
-                {hosts.map((h) => (
-                  <option key={h.user_id} value={h.user_id}>
-                    {h.display_name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="cls-details">Details</Label>
-              <textarea
-                id="cls-details"
-                rows={3}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                value={details}
-                onChange={(e) => setDetails(e.target.value)}
-                placeholder="What learners should know about this date"
-              />
+          <div className="space-y-3 rounded-lg border border-dashed border-border bg-muted/20 p-3">
+            <p className="text-xs font-bold uppercase tracking-wide text-muted">
+              {editingId ? 'Edit class' : 'Add schedule of class'}
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="cls-topic">Topic</Label>
+                <Input
+                  id="cls-topic"
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value)}
+                  placeholder="What this class covers"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="cls-when">Date and time</Label>
+                <Input id="cls-when" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="cls-access">Access</Label>
+                <select
+                  id="cls-access"
+                  className={SELECT}
+                  value={accessType}
+                  onChange={(e) => setAccessType(e.target.value === 'free' ? 'free' : 'paid')}
+                >
+                  <option value="paid">Paid (label) — still open to all</option>
+                  <option value="free">Free — all signed-in users</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="cls-host">Host</Label>
+                <select
+                  id="cls-host"
+                  className={SELECT}
+                  value={hostUserId}
+                  onChange={(e) => setHostUserId(e.target.value)}
+                >
+                  <option value="">You (the admin scheduling this)</option>
+                  {hosts.map((h) => (
+                    <option key={h.user_id} value={h.user_id}>
+                      {h.display_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="cls-support">Co-host / support</Label>
+                <select
+                  id="cls-support"
+                  className={SELECT}
+                  value={supportUserId}
+                  onChange={(e) => setSupportUserId(e.target.value)}
+                >
+                  <option value="">None</option>
+                  {hosts.map((h) => (
+                    <option key={h.user_id} value={h.user_id}>
+                      {h.display_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <label className="flex items-start gap-3 rounded-md border border-border bg-background p-3 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={autoRecord}
+                    onChange={(e) => setAutoRecord(e.target.checked)}
+                  />
+                  <span>
+                    <span className="font-semibold">Auto record to Zoom cloud</span>
+                    <span className="mt-0.5 block text-xs text-muted">
+                      When the host starts the class, Zoom records to the cloud (Business plan).
+                    </span>
+                  </span>
+                </label>
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="cls-details">Details</Label>
+                <textarea
+                  id="cls-details"
+                  rows={5}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm leading-relaxed"
+                  value={details}
+                  onChange={(e) => setDetails(e.target.value)}
+                  placeholder={'One point per line, e.g.\nAgenda item 1\nAgenda item 2\nNotes for learners'}
+                />
+                <p className="text-[11px] text-muted">
+                  Host and co-host are listed above the details on each class. Use separate lines in this field.
+                </p>
+              </div>
             </div>
           </div>
         ) : (
-          <p className="text-sm text-muted">All {limit} classes for this subject are scheduled. Raise the class amount to add another date.</p>
+          <p className="text-sm text-muted">
+            All {limit} classes for this subject are scheduled. Raise the class amount to add another date.
+          </p>
         )}
 
         {error && <Alert variant="error">{error}</Alert>}
@@ -648,7 +789,7 @@ function SubjectSchedule({ pkg, onDone }: { pkg: AccessPackageRecord; onDone: ()
           {(!full || editingId) && (
             <Button type="button" onClick={() => void save()} disabled={busy}>
               {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-              {editingId ? 'Save class' : 'Add this date'}
+              {editingId ? 'Save class' : 'Add schedule of class'}
             </Button>
           )}
           {editingId && (

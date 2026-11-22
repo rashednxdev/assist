@@ -20,6 +20,7 @@ export interface ReaderBook {
   tags: string[];
   book_type_name?: string;
   is_published: boolean;
+  pdf_links?: Array<{ title: string; url: string }>;
 }
 
 export interface ReaderChapterTopic {

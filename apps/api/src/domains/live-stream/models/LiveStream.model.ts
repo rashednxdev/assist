@@ -70,7 +70,7 @@ export interface ILiveStream extends Document {
   slides: ILiveStreamSlide[];
   /** Multiple named presentation decks. */
   presentations: ILiveStreamPresentation[];
-  /** `free` = no enrollment; `paid` = enrolled subject required. */
+  /** Catalog label only — joining is open to every signed-in user either way. */
   access_type: LiveClassAccessType;
   /** Free class: every signed-in user, or only selected users. */
   free_audience: FreeClassAudience;
@@ -142,7 +142,7 @@ const schema = new Schema<ILiveStream>(
     slides: { type: [slideSchema], default: [] },
     presentations: { type: [presentationSchema], default: [] },
     access_type: { type: String, enum: ['free', 'paid'], default: 'free' },
-    free_audience: { type: String, enum: ['all', 'selected'], default: 'selected' },
+    free_audience: { type: String, enum: ['all', 'selected'], default: 'all' },
     recording_audience: { type: String, enum: ['off', 'all', 'attended', 'enrolled'], default: 'off' },
     package_ids: { type: [Schema.Types.ObjectId], default: [], ref: 'AccessPackage' },
   },

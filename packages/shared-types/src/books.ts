@@ -14,6 +14,16 @@ export const createBookTypeSchema = z.object({
 
 export const updateBookTypeSchema = createBookTypeSchema.partial();
 
+/** External PDF file links attached to a Books & Tools item (view / download). */
+export const bookPdfLinkSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  url: z
+    .string()
+    .trim()
+    .url()
+    .refine((u) => /^https?:\/\//i.test(u), 'PDF link must be http(s)'),
+});
+
 export const createBookSchema = z.object({
   book_type_id: z.string().regex(/^[a-f\d]{24}$/i),
   name: z.string().min(1),
@@ -28,6 +38,7 @@ export const createBookSchema = z.object({
   language: z.enum(BOOK_LANGUAGES).default('both'),
   cover_image_url: z.string().url().optional(),
   tags: z.array(z.string()).optional(),
+  pdf_links: z.array(bookPdfLinkSchema).max(20).optional(),
 });
 
 export const updateBookSchema = createBookSchema.partial().extend({
@@ -35,6 +46,8 @@ export const updateBookSchema = createBookSchema.partial().extend({
   is_superseded: z.boolean().optional(),
   superseded_by: z.string().optional(),
 });
+
+export type BookPdfLink = z.infer<typeof bookPdfLinkSchema>;
 
 export const createBookPartSchema = z.object({
   name: z.string().min(1),

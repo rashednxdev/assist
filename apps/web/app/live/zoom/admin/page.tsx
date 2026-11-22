@@ -259,10 +259,10 @@ export default function LiveStreamAdminPage() {
             >
               <option value="free-all">Free — all users after login</option>
               <option value="free-selected">Free — selected users only</option>
-              <option value="paid">Paid — enrolled users</option>
+              <option value="paid">Paid (label) — still open to all after login</option>
             </select>
             <p className="text-xs text-muted">
-              A free class does not need enrollment. Selected users are chosen on the class page.
+              Learners can join any live class after login; package enrollment is not required.
             </p>
           </div>
           <div className="space-y-1.5 sm:col-span-2">

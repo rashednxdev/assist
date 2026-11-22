@@ -94,10 +94,10 @@ export const createLiveStreamSchema = z.object({
   /** @deprecated Prefer `presentations` — kept for older clients. */
   slides: liveStreamSlidesSchema.optional(),
   presentations: liveStreamPresentationsSchema.optional(),
-  /** `free` = no enrollment; `paid` = only an enrolled subject opens the class. */
+  /** `free` = open to every signed-in user (no package); `paid` = enrolled package required. */
   access_type: z.enum(LIVE_CLASS_ACCESS_TYPES).optional().default('free'),
-  /** When the class is free: `all` after login, or `selected` users only. */
-  free_audience: z.enum(FREE_CLASS_AUDIENCES).optional().default('selected'),
+  /** Free classes are always open to all; kept for admin UI compatibility. */
+  free_audience: z.enum(FREE_CLASS_AUDIENCES).optional().default('all'),
   /** Previous recording: off, every user, people who attended, or enrolled users. */
   recording_audience: z.enum(RECORDING_AUDIENCES).optional().default('off'),
   /** `agora` (default) or `zoom` — selects the video provider for this class. */
@@ -116,6 +116,13 @@ export const scheduleSubjectClassSchema = z.object({
   details: z.string().trim().max(5000).optional().or(z.literal('')),
   scheduled_at: z.coerce.date(),
   host_user_id: mongoId.optional().or(z.literal('')),
+  /** Co-host / support person (guest controls). */
+  support_user_id: mongoId.optional().nullable().or(z.literal('')),
+  /** Free = every signed-in user; paid = package enrollment required. */
+  access_type: z.enum(LIVE_CLASS_ACCESS_TYPES).optional().default('paid'),
+  free_audience: z.enum(FREE_CLASS_AUDIENCES).optional().default('all'),
+  recording_audience: z.enum(RECORDING_AUDIENCES).optional().default('off'),
+  auto_record_cloud: z.boolean().optional().default(false),
 });
 export type ScheduleSubjectClassDto = z.infer<typeof scheduleSubjectClassSchema>;
 
@@ -470,6 +477,9 @@ export interface LiveStreamListItem {
   video_platform?: LiveVideoPlatform;
   host_user_id?: string;
   host_name?: string;
+  /** Co-host / support person (when assigned). */
+  support_user_id?: string;
+  support_name?: string;
   /** Optional exam subject this class is scheduled under. */
   exam_subject_id?: string;
   exam_subject_name?: string;

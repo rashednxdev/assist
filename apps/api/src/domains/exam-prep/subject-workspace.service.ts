@@ -399,7 +399,7 @@ export async function preparationWorkspace(
 
   const [booksDocs, questions] = await Promise.all([
     BookInfo.find({ _id: { $in: subjectBookIds }, is_published: true, is_active: true })
-      .select('name name_bn short_name edition publish_date effective_date is_superseded')
+      .select('name name_bn short_name edition publish_date effective_date is_superseded pdf_links')
       .lean(),
     questionIds.length > 0
       ? Question.find({
@@ -644,6 +644,9 @@ export async function preparationWorkspace(
     const bid = String(book._id);
     const meta = bookMap.get(bid);
     const chapterCount = allChapterDocs.filter((c) => String(c.book_info_id) === bid).length;
+    const pdf_links = (book.pdf_links ?? [])
+      .filter((l) => l?.title?.trim() && l?.url?.trim())
+      .map((l) => ({ title: String(l.title).trim(), url: String(l.url).trim() }));
     return {
       id: bid,
       name: book.name,
@@ -654,6 +657,7 @@ export async function preparationWorkspace(
       effective_date: meta?.effective_date,
       is_superseded: meta?.is_superseded,
       chapter_count: chapterCount,
+      pdf_links: pdf_links.length > 0 ? pdf_links : undefined,
     };
   });
 

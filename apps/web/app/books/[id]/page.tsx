@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert } from '@/components/ui/alert';
 import { RichTextView } from '@/components/books/rich-text-view';
 import { BookContents } from '@/components/books/book-contents';
+import { BookPdfLinks } from '@/components/books/book-pdf-links';
 import { BookQuestionsButton, BookQuestionsPanel } from '@/components/books/book-questions-panel';
 import { BookReaderGate, useBookReader } from '@/components/books/book-reader-context';
 import { BookContentEditor } from '@/components/books/book-content-editor';
@@ -162,6 +163,8 @@ function BookDetailBody({
         </div>
       )}
 
+      {!editMode ? <BookPdfLinks links={book.pdf_links} title="PDF files & downloads" /> : null}
+
       {isAdmin && editMode ? (
         <BookContentEditor
           bookId={bookId}
@@ -175,6 +178,7 @@ function BookDetailBody({
             published_by: book.published_by,
             language: book.language,
             tags: book.tags,
+            pdf_links: book.pdf_links,
           }}
           onRefresh={() => reload({ silent: true })}
         />

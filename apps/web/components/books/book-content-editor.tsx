@@ -24,6 +24,11 @@ import { toEditorHtml } from '@/lib/rich-html';
 // its in-progress draft (see ComparisonTableModal's effect keyed on [open, initialValue]).
 const EMPTY_COMPARISON_TABLE = emptyComparisonTable(2);
 
+interface BookPdfLink {
+  title: string;
+  url: string;
+}
+
 interface BookDetail {
   id: string;
   name: string;
@@ -35,6 +40,7 @@ interface BookDetail {
   language: string;
   tags: string[];
   book_type_id?: string;
+  pdf_links?: BookPdfLink[];
 }
 
 interface ChapterRow {
@@ -126,6 +132,7 @@ export function BookContentEditor({
     published_by: book.published_by ?? '',
     language: book.language as (typeof BOOK_LANGUAGES)[number],
     tags: book.tags.join(', '),
+    pdf_links: (book.pdf_links ?? []).map((l) => ({ title: l.title, url: l.url })),
   });
 
   const [chapters, setChapters] = useState<ChapterRow[]>([]);
@@ -267,6 +274,9 @@ export function BookContentEditor({
             .split(',')
             .map((t) => t.trim())
             .filter(Boolean),
+          pdf_links: bookForm.pdf_links
+            .map((l) => ({ title: l.title.trim(), url: l.url.trim() }))
+            .filter((l) => l.title && l.url),
         }),
       });
       setMessage('Book updated');
@@ -793,6 +803,80 @@ export function BookContentEditor({
           <div className="space-y-1">
             <Label>Description (optional)</Label>
             <textarea className="ibas-textarea" disabled={busy} value={bookForm.description} placeholder="Overview (optional)" onChange={(e) => setBookForm({ ...bookForm, description: e.target.value })} />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <Label>PDF file links</Label>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                onClick={() =>
+                  setBookForm((f) => ({
+                    ...f,
+                    pdf_links: [...f.pdf_links, { title: '', url: '' }],
+                  }))
+                }
+              >
+                Add PDF link
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Learners can open or download these files from the book page. Use full https:// URLs.
+            </p>
+            {bookForm.pdf_links.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+                No PDF links yet.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {bookForm.pdf_links.map((link, idx) => (
+                  <li key={idx} className="grid gap-2 rounded-lg border border-border p-2 sm:grid-cols-[1fr_1.4fr_auto]">
+                    <Input
+                      disabled={busy}
+                      placeholder="Title (e.g. Full book PDF)"
+                      value={link.title}
+                      onChange={(e) =>
+                        setBookForm((f) => {
+                          const pdf_links = f.pdf_links.slice();
+                          pdf_links[idx] = { ...pdf_links[idx]!, title: e.target.value };
+                          return { ...f, pdf_links };
+                        })
+                      }
+                    />
+                    <Input
+                      disabled={busy}
+                      placeholder="https://…"
+                      value={link.url}
+                      onChange={(e) =>
+                        setBookForm((f) => {
+                          const pdf_links = f.pdf_links.slice();
+                          pdf_links[idx] = { ...pdf_links[idx]!, url: e.target.value };
+                          return { ...f, pdf_links };
+                        })
+                      }
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="text-red-600"
+                      disabled={busy}
+                      onClick={() =>
+                        setBookForm((f) => ({
+                          ...f,
+                          pdf_links: f.pdf_links.filter((_, i) => i !== idx),
+                        }))
+                      }
+                    >
+                      Remove
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
           <div className="space-y-1">
             <Label>Tags (comma-separated)</Label>

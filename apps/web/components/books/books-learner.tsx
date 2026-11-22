@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { BookOpen, MoreVertical, Search, X } from 'lucide-react';
+import { BookOpen, FileText, MoreVertical, Search, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { toBanglaDigits } from '@/lib/bangla-format';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,7 @@ interface BookItem {
   description: string;
   book_type_name?: string;
   edition?: string;
+  pdf_links?: Array<{ title: string; url: string }>;
   subjects?: Array<{ id: string; name: string; name_bn?: string }>;
 }
 
@@ -260,6 +261,12 @@ export function BooksLearner() {
                     {b.short_name ? <Badge variant="outline">{b.short_name}</Badge> : null}
                     {b.book_type_name ? <Badge variant="secondary">{b.book_type_name}</Badge> : null}
                     {b.edition ? <Badge variant="outline">{b.edition}</Badge> : null}
+                    {(b.pdf_links?.length ?? 0) > 0 ? (
+                      <Badge variant="outline" className="gap-1 text-[#1566b8]">
+                        <FileText className="h-3 w-3" />
+                        {toBanglaDigits(String(b.pdf_links!.length))} PDF
+                      </Badge>
+                    ) : null}
                   </div>
                 </div>
               </div>

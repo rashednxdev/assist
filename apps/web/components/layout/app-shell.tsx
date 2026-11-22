@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Bell, CheckCircle2, ChevronLeft, HelpCircle, LogOut, Menu, Search, X } from 'lucide-react';
+import { CheckCircle2, ChevronLeft, HelpCircle, LogOut, Menu, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { BrandMark } from '@/components/brand/brand-mark';
@@ -67,8 +67,8 @@ function primaryNavFor(me: MeUser | null): NavItem[] {
   if (!me) return [...learningPrimaryNav];
   const base = canHostLive(me) ? [...learningPrimaryNav, hostLiveNavItem] : [...learningPrimaryNav];
   if (!isPlatformAdmin(me) || base.some((item) => item.href === salaryBillAccessNavItem.href)) return base;
-  const salaryAt = base.findIndex((item) => item.href === '/salary');
-  const at = salaryAt >= 0 ? salaryAt + 1 : base.length;
+  const settingsAt = base.findIndex((item) => item.href === '/settings/profile');
+  const at = settingsAt >= 0 ? settingsAt : base.length;
   return [...base.slice(0, at), salaryBillAccessNavItem, ...base.slice(at)];
 }
 
@@ -197,7 +197,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <ShellMenu />
         <div className="space-y-1 border-t border-white/10 p-3">
           <Link
-            href="/contacts"
+            href="/user-questions"
             className="flex items-center gap-2.5 rounded-xl px-3.5 py-2 text-sm font-medium text-white/75 transition-colors hover:bg-white/10 hover:text-white"
           >
             <HelpCircle className="h-4 w-4 shrink-0" />
@@ -246,16 +246,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </form>
 
           <div className="ml-auto flex items-center gap-2.5 sm:gap-3">
-            <Link
-              href="/circulars"
-              className="relative flex h-9 w-9 items-center justify-center rounded-full border border-[#d7e4ee] bg-[#f4f9fd] text-[#0a2f5b] transition hover:border-[#1566b8]/40 hover:bg-[#d7e8f8]/40"
-              aria-label="সর্বশেষ সংবাদ ও বিজ্ঞপ্তি"
-              title="সর্বশেষ সংবাদ ও বিজ্ঞপ্তি"
-            >
-              <Bell className="h-4 w-4" />
-              <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#2aabb8]" />
-            </Link>
-
             <Link
               href={hasPaidAccess ? '/settings/payments' : '/packages'}
               className={cn(

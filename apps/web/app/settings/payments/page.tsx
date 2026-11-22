@@ -294,7 +294,7 @@ export default function SettingsPaymentsPage() {
                   </div>
                 </div>
                 <Link
-                  href="/learning"
+                  href="/home"
                   className="inline-flex shrink-0 items-center justify-center rounded-xl bg-[#1566b8] px-4 py-2.5 text-xs font-semibold text-white hover:bg-[#0f5294]"
                 >
                   চালিয়ে যান

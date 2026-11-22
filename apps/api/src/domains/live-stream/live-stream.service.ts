@@ -19,7 +19,7 @@ import type {
   UpdateLiveHostDto,
   UpdateLiveStreamDto,
 } from '@ibas/shared-types';
-import { cleanLiveStreamSlides, PAID_LIVE_CLASS_UNPAID_MESSAGE, LIVE_PACKAGE_REQUIRED_MESSAGE, cleanLiveStreamRecordedContents, normalizeLiveStreamPresentations, flattenLiveStreamSlides } from '@ibas/shared-types';
+import { cleanLiveStreamSlides, PAID_LIVE_CLASS_UNPAID_MESSAGE, cleanLiveStreamRecordedContents, normalizeLiveStreamPresentations, flattenLiveStreamSlides } from '@ibas/shared-types';
 import { loadEntitlementSnapshot } from '../billing/entitlements.service.js';
 import { livePackageBriefs } from '../billing/billing.service.js';
 import { AccessPackage } from '../billing/models/AccessPackage.model.js';
@@ -212,28 +212,14 @@ function ownsClassPackage(doc: { package_ids?: unknown[] }, owned: Set<string>):
 }
 
 function paymentAccessFor(
-  doc: { access_type?: string; host_user_id: unknown; package_ids?: unknown[] },
-  user: { id: string; is_super_admin?: boolean; user_type?: string },
-  hasPaid: boolean,
-  owned: Set<string> = new Set(),
-  permissionStatus?: LivePermissionStatus,
-) {
-  if (isPlatformAdmin(user) || isLearningHost(user)) return { payment_blocked: false as const };
-  if (user.id === String(doc.host_user_id)) return { payment_blocked: false as const };
-  if (!isPaidClass(doc)) {
-    if (freeAudienceOf(doc) === 'all' || permissionStatus === 'permitted') return { payment_blocked: false as const };
-    return { payment_blocked: true as const, payment_required_message: 'This free class is only for selected users.' };
-  }
-  if (classPackageIds(doc).length > 0) {
-    if (ownsClassPackage(doc, owned) || permissionStatus === 'permitted') return { payment_blocked: false as const };
-    return { payment_blocked: true as const, payment_required_message: LIVE_PACKAGE_REQUIRED_MESSAGE };
-  }
-  if (!isPaidClass(doc)) return { payment_blocked: false as const };
-  if (hasPaid) return { payment_blocked: false as const };
-  return {
-    payment_blocked: true as const,
-    payment_required_message: PAID_LIVE_CLASS_UNPAID_MESSAGE,
-  };
+  _doc: { access_type?: string; host_user_id: unknown; package_ids?: unknown[] },
+  _user: { id: string; is_super_admin?: boolean; user_type?: string },
+  _hasPaid: boolean,
+  _owned: Set<string> = new Set(),
+  _permissionStatus?: LivePermissionStatus,
+): { payment_blocked: false; payment_required_message?: undefined } {
+  // Live classes are open to every signed-in user — package / payment enrollment is not required.
+  return { payment_blocked: false };
 }
 
 async function packageBriefsFor(
@@ -481,47 +467,19 @@ async function permissionFor(
   },
   userId: string,
   user: { is_super_admin?: boolean; user_type?: string },
-  hasPaid: boolean,
-  owned: Set<string> = new Set(),
+  _hasPaid: boolean,
+  _owned: Set<string> = new Set(),
 ): Promise<{ permission_status: LivePermissionStatus; can_join: boolean; can_host: boolean }> {
-  const sessionId = String(doc._id);
   const hostUserId = String(doc.host_user_id);
   const supportUserId = doc.support_user_id ? String(doc.support_user_id) : '';
-  const canHost = userId === hostUserId || userId === supportUserId || isPlatformAdmin(user) || isLearningHost(user);
   if (userId === hostUserId || userId === supportUserId) {
     return { permission_status: 'host', can_join: true, can_host: true };
   }
   if (isPlatformAdmin(user) || isLearningHost(user)) {
     return { permission_status: 'permitted', can_join: true, can_host: true };
   }
-  if (!isPaidClass(doc) && freeAudienceOf(doc) === 'all') {
-    return { permission_status: 'permitted', can_join: true, can_host: false };
-  }
-  if (!isPaidClass(doc)) {
-    const selected = await LiveStreamInvite.findOne({ live_stream_id: sessionId, user_id: userId }).lean();
-    if (selected) return { permission_status: 'permitted', can_join: true, can_host: false };
-    return { permission_status: 'not_permitted', can_join: false, can_host: false };
-  }
-  const packaged = classPackageIds(doc).length > 0;
-  // A packaged class opens only for a subject the learner enrolled and an admin approved.
-  if (ownsClassPackage(doc, owned)) {
-    return { permission_status: 'permitted', can_join: true, can_host: false };
-  }
-  if (packaged) {
-    const invite = await LiveStreamInvite.findOne({ live_stream_id: sessionId, user_id: userId }).lean();
-    if (invite) return { permission_status: 'permitted', can_join: true, can_host: canHost };
-    return { permission_status: 'not_permitted', can_join: false, can_host: false };
-  }
-  // Paid users may join any paid live class that is not tied to a subject package.
-  if (isPaidClass(doc) && hasPaid) {
-    return { permission_status: 'permitted', can_join: true, can_host: false };
-  }
-  const invite = await LiveStreamInvite.findOne({
-    live_stream_id: sessionId,
-    user_id: userId,
-  }).lean();
-  if (invite) return { permission_status: 'permitted', can_join: true, can_host: canHost };
-  return { permission_status: 'not_permitted', can_join: false, can_host: false };
+  // Every signed-in learner may view and join — no live/package enrollment required.
+  return { permission_status: 'permitted', can_join: true, can_host: false };
 }
 
 function liveClassAccessType(doc: { access_type?: string }): LiveClassAccessType {
@@ -542,6 +500,7 @@ function serializeBase(doc: InstanceType<typeof LiveStream>, includeSlides = tru
     channel_name: doc.channel_name,
     video_platform: videoPlatformOf(doc),
     host_user_id: String(doc.host_user_id),
+    ...(doc.support_user_id ? { support_user_id: String(doc.support_user_id) } : {}),
     ...(examSubjectId ? { exam_subject_id: examSubjectId } : {}),
     created_at: doc.created_at.toISOString(),
     updated_at: doc.updated_at.toISOString(),
@@ -581,7 +540,13 @@ export async function listLiveStreamsForUser(
     .sort({ scheduled_at: -1 })
     .limit(100);
 
-  const hostIds = [...new Set(items.map((i) => String(i.host_user_id)))];
+  const hostIds = [
+    ...new Set(
+      items.flatMap((i) =>
+        [String(i.host_user_id), i.support_user_id ? String(i.support_user_id) : ''].filter(Boolean),
+      ),
+    ),
+  ];
   const subjectIds = items
     .map((i) => (i.exam_subject_id ? String(i.exam_subject_id) : ''))
     .filter(Boolean);
@@ -627,6 +592,12 @@ export async function listLiveStreamsForUser(
       video_platform: videoPlatformOf(doc),
       host_user_id: String(doc.host_user_id),
       host_name: hostName.get(String(doc.host_user_id)) || undefined,
+      ...(doc.support_user_id
+        ? {
+            support_user_id: String(doc.support_user_id),
+            support_name: hostName.get(String(doc.support_user_id)) || undefined,
+          }
+        : {}),
       ...(examSubjectId
         ? {
             exam_subject_id: examSubjectId,
@@ -665,7 +636,12 @@ export async function getLiveStreamForUser(
 ) {
   const doc = await LiveStream.findOne({ _id: id, is_active: true });
   if (!doc) throw notFound('Live session not found');
-  const host_name = await resolveHostName(doc.host_user_id);
+  const supportId = doc.support_user_id ? String(doc.support_user_id) : undefined;
+  const nameMap = await hostDisplayNameMap(
+    [String(doc.host_user_id), supportId].filter((v): v is string => Boolean(v)),
+  );
+  const host_name = nameMap.get(String(doc.host_user_id)) || (await resolveHostName(doc.host_user_id));
+  const support_name = supportId ? nameMap.get(supportId) : undefined;
   const examSubjectId = doc.exam_subject_id ? String(doc.exam_subject_id) : undefined;
   const subjectNames = examSubjectId ? await subjectNameMap([examSubjectId]) : new Map();
   const hasPaid = await userHasPaid(user);
@@ -695,6 +671,7 @@ export async function getLiveStreamForUser(
     recorded_content_count: viewPresentation ? recorded.length : 0,
     can_view_presentation: viewPresentation,
     host_name,
+    ...(supportId ? { support_user_id: supportId, support_name } : {}),
     ...(examSubjectId
       ? { exam_subject_id: examSubjectId, exam_subject_name: subjectNames.get(examSubjectId) }
       : {}),
@@ -914,7 +891,8 @@ export async function createLiveStream(dto: CreateLiveStreamDto, actorId: string
     presentations,
     slides: flattenLiveStreamSlides({ presentations }),
     access_type: dto.access_type === 'paid' ? 'paid' : 'free',
-    free_audience: dto.access_type === 'paid' ? 'selected' : dto.free_audience === 'all' ? 'all' : 'selected',
+    // Free classes are always open to every signed-in user (subject link does not restrict).
+    free_audience: dto.access_type === 'paid' ? 'selected' : 'all',
     recording_audience: dto.recording_audience ?? 'off',
     auto_record_cloud: Boolean(dto.auto_record_cloud),
     recorded_contents: dto.recorded_contents
@@ -946,18 +924,23 @@ export async function scheduleSubjectClass(packageId: string, dto: ScheduleSubje
   if (limit < 1) throw badRequest('Set how many classes this subject includes.');
   const scheduled = await LiveStream.countDocuments({ is_active: true, package_ids: pkg._id, status: { $ne: 'cancelled' } });
   if (scheduled >= limit) throw badRequest(`This subject already has its ${limit} classes. Raise the class amount to add another date.`);
+  const accessType = dto.access_type === 'free' ? 'free' : 'paid';
+  const hostId = typeof dto.host_user_id === 'string' && dto.host_user_id.trim() ? dto.host_user_id.trim() : undefined;
+  const supportId =
+    typeof dto.support_user_id === 'string' && dto.support_user_id.trim() ? dto.support_user_id.trim() : undefined;
   const created = await createLiveStream(
     {
       topic: dto.topic,
       details: dto.details || undefined,
       scheduled_at: dto.scheduled_at,
       exam_subject_id: subjectIds[0],
-      access_type: 'paid',
-      free_audience: 'selected',
-      recording_audience: 'off',
+      access_type: accessType,
+      free_audience: accessType === 'free' ? 'all' : 'selected',
+      recording_audience: dto.recording_audience ?? 'off',
       video_platform: 'zoom',
-      auto_record_cloud: false,
-      ...(dto.host_user_id ? { host_user_id: dto.host_user_id } : {}),
+      auto_record_cloud: Boolean(dto.auto_record_cloud),
+      ...(hostId ? { host_user_id: hostId } : {}),
+      ...(supportId ? { support_user_id: supportId } : {}),
     },
     actorId,
   );

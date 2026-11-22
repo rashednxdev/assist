@@ -82,6 +82,9 @@ function serializeBook(doc: InstanceType<typeof BookInfo>, typeName?: string) {
     is_published: doc.is_published,
     archive_book: doc.archive_book ?? false,
     tags: doc.tags,
+    pdf_links: (doc.pdf_links ?? [])
+      .filter((l) => l?.title?.trim() && l?.url?.trim())
+      .map((l) => ({ title: l.title.trim(), url: l.url.trim() })),
     created_at: doc.created_at,
     updated_at: doc.updated_at,
   };
@@ -784,6 +787,7 @@ export async function createBook(dto: CreateBookDto) {
     is_superseded: false,
     is_published: false,
     tags: dto.tags ?? [],
+    pdf_links: dto.pdf_links ?? [],
   });
   refreshBooksListCache();
   return serializeBook(book, bookType.name);
@@ -832,6 +836,7 @@ export async function updateBook(id: string, dto: UpdateBookDto) {
     ...(dto.language !== undefined && { language: dto.language }),
     ...(dto.cover_image_url !== undefined && { cover_image_url: dto.cover_image_url }),
     ...(dto.tags !== undefined && { tags: dto.tags }),
+    ...(dto.pdf_links !== undefined && { pdf_links: dto.pdf_links }),
     ...(dto.is_active !== undefined && { is_active: dto.is_active }),
     ...(dto.is_superseded !== undefined && { is_superseded: dto.is_superseded }),
     ...(dto.superseded_by !== undefined && { superseded_by: new mongoose.Types.ObjectId(dto.superseded_by) }),

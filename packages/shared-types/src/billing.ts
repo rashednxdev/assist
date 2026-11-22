@@ -108,6 +108,16 @@ export interface LiveClassBrief {
   scheduled_at: string;
   status: string;
   video_platform: 'agora' | 'zoom';
+  /** Host / co-host / access — filled on admin package class lists. */
+  host_user_id?: string;
+  host_name?: string;
+  support_user_id?: string;
+  support_name?: string;
+  access_type?: 'free' | 'paid';
+  free_audience?: 'all' | 'selected';
+  recording_audience?: 'off' | 'all' | 'attended' | 'enrolled';
+  auto_record_cloud?: boolean;
+  exam_subject_id?: string;
 }
 
 export interface AccessPackageRecord {

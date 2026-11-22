@@ -121,6 +121,8 @@ export interface PreparationBookRow {
   effective_date?: string;
   is_superseded?: boolean;
   chapter_count: number;
+  /** External PDF file links attached to the book (view / download). */
+  pdf_links?: Array<{ title: string; url: string }>;
 }
 
 export interface PreparationWrittenRow {

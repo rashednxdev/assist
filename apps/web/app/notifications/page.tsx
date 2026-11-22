@@ -65,7 +65,7 @@ export default function NotificationsPage() {
       <PageHeader
         title="Notifications"
         description="Announcements and messages from the ProAssist team."
-        backHref="/learning"
+        backHref="/home"
         action={
           unread > 0 ? (
             <Button size="sm" variant="outline" onClick={() => void markAll()}>
@@ -98,7 +98,7 @@ export default function NotificationsPage() {
           description="You will see announcements here when the admin sends them."
           action={
             <Button asChild variant="outline" size="sm">
-              <Link href="/learning">Back to home</Link>
+              <Link href="/home">Back to home</Link>
             </Button>
           }
         />

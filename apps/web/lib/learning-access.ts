@@ -3,7 +3,7 @@ import type { MeUser } from '@/lib/auth';
 import { isPlatformAdmin } from '@/lib/capabilities';
 
 /**
- * Codes that open the web Learning hub / Learning routes.
+ * Codes that open the web Home hub / product routes.
  * Salary is separate and always available to signed-in users.
  */
 export const LEARNING_ACCESS_CODES = [
@@ -16,14 +16,17 @@ export const LEARNING_ACCESS_CODES = [
 
 export type LearningAccessCode = (typeof LEARNING_ACCESS_CODES)[number];
 
-export const LEARNING_HOME = '/learning';
+/** Signed-in landing page (formerly `/learning`). */
+export const LEARNING_HOME = '/home';
+export const HOME_PATH = LEARNING_HOME;
 export const SALARY_HOME = '/salary';
 
-/** Paths every signed-in user may open without Learning grant. */
+/** Paths every signed-in user may open without Home/product grant. */
 const PUBLIC_SIGNED_IN_PREFIXES = ['/salary', '/settings', '/packages'] as const;
 
-/** Learning product routes — require Learning grant (or platform admin / content staff). */
+/** Product routes — require grant (or platform admin / content staff). `/learning` kept for legacy redirects. */
 const LEARNING_ROUTE_PREFIXES = [
+  '/home',
   '/learning',
   '/books',
   '/questions',

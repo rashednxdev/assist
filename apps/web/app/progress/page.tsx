@@ -54,7 +54,7 @@ export default function ProgressPage() {
       <PageHeader
         title="Progress Dashboard"
         description="Only evaluations you have submitted are counted here."
-        backHref="/learning"
+        backHref="/home"
       />
 
       {error && <Alert variant="error">{error}</Alert>}

@@ -45,7 +45,7 @@ export default function RegisterVerifyPage() {
         setPhoneDone(r.data.phone_verified);
         if (r.data.status === 'active' && r.data.is_verified) {
           sessionStorage.removeItem('ibas_register_demo');
-          router.replace('/learning');
+          router.replace('/home');
         }
       })
       .catch(() => router.replace('/login'));
@@ -64,7 +64,7 @@ export default function RegisterVerifyPage() {
       setMessage(`${channel === 'email' ? 'Email' : 'Phone'} verified successfully`);
       if (res.data.activated) {
         sessionStorage.removeItem('ibas_register_demo');
-        router.push('/learning');
+        router.push('/home');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Verification failed');
@@ -207,7 +207,7 @@ export default function RegisterVerifyPage() {
 
             {emailDone && phoneDone && (
               <Button className="w-full" asChild>
-                <Link href="/learning">Go to Home</Link>
+                <Link href="/home">Go to Home</Link>
               </Button>
             )}
           </CardContent>

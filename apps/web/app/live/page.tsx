@@ -23,6 +23,7 @@ interface LiveRow {
   scheduled_at: string;
   status: LiveStreamStatus;
   host_name?: string;
+  support_name?: string;
   exam_subject_id?: string;
   exam_subject_name?: string;
   permission_status: LivePermissionStatus;
@@ -39,17 +40,14 @@ function bn(n: number | string): string {
   return toBanglaDigits(String(n));
 }
 
-function permissionLabel(status: LivePermissionStatus, accessType?: 'free' | 'paid') {
+function permissionLabel(status: LivePermissionStatus, _accessType?: 'free' | 'paid') {
   if (status === 'host') return 'হোস্ট / অ্যাডমিন';
-  if (accessType !== 'paid') return 'এনরোল ছাড়াই উন্মুক্ত';
-  if (status === 'permitted') return 'যোগদানের অনুমতি আছে';
-  return 'প্যাকেজ প্রয়োজন';
+  return 'সবাই যোগ দিতে পারবেন';
 }
 
-function permissionClass(status: LivePermissionStatus, accessType?: 'free' | 'paid') {
+function permissionClass(status: LivePermissionStatus, _accessType?: 'free' | 'paid') {
   if (status === 'host') return 'border-amber-200 bg-amber-50 text-amber-800';
-  if (accessType !== 'paid' || status === 'permitted') return 'border-[#bde5d4] bg-[#e8f8ef] text-[#156f4d]';
-  return 'border-slate-200 bg-slate-100 text-slate-600';
+  return 'border-[#bde5d4] bg-[#e8f8ef] text-[#156f4d]';
 }
 
 function statusLabel(status: LiveStreamStatus, previous?: boolean) {
@@ -133,11 +131,15 @@ function ClassCard({ item, previous }: { item: LiveRow; previous?: boolean }) {
 
           <p className="text-base font-bold text-[#0a2f5b]">{item.topic}</p>
 
-          <p className="text-xs text-slate-500">
-            {formatWhen(item.scheduled_at)}
-            {item.host_name ? ` · প্রশিক্ষক: ${item.host_name}` : ''}
-            {item.exam_subject_name ? ` · ${item.exam_subject_name}` : ''}
-          </p>
+          <div className="space-y-0.5 text-xs text-slate-500">
+            <p>{formatWhen(item.scheduled_at)}</p>
+            {item.host_name ? <p>প্রশিক্ষক / হোস্ট: {item.host_name}</p> : null}
+            {item.support_name ? <p>সহ-হোস্ট: {item.support_name}</p> : null}
+            {item.exam_subject_name ? <p>{item.exam_subject_name}</p> : null}
+            {item.details?.trim() ? (
+              <p className="whitespace-pre-line text-slate-600">{item.details.trim()}</p>
+            ) : null}
+          </div>
 
           <div className="flex flex-wrap gap-2 pt-1">
             {!previous ? (

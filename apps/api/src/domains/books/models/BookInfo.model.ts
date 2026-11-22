@@ -19,6 +19,8 @@ export interface IBookInfo extends Document {
   /** Visibility to non-admin users (mobile app, web reader). New books start unpublished. */
   is_published: boolean;
   tags: string[];
+  /** External PDF file links (title + URL) for view / download. */
+  pdf_links: Array<{ title: string; url: string }>;
   /** Policy Library shelves (POLICY_COLLECTIONS codes) this book appears on. */
   policy_collections: string[];
   /** Listed in the Policy Library's Books & Query (content and PDF only). */
@@ -46,6 +48,16 @@ const schema = new Schema<IBookInfo>(
     superseded_by: { type: Schema.Types.ObjectId },
     is_published: { type: Boolean, default: false },
     tags: { type: [String], default: [] },
+    pdf_links: {
+      type: [
+        {
+          _id: false,
+          title: { type: String, required: true, trim: true },
+          url: { type: String, required: true, trim: true },
+        },
+      ],
+      default: [],
+    },
     policy_collections: { type: [String], default: [] },
     archive_book: { type: Boolean, default: false },
   },

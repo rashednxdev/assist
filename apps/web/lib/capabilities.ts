@@ -42,8 +42,8 @@ function grantFor(
   return grants.find((g) => g.module_code === moduleCode);
 }
 
-/** Open after an admin grants Learning. Live class is requested separately. */
-export const FREE_LEARNING_MODULE_CODES = ['QOTD', 'EXAM_ROUTINE'] as const;
+/** Open after an admin grants Learning. Live class is open to every signed-in learner. */
+export const FREE_LEARNING_MODULE_CODES = ['QOTD', 'EXAM_ROUTINE', 'LIVE_STREAM'] as const;
 
 export function isFreeLearningModule(code: string): boolean {
   return (FREE_LEARNING_MODULE_CODES as readonly string[]).includes(code);
@@ -96,13 +96,16 @@ export function learningModuleAccess(user: MeUser, code: string): LearningAccess
     return { state: 'open' };
   }
   const shell = grants.some(
-    (g) => g.can_read && g.source !== 'package' && (isFreeLearningModule(g.module_code) || packageTabFor(g.module_code) != null || g.module_code === 'LIVE_STREAM'),
+    (g) =>
+      g.can_read &&
+      g.source !== 'package' &&
+      (isFreeLearningModule(g.module_code) || packageTabFor(g.module_code) != null),
   );
   if (!shell) return { state: 'denied' };
   if (isFreeLearningModule(code)) return { state: 'open' };
   const mine = grants.filter((g) => g.module_code === code && g.can_read);
   if (mine.some((g) => g.source === 'package')) return { state: 'open' };
-  if (packageTabFor(code) || code === 'LIVE_STREAM') return { state: 'unpaid' };
+  if (packageTabFor(code)) return { state: 'unpaid' };
   return { state: 'denied' };
 }
 

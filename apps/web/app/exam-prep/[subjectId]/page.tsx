@@ -923,9 +923,8 @@ export default function SubjectWorkspacePage() {
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {data.books_list.map((book) => (
-                <Link
+                <div
                   key={book.id}
-                  href={`/books/${book.id}`}
                   className="group flex flex-col justify-between rounded-2xl border border-[#d7e4ee] bg-white p-5 shadow-xs transition hover:border-[#1566b8]"
                 >
                   <div>
@@ -939,10 +938,12 @@ export default function SubjectWorkspacePage() {
                         </span>
                       ) : null}
                     </div>
-                    <h3 className="mt-3 font-bold text-[#0a2f5b] group-hover:text-[#1566b8]">
-                      {book.name_bn?.trim() || book.name}
-                    </h3>
-                    {book.name_bn?.trim() ? <p className="mt-0.5 text-xs text-slate-500">{book.name}</p> : null}
+                    <Link href={`/books/${book.id}`} className="mt-3 block">
+                      <h3 className="font-bold text-[#0a2f5b] group-hover:text-[#1566b8]">
+                        {book.name_bn?.trim() || book.name}
+                      </h3>
+                      {book.name_bn?.trim() ? <p className="mt-0.5 text-xs text-slate-500">{book.name}</p> : null}
+                    </Link>
                     <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] text-slate-500">
                       <span className="rounded-md bg-[#f4f9fd] px-2 py-0.5 font-medium text-[#0a2f5b]">
                         {bn(book.chapter_count)}টি অধ্যায়
@@ -953,10 +954,37 @@ export default function SubjectWorkspacePage() {
                       {book.edition ? (
                         <span className="rounded-md bg-[#f4f9fd] px-2 py-0.5">সংস্করণ: {book.edition}</span>
                       ) : null}
+                      {(book.pdf_links?.length ?? 0) > 0 ? (
+                        <span className="rounded-md bg-[#eaf4fc] px-2 py-0.5 font-medium text-[#1566b8]">
+                          {bn(book.pdf_links!.length)} PDF
+                        </span>
+                      ) : null}
                     </div>
+                    {(book.pdf_links?.length ?? 0) > 0 ? (
+                      <ul className="mt-3 space-y-1.5">
+                        {book.pdf_links!.map((pdf, idx) => (
+                          <li key={`${pdf.url}-${idx}`}>
+                            <a
+                              href={pdf.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-[#d7e4ee] bg-[#f8fbfe] px-2.5 py-1.5 text-[11px] font-semibold text-[#0a2f5b] hover:border-[#1566b8] hover:text-[#1566b8]"
+                            >
+                              <FileText className="h-3.5 w-3.5 shrink-0 text-[#1566b8]" />
+                              <span className="truncate">{pdf.title}</span>
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
                   </div>
-                  <span className="mt-4 inline-block text-xs font-semibold text-[#1566b8]">অধ্যায় ও বিধি পড়ুন →</span>
-                </Link>
+                  <Link
+                    href={`/books/${book.id}`}
+                    className="mt-4 inline-block text-xs font-semibold text-[#1566b8] hover:underline"
+                  >
+                    অধ্যায় ও বিধি পড়ুন →
+                  </Link>
+                </div>
               ))}
             </div>
           )}

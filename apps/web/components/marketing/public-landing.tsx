@@ -1,95 +1,172 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { BookOpen, Calculator, ClipboardCheck, GraduationCap, Video } from 'lucide-react';
 import { BrandMark } from '@/components/brand/brand-mark';
 import { WEB_REGISTRATION_OPEN } from '@/lib/registration';
+import {
+  landingCopy,
+  readLandingLocale,
+  writeLandingLocale,
+  type LandingLocale,
+} from '@/lib/landing-i18n';
+import { cn } from '@/lib/utils';
 
-const FEATURES = [
-  {
-    icon: GraduationCap,
-    title: 'বিষয়ভিত্তিক পরীক্ষা প্রস্তুতি',
-    text: 'প্রতিটি বিষয়ের বই, লিখিত প্রশ্নব্যাংক, অধ্যায়ভিত্তিক MCQ ও বিগত প্রশ্ন সেট এক জায়গায়।',
-  },
-  {
-    icon: BookOpen,
-    title: 'রুলস ও পরিপত্র লাইব্রেরি',
-    text: 'সার্ভিস ও ফিন্যান্সিয়াল রুলস, আদেশ, এসআরও এবং গেজেটের নির্ভরযোগ্য রেফারেন্স।',
-  },
-  {
-    icon: Video,
-    title: 'লাইভ ক্লাস ও ম্যারাথন রিভিউ',
-    text: 'নির্ধারিত সূচি অনুযায়ী লাইভ ক্লাস ও রেকর্ডিং। ফ্রি ক্লাসগুলো সবার জন্য উন্মুক্ত।',
-  },
-  {
-    icon: Calculator,
-    title: 'বেতন, পেনশন ও যোগদানকাল ক্যালকুলেটর',
-    text: 'টি.আর. ফরম বকেয়া বিল, পেনশন-গ্র্যাচুইটি ও যোগদানকালের নির্ভুল হিসাব।',
-  },
-] as const;
+const LOGIN = '/login';
+const START = WEB_REGISTRATION_OPEN ? '/register' : '/login';
+
+function LangToggle({
+  locale,
+  onChange,
+  bnLabel,
+  enLabel,
+}: {
+  locale: LandingLocale;
+  onChange: (next: LandingLocale) => void;
+  bnLabel: string;
+  enLabel: string;
+}) {
+  return (
+    <div
+      className="inline-flex overflow-hidden rounded-full border border-[#c5d4e4] bg-white p-0.5 text-xs font-bold shadow-xs"
+      role="group"
+      aria-label="Language"
+    >
+      <button
+        type="button"
+        onClick={() => onChange('bn')}
+        className={cn(
+          'rounded-full px-3 py-1.5 transition',
+          locale === 'bn' ? 'bg-[#0a2f5b] text-white' : 'bg-transparent text-slate-500 hover:text-[#0a2f5b]',
+        )}
+      >
+        {bnLabel}
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange('en')}
+        className={cn(
+          'rounded-full px-3 py-1.5 transition',
+          locale === 'en' ? 'bg-[#0a2f5b] text-white' : 'bg-transparent text-slate-500 hover:text-[#0a2f5b]',
+        )}
+      >
+        {enLabel}
+      </button>
+    </div>
+  );
+}
 
 export function PublicLanding() {
+  const [locale, setLocale] = useState<LandingLocale>('bn');
+  const t = useMemo(() => landingCopy(locale), [locale]);
+
+  useEffect(() => {
+    setLocale(readLandingLocale());
+  }, []);
+
+  function changeLocale(next: LandingLocale) {
+    setLocale(next);
+    writeLandingLocale(next);
+  }
+
+  const nav = [
+    { href: LOGIN, label: t.navCourse },
+    { href: LOGIN, label: t.navRules },
+    { href: LOGIN, label: t.navExam },
+    { href: LOGIN, label: t.navSubscription },
+  ] as const;
+
+  const features = [
+    { icon: GraduationCap, title: t.featPrepTitle, text: t.featPrepText },
+    { icon: BookOpen, title: t.featRulesTitle, text: t.featRulesText },
+    { icon: Video, title: t.featLiveTitle, text: t.featLiveText },
+    { icon: Calculator, title: t.featCalcTitle, text: t.featCalcText },
+  ] as const;
+
+  const cards = [
+    { icon: GraduationCap, title: t.cardCourseTitle, text: t.cardCourseText },
+    { icon: ClipboardCheck, title: t.cardExamTitle, text: t.cardExamText },
+    { icon: Video, title: t.cardLiveTitle, text: t.cardLiveText },
+    { icon: Calculator, title: t.cardCalcTitle, text: t.cardCalcText },
+  ] as const;
+
   return (
     <div className="min-h-screen bg-[#f4f9fd] text-[#0a2f5b]">
-      <header className="sticky top-0 z-20 border-b border-[#d7e4ee] bg-white">
-        <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-3 sm:px-6">
+      <header className="sticky top-0 z-20 border-b border-[#d7e4ee] bg-white/95 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
           <Link href="/" className="shrink-0">
             <BrandMark />
           </Link>
-          <nav className="hidden items-center gap-6 text-sm font-semibold text-[#0a2f5b] lg:flex">
-            <a href="#features" className="hover:text-[#1566b8]">পরীক্ষা প্রস্তুতি</a>
-            <a href="#features" className="hover:text-[#1566b8]">রুলস লাইব্রেরি</a>
-            <a href="#features" className="hover:text-[#1566b8]">লাইভ ক্লাস</a>
-            <a href="#features" className="hover:text-[#1566b8]">ক্যালকুলেটর</a>
+
+          <nav className="ml-2 hidden items-center gap-6 text-sm font-semibold text-[#0a2f5b] lg:flex">
+            {nav.map((item) => (
+              <a key={item.label} href={item.href} className="transition hover:text-[#1566b8]">
+                {item.label}
+              </a>
+            ))}
           </nav>
-          <div className="ml-auto flex items-center gap-2">
-            <Link
-              href="/login"
-              className="rounded-xl border border-[#1566b8] bg-white px-4 py-2 text-sm font-semibold text-[#1566b8] hover:bg-[#eaf3fc]"
+
+          <div className="ml-auto flex items-center gap-2 sm:gap-2.5">
+            <LangToggle locale={locale} onChange={changeLocale} bnLabel={t.langBn} enLabel={t.langEn} />
+            {/* Plain anchors so Login still works if LAN/dev JS is blocked. */}
+            <a
+              href={LOGIN}
+              className="rounded-lg border border-[#1566b8] bg-white px-3.5 py-2 text-sm font-semibold text-[#1566b8] transition hover:bg-[#eaf3fc] sm:px-4"
             >
-              লগইন
-            </Link>
-            <Link
-              href={WEB_REGISTRATION_OPEN ? '/register' : '/login'}
-              className="rounded-xl bg-[#1566b8] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0f5294]"
+              {t.login}
+            </a>
+            <a
+              href={START}
+              className="rounded-lg bg-[#1566b8] px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-[#0f5294] sm:px-4"
             >
-              শুরু করুন
-            </Link>
+              {t.getStarted}
+            </a>
           </div>
         </div>
+
+        <nav className="flex gap-1 overflow-x-auto border-t border-[#edf2f7] px-4 py-2 lg:hidden">
+          {nav.map((item) => (
+            <a
+              key={item.label}
+              href={item.href}
+              className="shrink-0 rounded-full bg-[#eaf3fc] px-3 py-1.5 text-xs font-semibold text-[#0a2f5b]"
+            >
+              {item.label}
+            </a>
+          ))}
+        </nav>
       </header>
 
       <main>
         <section className="mx-auto grid max-w-6xl items-center gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[1.15fr_0.85fr] lg:py-16">
           <div>
             <p className="inline-flex rounded-full bg-[#0a2f5b] px-3.5 py-1 text-xs font-semibold text-white">
-              সরকারি কর্মকর্তা ও পরীক্ষার্থীদের জন্য
+              {t.heroBadge}
             </p>
-            <h1 className="mt-3 text-3xl font-bold leading-tight sm:text-5xl">
-              প্রশিক্ষণ ও জ্ঞান অর্জন, এক জায়গায়
-            </h1>
-            <p className="mt-4 max-w-xl text-base leading-relaxed text-slate-600 sm:text-lg">
-              পদোন্নতি ও বিভাগীয় পরীক্ষার বিষয়ভিত্তিক প্রস্তুতি, বিধি-বিধানের লাইব্রেরি, লাইভ ক্লাস এবং চাকরি ক্যালকুলেটর — সহজ বাংলায়, ফোনে বা কম্পিউটারে।
-            </p>
+            <h1 className="mt-3 text-3xl font-bold leading-tight sm:text-5xl">{t.heroTitle}</h1>
+            <p className="mt-4 max-w-xl text-base leading-relaxed text-slate-600 sm:text-lg">{t.heroBody}</p>
             <div className="mt-6 flex flex-wrap gap-3">
-              <Link
-                href={WEB_REGISTRATION_OPEN ? '/register' : '/login'}
-                className="rounded-xl bg-[#1566b8] px-5 py-3 text-sm font-semibold text-white hover:bg-[#0f5294]"
-              >
-                শুরু করুন
-              </Link>
               <a
-                href="#features"
-                className="rounded-xl border border-[#1566b8] bg-white px-5 py-3 text-sm font-semibold text-[#1566b8] hover:bg-[#eaf3fc]"
+                href={START}
+                className="rounded-lg bg-[#1566b8] px-5 py-3 text-sm font-semibold text-white hover:bg-[#0f5294]"
               >
-                বিস্তারিত দেখুন
+                {t.heroCta}
+              </a>
+              <a
+                href={LOGIN}
+                className="rounded-lg border border-[#1566b8] bg-white px-5 py-3 text-sm font-semibold text-[#1566b8] hover:bg-[#eaf3fc]"
+              >
+                {t.heroSecondary}
               </a>
             </div>
-            <p className="mt-4 text-sm text-slate-500">মোবাইল নম্বর ও পাসওয়ার্ড দিয়ে দ্রুত সাইন ইন</p>
+            <p className="mt-4 text-sm text-slate-500">{t.heroNote}</p>
           </div>
 
           <div className="rounded-2xl border border-[#d7e4ee] bg-white p-6 shadow-xs">
-            <p className="text-xs font-bold uppercase tracking-wider text-[#1566b8]">যা যা পাবেন</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-[#1566b8]">{t.panelTitle}</p>
             <ul className="mt-4 space-y-4">
-              {FEATURES.map((item) => (
+              {features.map((item) => (
                 <li key={item.title} className="flex gap-3.5">
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#eaf3fc] text-[#1566b8]">
                     <item.icon className="h-5 w-5" />
@@ -106,35 +183,18 @@ export function PublicLanding() {
 
         <section id="features" className="border-t border-[#d7e4ee] bg-white">
           <div className="mx-auto grid max-w-6xl gap-4 px-4 py-12 sm:grid-cols-2 sm:px-6 lg:grid-cols-4">
-            {[
-              {
-                icon: GraduationCap,
-                title: 'বিষয়ভিত্তিক কোর্স',
-                text: 'এনরোল করা প্রতিটি বিষয়ের বই, লিখিত প্রশ্ন (পঠিত/অপঠিত হিসাবসহ) ও অধ্যায়ভিত্তিক MCQ অনুশীলন।',
-              },
-              {
-                icon: ClipboardCheck,
-                title: 'মডেল টেস্ট ও বিগত সেট',
-                text: 'সময় ধরে পূর্ণাঙ্গ মডেল টেস্ট, বিগত বছরের প্রশ্নপত্র এবং ভুল প্রশ্নের আলাদা রি-টেস্ট।',
-              },
-              {
-                icon: Video,
-                title: 'লাইভ ক্লাস সময়সূচি',
-                text: 'সকল আসন্ন ফ্রি ও পেইড লাইভ ক্লাসের সূচি, জুম সেশন এবং পূর্ববর্তী রেকর্ডিং ও স্লাইড।',
-              },
-              {
-                icon: Calculator,
-                title: 'চাকরি ক্যালকুলেটর',
-                text: 'বেতন ও টি.আর. ফরম বকেয়া বিল, পেনশন-গ্র্যাচুইটি এবং যোগদানকালের পূর্ণাঙ্গ হিসাব।',
-              },
-            ].map((card) => (
-              <div key={card.title} className="rounded-2xl border border-[#d7e4ee] bg-[#f4f9fd] p-5">
+            {cards.map((card) => (
+              <a
+                key={card.title}
+                href={LOGIN}
+                className="rounded-2xl border border-[#d7e4ee] bg-[#f4f9fd] p-5 transition hover:border-[#1566b8] hover:bg-white"
+              >
                 <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white text-[#1566b8] shadow-2xs">
                   <card.icon className="h-4 w-4" />
                 </span>
                 <p className="mt-3 font-bold text-[#0a2f5b]">{card.title}</p>
                 <p className="mt-1.5 text-sm leading-relaxed text-slate-600">{card.text}</p>
-              </div>
+              </a>
             ))}
           </div>
         </section>
@@ -144,20 +204,18 @@ export function PublicLanding() {
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-6 sm:px-6">
           <BrandMark tone="white" />
           <nav className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-white/90">
-            <Link href="/login" className="hover:text-white">
-              লগইন
-            </Link>
+            <a href={LOGIN} className="hover:text-white">
+              {t.footerLogin}
+            </a>
             {WEB_REGISTRATION_OPEN ? (
-              <Link href="/register" className="hover:text-white">
-                নিবন্ধন
-              </Link>
+              <a href="/register" className="hover:text-white">
+                {t.footerRegister}
+              </a>
             ) : null}
           </nav>
         </div>
         <div className="border-t border-white/15">
-          <p className="mx-auto max-w-6xl px-4 py-3 text-xs text-white/75 sm:px-6">
-            Developed by Bitnest Lab · ProAssist একটি অধ্যয়ন-সহায়ক প্ল্যাটফর্ম, দপ্তরের অফিসিয়াল পরামর্শ নয়।
-          </p>
+          <p className="mx-auto max-w-6xl px-4 py-3 text-xs text-white/75 sm:px-6">{t.footerNote}</p>
         </div>
       </footer>
     </div>

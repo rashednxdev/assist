@@ -19,6 +19,16 @@ import { homePathFor } from '@/lib/salary-only';
 import { WEB_REGISTRATION_OPEN } from '@/lib/registration';
 import { cn } from '@/lib/utils';
 
+const BD_MOBILE = /^01[3-9]\d{8}$/;
+
+function normalizeBdMobile(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  if (digits.startsWith('880') && digits.length >= 13) return digits.slice(2, 13);
+  if (digits.startsWith('0')) return digits.slice(0, 11);
+  if (digits.length <= 10 && /^1[3-9]/.test(digits)) return `0${digits}`.slice(0, 11);
+  return digits.slice(0, 11);
+}
+
 function safeNextPath(): string | null {
   if (typeof window === 'undefined') return null;
   const next = new URLSearchParams(window.location.search).get('next');
@@ -27,13 +37,12 @@ function safeNextPath(): string | null {
 
 export default function LoginPage() {
   const router = useRouter();
-  const [national, setNational] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const phoneValid = /^1[3-9]\d{8}$/.test(national);
-  const phone = phoneValid ? `0${national}` : '';
+  const phoneValid = BD_MOBILE.test(phone);
 
   async function continueAfterSession(session: LoginSessionData) {
     setAccessToken(session.accessToken);
@@ -57,7 +66,7 @@ export default function LoginPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!phoneValid) {
-      setError('নম্বরটি সম্পূর্ণ নয়। ১০ সংখ্যার নম্বর দিন।');
+      setError('নম্বরটি সম্পূর্ণ নয়। ১১ সংখ্যার নম্বর দিন (01XXXXXXXXX)।');
       return;
     }
     if (password.length < 8) {
@@ -97,31 +106,26 @@ export default function LoginPage() {
             <label htmlFor="mobile" className="text-sm font-semibold text-[#0a2f5b]">
               মোবাইল নম্বর
             </label>
-            <div className={cn('mt-2 flex overflow-hidden rounded-lg border', error && !phoneValid ? 'border-red-500' : 'border-[#c5d4e4]')}>
-              <span className="flex items-center bg-[#f4f7fb] px-3 text-sm font-semibold text-[#0a2f5b]">+৮৮০</span>
-              <input
-                id="mobile"
-                inputMode="numeric"
-                autoComplete="tel"
-                value={national}
-                placeholder="1XXXXXXXXX"
-                onChange={(e) => {
-                  const digitsOnly = e.target.value.replace(/\D/g, '');
-                  const trimmed = digitsOnly.startsWith('880')
-                    ? digitsOnly.slice(3)
-                    : digitsOnly.startsWith('0')
-                      ? digitsOnly.slice(1)
-                      : digitsOnly;
-                  setNational(trimmed.slice(0, 10));
-                  setError('');
-                }}
-                className="h-11 min-w-0 flex-1 px-3 text-sm outline-none"
-              />
-            </div>
-            {national.length > 0 && !phoneValid ? (
-              <p className="mt-2 text-sm text-red-600">নম্বরটি সম্পূর্ণ নয়। ১০ সংখ্যার নম্বর দিন।</p>
+            <input
+              id="mobile"
+              inputMode="numeric"
+              autoComplete="tel"
+              value={phone}
+              placeholder="01XXXXXXXXX"
+              maxLength={11}
+              onChange={(e) => {
+                setPhone(normalizeBdMobile(e.target.value));
+                setError('');
+              }}
+              className={cn(
+                'mt-2 h-11 w-full rounded-lg border px-3 text-sm outline-none',
+                error && !phoneValid ? 'border-red-500' : 'border-[#c5d4e4]',
+              )}
+            />
+            {phone.length > 0 && !phoneValid ? (
+              <p className="mt-2 text-sm text-red-600">নম্বরটি সম্পূর্ণ নয়। ১১ সংখ্যার নম্বর দিন (01XXXXXXXXX)।</p>
             ) : (
-              <p className="mt-2 text-xs text-slate-500">বাংলাদেশের মোবাইল নম্বর দিন, শুরুর শূন্য ছাড়া।</p>
+              <p className="mt-2 text-xs text-slate-500">১১ সংখ্যার মোবাইল নম্বর দিন, যেমন 017XXXXXXXX।</p>
             )}
           </div>
           <div>

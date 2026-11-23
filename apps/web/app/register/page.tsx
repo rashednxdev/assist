@@ -251,11 +251,24 @@ function RegisterForm() {
             <FormField label="মোবাইল নম্বর" htmlFor="phone" required hint="১১ সংখ্যার সচল নম্বর (01XXXXXXXXX)">
               <Input
                 id="phone"
-                inputMode="tel"
+                inputMode="numeric"
+                autoComplete="tel"
                 value={form.phone}
-                onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                placeholder="01700000000"
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/\D/g, '');
+                  const next =
+                    digits.startsWith('880') && digits.length >= 13
+                      ? digits.slice(2, 13)
+                      : digits.startsWith('0')
+                        ? digits.slice(0, 11)
+                        : digits.length <= 10 && /^1[3-9]/.test(digits)
+                          ? `0${digits}`.slice(0, 11)
+                          : digits.slice(0, 11);
+                  setForm((f) => ({ ...f, phone: next }));
+                }}
+                placeholder="01XXXXXXXXX"
                 required
+                maxLength={11}
                 pattern="01[3-9][0-9]{8}"
                 className="h-11 rounded-xl border-[#d7e4ee] bg-[#f4f9fd] focus:bg-white"
               />

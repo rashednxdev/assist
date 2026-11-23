@@ -204,15 +204,27 @@ export default function ForgotPasswordPage() {
             <p className="text-sm text-slate-600">
               আপনার নিবন্ধিত মোবাইল নম্বর দিন। আমরা ৬ সংখ্যার যাচাইকরণ কোড পাঠাব।
             </p>
-            <FormField label="মোবাইল নম্বর" htmlFor="phone" required>
+            <FormField label="মোবাইল নম্বর" htmlFor="phone" required hint="১১ সংখ্যার নম্বর (01XXXXXXXXX)">
               <Input
                 id="phone"
-                inputMode="tel"
+                inputMode="numeric"
                 autoComplete="tel"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/\D/g, '');
+                  const next =
+                    digits.startsWith('880') && digits.length >= 13
+                      ? digits.slice(2, 13)
+                      : digits.startsWith('0')
+                        ? digits.slice(0, 11)
+                        : digits.length <= 10 && /^1[3-9]/.test(digits)
+                          ? `0${digits}`.slice(0, 11)
+                          : digits.slice(0, 11);
+                  setPhone(next);
+                }}
                 placeholder="01XXXXXXXXX"
                 pattern="01[3-9][0-9]{8}"
+                maxLength={11}
                 required
                 autoFocus
                 className="h-11 rounded-xl border-[#d7e4ee] bg-[#f4f9fd] focus:bg-white"

@@ -109,19 +109,19 @@ export function UpcomingClassesBlock({
   return (
     <section
       className={cn(
-        'space-y-2 rounded-2xl border border-[#d7e4ee] bg-white p-4 shadow-xs sm:p-5',
+        'space-y-2 rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-white p-4 shadow-xs sm:p-5',
         className,
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-bold text-[#0a2f5b]">আসন্ন ক্লাস</h2>
-        <Link href="/live" className="text-xs font-semibold text-[#1566b8] hover:underline">
+        <h2 className="text-sm font-bold text-emerald-900">আসন্ন ক্লাস</h2>
+        <Link href="/live" className="text-xs font-semibold text-emerald-700 hover:underline">
           সব →
         </Link>
       </div>
 
       {upcoming.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-[#d7e4ee] px-3 py-4 text-xs text-slate-500">
+        <p className="rounded-xl border border-dashed border-emerald-200 bg-white/70 px-3 py-4 text-xs text-emerald-800/70">
           আপাতত কোনো আসন্ন ক্লাস নেই।
         </p>
       ) : (
@@ -134,10 +134,10 @@ export function UpcomingClassesBlock({
                 key={item.id}
                 href={`/live/zoom/${item.id}`}
                 className={cn(
-                  'group flex items-center gap-3 rounded-xl border px-3 py-2.5 transition hover:border-[#1566b8]',
+                  'group flex items-center gap-3 rounded-xl border px-3 py-2.5 transition',
                   live
-                    ? 'border-rose-300 bg-gradient-to-r from-rose-50 to-white'
-                    : 'border-[#eaf0f6] bg-[#f8fbfe]',
+                    ? 'border-rose-300 bg-gradient-to-r from-rose-50 to-white hover:border-rose-400'
+                    : 'border-emerald-200 bg-emerald-50/80 hover:border-emerald-500 hover:bg-emerald-50',
                 )}
               >
                 <div className="min-w-0 flex-1 space-y-0.5">
@@ -151,23 +151,23 @@ export function UpcomingClassesBlock({
                         LIVE
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-[#eaf4fc] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#1566b8]">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-800">
                         <Video className="h-3 w-3" />
                         Upcoming
                       </span>
                     )}
                   </div>
-                  <p className="line-clamp-1 text-xs font-bold text-[#0a2f5b] group-hover:text-[#1566b8]">
+                  <p className="line-clamp-1 text-xs font-bold text-emerald-950 group-hover:text-emerald-800">
                     {item.topic}
                   </p>
-                  <p className="text-[11px] text-slate-500">{formatWhen(item.scheduled_at)}</p>
+                  <p className="text-[11px] text-emerald-900/55">{formatWhen(item.scheduled_at)}</p>
                 </div>
                 <div className="shrink-0 text-right">
                   {count ? (
                     <p
                       className={cn(
                         'font-mono text-xs font-extrabold tabular-nums',
-                        count.urgent ? 'text-rose-600' : 'text-[#0a2f5b]',
+                        count.urgent ? 'text-rose-600' : 'text-emerald-800',
                       )}
                     >
                       {count.label}

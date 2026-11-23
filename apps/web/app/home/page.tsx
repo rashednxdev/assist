@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ArrowRight,
   BookOpen,
   Calculator,
   CalendarClock,
@@ -223,7 +222,7 @@ export default function HomePage() {
           </h1>
           <p className="mt-1 text-sm text-slate-600">
             {enrolled.length > 0
-              ? 'পদোন্নতি ও বিভাগীয় পরীক্ষার বিষয়ভিত্তিক প্রস্তুতি চলছে।'
+              ? 'পদোন্নতি ও বিভাগীয় পরীক্ষার বিষয়ভিত্তিক প্রস্তুতি।'
               : 'বিষয়ভিত্তিক প্রস্তুতি শুরু করতে আপনার প্রয়োজনীয় বিষয়ে এনরোল করুন।'}
           </p>
         </div>
@@ -563,31 +562,7 @@ export default function HomePage() {
         </section>
       </div>
 
-      {/* 5. Calculator Doors (Salary, Pension, Joining Period) */}
-      <section className="grid gap-3.5 sm:grid-cols-3">
-        {[
-          { href: '/salary', title: 'বেতন ও বকেয়া হিসাব', text: 'বেতন স্কেল, টি.আর. ফরম ও বকেয়া বিল' },
-          { href: '/pension', title: 'পেনশন ক্যালকুলেটর', text: 'আনুতোষিক, ছুটি ও পিআরএল হিসাব' },
-          { href: '/joining-period', title: 'যোগদানকাল হিসাব', text: 'বদলি ও ভ্রমণজনিত যোগদান সময়কাল' },
-        ].map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className="group flex items-center gap-3.5 rounded-2xl border border-[#d7e4ee] bg-white p-4 shadow-xs transition hover:border-[#1566b8]"
-          >
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#eaf3fc] text-[#1566b8] group-hover:bg-[#1566b8] group-hover:text-white">
-              <Calculator className="h-5 w-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="font-bold text-[#0a2f5b]">{item.title}</p>
-              <p className="truncate text-xs text-slate-500">{item.text}</p>
-            </div>
-            <ArrowRight className="h-4 w-4 shrink-0 text-slate-400 group-hover:text-[#1566b8]" />
-          </Link>
-        ))}
-      </section>
-
-      {/* 6. PDF Ask ProAssist Banner */}
+      {/* Ask ProAssist Banner */}
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#c5dff6] bg-[#eaf4fc] px-5 py-4">
         <div className="flex items-start gap-3.5">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#1566b8] text-white">

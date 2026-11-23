@@ -509,7 +509,7 @@ export default function ZoomRoomManagePage() {
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
           <h2 className="text-sm font-bold uppercase tracking-wide text-slate-300">
-            Broadcast · Zoom · screen share
+            Broadcast · in-browser Zoom
           </h2>
           {join ? (
             <div className="rounded-xl bg-white p-3 text-slate-900">
@@ -531,7 +531,7 @@ export default function ZoomRoomManagePage() {
             </div>
           ) : (
             <p className="text-sm text-slate-400">
-              Use Start / Join as host above. Zoom embedded UI includes mic, camera, and screen share.
+              Tap Host to start inside ProAssist — no Zoom login. Name is auto-set; mic/camera start off.
             </p>
           )}
         </section>

@@ -256,10 +256,13 @@ export default function ZoomStreamWatchPage() {
   if (join) {
     return (
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[#d7e4ee] bg-white px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
           <div>
-            <p className="text-xs font-semibold text-[#1566b8]">সরাসরি ক্লাস রুম</p>
+            <p className="text-xs font-semibold text-emerald-800">সরাসরি ক্লাস · ব্রাউজারের ভিতরে</p>
             <h1 className="text-base font-bold text-[#0a2f5b]">{session.topic}</h1>
+            <p className="mt-0.5 text-[11px] text-emerald-900/70">
+              Zoom লগইন লাগবে না। নাম স্বয়ংক্রিয় · মাইক/ক্যামেরা বন্ধ থাকবে · এক ডিভাইসে একবার
+            </p>
           </div>
           <span className="text-xs text-slate-500">হোস্ট: {join.host_name?.trim() || hostLabel}</span>
         </div>

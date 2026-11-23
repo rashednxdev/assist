@@ -16,10 +16,10 @@ export function getZoomLiveVideoStatus() {
     valid: configured,
     account_id_prefix: env.ZOOM_ACCOUNT_ID?.slice(0, 6),
     client_id_prefix: env.ZOOM_CLIENT_ID?.slice(0, 6),
-    join_mode: 'zoom_web_client',
-    meeting_sdk_optional: {
+    join_mode: 'meeting_sdk_embedded',
+    meeting_sdk_required: {
       configured: sdkSeparate,
-      note: 'S2S OAuth is enough. Classes open Zoom Web Client (mic, camera, screen share). ZOOM_SDK_KEY is optional.',
+      note: 'In-browser host/join needs ZOOM_SDK_KEY + ZOOM_SDK_SECRET (Meeting SDK app). S2S OAuth creates meetings and host ZAK; no Zoom login redirect.',
     },
   };
 }
@@ -66,10 +66,11 @@ export function classroomZoomSettings(opts: {
   alternativeHosts?: string;
 } = {}) {
   return {
-    host_video: true,
+    /** Mic/camera stay off until the person turns them on (browser permission may still appear). */
+    host_video: false,
     participant_video: Boolean(opts.allowVideo),
     join_before_host: false,
-    mute_upon_entry: !opts.allowSpeech,
+    mute_upon_entry: true,
     waiting_room: false,
     audio: 'both' as const,
     /** Cloud recording is an admin choice for the published replay. Guests never get local record. */

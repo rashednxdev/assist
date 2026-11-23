@@ -70,7 +70,7 @@ export interface ILiveStream extends Document {
   slides: ILiveStreamSlide[];
   /** Multiple named presentation decks. */
   presentations: ILiveStreamPresentation[];
-  /** Catalog label only — joining is open to every signed-in user either way. */
+  /** `free` = open after login; `paid` + package_ids = enrolled buyers only. */
   access_type: LiveClassAccessType;
   /** Free class: every signed-in user, or only selected users. */
   free_audience: FreeClassAudience;

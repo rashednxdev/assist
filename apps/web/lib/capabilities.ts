@@ -42,7 +42,7 @@ function grantFor(
   return grants.find((g) => g.module_code === moduleCode);
 }
 
-/** Open after an admin grants Learning. Live class is open to every signed-in learner. */
+/** Open after an admin grants Learning. Free live is open; paid package classes need enrollment. */
 export const FREE_LEARNING_MODULE_CODES = ['QOTD', 'EXAM_ROUTINE', 'LIVE_STREAM'] as const;
 
 export function isFreeLearningModule(code: string): boolean {

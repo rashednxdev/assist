@@ -21,7 +21,7 @@ function lanHostnames(): string[] {
 }
 
 const nextConfig: NextConfig = {
-  transpilePackages: ['@ibas/shared-constants', '@ibas/shared-types'],
+  transpilePackages: ['@ibas/shared-constants', '@ibas/shared-types', '@zoom/meetingsdk'],
   // Next 16 blocks /_next + client nav from LAN IPs unless listed here.
   allowedDevOrigins: lanHostnames(),
 };

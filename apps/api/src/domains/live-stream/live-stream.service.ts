@@ -19,7 +19,14 @@ import type {
   UpdateLiveHostDto,
   UpdateLiveStreamDto,
 } from '@ibas/shared-types';
-import { cleanLiveStreamSlides, PAID_LIVE_CLASS_UNPAID_MESSAGE, cleanLiveStreamRecordedContents, normalizeLiveStreamPresentations, flattenLiveStreamSlides } from '@ibas/shared-types';
+import {
+  cleanLiveStreamSlides,
+  PAID_LIVE_CLASS_UNPAID_MESSAGE,
+  LIVE_PACKAGE_REQUIRED_MESSAGE,
+  cleanLiveStreamRecordedContents,
+  normalizeLiveStreamPresentations,
+  flattenLiveStreamSlides,
+} from '@ibas/shared-types';
 import { loadEntitlementSnapshot } from '../billing/entitlements.service.js';
 import { livePackageBriefs } from '../billing/billing.service.js';
 import { AccessPackage } from '../billing/models/AccessPackage.model.js';
@@ -212,13 +219,24 @@ function ownsClassPackage(doc: { package_ids?: unknown[] }, owned: Set<string>):
 }
 
 function paymentAccessFor(
-  _doc: { access_type?: string; host_user_id: unknown; package_ids?: unknown[] },
-  _user: { id: string; is_super_admin?: boolean; user_type?: string },
+  doc: { access_type?: string; host_user_id: unknown; package_ids?: unknown[] },
+  user: { id: string; is_super_admin?: boolean; user_type?: string },
   _hasPaid: boolean,
-  _owned: Set<string> = new Set(),
-  _permissionStatus?: LivePermissionStatus,
-): { payment_blocked: false; payment_required_message?: undefined } {
-  // Live classes are open to every signed-in user — package / payment enrollment is not required.
+  owned: Set<string> = new Set(),
+  permissionStatus?: LivePermissionStatus,
+): { payment_blocked: boolean; payment_required_message?: string } {
+  if (isPlatformAdmin(user) || isLearningHost(user)) return { payment_blocked: false };
+  if (user.id === String(doc.host_user_id)) return { payment_blocked: false };
+  // Free / open classes: join without buying any package.
+  if (!isPaidClass(doc)) return { payment_blocked: false };
+  // Paid class linked to a live package: enrollment required.
+  if (classPackageIds(doc).length > 0) {
+    if (ownsClassPackage(doc, owned) || permissionStatus === 'permitted' || permissionStatus === 'host') {
+      return { payment_blocked: false };
+    }
+    return { payment_blocked: true, payment_required_message: LIVE_PACKAGE_REQUIRED_MESSAGE };
+  }
+  // Paid label but not attached to a package — still open after login.
   return { payment_blocked: false };
 }
 
@@ -468,17 +486,32 @@ async function permissionFor(
   userId: string,
   user: { is_super_admin?: boolean; user_type?: string },
   _hasPaid: boolean,
-  _owned: Set<string> = new Set(),
+  owned: Set<string> = new Set(),
 ): Promise<{ permission_status: LivePermissionStatus; can_join: boolean; can_host: boolean }> {
+  const sessionId = String(doc._id);
   const hostUserId = String(doc.host_user_id);
   const supportUserId = doc.support_user_id ? String(doc.support_user_id) : '';
+  const canHost = userId === hostUserId || userId === supportUserId || isPlatformAdmin(user) || isLearningHost(user);
   if (userId === hostUserId || userId === supportUserId) {
     return { permission_status: 'host', can_join: true, can_host: true };
   }
   if (isPlatformAdmin(user) || isLearningHost(user)) {
     return { permission_status: 'permitted', can_join: true, can_host: true };
   }
-  // Every signed-in learner may view and join — no live/package enrollment required.
+  // Free classes: every signed-in user may join without any package.
+  if (!isPaidClass(doc)) {
+    return { permission_status: 'permitted', can_join: true, can_host: false };
+  }
+  // Paid class under a package: enrolled buyers (or invites) only.
+  if (classPackageIds(doc).length > 0) {
+    if (ownsClassPackage(doc, owned)) {
+      return { permission_status: 'permitted', can_join: true, can_host: false };
+    }
+    const invite = await LiveStreamInvite.findOne({ live_stream_id: sessionId, user_id: userId }).lean();
+    if (invite) return { permission_status: 'permitted', can_join: true, can_host: canHost };
+    return { permission_status: 'not_permitted', can_join: false, can_host: false };
+  }
+  // Paid label but not on a package: open after login (same as free join).
   return { permission_status: 'permitted', can_join: true, can_host: false };
 }
 
@@ -581,7 +614,8 @@ export async function listLiveStreamsForUser(
       attended: attendedIds.has(String(doc._id)),
       enrolled: ownsClassPackage(doc, owned),
     });
-    if (perm.permission_status === 'not_permitted' && !viewPresentation) continue;
+    // Keep package-linked paid classes visible so learners can enroll; hide other locked ones.
+    if (perm.permission_status === 'not_permitted' && !viewPresentation && !(packages && packages.length)) continue;
     const examSubjectId = doc.exam_subject_id ? String(doc.exam_subject_id) : undefined;
     result.push({
       id: String(doc._id),
@@ -658,7 +692,7 @@ export async function getLiveStreamForUser(
     attended: Boolean(attended),
     enrolled: ownsClassPackage(doc, owned),
   });
-  if (perm.permission_status === 'not_permitted' && !viewPresentation) {
+  if (perm.permission_status === 'not_permitted' && !viewPresentation && !(packages && packages.length)) {
     throw forbidden('This class is not available for your account.');
   }
   return {
@@ -1208,6 +1242,11 @@ export async function joinLiveStream(
     userEmail: userDoc?.email,
   });
   const sdk = buildZoomSdkSignature(doc.zoom_meeting_number!, isSupport ? 'audience' : role);
+  if (!sdk) {
+    throw badRequest(
+      'In-browser live class is not configured. Set ZOOM_SDK_KEY and ZOOM_SDK_SECRET (Zoom Meeting SDK app) on the API.',
+    );
+  }
   return {
     video_platform: 'zoom',
     meeting_number: doc.zoom_meeting_number!,
@@ -1216,13 +1255,9 @@ export async function joinLiveStream(
     user_name: userName,
     user_email: userDoc?.email,
     zak,
-    ...(sdk
-      ? {
-          signature: sdk.signature,
-          sdk_key: sdk.sdk_key,
-          signature_expires_at: sdk.expire_at,
-        }
-      : {}),
+    signature: sdk.signature,
+    sdk_key: sdk.sdk_key,
+    signature_expires_at: sdk.expire_at,
     role,
     topic: doc.topic,
     status: doc.status,

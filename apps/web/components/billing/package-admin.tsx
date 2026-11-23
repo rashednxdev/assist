@@ -610,7 +610,7 @@ function SubjectSchedule({ pkg, onDone }: { pkg: AccessPackageRecord; onDone: ()
         </CardTitle>
         <p className="text-sm text-muted">
           Add, edit, or delete scheduled classes for this subject. Details show host, co-host, and notes line by line.
-          Live classes are open to every signed-in user.
+          Free classes are open after login; paid package classes need enrollment.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -710,7 +710,7 @@ function SubjectSchedule({ pkg, onDone }: { pkg: AccessPackageRecord; onDone: ()
                   value={accessType}
                   onChange={(e) => setAccessType(e.target.value === 'free' ? 'free' : 'paid')}
                 >
-                  <option value="paid">Paid (label) — still open to all</option>
+                  <option value="paid">Paid — package enrolled users only</option>
                   <option value="free">Free — all signed-in users</option>
                 </select>
               </div>

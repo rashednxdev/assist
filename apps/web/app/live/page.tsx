@@ -40,13 +40,17 @@ function bn(n: number | string): string {
   return toBanglaDigits(String(n));
 }
 
-function permissionLabel(status: LivePermissionStatus, _accessType?: 'free' | 'paid') {
+function permissionLabel(status: LivePermissionStatus, accessType?: 'free' | 'paid') {
   if (status === 'host') return 'হোস্ট / অ্যাডমিন';
-  return 'সবাই যোগ দিতে পারবেন';
+  if (accessType === 'paid' && status === 'not_permitted') return 'প্যাকেজ এনরোল প্রয়োজন';
+  if (accessType === 'paid' && status === 'permitted') return 'প্যাকেজ এনরোল করা';
+  return 'ফ্রি · সবাই যোগ দিতে পারবেন';
 }
 
-function permissionClass(status: LivePermissionStatus, _accessType?: 'free' | 'paid') {
+function permissionClass(status: LivePermissionStatus, accessType?: 'free' | 'paid') {
   if (status === 'host') return 'border-amber-200 bg-amber-50 text-amber-800';
+  if (accessType === 'paid' && status === 'not_permitted') return 'border-rose-200 bg-rose-50 text-rose-700';
+  if (accessType === 'paid') return 'border-amber-200 bg-amber-50 text-amber-800';
   return 'border-[#bde5d4] bg-[#e8f8ef] text-[#156f4d]';
 }
 
@@ -123,7 +127,11 @@ function ClassCard({ item, previous }: { item: LiveRow; previous?: boolean }) {
                   : 'border-amber-200 bg-amber-50 text-amber-800'
               }`}
             >
-              {isFree ? 'ফ্রি ক্লাস · সবার জন্য উন্মুক্ত' : 'পেইড ক্লাস'}
+              {isFree
+                ? 'ফ্রি ক্লাস · সবার জন্য উন্মুক্ত'
+                : item.permission_status === 'not_permitted'
+                  ? 'পেইড · প্যাকেজ এনরোল প্রয়োজন'
+                  : 'পেইড · প্যাকেজ এনরোল করা'}
             </span>
 
             <LivePackageChip packages={item.packages} />
@@ -267,7 +275,7 @@ export default function LiveStreamUserListPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-[#0a2f5b] sm:text-3xl">লাইভ ক্লাস ও সময়সূচি</h1>
           <p className="mt-1 text-sm text-slate-600">
-            সকল লাইভ ক্লাসের পূর্ণাঙ্গ সময়সূচি। ফ্রি ক্লাসগুলো এনরোলমেন্ট ছাড়াই সবার জন্য সরাসরি উন্মুক্ত।
+            সকল লাইভ ক্লাসের পূর্ণাঙ্গ সময়সূচি। ফ্রি ক্লাস এনরোল ছাড়াই উন্মুক্ত; প্যাকেজের পেইড ক্লাসে যোগ দিতে এনরোল প্রয়োজন।
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

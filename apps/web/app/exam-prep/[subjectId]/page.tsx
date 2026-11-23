@@ -630,7 +630,7 @@ export default function SubjectWorkspacePage() {
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold">
             <span className="text-[#0a2f5b]">সামগ্রিক প্রস্তুতি অগ্রগতি</span>
             <span className="text-[#1566b8]">
-              {bn(data.progress_percent)}% · লিখিত পঠিত {bn(data.written_read)}/{bn(data.written)} · MCQ ছোঁয়া{' '}
+              {bn(data.progress_percent)}% · লিখিত পঠিত {bn(data.written_read)}/{bn(data.written)} · MCQ উত্তর করা{' '}
               {bn(data.mcq_touched)}/{bn(data.mcq)}
             </span>
           </div>
@@ -1155,7 +1155,7 @@ export default function SubjectWorkspacePage() {
               <div>
                 <h2 className="text-lg font-bold text-[#0a2f5b]">অধ্যায়ভিত্তিক MCQ ও স্ব-মূল্যায়ন</h2>
                 <p className="text-xs text-slate-500">
-                  প্রতিটি অধ্যায়ে কত শতাংশ প্রশ্ন ছোঁয়া হয়েছে, মোট সঠিক ও ভুল সংখ্যা এবং শুধুমাত্র ভুল প্রশ্নে পুনরায় পরীক্ষা দিন।
+                  প্রতিটি অধ্যায়ে কত শতাংশ প্রশ্ন উত্তর করা হয়েছে, মোট সঠিক ও ভুল সংখ্যা এবং শুধুমাত্র ভুল প্রশ্নে পুনরায় পরীক্ষা দিন।
                 </p>
               </div>
 
@@ -1186,7 +1186,7 @@ export default function SubjectWorkspacePage() {
                                 <div className="flex flex-wrap items-center gap-2">
                                   <p className="font-bold text-[#0a2f5b]">{chapter.name}</p>
                                   <span className="rounded-full bg-[#eaf3fc] px-2.5 py-0.5 text-[11px] font-bold text-[#1566b8]">
-                                    {bn(touchedPct)}% ছোঁয়া
+                                    {bn(touchedPct)}% উত্তর করা
                                   </span>
                                 </div>
                                 <div className="mt-2 flex flex-wrap items-center gap-4 text-xs">

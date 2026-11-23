@@ -67,7 +67,7 @@ function EnrolledSubjectRow({ subject, index }: { subject: PreparationSubjectSum
               লিখিত: {bn(subject.written_read)}/{bn(subject.written)} পড়া
             </span>
             <span>
-              MCQ: {bn(subject.mcq_touched)}/{bn(subject.mcq)} ছোঁয়া
+              MCQ: {bn(subject.mcq_touched)}/{bn(subject.mcq)} উত্তর করা
               {accuracy !== null ? ` (${bn(accuracy)}% সঠিক)` : ''}
             </span>
             <span>{bn(subject.papers)}টি বিগত সেট</span>

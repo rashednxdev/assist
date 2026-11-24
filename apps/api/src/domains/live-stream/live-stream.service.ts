@@ -281,7 +281,9 @@ async function claimClassDevice(
     existing.last_seen_at &&
     Date.now() - new Date(existing.last_seen_at).getTime() < DEVICE_LOCK_MS
   ) {
-    throw forbidden('This live class is already open on another device. Close it there, then join here.');
+    throw forbidden(
+      'This live class is already open on another device (web or mobile). Leave there first, then join here.',
+    );
   }
   await LiveStreamGuest.updateOne(
     { live_stream_id: liveStreamId, user_id: new mongoose.Types.ObjectId(userId) },
@@ -1241,12 +1243,8 @@ export async function joinLiveStream(
     userName: isSupport ? `Support · ${userName}` : userName,
     userEmail: userDoc?.email,
   });
+  // Meeting SDK is optional (embedded web). Mobile + web-client join use web_client_url.
   const sdk = buildZoomSdkSignature(doc.zoom_meeting_number!, isSupport ? 'audience' : role);
-  if (!sdk) {
-    throw badRequest(
-      'In-browser live class is not configured. Set ZOOM_SDK_KEY and ZOOM_SDK_SECRET (Zoom Meeting SDK app) on the API.',
-    );
-  }
   return {
     video_platform: 'zoom',
     meeting_number: doc.zoom_meeting_number!,
@@ -1255,9 +1253,13 @@ export async function joinLiveStream(
     user_name: userName,
     user_email: userDoc?.email,
     zak,
-    signature: sdk.signature,
-    sdk_key: sdk.sdk_key,
-    signature_expires_at: sdk.expire_at,
+    ...(sdk
+      ? {
+          signature: sdk.signature,
+          sdk_key: sdk.sdk_key,
+          signature_expires_at: sdk.expire_at,
+        }
+      : {}),
     role,
     topic: doc.topic,
     status: doc.status,
@@ -1316,7 +1318,9 @@ export async function touchLivePresence(id: string, userId: string, deviceId: st
   const guest = await LiveStreamGuest.findOne({ live_stream_id: doc._id, user_id: userId });
   if (!guest) return;
   if (guest.device_id && guest.device_id !== deviceId && Date.now() - new Date(guest.last_seen_at).getTime() < DEVICE_LOCK_MS) {
-    throw forbidden('This live class is already open on another device. Close it there, then join here.');
+    throw forbidden(
+      'This live class is already open on another device (web or mobile). Leave there first, then join here.',
+    );
   }
   guest.device_id = deviceId;
   guest.last_seen_at = new Date();

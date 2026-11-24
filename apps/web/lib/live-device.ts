@@ -1,6 +1,6 @@
 const KEY = 'proassist.live.device';
 
-/** Stable id for this browser. A live class accepts only one device per user. */
+/** Stable id for this browser. Each user may join a class from one device only (web or mobile). */
 export function liveDeviceId(): string {
   if (typeof window === 'undefined') return 'web';
   const existing = window.localStorage.getItem(KEY);

@@ -417,7 +417,7 @@ export default function ZoomRoomManagePage() {
         </div>
         <p className="text-xs text-slate-400">
           Guests cannot record this class. A raised hand is approved from Zoom Participants. Screen share stays with the host.
-          This class stays open on one device only.
+          One device only (web browser or mobile app) — leave there before joining here.
         </p>
 
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-950/40 px-3 py-2.5">

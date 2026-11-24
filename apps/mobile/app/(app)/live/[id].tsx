@@ -22,7 +22,10 @@ import { LiveClassRecordedVideos } from '@/components/live/LiveClassRecordedVide
 import {
   fetchLiveStream,
   joinLiveStream,
+  restartLiveStream,
+  resumeLiveStream,
   sendLiveStreamMessage,
+  startLiveStream,
   type LiveStreamListItem,
 } from '@/lib/live-stream-api';
 import { useAuth } from '@/lib/auth-context';
@@ -269,7 +272,7 @@ export default function LiveStreamDetailScreen() {
     void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
   }
 
-  async function handleJoin() {
+  async function handleJoin(asHost = false) {
     if (!id) return;
     setBusy(true);
     try {
@@ -278,20 +281,32 @@ export default function LiveStreamDetailScreen() {
       if (!listenOk) {
         Alert.alert(
           'Microphone required',
-          'Allow microphone so you can hear the host. You stay muted until the host allows speaking.',
+          asHost
+            ? 'Allow microphone so you can host the class from this device.'
+            : 'Allow microphone so you can hear the host. You stay muted until the host allows speaking.',
         );
         return;
       }
-      const payload = await joinLiveStream(id);
+      if (asHost) {
+        if (session?.status === 'paused') await resumeLiveStream(id);
+        else if (session?.status === 'scheduled') await startLiveStream(id);
+        else if (session?.status === 'ended' || session?.status === 'cancelled') {
+          await restartLiveStream(id);
+        }
+      }
+      const payload = await joinLiveStream(id, { asHost });
       if (!isZoomJoinPayload(payload)) {
         Alert.alert('Cannot join', 'This live class is not available in the app.');
         return;
       }
       setWebviewReady(false);
       startLiveAudioSession();
-      setJoin({ ...payload, role: 'audience' });
+      setJoin(payload);
       setAllowMessages(Boolean(payload.allow_guest_messages));
-      setAllowSpeech(Boolean(payload.allow_guest_speech));
+      setAllowSpeech(asHost ? true : Boolean(payload.allow_guest_speech));
+      if (asHost) {
+        setSession((prev) => (prev ? { ...prev, status: 'live', can_join: true } : prev));
+      }
     } catch (err) {
       Alert.alert('Cannot join', err instanceof Error ? err.message : 'Try again');
     } finally {
@@ -318,8 +333,11 @@ export default function LiveStreamDetailScreen() {
   if (!session || !perm) return null;
 
   if (join && isZoomJoinPayload(join)) {
+    const isHostJoin = join.role === 'host';
     const guestName = zoomGuestDisplayName(join, user);
-    const zoomUrl = withZoomGuestIdentity(join.web_client_url, guestName, join.user_email);
+    const zoomUrl = isHostJoin
+      ? join.web_client_url
+      : withZoomGuestIdentity(join.web_client_url, guestName, join.user_email);
 
     return (
       <KeyboardAvoidingView
@@ -331,7 +349,7 @@ export default function LiveStreamDetailScreen() {
           originWhitelist={['*']}
           allowsInlineMediaPlayback
           mediaPlaybackRequiresUserAction={false}
-          mediaCapturePermissionGrantType={allowSpeech ? 'grant' : 'prompt'}
+          mediaCapturePermissionGrantType={isHostJoin || allowSpeech ? 'grant' : 'prompt'}
           allowsFullscreenVideo
           javaScriptEnabled
           domStorageEnabled
@@ -342,13 +360,15 @@ export default function LiveStreamDetailScreen() {
           onLoadEnd={() => {
             setWebviewReady(true);
             startLiveAudioSession();
-            webViewRef.current?.injectJavaScript(buildZoomGuestAutoNameJoinScript(guestName));
-            webViewRef.current?.injectJavaScript(buildZoomGuestUiLockScript(allowSpeech));
+            if (!isHostJoin) {
+              webViewRef.current?.injectJavaScript(buildZoomGuestAutoNameJoinScript(guestName));
+              webViewRef.current?.injectJavaScript(buildZoomGuestUiLockScript(allowSpeech));
+            }
           }}
           onPermissionRequest={(event) => {
             try {
               const resources = (event.nativeEvent.resources ?? []) as string[];
-              const allowed = filterZoomMediaResources(resources, allowSpeech);
+              const allowed = filterZoomMediaResources(resources, isHostJoin || allowSpeech);
               if (allowed.length > 0) {
                 event.nativeEvent.grant(allowed);
               } else if (typeof (event.nativeEvent as { deny?: () => void }).deny === 'function') {
@@ -372,7 +392,7 @@ export default function LiveStreamDetailScreen() {
           >
             <Ionicons name="chevron-back" size={22} color="#fff" />
           </Pressable>
-          {!allowSpeech ? (
+          {!isHostJoin && !allowSpeech ? (
             <View style={styles.iconBadge} accessibilityLabel="Listen only — mic and camera off">
               <Ionicons name="videocam-off-outline" size={16} color="#fde68a" />
               <Ionicons name="mic-off-outline" size={18} color="#fde68a" />
@@ -568,10 +588,26 @@ export default function LiveStreamDetailScreen() {
         </View>
       ) : null}
 
+      {session.can_host ? (
+        <Pressable
+          style={[styles.joinBtn, styles.hostBtn, busy && styles.joinBtnDisabled]}
+          disabled={busy || session.status === 'cancelled'}
+          onPress={() => void handleJoin(true)}
+        >
+          {busy ? (
+            <ActivityIndicator color={colors.white} />
+          ) : (
+            <Text style={styles.joinBtnText}>
+              {session.status === 'live' ? 'Host this class' : 'Start as host'}
+            </Text>
+          )}
+        </Pressable>
+      ) : null}
+
       <Pressable
         style={[styles.joinBtn, !canPressJoin && styles.joinBtnDisabled]}
         disabled={!canPressJoin}
-        onPress={() => void handleJoin()}
+        onPress={() => void handleJoin(false)}
       >
         {busy ? (
           <ActivityIndicator color={colors.white} />
@@ -579,11 +615,12 @@ export default function LiveStreamDetailScreen() {
           <Text style={styles.joinBtnText}>{joinBtnLabel}</Text>
         )}
       </Pressable>
-      {session.status === 'scheduled' ? (
-        <Text style={styles.joinHint}>
-          Join opens when the host starts the class. Your name is filled automatically.
-        </Text>
-      ) : null}
+      <Text style={styles.joinHint}>
+        Join from the mobile app or web browser — one device at a time.
+        {session.status === 'scheduled' && !session.can_host
+          ? ' Join opens when the host starts the class.'
+          : ''}
+      </Text>
     </ScrollView>
   );
 }
@@ -659,6 +696,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  hostBtn: { backgroundColor: '#0f766e' },
   joinBtnDisabled: { opacity: 0.5 },
   joinBtnText: { color: colors.white, fontSize: 16, fontWeight: '800', textAlign: 'center' },
   joinHint: {

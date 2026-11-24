@@ -10,16 +10,24 @@ export function zoomConfigured(): boolean {
 
 export function getZoomLiveVideoStatus() {
   const configured = zoomConfigured();
-  const sdkSeparate = Boolean(env.ZOOM_SDK_KEY?.trim() && env.ZOOM_SDK_SECRET?.trim());
+  const sdkKey = env.ZOOM_SDK_KEY?.trim() || '';
+  const sdkSecret = env.ZOOM_SDK_SECRET?.trim() || '';
+  const sdkConfigured = Boolean(sdkKey && sdkSecret);
+  const sdkReusesS2s =
+    sdkConfigured &&
+    sdkKey === env.ZOOM_CLIENT_ID?.trim() &&
+    sdkSecret === env.ZOOM_CLIENT_SECRET?.trim();
   return {
     configured,
     valid: configured,
     account_id_prefix: env.ZOOM_ACCOUNT_ID?.slice(0, 6),
     client_id_prefix: env.ZOOM_CLIENT_ID?.slice(0, 6),
-    join_mode: 'meeting_sdk_embedded',
-    meeting_sdk_required: {
-      configured: sdkSeparate,
-      note: 'In-browser host/join needs ZOOM_SDK_KEY + ZOOM_SDK_SECRET (Meeting SDK app). S2S OAuth creates meetings and host ZAK; no Zoom login redirect.',
+    join_mode: 'zoom_web_client',
+    note: 'Browser host/join uses Zoom Web Client with Server-to-Server OAuth (ZOOM_ACCOUNT_ID / CLIENT_ID / CLIENT_SECRET). General App Meeting SDK is optional.',
+    meeting_sdk_optional: {
+      configured: sdkConfigured,
+      reuses_s2s_credentials: sdkReusesS2s,
+      note: 'Only needed for embedded Meeting SDK. Web host/guest join works with S2S alone.',
     },
   };
 }

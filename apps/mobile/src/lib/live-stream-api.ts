@@ -20,6 +20,7 @@ export interface LiveStreamListItem {
   host_name?: string;
   permission_status: LivePermissionStatus;
   can_join: boolean;
+  can_host?: boolean;
   is_previous?: boolean;
   slide_count?: number;
   presentation_count?: number;
@@ -50,11 +51,32 @@ export async function fetchLiveStream(id: string) {
   return res.data;
 }
 
-export async function joinLiveStream(id: string) {
+export async function startLiveStream(id: string) {
+  const res = await apiFetch<{ data: LiveStreamListItem }>(`/live-streams/${id}/start`, {
+    method: 'POST',
+  });
+  return res.data;
+}
+
+export async function resumeLiveStream(id: string) {
+  const res = await apiFetch<{ data: LiveStreamListItem }>(`/live-streams/${id}/resume`, {
+    method: 'POST',
+  });
+  return res.data;
+}
+
+export async function restartLiveStream(id: string) {
+  const res = await apiFetch<{ data: LiveStreamListItem }>(`/live-streams/${id}/restart`, {
+    method: 'POST',
+  });
+  return res.data;
+}
+
+export async function joinLiveStream(id: string, opts?: { asHost?: boolean }) {
   const device_id = await getOrCreateDeviceId();
   const res = await apiFetch<{ data: LiveStreamJoinPayload }>(`/live-streams/${id}/join`, {
     method: 'POST',
-    body: JSON.stringify({ as_host: false, device_id }),
+    body: JSON.stringify({ as_host: Boolean(opts?.asHost), device_id }),
   });
   return res.data;
 }

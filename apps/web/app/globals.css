@@ -423,7 +423,8 @@ body {
     gap: 6px !important;
   }
 
-  .salary-print-root .salary-print-input .print\\:block {
+  /* Attribute selector avoids Lightning CSS treating `print:block` as a pseudo-class. */
+  .salary-print-root .salary-print-input [class*='print:block'] {
     padding: 4px 8px !important;
     font-size: 11px !important;
   }

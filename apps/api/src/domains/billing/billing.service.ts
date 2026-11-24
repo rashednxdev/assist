@@ -701,11 +701,13 @@ export async function packageGrantsForMe(userId: string, extraBasic: string[]) {
 /* --------------------------------- catalog --------------------------------- */
 
 export async function getCatalog(user: AuthUser): Promise<BillingCatalog> {
-  const [settings, docs, access] = await Promise.all([
+  const [settings, docsRaw, access, hiddenLivePkgIds] = await Promise.all([
     getBillingSettings(),
     AccessPackage.find({ is_deleted: false, is_active: true }).sort({ kind: 1, sort_order: 1, price: 1 }),
     getMyAccess(user.id),
+    hiddenLivePackageIdSet(),
   ]);
+  const docs = docsRaw.filter((d) => !(d.kind === 'live' && hiddenLivePkgIds.has(String(d._id))));
   const [names, legacyPart] = await Promise.all([scopeNames(docs), primaryPartLabel()]);
   const liveIds = docs.filter((d) => d.kind === 'live').map((d) => d._id as mongoose.Types.ObjectId);
   const [counts, upcoming] = await Promise.all([
@@ -1536,6 +1538,7 @@ function toProgramRecord(doc: {
   waiver_4?: number;
   sort_order?: number;
   is_active?: boolean;
+  is_hidden?: boolean;
 }): LiveProgramRecord {
   return {
     id: String(doc._id),
@@ -1547,20 +1550,44 @@ function toProgramRecord(doc: {
     waiver_4: doc.waiver_4 ?? 0,
     sort_order: doc.sort_order ?? 100,
     is_active: doc.is_active !== false,
+    is_hidden: Boolean(doc.is_hidden),
   };
 }
 
 async function withProgramNames(rows: AccessPackageRecord[]): Promise<AccessPackageRecord[]> {
   const ids = [...new Set(rows.map((r) => r.live_program_id).filter(Boolean))] as string[];
   if (ids.length === 0) return rows;
-  const programs = await LiveProgram.find({ _id: { $in: ids } }).select('name').lean();
-  const names = new Map(programs.map((p) => [String(p._id), p.name]));
-  return rows.map((r) => (r.live_program_id ? { ...r, live_program_name: names.get(r.live_program_id) } : r));
+  const programs = await LiveProgram.find({ _id: { $in: ids } }).select('name is_hidden').lean();
+  const meta = new Map(programs.map((p) => [String(p._id), { name: p.name, is_hidden: Boolean(p.is_hidden) }]));
+  return rows.map((r) => {
+    if (!r.live_program_id) return r;
+    const m = meta.get(r.live_program_id);
+    return {
+      ...r,
+      live_program_name: m?.name,
+      live_program_hidden: m?.is_hidden,
+    };
+  });
 }
 
 export async function listLivePrograms(includeInactive = true): Promise<LiveProgramRecord[]> {
-  const rows = await LiveProgram.find(includeInactive ? {} : { is_active: true }).sort({ sort_order: 1, name: 1 }).lean();
+  const filter = includeInactive ? {} : { is_active: true, is_hidden: { $ne: true } };
+  const rows = await LiveProgram.find(filter).sort({ sort_order: 1, name: 1 }).lean();
   return rows.map(toProgramRecord);
+}
+
+/** AccessPackage ids that sit under a hidden live program (invite-only classes). */
+export async function hiddenLivePackageIdSet(): Promise<Set<string>> {
+  const programs = await LiveProgram.find({ is_hidden: true }).select('_id').lean();
+  if (!programs.length) return new Set();
+  const pkgs = await AccessPackage.find({
+    kind: 'live',
+    is_deleted: false,
+    live_program_id: { $in: programs.map((p) => p._id) },
+  })
+    .select('_id')
+    .lean();
+  return new Set(pkgs.map((p) => String(p._id)));
 }
 
 export async function createLiveProgram(body: unknown): Promise<LiveProgramRecord> {
@@ -1599,8 +1626,19 @@ export async function deleteLiveProgram(id: string): Promise<void> {
 export async function livePackageBriefs(packageIds: string[]): Promise<Map<string, { id: string; name: string; price: number; duration_days: number }>> {
   const unique = [...new Set(packageIds)];
   if (unique.length === 0) return new Map();
-  const docs = await AccessPackage.find({ _id: { $in: unique }, kind: 'live', is_deleted: false, is_active: true })
+  const hiddenIds = await hiddenLivePackageIdSet();
+  const docs = await AccessPackage.find({
+    _id: { $in: unique },
+    kind: 'live',
+    is_deleted: false,
+    is_active: true,
+  })
     .select('name price duration_days')
     .lean();
-  return new Map(docs.map((d) => [String(d._id), { id: String(d._id), name: d.name, price: d.price, duration_days: d.duration_days }]));
+  // Never surface hidden-package shop CTAs on class cards.
+  return new Map(
+    docs
+      .filter((d) => !hiddenIds.has(String(d._id)))
+      .map((d) => [String(d._id), { id: String(d._id), name: d.name, price: d.price, duration_days: d.duration_days }]),
+  );
 }

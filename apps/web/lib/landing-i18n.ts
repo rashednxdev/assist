@@ -12,14 +12,14 @@ export function landingCopy(locale: LandingLocale): LandingCopy {
 }
 
 export function readLandingLocale(): LandingLocale {
-  if (typeof window === 'undefined') return 'bn';
+  if (typeof window === 'undefined') return 'en';
   try {
     const saved = window.localStorage.getItem(STORAGE_KEY);
     if (saved === 'en' || saved === 'bn') return saved;
   } catch {
     /* ignore */
   }
-  return 'bn';
+  return 'en';
 }
 
 export function writeLandingLocale(locale: LandingLocale): void {

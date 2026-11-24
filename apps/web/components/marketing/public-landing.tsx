@@ -58,7 +58,7 @@ function LangToggle({
 }
 
 export function PublicLanding() {
-  const [locale, setLocale] = useState<LandingLocale>('bn');
+  const [locale, setLocale] = useState<LandingLocale>('en');
   const t = useMemo(() => landingCopy(locale), [locale]);
 
   useEffect(() => {

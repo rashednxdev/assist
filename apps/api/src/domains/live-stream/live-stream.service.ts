@@ -28,7 +28,7 @@ import {
   flattenLiveStreamSlides,
 } from '@ibas/shared-types';
 import { loadEntitlementSnapshot } from '../billing/entitlements.service.js';
-import { livePackageBriefs } from '../billing/billing.service.js';
+import { hiddenLivePackageIdSet, livePackageBriefs } from '../billing/billing.service.js';
 import { AccessPackage } from '../billing/models/AccessPackage.model.js';
 import { LiveStream } from './models/LiveStream.model.js';
 import { LiveHost } from './models/LiveHost.model.js';
@@ -479,6 +479,7 @@ async function permissionFor(
   doc: {
     _id: unknown;
     access_type?: string;
+    free_audience?: string;
     host_user_id: unknown;
     support_user_id?: unknown;
     status?: string;
@@ -489,6 +490,7 @@ async function permissionFor(
   user: { is_super_admin?: boolean; user_type?: string },
   _hasPaid: boolean,
   owned: Set<string> = new Set(),
+  hiddenPackageIds: Set<string> = new Set(),
 ): Promise<{ permission_status: LivePermissionStatus; can_join: boolean; can_host: boolean }> {
   const sessionId = String(doc._id);
   const hostUserId = String(doc.host_user_id);
@@ -500,20 +502,27 @@ async function permissionFor(
   if (isPlatformAdmin(user) || isLearningHost(user)) {
     return { permission_status: 'permitted', can_join: true, can_host: true };
   }
-  // Free classes: every signed-in user may join without any package.
-  if (!isPaidClass(doc)) {
+
+  const underHiddenPackage = classPackageIds(doc).some((id) => hiddenPackageIds.has(id));
+  const inviteOnly =
+    underHiddenPackage || freeAudienceOf(doc) === 'selected' || (isPaidClass(doc) && classPackageIds(doc).length > 0);
+
+  // Open free classes (not selected / not under a hidden package).
+  if (!isPaidClass(doc) && !inviteOnly) {
     return { permission_status: 'permitted', can_join: true, can_host: false };
   }
-  // Paid class under a package: enrolled buyers (or invites) only.
-  if (classPackageIds(doc).length > 0) {
-    if (ownsClassPackage(doc, owned)) {
+
+  // Selected users / hidden package / paid package: invite or (non-hidden) package ownership.
+  if (inviteOnly) {
+    if (!underHiddenPackage && ownsClassPackage(doc, owned)) {
       return { permission_status: 'permitted', can_join: true, can_host: false };
     }
     const invite = await LiveStreamInvite.findOne({ live_stream_id: sessionId, user_id: userId }).lean();
     if (invite) return { permission_status: 'permitted', can_join: true, can_host: canHost };
     return { permission_status: 'not_permitted', can_join: false, can_host: false };
   }
-  // Paid label but not on a package: open after login (same as free join).
+
+  // Paid label but not on a package: open after login.
   return { permission_status: 'permitted', can_join: true, can_host: false };
 }
 
@@ -592,6 +601,7 @@ export async function listLiveStreamsForUser(
 
   const hasPaid = await userHasPaid(user);
   const owned = await ownedLivePackages(user);
+  const hiddenPackageIds = await hiddenLivePackageIdSet();
   const packagesOf = await packageBriefsFor(items, owned);
   const attendedIds = new Set(
     (
@@ -605,7 +615,7 @@ export async function listLiveStreamsForUser(
   );
   const result: LiveStreamListItem[] = [];
   for (const doc of items) {
-    const perm = await permissionFor(doc, user.id, user, hasPaid, owned);
+    const perm = await permissionFor(doc, user.id, user, hasPaid, owned, hiddenPackageIds);
     const previous = isPreviousClass(doc);
     const presentations = serializePresentations(doc);
     const slides = flattenLiveStreamSlides({ presentations });
@@ -616,7 +626,10 @@ export async function listLiveStreamsForUser(
       attended: attendedIds.has(String(doc._id)),
       enrolled: ownsClassPackage(doc, owned),
     });
-    // Keep package-linked paid classes visible so learners can enroll; hide other locked ones.
+    const underHidden = classPackageIds(doc).some((id) => hiddenPackageIds.has(id));
+    // Hidden-package classes: only permitted / host / admin see them — never listed for others.
+    if (underHidden && perm.permission_status === 'not_permitted') continue;
+    // Public paid packages stay visible for enroll CTA; other locked classes stay hidden.
     if (perm.permission_status === 'not_permitted' && !viewPresentation && !(packages && packages.length)) continue;
     const examSubjectId = doc.exam_subject_id ? String(doc.exam_subject_id) : undefined;
     result.push({
@@ -682,7 +695,8 @@ export async function getLiveStreamForUser(
   const subjectNames = examSubjectId ? await subjectNameMap([examSubjectId]) : new Map();
   const hasPaid = await userHasPaid(user);
   const owned = await ownedLivePackages(user);
-  const perm = await permissionFor(doc, user.id, user, hasPaid, owned);
+  const hiddenPackageIds = await hiddenLivePackageIdSet();
+  const perm = await permissionFor(doc, user.id, user, hasPaid, owned, hiddenPackageIds);
   const inviteCount = await LiveStreamInvite.countDocuments({ live_stream_id: doc._id });
   const presentations = serializePresentations(doc);
   const slides = flattenLiveStreamSlides({ presentations });
@@ -694,6 +708,11 @@ export async function getLiveStreamForUser(
     attended: Boolean(attended),
     enrolled: ownsClassPackage(doc, owned),
   });
+  const underHidden = classPackageIds(doc).some((id) => hiddenPackageIds.has(id));
+  // Hidden-package classes are never visible unless the user is permitted (invited) or host/admin.
+  if (underHidden && perm.permission_status === 'not_permitted') {
+    throw forbidden('This class is not available for your account.');
+  }
   if (perm.permission_status === 'not_permitted' && !viewPresentation && !(packages && packages.length)) {
     throw forbidden('This class is not available for your account.');
   }
@@ -960,7 +979,16 @@ export async function scheduleSubjectClass(packageId: string, dto: ScheduleSubje
   if (limit < 1) throw badRequest('Set how many classes this subject includes.');
   const scheduled = await LiveStream.countDocuments({ is_active: true, package_ids: pkg._id, status: { $ne: 'cancelled' } });
   if (scheduled >= limit) throw badRequest(`This subject already has its ${limit} classes. Raise the class amount to add another date.`);
-  const accessType = dto.access_type === 'free' ? 'free' : 'paid';
+  const hiddenPkgs = await hiddenLivePackageIdSet();
+  const underHidden = hiddenPkgs.has(String(pkg._id));
+  // Hidden package classes are always invite-only (admin-selected users).
+  const accessType = underHidden
+    ? 'free'
+    : dto.access_type === 'free'
+      ? 'free'
+      : 'paid';
+  const freeAudience =
+    underHidden || dto.free_audience === 'selected' || accessType === 'paid' ? 'selected' : 'all';
   const hostId = typeof dto.host_user_id === 'string' && dto.host_user_id.trim() ? dto.host_user_id.trim() : undefined;
   const supportId =
     typeof dto.support_user_id === 'string' && dto.support_user_id.trim() ? dto.support_user_id.trim() : undefined;
@@ -971,7 +999,7 @@ export async function scheduleSubjectClass(packageId: string, dto: ScheduleSubje
       scheduled_at: dto.scheduled_at,
       exam_subject_id: subjectIds[0],
       access_type: accessType,
-      free_audience: accessType === 'free' ? 'all' : 'selected',
+      free_audience: freeAudience,
       recording_audience: dto.recording_audience ?? 'off',
       video_platform: 'zoom',
       auto_record_cloud: Boolean(dto.auto_record_cloud),
@@ -1202,7 +1230,8 @@ export async function joinLiveStream(
 
   const hasPaid = await userHasPaid(user);
   const owned = await ownedLivePackages(user);
-  const perm = await permissionFor(doc, user.id, user, hasPaid, owned);
+  const hiddenPackageIds = await hiddenLivePackageIdSet();
+  const perm = await permissionFor(doc, user.id, user, hasPaid, owned, hiddenPackageIds);
   const payment = paymentAccessFor(doc, user, hasPaid, owned, perm.permission_status);
   if (payment.payment_blocked) {
     throw forbidden(payment.payment_required_message ?? PAID_LIVE_CLASS_UNPAID_MESSAGE);
@@ -1364,7 +1393,8 @@ export async function sendGuestMessage(
 
   const hasPaid = await userHasPaid(user);
   const owned = await ownedLivePackages(user);
-  const perm = await permissionFor(doc, user.id, user, hasPaid, owned);
+  const hiddenPackageIds = await hiddenLivePackageIdSet();
+  const perm = await permissionFor(doc, user.id, user, hasPaid, owned, hiddenPackageIds);
   if (!perm.can_join) {
     throw forbidden('You are not permitted to message in this live session.');
   }

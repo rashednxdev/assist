@@ -137,6 +137,8 @@ export interface AccessPackageRecord {
   /** Named live package this subject class belongs to. */
   live_program_id?: string;
   live_program_name?: string;
+  /** Parent live package is hidden (invite-only classes, not in shop). */
+  live_program_hidden?: boolean;
   /** Exam Preparation: one subject, a whole part, or (older packages) all of Part 1. */
   scope?: ExamPrepScopeKind;
   duration_days: number;
@@ -215,6 +217,8 @@ export const liveProgramSchema = z.object({
   waiver_4: z.coerce.number().min(0).max(90).default(0),
   sort_order: z.coerce.number().int().min(0).max(9999).default(100),
   is_active: z.boolean().default(true),
+  /** Not sold in shop; classes under it are admin-selected (invite) users only. */
+  is_hidden: z.boolean().default(false),
 });
 export type LiveProgramInput = z.input<typeof liveProgramSchema>;
 
@@ -228,6 +232,7 @@ export interface LiveProgramRecord {
   waiver_4: number;
   sort_order: number;
   is_active: boolean;
+  is_hidden: boolean;
 }
 
 export interface LiveWaiverItem {

@@ -10,6 +10,11 @@ export interface ILiveProgram extends Document {
   waiver_4: number;
   sort_order: number;
   is_active: boolean;
+  /**
+   * Hidden packages stay out of the shop. Classes under them are invite-only
+   * (admin selects which users may join).
+   */
+  is_hidden: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -24,6 +29,7 @@ const schema = new Schema<ILiveProgram>(
     waiver_4: { type: Number, default: 0, min: 0, max: 90 },
     sort_order: { type: Number, default: 100 },
     is_active: { type: Boolean, default: true },
+    is_hidden: { type: Boolean, default: false },
   },
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } },
 );

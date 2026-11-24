@@ -482,8 +482,11 @@ function SubjectSchedule({ pkg, onDone }: { pkg: AccessPackageRecord; onDone: ()
   const [when, setWhen] = useState('');
   const [hostUserId, setHostUserId] = useState('');
   const [supportUserId, setSupportUserId] = useState('');
-  const [accessType, setAccessType] = useState<'free' | 'paid'>('paid');
+  const [accessType, setAccessType] = useState<'free' | 'paid' | 'selected'>(
+    pkg.live_program_hidden ? 'selected' : 'paid',
+  );
   const [autoRecord, setAutoRecord] = useState(false);
+  const programHidden = Boolean(pkg.live_program_hidden);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -521,7 +524,13 @@ function SubjectSchedule({ pkg, onDone }: { pkg: AccessPackageRecord; onDone: ()
     setWhen(toLocalInput(row.scheduled_at));
     setHostUserId(row.host_user_id ?? '');
     setSupportUserId(row.support_user_id ?? '');
-    setAccessType(row.access_type === 'free' ? 'free' : 'paid');
+    setAccessType(
+      row.free_audience === 'selected' && row.access_type === 'free'
+        ? 'selected'
+        : row.access_type === 'free'
+          ? 'free'
+          : 'paid',
+    );
     setAutoRecord(Boolean(row.auto_record_cloud));
   }
 
@@ -532,12 +541,13 @@ function SubjectSchedule({ pkg, onDone }: { pkg: AccessPackageRecord; onDone: ()
     }
     setBusy(true);
     setError('');
+    const resolvedAccess = accessType === 'paid' && !programHidden ? 'paid' : 'free';
     const payload = {
       topic: topic.trim(),
       details: details.trim(),
       scheduled_at: new Date(when).toISOString(),
-      access_type: accessType,
-      free_audience: accessType === 'free' ? 'all' : 'selected',
+      access_type: resolvedAccess,
+      free_audience: programHidden || accessType !== 'free' ? 'selected' : 'all',
       auto_record_cloud: autoRecord,
       ...(hostUserId ? { host_user_id: hostUserId } : {}),
       support_user_id: supportUserId || null,
@@ -610,7 +620,9 @@ function SubjectSchedule({ pkg, onDone }: { pkg: AccessPackageRecord; onDone: ()
         </CardTitle>
         <p className="text-sm text-muted">
           Add, edit, or delete scheduled classes for this subject. Details show host, co-host, and notes line by line.
-          Free classes are open after login; paid package classes need enrollment.
+          {programHidden
+            ? ' This subject is under a hidden package — classes are invite-only. After saving, open Full details to select allowed users.'
+            : ' Free = all signed-in users; Paid = package enrolled; Selected users = admin allow-list only.'}
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -630,8 +642,20 @@ function SubjectSchedule({ pkg, onDone }: { pkg: AccessPackageRecord; onDone: ()
                     <p className="text-xs text-muted">{accessDateTime(row.scheduled_at)}</p>
                     <div className="flex flex-wrap gap-1.5 pt-0.5">
                       <Badge className={statusBadgeClass(row.status)}>{row.status}</Badge>
-                      <Badge variant={row.access_type === 'free' ? 'success' : 'secondary'}>
-                        {row.access_type === 'free' ? 'Free class' : 'Paid / package'}
+                      <Badge
+                        variant={
+                          row.free_audience === 'selected' || programHidden
+                            ? 'secondary'
+                            : row.access_type === 'free'
+                              ? 'success'
+                              : 'secondary'
+                        }
+                      >
+                        {row.free_audience === 'selected' || programHidden
+                          ? 'Selected users only'
+                          : row.access_type === 'free'
+                            ? 'Free class'
+                            : 'Paid / package'}
                       </Badge>
                       {row.auto_record_cloud ? <Badge variant="outline">Cloud record</Badge> : null}
                     </div>
@@ -707,11 +731,16 @@ function SubjectSchedule({ pkg, onDone }: { pkg: AccessPackageRecord; onDone: ()
                 <select
                   id="cls-access"
                   className={SELECT}
-                  value={accessType}
-                  onChange={(e) => setAccessType(e.target.value === 'free' ? 'free' : 'paid')}
+                  value={programHidden ? 'selected' : accessType}
+                  disabled={programHidden}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setAccessType(v === 'free' || v === 'selected' || v === 'paid' ? v : 'paid');
+                  }}
                 >
                   <option value="paid">Paid — package enrolled users only</option>
                   <option value="free">Free — all signed-in users</option>
+                  <option value="selected">Selected users only (admin allow-list)</option>
                 </select>
               </div>
               <div className="space-y-1.5">
@@ -812,6 +841,7 @@ function LiveProgramsPanel({ onAddSubject }: { onAddSubject: (programId: string)
   const [waiver2, setWaiver2] = useState('10');
   const [waiver3, setWaiver3] = useState('0');
   const [waiver4, setWaiver4] = useState('0');
+  const [isHidden, setIsHidden] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [error, setError] = useState('');
 
@@ -832,6 +862,7 @@ function LiveProgramsPanel({ onAddSubject }: { onAddSubject: (programId: string)
       waiver_3: Number(waiver3 || 0),
       waiver_4: Number(waiver4 || 0),
       is_active: true,
+      is_hidden: isHidden,
       sort_order: 100,
     };
     try {
@@ -843,6 +874,7 @@ function LiveProgramsPanel({ onAddSubject }: { onAddSubject: (programId: string)
       setWaiver2('10');
       setWaiver3('0');
       setWaiver4('0');
+      setIsHidden(false);
       setEditing(null);
       await load();
     } catch (e) {
@@ -867,8 +899,8 @@ function LiveProgramsPanel({ onAddSubject }: { onAddSubject: (programId: string)
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm text-muted">
-          Add a package such as Flex or Quick Review. Then add one subject class under it. The waiver applies when a learner enrolls more
-          than one subject of that package in the same payment. One subject is never reduced.
+          Add a package such as Flex or Quick Review. Then add one subject class under it. Mark a package Hidden to keep it out of the
+          shop — classes under it are invite-only (admin selects who may join).
         </p>
         {error && <Alert variant="error">{error}</Alert>}
         <div className="grid gap-2 sm:grid-cols-5">
@@ -880,12 +912,21 @@ function LiveProgramsPanel({ onAddSubject }: { onAddSubject: (programId: string)
             {editing ? 'Update package' : 'Add package'}
           </Button>
         </div>
+        <label className="flex items-center gap-2 text-sm text-muted">
+          <input type="checkbox" checked={isHidden} onChange={(e) => setIsHidden(e.target.checked)} />
+          Hidden package (not in shop · selected users only)
+        </label>
         <p className="text-xs text-muted">Waiver percents: 2 subjects, 3 subjects, 4 subjects.</p>
         <ul className="space-y-1 text-sm">
           {(rows ?? []).map((row) => (
             <li key={row.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2">
               <span>
                 <span className="font-medium">{row.name}</span>
+                {row.is_hidden ? (
+                  <Badge variant="secondary" className="ml-2">
+                    Hidden · invite only
+                  </Badge>
+                ) : null}
                 <span className="text-muted">
                   {' '}
                   · 2 subjects {row.waiver_2}% · 3 subjects {row.waiver_3}% · 4 subjects {row.waiver_4}%
@@ -905,6 +946,7 @@ function LiveProgramsPanel({ onAddSubject }: { onAddSubject: (programId: string)
                     setWaiver2(String(row.waiver_2));
                     setWaiver3(String(row.waiver_3));
                     setWaiver4(String(row.waiver_4));
+                    setIsHidden(Boolean(row.is_hidden));
                   }}
                 >
                   Edit

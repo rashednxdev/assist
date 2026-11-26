@@ -363,7 +363,7 @@ export function mergeCachedQuestionSubjects(
  * enough for a local cache since the screen only uses it to group and display, not to assign
  * any persisted rank.
  */
-export function getCachedMarathonItems(): MarathonReviewItem[] {
+export function getCachedMarathonItems(examSubjectId?: string): MarathonReviewItem[] {
   const rows = getDb()
     .getAllSync<QuestionRow>(
       `SELECT * FROM questions
@@ -371,7 +371,11 @@ export function getCachedMarathonItems(): MarathonReviewItem[] {
        AND book_id IS NOT NULL AND book_name IS NOT NULL
      ORDER BY book_name COLLATE NOCASE ASC, chapter_number COLLATE NOCASE ASC, body_en COLLATE NOCASE ASC, id ASC`,
     )
-    .filter(isRowInStoredSubjectScope);
+    .filter(isRowInStoredSubjectScope)
+    .filter((row) => {
+      if (!examSubjectId) return true;
+      return parseSubjects(row.subject_links).some((s) => s.id === examSubjectId);
+    });
 
   const ids = rows.map((r) => r.id);
   const explanationByQuestion = new Map<string, MarathonExplanationSection[]>();
@@ -428,6 +432,18 @@ export function getCachedQuestionSubjectLabel(id: string): string | undefined {
   const first = parseSubjects(row?.subject_links ?? null)[0];
   if (!first) return undefined;
   return first.name_bn?.trim() || first.name.trim() || undefined;
+}
+
+/** Resolve a subject display name from cached question subject_links. */
+export function getCachedSubjectNameById(examSubjectId: string): string | undefined {
+  const rows = getDb().getAllSync<{ subject_links: string | null }>(
+    'SELECT subject_links FROM questions WHERE subject_links IS NOT NULL LIMIT 400',
+  );
+  for (const row of rows) {
+    const hit = parseSubjects(row.subject_links).find((s) => s.id === examSubjectId);
+    if (hit) return hit.name_bn?.trim() || hit.name.trim() || undefined;
+  }
+  return undefined;
 }
 
 export function getCachedQuestionBase(id: string): CachedQuestionBase | null {

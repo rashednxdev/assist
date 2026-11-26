@@ -1,17 +1,10 @@
 import { Stack } from 'expo-router';
 import { HeaderTitle } from '@/components/ui/HeaderTitle';
-import { colors } from '@/theme';
+import { appStackHeaderOptions } from '@/components/navigation/AppMenu';
 
 export default function UsersLayout() {
   return (
-    <Stack
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.primaryDark },
-        headerTintColor: colors.white,
-        headerTitleStyle: { fontWeight: '700' },
-        headerBackTitle: '',
-      }}
-    >
+    <Stack screenOptions={appStackHeaderOptions()}>
       <Stack.Screen
         name="index"
         options={{

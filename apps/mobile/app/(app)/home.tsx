@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -6,183 +6,143 @@ import {
   ScrollView,
   RefreshControl,
   Pressable,
-  Alert,
-  Modal,
-  Linking,
 } from 'react-native';
 import { useFocusEffect, useRouter, type Href } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { ModuleTile } from '@/components/home/ModuleTile';
-import { ExamHomeCard } from '@/components/home/ExamHomeCard';
-import { HomeSummaryCard } from '@/components/home/HomeSummaryCard';
-import { BloodHomeCard } from '@/components/blood/BloodHomeCard';
-import { AccessRequiredScreen } from '@/components/home/AccessRequiredScreen';
+import type { PreparationSubjectSummary } from '@ibas/shared-types';
 import { ModuleWelcomeTips } from '@/components/home/ModuleWelcomeTips';
-import { APP_UPDATE_URL, APP_VERSION_LABEL } from '@/lib/app-version';
+import { MenuTriggerButton } from '@/components/navigation/AppMenu';
 import { isModuleWelcomeTipsPending } from '@/lib/module-welcome-tips';
 import { useAuth } from '@/lib/auth-context';
-import { useSavedShortcuts } from '@/hooks/useSavedShortcuts';
-import { useModuleOpener } from '@/hooks/useModuleOpener';
-import { isPlatformAdminUser } from '@/lib/module-access';
-import { canManageUsers } from '@/lib/users-api';
-import { canReadAnyModule } from '@/lib/module-access';
-import { CIRCULAR_MODULE_CODES } from '@/lib/circulars-api';
-import { POLICY_MODULE_CODES } from '@/lib/policy-api';
-import {
-  fetchProgressDashboard,
-  type ProgressDashboardData,
-} from '@/lib/evaluation-api';
+import { hasLearningModule } from '@/lib/api';
+import { fetchExamPrepSubjects } from '@/lib/exam-prep-api';
+import { fetchExamRoutineList, type ExamRoutineListItem } from '@/lib/exam-routine-api';
 import { fetchMyNotifications } from '@/lib/notifications-api';
-import { fetchContactAccess } from '@/lib/contacts-api';
-import type { ContactAccess } from '@ibas/shared-types';
-import { EXAM_MODULES } from '@/lib/home-modules';
+import { fetchLiveStreams, type LiveStreamListItem } from '@/lib/live-stream-api';
+import { fetchPapers } from '@/lib/papers-api';
+import type { PaperItem } from '@/types/papers';
+import { toBanglaDigits } from '@/lib/bangla-format';
 import { colors, spacing } from '@/theme';
 
-const QOTD_MODULE = EXAM_MODULES.find((m) => m.code === 'QOTD')!;
+const CARD_HEADERS = ['#0a2f5b', '#1566b8', '#1f8a96'];
+const BANGLA_MONTHS = ['জানু', 'ফেব্রু', 'মার্চ', 'এপ্রিল', 'মে', 'জুন', 'জুলাই', 'আগস্ট', 'সেপ্টে', 'অক্টো', 'নভে', 'ডিসে'];
 
-const SERVICES: Array<{
-  id: string;
-  title: string;
-  subtitle: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  badgeIcon?: keyof typeof Ionicons.glyphMap;
-  color: string;
-  href: Href;
-}> = [
-  {
-    id: 'community',
-    title: 'Community',
-    subtitle: 'Ask, answer & share',
-    icon: 'chatbubbles-outline',
-    color: '#0f766e',
-    href: '/(app)/community' as Href,
-  },
-  {
-    id: 'deductions',
-    title: 'VAT, IT, Tax & Deductions',
-    subtitle: 'By economic code & bill',
-    icon: 'receipt-outline',
-    color: '#b45309',
-    href: '/(app)/deductions' as Href,
-  },
-  {
-    id: 'pricing',
-    title: 'Pricing',
-    subtitle: 'Packages, payments & access',
-    icon: 'pricetags-outline',
-    color: '#e2136e',
-    href: '/(app)/pricing' as Href,
-  },
-];
+function bn(n: number | string): string {
+  return toBanglaDigits(String(n));
+}
 
-const OFFICE_TOOLS: Array<{
-  id: string;
-  title: string;
-  subtitle: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  color: string;
-  href: Href;
-  /** Shown only to users who can read one of these modules. */
-  codes?: string[];
-}> = [
-  {
-    id: 'schedule',
-    title: 'Schedule',
-    subtitle: 'Meetings, bill dates & R&R',
-    icon: 'calendar-outline',
-    color: '#4338ca',
-    href: '/(app)/schedule' as Href,
-  },
-  {
-    id: 'circulars',
-    title: 'Circular archive',
-    subtitle: 'Orders, SROs, gazettes & memos',
-    icon: 'archive-outline',
-    color: '#6d28d9',
-    href: '/(app)/circulars' as Href,
-    codes: CIRCULAR_MODULE_CODES,
-  },
-  {
-    id: 'policy',
-    title: 'Policy library',
-    subtitle: 'Acts, rules & circulars by subject',
-    icon: 'library-outline',
-    color: '#1e40af',
-    href: '/(app)/policy' as Href,
-    codes: POLICY_MODULE_CODES,
-  },
-  {
-    id: 'ibas',
-    title: 'iBAS++ Workspace',
-    subtitle: 'Procedures, rules & tools by area',
-    icon: 'briefcase-outline',
-    color: '#0369a1',
-    href: '/(app)/ibas' as Href,
-  },
-  {
-    id: 'toolkit',
-    title: 'Checklists & templates',
-    subtitle: 'Checklists, fill-in templates & guides',
-    icon: 'clipboard-outline',
-    color: '#0f766e',
-    href: '/(app)/toolkit' as Href,
-  },
-  {
-    id: 'calculations',
-    title: 'Salary On 2026 & Calculations',
-    subtitle: 'Salary 2026, pension & joining period',
-    icon: 'calculator-outline',
-    color: '#047857',
-    href: '/(app)/calculations' as Href,
-    codes: ['SALARY', 'PENSION'],
-  },
-];
+function greetingNow(now = new Date()): string {
+  const hour = now.getHours();
+  if (hour < 12) return 'শুভ সকাল';
+  if (hour < 17) return 'শুভ অপরাহ্ন';
+  if (hour < 20) return 'শুভ সন্ধ্যা';
+  return 'শুভ রাত্রি';
+}
 
-function weekText(n: number): string {
-  if (n === 0) return 'Nothing this week';
-  return `This week: ${n} ${n === 1 ? 'event' : 'events'}`;
+function displayName(user: { full_name_en?: string; full_name_bn?: string } | null | undefined): string {
+  return user?.full_name_bn?.trim() || user?.full_name_en?.trim() || 'স্বাগতম';
+}
+
+function daysUntil(dateStr: string): number {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const target = new Date(y!, (m ?? 1) - 1, d ?? 1);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  target.setHours(0, 0, 0, 0);
+  return Math.round((target.getTime() - today.getTime()) / 86_400_000);
+}
+
+function dateBoxParts(dateStr: string): { day: string; month: string } {
+  const [, m, d] = dateStr.split('-').map(Number);
+  return {
+    day: bn(d ?? 1),
+    month: BANGLA_MONTHS[(m ?? 1) - 1] ?? '',
+  };
+}
+
+function formatClassWhen(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('bn-BD', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function timeUntilShort(iso: string): string | null {
+  const diff = new Date(iso).getTime() - Date.now();
+  if (!Number.isFinite(diff) || diff <= 0) return null;
+  const mins = Math.round(diff / 60_000);
+  if (mins < 60) return `শুরু হতে ${bn(mins)} মিনিট বাকি`;
+  const hrs = Math.floor(mins / 60);
+  const rem = mins % 60;
+  if (hrs < 24) return `শুরু হতে ${bn(hrs)} ঘণ্টা ${rem > 0 ? `${bn(rem)} মি` : ''} বাকি`.trim();
+  const days = Math.ceil(hrs / 24);
+  return `${bn(days)} দিন পর`;
+}
+
+function nextLiveClass(rows: LiveStreamListItem[]): LiveStreamListItem | null {
+  const live = rows.find((row) => row.status === 'live');
+  if (live) return live;
+  const now = Date.now();
+  return (
+    rows
+      .filter(
+        (row) =>
+          row.status !== 'ended' &&
+          row.status !== 'cancelled' &&
+          new Date(row.scheduled_at).getTime() >= now - 60 * 60 * 1000,
+      )
+      .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())[0] ?? null
+  );
 }
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { user, signOut, refreshUser } = useAuth();
-  const { items: savedItems } = useSavedShortcuts();
-  const { openModule, checkingModuleId, accessScreen, closeAccessScreen } = useModuleOpener();
-  const [progress, setProgress] = useState<ProgressDashboardData | null>(null);
+  const { user, refreshUser } = useAuth();
+  const [subjects, setSubjects] = useState<PreparationSubjectSummary[] | null>(null);
+  const [routines, setRoutines] = useState<ExamRoutineListItem[]>([]);
+  const [papers, setPapers] = useState<PaperItem[]>([]);
+  const [liveRows, setLiveRows] = useState<LiveStreamListItem[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [welcomeTipsOpen, setWelcomeTipsOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [contactAccess, setContactAccess] = useState<ContactAccess | null>(null);
-  const [weekCount, setWeekCount] = useState<number | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
 
   const loadData = useCallback(async () => {
-    const dash = await fetchProgressDashboard().catch(() => null);
-    setProgress(dash);
-  }, []);
+    const canPaper = hasLearningModule(user?.module_access ?? [], 'PAPER') && user?.has_paid !== false;
+    const [subs, live, routine, paperList] = await Promise.all([
+      fetchExamPrepSubjects().catch(() => [] as PreparationSubjectSummary[]),
+      fetchLiveStreams('zoom').catch(() => [] as LiveStreamListItem[]),
+      fetchExamRoutineList()
+        .then((r) => r.data)
+        .catch(() => [] as ExamRoutineListItem[]),
+      canPaper
+        ? fetchPapers({ is_published: 'true' }).catch(() => [] as PaperItem[])
+        : Promise.resolve([] as PaperItem[]),
+    ]);
+    setSubjects(subs);
+    setLiveRows(Array.isArray(live) ? live : []);
+    setRoutines(routine);
+    setPapers(paperList);
+  }, [user?.module_access, user?.has_paid]);
 
   const loadUnreadCount = useCallback(async () => {
     const res = await fetchMyNotifications(true).catch(() => null);
     setUnreadCount(res?.meta.unread_count ?? 0);
   }, []);
 
-  const loadContactAccess = useCallback(async () => {
-    const res = await fetchContactAccess().catch(() => null);
-    setContactAccess(res);
-  }, []);
-
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    setRefreshKey((k) => k + 1);
     try {
-      await Promise.all([loadData(), loadUnreadCount(), loadContactAccess(), refreshUser().catch(() => null)]);
+      await Promise.all([loadData(), loadUnreadCount(), refreshUser().catch(() => null)]);
     } finally {
       setRefreshing(false);
     }
-  }, [loadData, loadUnreadCount, loadContactAccess, refreshUser]);
+  }, [loadData, loadUnreadCount, refreshUser]);
 
   useEffect(() => {
     void loadData();
@@ -194,34 +154,78 @@ export default function HomeScreen() {
     });
   }, []);
 
-  // Module grants can change while the app stays open (e.g. an admin grants/revokes access) —
-  // re-check on every visit to home, not just at login, so tile visibility stays current.
   useFocusEffect(
     useCallback(() => {
       void refreshUser().catch(() => {});
       void loadUnreadCount();
-      void loadContactAccess();
-    }, [refreshUser, loadUnreadCount, loadContactAccess]),
+      void loadData();
+    }, [refreshUser, loadUnreadCount, loadData]),
   );
 
-  function confirmSignOut() {
-    setMenuOpen(false);
-    Alert.alert('Sign out?', 'You will need to sign in again to continue.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign out', style: 'destructive', onPress: () => void signOut() },
-    ]);
-  }
+  const enrolled = useMemo(() => (subjects ?? []).filter((s) => s.owned), [subjects]);
+  const offered = useMemo(() => (subjects ?? []).filter((s) => !s.owned), [subjects]);
+  const nextLive = useMemo(() => nextLiveClass(liveRows), [liveRows]);
+  const startsIn = nextLive ? timeUntilShort(nextLive.scheduled_at) : null;
+
+  const upcomingRoutines = useMemo(
+    () =>
+      routines
+        .map((r) => ({ ...r, days: daysUntil(r.start_date) }))
+        .filter((r) => r.days >= 0)
+        .sort((a, b) => a.days - b.days)
+        .slice(0, 3),
+    [routines],
+  );
+  const nearestExam = upcomingRoutines[0] ?? null;
+
+  const overallPrepPercent = useMemo(() => {
+    if (enrolled.length === 0) return 0;
+    return Math.round(enrolled.reduce((acc, s) => acc + s.progress_percent, 0) / enrolled.length);
+  }, [enrolled]);
+
+  const accuracySummary = useMemo(() => {
+    const withMcq = (subjects ?? []).filter((s) => s.owned && s.mcq_touched > 0);
+    const touched = withMcq.reduce((sum, s) => sum + s.mcq_touched, 0);
+    const correct = withMcq.reduce((sum, s) => sum + s.mcq_correct, 0);
+    const overall = touched > 0 ? Math.round((correct / touched) * 100) : 0;
+    const rows = withMcq
+      .map((s) => ({
+        id: s.id,
+        title: s.name_bn?.trim() || s.name,
+        percent: Math.round((s.mcq_correct / s.mcq_touched) * 100),
+      }))
+      .sort((a, b) => b.percent - a.percent);
+    const weakest = rows.length > 0 ? rows[rows.length - 1] : null;
+    return { touched, overall, rows: rows.slice(0, 4), weakest };
+  }, [subjects]);
+
+  const featuredPaper = papers.find((p) => p.is_exam_of_week) ?? papers[0] ?? null;
+  const enrollPill =
+    enrolled.length > 0 ? `${bn(enrolled.length)}টি বিষয়ে এনরোল` : 'সকল বিষয়ের সারাংশ উন্মুক্ত';
 
   return (
     <View style={styles.root}>
-      <LinearGradient colors={[colors.primaryDark, colors.primary]} style={styles.hero}>
+      <LinearGradient colors={['#0a2f5b', '#1566b8']} style={styles.hero}>
         <SafeAreaView edges={['top']}>
           <View style={styles.heroInner}>
-            <View>
-              <Text style={styles.greet}>ProAssist</Text>
-              <Text style={styles.heroSub}>Level up your services</Text>
+            <MenuTriggerButton />
+            <View style={styles.heroText}>
+              <Text style={styles.greet}>
+                {greetingNow()}, {displayName(user)}
+              </Text>
+              <Text style={styles.heroSub}>
+                {enrolled.length > 0
+                  ? 'পদোন্নতি ও বিভাগীয় পরীক্ষার বিষয়ভিত্তিক প্রস্তুতি।'
+                  : 'বিষয়ভিত্তিক প্রস্তুতি শুরু করতে আপনার প্রয়োজনীয় বিষয়ে এনরোল করুন।'}
+              </Text>
             </View>
             <View style={styles.heroActions}>
+              <Pressable
+                onPress={() => router.push('/(app)/exam-prep' as Href)}
+                style={styles.enrollPill}
+              >
+                <Text style={styles.enrollPillText}>{enrollPill}</Text>
+              </Pressable>
               <Pressable
                 onPress={() => router.push('/(app)/notifications' as Href)}
                 style={styles.menuBtn}
@@ -235,252 +239,389 @@ export default function HomeScreen() {
                   </View>
                 )}
               </Pressable>
-              <Pressable
-                onPress={() => setMenuOpen(true)}
-                style={styles.menuBtn}
-                accessibilityLabel="Open menu"
-                hitSlop={8}
-              >
-                <Ionicons name="ellipsis-vertical" size={20} color={colors.white} />
-              </Pressable>
             </View>
           </View>
         </SafeAreaView>
       </LinearGradient>
 
-      <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
-        <View style={styles.menuBackdrop}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setMenuOpen(false)} />
-          <SafeAreaView edges={['top']} style={styles.menuSafe} pointerEvents="box-none">
-            <View style={styles.menuCard}>
-              <Pressable
-                style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
-                onPress={() => {
-                  setMenuOpen(false);
-                  router.push('/(app)/profile' as Href);
-                }}
-              >
-                <Ionicons name="person-outline" size={20} color={colors.primary} />
-                <View style={styles.menuItemText}>
-                  <Text style={styles.menuItemTitle}>Profile</Text>
-                  <Text style={styles.menuItemSub}>Account & access details</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-              </Pressable>
-              <View style={styles.menuDivider} />
-              <Pressable
-                style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
-                onPress={() => {
-                  setMenuOpen(false);
-                  router.push('/(app)/progress' as Href);
-                }}
-              >
-                <Ionicons name="stats-chart-outline" size={20} color={colors.primary} />
-                <View style={styles.menuItemText}>
-                  <Text style={styles.menuItemTitle}>Progress Dashboard</Text>
-                  <Text style={styles.menuItemSub}>Papers & MCQ results</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-              </Pressable>
-              {contactAccess?.can_verify ? (
-                <>
-                  <View style={styles.menuDivider} />
-                  <Pressable
-                    style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
-                    onPress={() => {
-                      setMenuOpen(false);
-                      router.push('/(app)/verify-colleague' as Href);
-                    }}
-                  >
-                    <Ionicons name="shield-checkmark-outline" size={20} color={colors.primary} />
-                    <View style={styles.menuItemText}>
-                      <Text style={styles.menuItemTitle}>Verify a colleague</Text>
-                      <Text style={styles.menuItemSub}>Open contacts with their 8-digit code</Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-                  </Pressable>
-                </>
-              ) : null}
-              {isPlatformAdminUser(user) ? (
-                <>
-                  <View style={styles.menuDivider} />
-                  <Pressable
-                    style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
-                    onPress={() => {
-                      setMenuOpen(false);
-                      router.push('/(app)/salary-access' as Href);
-                    }}
-                  >
-                    <Ionicons name="wallet-outline" size={20} color={colors.primary} />
-                    <View style={styles.menuItemText}>
-                      <Text style={styles.menuItemTitle}>Salary bill access</Text>
-                      <Text style={styles.menuItemSub}>Approve arrears bills and message users</Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-                  </Pressable>
-                </>
-              ) : null}
-              {canManageUsers(user) ? (
-                <>
-                  <View style={styles.menuDivider} />
-                  <Pressable
-                    style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
-                    onPress={() => {
-                      setMenuOpen(false);
-                      router.push('/(app)/users' as Href);
-                    }}
-                  >
-                    <Ionicons name="people-outline" size={20} color={colors.primary} />
-                    <View style={styles.menuItemText}>
-                      <Text style={styles.menuItemTitle}>Users</Text>
-                      <Text style={styles.menuItemSub}>Manage users, module access & notify</Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-                  </Pressable>
-                </>
-              ) : null}
-              <View style={styles.menuDivider} />
-              <Pressable
-                style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
-                onPress={confirmSignOut}
-              >
-                <Ionicons name="log-out-outline" size={20} color={colors.error} />
-                <View style={styles.menuItemText}>
-                  <Text style={[styles.menuItemTitle, styles.menuItemDanger]}>Sign out</Text>
-                  <Text style={styles.menuItemSub}>End this session</Text>
-                </View>
-              </Pressable>
-              <View style={styles.menuDivider} />
-              <View style={styles.menuVersion}>
-                <Text style={styles.menuVersionText}>{APP_VERSION_LABEL}</Text>
-                <Pressable
-                  style={({ pressed }) => [styles.updateBtn, pressed && styles.updateBtnPressed]}
-                  onPress={() => {
-                    setMenuOpen(false);
-                    void Linking.openURL(APP_UPDATE_URL);
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Check update"
-                >
-                  <Ionicons name="cloud-download-outline" size={14} color={colors.primary} />
-                  <Text style={styles.updateBtnText}>Check update</Text>
-                </Pressable>
-              </View>
-            </View>
-          </SafeAreaView>
-        </View>
-      </Modal>
-
       <ScrollView
         contentContainerStyle={styles.scroll}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        <HomeSummaryCard unreadCount={unreadCount} refreshKey={refreshKey} contactAccess={contactAccess} onWeekCount={setWeekCount} />
+        <Pressable
+          style={({ pressed }) => [styles.salaryCta, pressed && styles.pressed]}
+          onPress={() => router.push('/(app)/salary' as Href)}
+        >
+          <Ionicons name="calculator-outline" size={18} color="#fff" />
+          <View style={styles.flex1}>
+            <Text style={styles.salaryTitle}>বেতন ও বকেয়া হিসাব</Text>
+            <Text style={styles.salarySub}>বেতন স্কেল, টি.আর. ফরম ও বকেয়া বিল</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.8)" />
+        </Pressable>
 
-        {contactAccess && contactAccess.pending_handovers > 0 ? (
-          <Pressable
-            style={({ pressed }) => [styles.prompt, pressed && styles.updateBtnPressed]}
-            onPress={() => router.push('/(app)/account/work' as Href)}
-          >
-            <Ionicons name="swap-horizontal" size={22} color="#b45309" />
-            <View style={styles.menuItemText}>
-              <Text style={styles.promptTitle}>Additional charge: did you hand over?</Text>
-              <Text style={styles.promptText}>
-                Someone joined {contactAccess.pending_handovers === 1 ? 'a post' : `${contactAccess.pending_handovers} posts`} you hold as
-                additional charge. Tap to confirm.
+        {nextLive ? (
+          <View style={styles.liveHero}>
+            <View style={styles.liveBadges}>
+              <View style={styles.liveBadge}>
+                <View style={styles.liveDot} />
+                <Text style={styles.liveBadgeText}>
+                  {nextLive.status === 'live' ? 'লাইভ চলছে' : `লাইভ · ${formatClassWhen(nextLive.scheduled_at)}`}
+                </Text>
+              </View>
+              {nextLive.access_type === 'free' ? (
+                <View style={[styles.liveBadge, { backgroundColor: 'rgba(40,184,216,0.25)' }]}>
+                  <Text style={[styles.liveBadgeText, { color: '#8be9f5' }]}>ফ্রি ক্লাস</Text>
+                </View>
+              ) : null}
+            </View>
+            <Text style={styles.liveTitle}>{nextLive.topic}</Text>
+            <Text style={styles.liveMeta}>
+              {[nextLive.host_name, startsIn].filter(Boolean).join(' · ') ||
+                formatClassWhen(nextLive.scheduled_at)}
+            </Text>
+            <View style={styles.liveActions}>
+              <Pressable
+                style={styles.primaryBtn}
+                onPress={() => router.push(`/(app)/live/${nextLive.id}` as Href)}
+              >
+                <Ionicons name="videocam" size={16} color="#fff" />
+                <Text style={styles.primaryBtnText}>ক্লাসে যোগ দিন</Text>
+              </Pressable>
+              <Pressable onPress={() => router.push('/(app)/live' as Href)}>
+                <Text style={styles.liveAllLink}>সব লাইভ ক্লাস →</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.liveHero}>
+            <Text style={styles.promoTag}>বিষয়ভিত্তিক প্রস্তুতি</Text>
+            <Text style={styles.liveTitle}>
+              প্রতিটি বিষয়ের বই, লিখিত প্রশ্ন, MCQ ও লাইভ ক্লাস এক ওয়ার্কস্পেসে
+            </Text>
+            <Text style={styles.liveMeta}>
+              ফ্রি লাইভ ক্লাস এনরোল ছাড়াই দেখা যায়। যেকোনো বিষয়ের রিসোর্স সারাংশ দেখে প্রস্তুতি শুরু করুন।
+            </Text>
+            <View style={styles.liveActions}>
+              <Pressable style={styles.primaryBtn} onPress={() => router.push('/(app)/exam-prep' as Href)}>
+                <Ionicons name="school" size={16} color="#fff" />
+                <Text style={styles.primaryBtnText}>Exam Preparations</Text>
+              </Pressable>
+              <Pressable style={styles.ghostBtn} onPress={() => router.push('/(app)/live' as Href)}>
+                <Text style={styles.ghostBtnText}>Live Classes</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+
+        <View style={styles.prepCard}>
+          <View style={styles.prepHead}>
+            <Text style={styles.prepEyebrow}>
+              {nearestExam ? 'সামনের পরীক্ষা' : 'সামগ্রিক প্রস্তুতি'}
+            </Text>
+            <Ionicons name="calendar-outline" size={16} color="#1566b8" />
+          </View>
+          {nearestExam ? (
+            <>
+              <Text style={styles.prepName} numberOfLines={1}>
+                {nearestExam.exam_name}
+              </Text>
+              <Text style={styles.prepBig}>
+                {nearestExam.days === 0 ? 'আজ' : `${bn(nearestExam.days)} দিন বাকি`}
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.prepName}>এনরোল করা বিষয়ের অগ্রগতি</Text>
+              <Text style={styles.prepBig}>{bn(overallPrepPercent)}%</Text>
+            </>
+          )}
+          <View style={styles.progressTrack}>
+            <View
+              style={[
+                styles.progressFill,
+                { width: `${Math.max(overallPrepPercent, enrolled.length > 0 ? 4 : 0)}%` },
+              ]}
+            />
+          </View>
+          <Pressable onPress={() => router.push('/(app)/exam-routine' as Href)}>
+            <Text style={styles.link}>পরীক্ষার রুটিন ও বিজ্ঞপ্তি দেখুন →</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.sectionHead}>
+          <Text style={styles.sectionTitle}>চালিয়ে যান</Text>
+          <Pressable onPress={() => router.push('/(app)/exam-prep' as Href)}>
+            <Text style={styles.link}>সব বিষয় দেখুন</Text>
+          </Pressable>
+        </View>
+
+        {enrolled.length === 0 ? (
+          <View style={styles.emptyEnroll}>
+            <Text style={styles.emptyTitle}>এখনো কোনো বিষয়ে এনরোল করা হয়নি</Text>
+            <Text style={styles.emptySub}>
+              Exam Preparations থেকে প্রতিটি বিষয়ের বই, লিখিত প্রশ্ন ও MCQ সংখ্যা দেখে পছন্দের প্যাকেজে এনরোল করুন।
+            </Text>
+            <View style={styles.liveActions}>
+              <Pressable style={styles.secondaryBtn} onPress={() => router.push('/(app)/exam-prep' as Href)}>
+                <Text style={styles.secondaryBtnText}>বিষয়সমূহ দেখুন</Text>
+              </Pressable>
+              <Pressable style={styles.primaryBtn} onPress={() => router.push('/(app)/pricing?tab=exam_prep' as Href)}>
+                <Text style={styles.primaryBtnText}>কোর্স ও প্যাকেজ</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.subjectList}>
+            {enrolled.slice(0, 4).map((subject, idx) => {
+              const title = subject.name_bn?.trim() || subject.name;
+              const totalItems = subject.written + subject.mcq;
+              const doneItems = subject.written_read + subject.mcq_touched;
+              return (
+                <Pressable
+                  key={subject.id}
+                  style={({ pressed }) => [styles.subjectRow, pressed && styles.pressed]}
+                  onPress={() => router.push(`/(app)/exam-prep/${subject.id}` as Href)}
+                >
+                  <View style={[styles.subjectIcon, { backgroundColor: CARD_HEADERS[idx % CARD_HEADERS.length] }]}>
+                    <Ionicons name="book-outline" size={20} color="#fff" />
+                  </View>
+                  <View style={styles.flex1}>
+                    <Text style={styles.partLabel}>{subject.part_label}</Text>
+                    <Text style={styles.subjectTitle} numberOfLines={1}>
+                      {title}
+                    </Text>
+                    <View style={styles.miniProgressRow}>
+                      <View style={styles.miniTrack}>
+                        <View
+                          style={[styles.miniFill, { width: `${Math.max(subject.progress_percent, 4)}%` }]}
+                        />
+                      </View>
+                      <Text style={styles.miniCount}>
+                        {bn(doneItems)} / {bn(totalItems)}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.continueChip}>
+                    <Text style={styles.continueChipText}>চালিয়ে যান</Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+
+        {featuredPaper ? (
+          <View style={styles.paperBanner}>
+            <View style={styles.paperIcon}>
+              <Ionicons name="document-text-outline" size={20} color="#b45309" />
+            </View>
+            <View style={styles.flex1}>
+              <Text style={styles.paperTitle}>{featuredPaper.name}</Text>
+              <Text style={styles.paperMeta}>
+                {bn(featuredPaper.question_count)}টি প্রশ্ন · {bn(featuredPaper.duration_minutes)} মিনিট
+                {featuredPaper.exam_subject_name ? ` · ${featuredPaper.exam_subject_name}` : ''}
               </Text>
             </View>
-            <Ionicons name="chevron-forward" size={18} color="#b45309" />
-          </Pressable>
+            <Pressable
+              style={styles.primaryBtn}
+              onPress={() => router.push(`/(app)/papers/${featuredPaper.id}` as Href)}
+            >
+              <Text style={styles.primaryBtnText}>শুরু করুন</Text>
+            </Pressable>
+          </View>
         ) : null}
 
-        <Text style={styles.sectionTitle}>Office & policy</Text>
-        <View style={styles.grid}>
-          {OFFICE_TOOLS.filter((s) => !s.codes || canReadAnyModule(user, s.codes)).map((s) => (
-            <ModuleTile
-              key={s.id}
-              title={s.title}
-              subtitle={s.subtitle}
-              icon={s.icon}
-              color={s.color}
-              badgeText={s.id === 'schedule' && weekCount !== null ? weekText(weekCount) : undefined}
-              enabled
-              onPress={() => router.push(s.href)}
-            />
-          ))}
+        <View style={styles.twoCol}>
+          <View style={styles.panel}>
+            <View style={styles.sectionHead}>
+              <Text style={styles.panelTitle}>পরীক্ষার রুটিন</Text>
+              <Pressable onPress={() => router.push('/(app)/exam-routine' as Href)}>
+                <Text style={styles.linkSm}>ক্যালেন্ডার</Text>
+              </Pressable>
+            </View>
+            {upcomingRoutines.length === 0 ? (
+              <Text style={styles.emptySub}>বর্তমানে কোনো আসন্ন পরীক্ষার তারিখ ঘোষিত নেই।</Text>
+            ) : (
+              upcomingRoutines.map((item) => {
+                const box = dateBoxParts(item.start_date);
+                return (
+                  <Pressable
+                    key={item.exam_name_id}
+                    style={styles.routineRow}
+                    onPress={() => router.push(`/(app)/exam-routine/${item.exam_name_id}` as Href)}
+                  >
+                    <View style={styles.dateBox}>
+                      <Text style={styles.dateDay}>{box.day}</Text>
+                      <Text style={styles.dateMonth}>{box.month}</Text>
+                    </View>
+                    <View style={styles.flex1}>
+                      <Text style={styles.routineName} numberOfLines={1}>
+                        {item.exam_name}
+                      </Text>
+                      <Text style={styles.routineNote} numberOfLines={1}>
+                        {item.start_date_note?.trim() || 'পরীক্ষার সময়সূচি দেখুন'}
+                      </Text>
+                    </View>
+                    <Text style={styles.daysChip}>
+                      {item.days === 0 ? 'আজ' : `${bn(item.days)} দিন`}
+                    </Text>
+                  </Pressable>
+                );
+              })
+            )}
+          </View>
+
+          <View style={styles.panel}>
+            <View style={styles.sectionHead}>
+              <Text style={styles.panelTitle}>আপনার নির্ভুলতা</Text>
+              <Pressable onPress={() => router.push('/(app)/exam-prep' as Href)}>
+                <Text style={styles.linkSm}>বিস্তারিত</Text>
+              </Pressable>
+            </View>
+            {accuracySummary.touched === 0 ? (
+              <Text style={styles.emptySub}>
+                এনরোল করা বিষয়ের অধ্যায়ভিত্তিক MCQ উত্তর দিলে এখানে সঠিকতার হার দেখা যাবে।
+              </Text>
+            ) : (
+              <>
+                <Text style={styles.accuracyBig}>{bn(accuracySummary.overall)}%</Text>
+                <Text style={styles.emptySub}>
+                  মোট {bn(accuracySummary.touched)}টি অনুশীলনে গড় সঠিকতা
+                </Text>
+                {accuracySummary.rows.map((row) => (
+                  <View key={row.id} style={styles.accRow}>
+                    <View style={styles.accLabels}>
+                      <Text style={styles.accName} numberOfLines={1}>
+                        {row.title}
+                      </Text>
+                      <Text style={styles.accPct}>{bn(row.percent)}%</Text>
+                    </View>
+                    <View style={styles.miniTrack}>
+                      <View
+                        style={[
+                          styles.miniFill,
+                          {
+                            width: `${Math.max(row.percent, 5)}%`,
+                            backgroundColor:
+                              row.percent >= 75 ? '#1f9d68' : row.percent >= 55 ? '#1566b8' : '#e07c24',
+                          },
+                        ]}
+                      />
+                    </View>
+                  </View>
+                ))}
+                {accuracySummary.weakest && accuracySummary.weakest.percent < 75 ? (
+                  <Pressable
+                    onPress={() =>
+                      router.push(`/(app)/exam-prep/${accuracySummary.weakest!.id}` as Href)
+                    }
+                  >
+                    <Text style={styles.weakHint}>
+                      <Text style={{ fontWeight: '800' }}>{accuracySummary.weakest.title}</Text> বিষয়ে
+                      আরও অনুশীলন করুন →
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </>
+            )}
+          </View>
         </View>
 
-        <Text style={styles.sectionTitle}>Community & services</Text>
-        <View style={styles.grid}>
-          {SERVICES.map((s) => (
-            <ModuleTile
-              key={s.id}
-              title={s.title}
-              subtitle={s.subtitle}
-              icon={s.icon}
-              badgeIcon={s.badgeIcon}
-              color={s.color}
-              enabled
-              onPress={() => router.push(s.href)}
-            />
-          ))}
+        <View style={styles.askBanner}>
+          <View style={styles.askIcon}>
+            <Ionicons name="sparkles" size={18} color="#fff" />
+          </View>
+          <View style={styles.flex1}>
+            <Text style={styles.askTitle}>Ask ProAssist</Text>
+            <Text style={styles.emptySub}>
+              কোনো বিধি বা পরীক্ষার প্রশ্ন নিয়ে জিজ্ঞাসা আছে? বিষয় উল্লেখ করে প্রশ্ন পাঠান।
+            </Text>
+          </View>
+          <Pressable style={styles.primaryBtn} onPress={() => router.push('/(app)/user-questions' as Href)}>
+            <Text style={styles.primaryBtnText}>প্রশ্ন করুন</Text>
+          </Pressable>
         </View>
 
-        <Text style={styles.sectionTitle}>Blood bank</Text>
-        <BloodHomeCard />
-
-        <Text style={styles.sectionTitle}>Exam preparation</Text>
-        <ExamHomeCard
-          progress={progress}
-          savedCount={savedItems.length}
-          qotdChecking={checkingModuleId === QOTD_MODULE.id}
-          onOpen={() => router.push('/(app)/exam-prep' as Href)}
-          onQotd={() => void openModule(QOTD_MODULE)}
-        />
+        {offered.length > 0 ? (
+          <>
+            <View style={styles.sectionHead}>
+              <Text style={styles.sectionTitle}>আপনার জন্য প্রস্তাবিত</Text>
+              <Pressable onPress={() => router.push('/(app)/pricing?tab=exam_prep' as Href)}>
+                <Text style={styles.link}>সব কোর্স</Text>
+              </Pressable>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.offerRow}>
+              {offered.slice(0, 3).map((subject, idx) => {
+                const title = subject.name_bn?.trim() || subject.name;
+                const cheapest = subject.packages.slice().sort((a, b) => a.price - b.price)[0];
+                return (
+                  <Pressable
+                    key={subject.id}
+                    style={styles.offerCard}
+                    onPress={() => router.push(`/(app)/exam-prep/${subject.id}` as Href)}
+                  >
+                    <View
+                      style={[styles.offerHeader, { backgroundColor: CARD_HEADERS[idx % CARD_HEADERS.length] }]}
+                    >
+                      <Text style={styles.offerPart}>{subject.part_label}</Text>
+                      <Ionicons name="school-outline" size={22} color="rgba(255,255,255,0.8)" />
+                    </View>
+                    <View style={styles.offerBody}>
+                      <Text style={styles.offerTag}>পরীক্ষা প্রস্তুতি</Text>
+                      <Text style={styles.offerTitle} numberOfLines={2}>
+                        {title}
+                      </Text>
+                      <Text style={styles.offerMeta}>
+                        {bn(subject.books)}টি বই · {bn(subject.written)}টি লিখিত · {bn(subject.mcq)}টি MCQ
+                      </Text>
+                      <View style={styles.offerFooter}>
+                        <Text style={styles.offerPrice}>
+                          {cheapest ? `৳${cheapest.price.toLocaleString('bn-BD')}` : 'প্যাকেজ দেখুন'}
+                        </Text>
+                        <Text style={styles.offerCta}>দেখুন</Text>
+                      </View>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </>
+        ) : null}
       </ScrollView>
 
-      <AccessRequiredScreen
-        visible={accessScreen !== null}
-        variant={accessScreen?.variant ?? 'denied'}
-        moduleTitle={accessScreen?.moduleTitle}
-        stoppedReason={accessScreen?.stoppedReason}
-        unpaidMessage={user?.unpaid_message}
-        onClose={closeAccessScreen}
-      />
       <ModuleWelcomeTips visible={welcomeTipsOpen} onDone={() => setWelcomeTipsOpen(false)} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  hero: {
-    paddingBottom: spacing.lg,
-  },
+  root: { flex: 1, backgroundColor: colors.background },
+  flex1: { flex: 1, minWidth: 0 },
+  pressed: { opacity: 0.92 },
+  hero: { paddingBottom: spacing.md },
   heroInner: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  greet: {
-    color: colors.white,
-    fontSize: 24,
-    fontWeight: '800',
-  },
-  heroSub: {
-    color: 'rgba(255,255,255,0.85)',
-    fontSize: 14,
-    marginTop: 2,
-  },
-  heroActions: {
-    flexDirection: 'row',
+    alignItems: 'flex-start',
     gap: spacing.sm,
   },
+  heroText: { flex: 1, minWidth: 0 },
+  greet: { color: colors.white, fontSize: 20, fontWeight: '800' },
+  heroSub: { color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 4, lineHeight: 17 },
+  heroActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  enrollPill: {
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    maxWidth: 140,
+  },
+  enrollPillText: { color: colors.white, fontSize: 10, fontWeight: '800' },
   menuBtn: {
     width: 40,
     height: 40,
@@ -501,133 +642,292 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
-    borderColor: colors.primaryDark,
+    borderColor: '#0a2f5b',
   },
-  badgeText: {
-    color: colors.white,
-    fontSize: 10,
-    fontWeight: '800',
+  badgeText: { color: colors.white, fontSize: 10, fontWeight: '800' },
+  scroll: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xl * 2 },
+  salaryCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#9f1239',
+    borderRadius: 14,
+    padding: 12,
   },
-  menuBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.35)',
+  salaryTitle: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  salarySub: { color: 'rgba(255,255,255,0.85)', fontSize: 11, marginTop: 2 },
+  liveHero: {
+    backgroundColor: '#0a2f5b',
+    borderRadius: 18,
+    padding: spacing.md,
+    gap: 8,
   },
-  menuSafe: {
-    alignItems: 'flex-end',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
+  liveBadges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  liveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#1566b8',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
-  menuCard: {
-    width: 260,
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#28b8d8' },
+  liveBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  promoTag: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    color: '#fff',
+    overflow: 'hidden',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  liveTitle: { color: '#fff', fontSize: 18, fontWeight: '800', lineHeight: 24 },
+  liveMeta: { color: 'rgba(255,255,255,0.75)', fontSize: 12, lineHeight: 17 },
+  liveActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginTop: 6 },
+  liveAllLink: { color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: '700' },
+  primaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#1566b8',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  primaryBtnText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  ghostBtn: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  ghostBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  secondaryBtn: {
+    borderWidth: 1,
+    borderColor: '#d7e4ee',
+    backgroundColor: '#f4f9fd',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  secondaryBtnText: { color: '#0a2f5b', fontSize: 12, fontWeight: '700' },
+  prepCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#d7e4ee',
+    padding: spacing.md,
+    gap: 8,
+  },
+  prepHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  prepEyebrow: { fontSize: 11, fontWeight: '800', color: colors.textMuted, letterSpacing: 0.4 },
+  prepName: { fontSize: 13, fontWeight: '700', color: '#0a2f5b' },
+  prepBig: { fontSize: 28, fontWeight: '900', color: '#0a2f5b' },
+  progressTrack: { height: 8, borderRadius: 999, backgroundColor: '#e6eff7', overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: '#1566b8', borderRadius: 999 },
+  link: { fontSize: 12, fontWeight: '700', color: '#1566b8' },
+  linkSm: { fontSize: 11, fontWeight: '700', color: '#1566b8' },
+  sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  sectionTitle: { fontSize: 17, fontWeight: '800', color: '#0a2f5b' },
+  emptyEnroll: {
     backgroundColor: colors.surface,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-    marginTop: 52,
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 14,
-  },
-  menuItemPressed: {
-    backgroundColor: colors.background,
-  },
-  menuItemText: {
-    flex: 1,
-    gap: 2,
-  },
-  menuItemTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  menuItemDanger: {
-    color: colors.error,
-  },
-  menuItemSub: {
-    fontSize: 12,
-    color: colors.textMuted,
-  },
-  menuDivider: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginHorizontal: spacing.md,
-  },
-  menuVersion: {
-    paddingHorizontal: spacing.md,
-    paddingTop: 10,
-    paddingBottom: 12,
-    alignItems: 'center',
+    borderColor: '#d7e4ee',
+    padding: spacing.md,
     gap: 8,
   },
-  menuVersionText: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.2,
-    color: colors.textMuted,
-  },
-  updateBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    width: '100%',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    backgroundColor: '#eff6ff',
-    paddingVertical: 8,
-  },
-  updateBtnPressed: {
-    opacity: 0.85,
-  },
-  updateBtnText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: colors.primary,
-  },
-  scroll: {
-    padding: spacing.lg,
-    gap: spacing.lg,
-    paddingTop: spacing.md,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-  },
-  prompt: {
+  emptyTitle: { fontSize: 14, fontWeight: '800', color: '#0a2f5b' },
+  emptySub: { fontSize: 12, color: colors.textMuted, lineHeight: 17 },
+  subjectList: { gap: 10 },
+  subjectRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    padding: spacing.md,
+    backgroundColor: colors.surface,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#fde68a',
-    backgroundColor: '#fffbeb',
+    borderColor: '#d7e4ee',
+    padding: 12,
   },
-  promptTitle: {
-    fontSize: 15,
+  subjectIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  partLabel: { fontSize: 11, fontWeight: '700', color: '#1566b8' },
+  subjectTitle: { fontSize: 14, fontWeight: '800', color: '#0a2f5b' },
+  miniProgressRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
+  miniTrack: { flex: 1, height: 6, borderRadius: 999, backgroundColor: '#e6eff7', overflow: 'hidden' },
+  miniFill: { height: '100%', backgroundColor: '#1566b8', borderRadius: 999 },
+  miniCount: { fontSize: 11, fontWeight: '700', color: colors.textMuted },
+  continueChip: {
+    backgroundColor: '#f4f9fd',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  continueChipText: { fontSize: 11, fontWeight: '800', color: '#1566b8' },
+  paperBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#fff9eb',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#f2d9a0',
+    padding: 12,
+  },
+  paperIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(245,158,11,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paperTitle: { fontSize: 13, fontWeight: '800', color: '#0a2f5b' },
+  paperMeta: { fontSize: 11, color: colors.textMuted, marginTop: 2 },
+  twoCol: { gap: 12 },
+  panel: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#d7e4ee',
+    padding: spacing.md,
+    gap: 10,
+  },
+  panelTitle: { fontSize: 15, fontWeight: '800', color: '#0a2f5b' },
+  routineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: '#e6eff7',
+    borderRadius: 12,
+    padding: 10,
+  },
+  dateBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#eaf3fc',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dateDay: { fontSize: 13, fontWeight: '900', color: '#0a2f5b' },
+  dateMonth: { fontSize: 10, fontWeight: '700', color: '#1566b8' },
+  routineName: { fontSize: 13, fontWeight: '800', color: '#0a2f5b' },
+  routineNote: { fontSize: 11, color: colors.textMuted },
+  daysChip: {
+    backgroundColor: '#eaf3fc',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    fontSize: 11,
     fontWeight: '800',
-    color: '#92400e',
+    color: '#1566b8',
+    overflow: 'hidden',
   },
-  promptText: {
+  accuracyBig: { fontSize: 28, fontWeight: '900', color: '#0a2f5b' },
+  accRow: { gap: 4 },
+  accLabels: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
+  accName: { flex: 1, fontSize: 12, fontWeight: '700', color: '#0a2f5b' },
+  accPct: { fontSize: 12, fontWeight: '700', color: colors.textMuted },
+  weakHint: {
+    backgroundColor: '#fff8ee',
+    borderRadius: 12,
+    padding: 10,
     fontSize: 12,
-    lineHeight: 17,
-    color: '#92400e',
+    color: '#9a5b13',
+    overflow: 'hidden',
+  },
+  askBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#eaf4fc',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#c5dff6',
+    padding: 12,
+  },
+  askIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#1566b8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  askTitle: { fontSize: 14, fontWeight: '800', color: '#0a2f5b' },
+  offerRow: { gap: 12, paddingRight: spacing.lg },
+  offerCard: {
+    width: 240,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#d7e4ee',
+    backgroundColor: colors.surface,
+    overflow: 'hidden',
+  },
+  offerHeader: {
+    height: 72,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  offerPart: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    color: '#fff',
+    overflow: 'hidden',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  offerBody: { padding: 12, gap: 6 },
+  offerTag: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#eaf3fc',
+    color: '#1566b8',
+    overflow: 'hidden',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  offerTitle: { fontSize: 14, fontWeight: '800', color: '#0a2f5b', minHeight: 36 },
+  offerMeta: { fontSize: 11, color: colors.textMuted },
+  offerFooter: {
+    marginTop: 4,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#eef4f9',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  offerPrice: { fontSize: 14, fontWeight: '800', color: '#0a2f5b' },
+  offerCta: {
+    borderWidth: 1,
+    borderColor: '#1566b8',
+    color: '#1566b8',
+    overflow: 'hidden',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    fontSize: 11,
+    fontWeight: '700',
   },
 });

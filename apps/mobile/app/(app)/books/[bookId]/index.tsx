@@ -21,7 +21,9 @@ import {
   ChapterQuestionsButton,
   ChapterQuestionsPanel,
 } from '@/components/books/ChapterQuestionsPanel';
+import { BookAdminPdfSheet } from '@/components/books/BookAdminPdfSheet';
 import { BookPdfDownloadSheet } from '@/components/books/BookPdfDownloadSheet';
+import { InAppBrowserModal } from '@/components/books/InAppBrowserModal';
 import { AnswerPdfDownloadSheet } from '@/components/questions/AnswerPdfDownloadSheet';
 import { useBookReader } from '@/components/books/BookReaderContext';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
@@ -30,7 +32,7 @@ import { bookChapterHref, bookRuleHref } from '@/lib/book-routes';
 import { getCachedBookQuestions } from '@/lib/questions-db';
 import { saveLastReadBookId } from '@/lib/last-read-book';
 import { useAuth } from '@/lib/auth-context';
-import type { ReaderChapter, ReaderChapterFull, ReaderTopicFull } from '@/types/books';
+import type { BookPdfLink, ReaderChapter, ReaderChapterFull, ReaderTopicFull } from '@/types/books';
 import { colors, spacing } from '@/theme';
 
 const viewModeByBook = new Map<string, BookContentsViewMode>();
@@ -117,12 +119,25 @@ export default function BookDetailScreen() {
   const [showBookQuestions, setShowBookQuestions] = useState(false);
   const [answerPdfOpen, setAnswerPdfOpen] = useState(false);
   const [bookPdfOpen, setBookPdfOpen] = useState(false);
+  const [adminPdfSheetOpen, setAdminPdfSheetOpen] = useState(false);
+  const [browserLink, setBrowserLink] = useState<BookPdfLink | null>(null);
   const [searchDraft, setSearchDraft] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const searchInputRef = useRef<TextInput>(null);
 
   const hasChapters = (outline?.chapters.length ?? 0) > 0;
+  const pdfLinks = useMemo(
+    () =>
+      (outline?.book.pdf_links ?? []).filter(
+        (l) => Boolean(l?.title?.trim()) && Boolean(l?.url?.trim()),
+      ),
+    [outline?.book.pdf_links],
+  );
+  const hasPdfLinks = pdfLinks.length > 0;
+  /** Download only for learners enrolled in a subject linked to this book (server flag). */
+  const enrolledForDownload = outline?.book.can_download_pdf === true;
+  const canDownloadBook = enrolledForDownload && (hasPdfLinks || hasChapters);
   const bookQuestionIds = useMemo(
     () => (bookId ? getCachedBookQuestions(bookId).map((q) => q.id) : []),
     [bookId, showBookQuestions, outline],
@@ -140,13 +155,40 @@ export default function BookDetailScreen() {
     });
   }, [fullChapters, outline]);
 
-  function openBookPdfSheet() {
+  function openAdminPdf(link: BookPdfLink) {
+    setAdminPdfSheetOpen(false);
+    setBrowserLink({ title: link.title.trim(), url: link.url.trim() });
+  }
+
+  function openContentExportSheet() {
     if (!outline || !hasChapters) return;
     if (fullLoading || displayFullChapters.length === 0) {
       Alert.alert('Please wait', 'Full book content is still loading. Try again in a moment.');
       return;
     }
+    setAdminPdfSheetOpen(false);
     setBookPdfOpen(true);
+  }
+
+  /** Prefer admin PDF file links (in-app browser); else export structured content. */
+  function openBookDownload() {
+    if (!outline) return;
+    if (!enrolledForDownload) {
+      Alert.alert(
+        'Enrollment required',
+        'Download is available after you enroll in a subject linked to this book.',
+      );
+      return;
+    }
+    if (hasPdfLinks) {
+      if (pdfLinks.length === 1) {
+        openAdminPdf(pdfLinks[0]!);
+        return;
+      }
+      setAdminPdfSheetOpen(true);
+      return;
+    }
+    openContentExportSheet();
   }
 
   useLayoutEffect(() => {
@@ -165,10 +207,10 @@ export default function BookDetailScreen() {
             </Pressable>
           )
         : undefined,
-      headerRight: hasChapters
+      headerRight: canDownloadBook
         ? () => (
             <Pressable
-              onPress={openBookPdfSheet}
+              onPress={openBookDownload}
               hitSlop={8}
               style={{
                 marginRight: spacing.sm,
@@ -193,6 +235,10 @@ export default function BookDetailScreen() {
     outline?.book.name,
     fromSaved,
     router,
+    canDownloadBook,
+    enrolledForDownload,
+    hasPdfLinks,
+    pdfLinks.length,
     hasChapters,
     fullLoading,
     displayFullChapters.length,
@@ -320,17 +366,25 @@ export default function BookDetailScreen() {
 
           <ChapterQuestionsButton fullWidth onPress={() => setShowBookQuestions(true)} />
 
-          {hasChapters ? (
+          {!enrolledForDownload && !loading ? (
+            <Text style={styles.downloadLockedHint}>
+              Enroll in a related subject to download this book PDF.
+            </Text>
+          ) : null}
+
+          {canDownloadBook || canDownloadAnswers ? (
             <View style={styles.downloadRow}>
-              <Pressable
-                style={styles.downloadBtn}
-                onPress={openBookPdfSheet}
-                accessibilityRole="button"
-                accessibilityLabel="Download book PDF"
-              >
-                <Ionicons name="download-outline" size={16} color={colors.white} />
-                <Text style={styles.downloadBtnText}>Download book</Text>
-              </Pressable>
+              {canDownloadBook ? (
+                <Pressable
+                  style={styles.downloadBtn}
+                  onPress={openBookDownload}
+                  accessibilityRole="button"
+                  accessibilityLabel="Download book PDF"
+                >
+                  <Ionicons name="download-outline" size={16} color={colors.white} />
+                  <Text style={styles.downloadBtnText}>Download book</Text>
+                </Pressable>
+              ) : null}
               {canDownloadAnswers ? (
                 <Pressable
                   style={styles.downloadBtnSecondary}
@@ -351,6 +405,27 @@ export default function BookDetailScreen() {
                   <Text style={styles.downloadBtnSecondaryText}>Answers PDF</Text>
                 </Pressable>
               ) : null}
+            </View>
+          ) : null}
+
+          {hasPdfLinks ? (
+            <View style={styles.pdfLinksPanel}>
+              <Text style={styles.pdfLinksLabel}>PDF files</Text>
+              {pdfLinks.map((link, idx) => (
+                <Pressable
+                  key={`${link.url}-${idx}`}
+                  style={({ pressed }) => [styles.pdfLinkRow, pressed && styles.pressed]}
+                  onPress={() => openAdminPdf(link)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${link.title}`}
+                >
+                  <Ionicons name="document-text-outline" size={16} color={colors.primary} />
+                  <Text style={styles.pdfLinkTitle} numberOfLines={2}>
+                    {link.title}
+                  </Text>
+                  <Ionicons name="open-outline" size={14} color={colors.textMuted} />
+                </Pressable>
+              ))}
             </View>
           ) : null}
 
@@ -454,6 +529,17 @@ export default function BookDetailScreen() {
         onClose={() => setShowBookQuestions(false)}
       />
 
+      {outline && hasPdfLinks ? (
+        <BookAdminPdfSheet
+          visible={adminPdfSheetOpen}
+          bookName={outline.book.name}
+          links={pdfLinks}
+          onSelect={openAdminPdf}
+          onClose={() => setAdminPdfSheetOpen(false)}
+          onExportContent={hasChapters ? openContentExportSheet : undefined}
+        />
+      ) : null}
+
       {outline && hasChapters ? (
         <BookPdfDownloadSheet
           visible={bookPdfOpen}
@@ -466,6 +552,13 @@ export default function BookDetailScreen() {
           onClose={() => setBookPdfOpen(false)}
         />
       ) : null}
+
+      <InAppBrowserModal
+        visible={Boolean(browserLink)}
+        url={browserLink?.url ?? ''}
+        title={browserLink?.title}
+        onClose={() => setBrowserLink(null)}
+      />
 
       {canDownloadAnswers ? (
         <AnswerPdfDownloadSheet
@@ -556,6 +649,17 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 6,
   },
+  downloadLockedHint: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: colors.textMuted,
+    backgroundColor: '#f4f9fd',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e6eff7',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
   downloadRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -596,6 +700,38 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: 14,
     fontWeight: '700',
+  },
+  pdfLinksPanel: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  pdfLinksLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  pdfLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: '#eaf0f6',
+    backgroundColor: '#f8fbfe',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+  },
+  pdfLinkTitle: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0a2f5b',
   },
   panel: {
     backgroundColor: colors.surface,

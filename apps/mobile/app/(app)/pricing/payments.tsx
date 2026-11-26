@@ -8,6 +8,7 @@ import {
   formatBdt,
   type MyAccessSummary,
   type PaymentOrderRecord,
+  type PreparationSubjectSummary,
 } from '@ibas/shared-types';
 import { EmptyState } from '@/components/contacts/ContactBits';
 import {
@@ -20,7 +21,13 @@ import {
   fetchMyAccess,
   fetchMyOrders,
 } from '@/lib/billing-api';
+import { fetchExamPrepSubjects } from '@/lib/exam-prep-api';
+import { toBanglaDigits } from '@/lib/bangla-format';
 import { colors, spacing } from '@/theme';
+
+function bn(n: number | string): string {
+  return toBanglaDigits(String(n));
+}
 
 function StatusPill({ label, color }: { label: string; color: string }) {
   return (
@@ -109,7 +116,9 @@ function OrderRow({ order, onContinue }: { order: PaymentOrderRecord; onContinue
           {order.note ? <Line label="Note" value={order.note} /> : null}
           {order.status === 'pending' ? (
             <Pressable onPress={onContinue} style={({ pressed }) => [styles.smallBtn, pressed && styles.pressed]}>
-              <Text style={styles.smallBtnText}>Continue payment</Text>
+              <Text style={styles.smallBtnText}>
+                {order.trx_id ? 'View payment status' : 'Complete payment'}
+              </Text>
             </Pressable>
           ) : null}
         </View>
@@ -122,14 +131,20 @@ export default function PaymentsScreen() {
   const router = useRouter();
   const [access, setAccess] = useState<MyAccessSummary | null>(null);
   const [orders, setOrders] = useState<PaymentOrderRecord[] | null>(null);
+  const [subjects, setSubjects] = useState<PreparationSubjectSummary[]>([]);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [a, o] = await Promise.all([fetchMyAccess(), fetchMyOrders()]);
+      const [a, o, s] = await Promise.all([
+        fetchMyAccess(),
+        fetchMyOrders(),
+        fetchExamPrepSubjects().catch(() => [] as PreparationSubjectSummary[]),
+      ]);
       setAccess(a);
       setOrders(o);
+      setSubjects(s.filter((row) => row.owned));
       setError('');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load payments');
@@ -162,7 +177,7 @@ export default function PaymentsScreen() {
       ) : (
         <>
           <Section
-            title="My access"
+            title="Ongoing courses"
             right={
               <Pressable onPress={() => browse('exam_prep')} style={({ pressed }) => [styles.smallBtn, pressed && styles.pressed]}>
                 <Ionicons name="bag-handle-outline" size={14} color={colors.white} />
@@ -170,6 +185,70 @@ export default function PaymentsScreen() {
               </Pressable>
             }
           >
+            {subjects.length === 0 && access.live_packages.length === 0 && !access.basic_until ? (
+              <View style={styles.emptyCourse}>
+                <Text style={styles.orderTitle}>আপনার এখনো কোনো চলমান কোর্স বা বিষয় নেই</Text>
+                <Text style={styles.small}>পছন্দের বিষয়ে এনরোল করলে অগ্রগতি এখানে দেখা যাবে।</Text>
+                <Pressable onPress={() => browse('exam_prep')} style={({ pressed }) => [styles.smallBtn, pressed && styles.pressed]}>
+                  <Text style={styles.smallBtnText}>কোর্স ও প্যাকেজ</Text>
+                </Pressable>
+              </View>
+            ) : null}
+            {subjects.map((subj) => {
+              const title = subj.name_bn?.trim() || subj.name;
+              const left = subj.owned_until ? daysLeft(subj.owned_until) : null;
+              const done = subj.written_read + subj.mcq_touched;
+              const total = subj.written + subj.mcq;
+              return (
+                <View key={subj.id} style={styles.courseRow}>
+                  <View style={styles.courseIcon}>
+                    <Ionicons name="school" size={20} color={colors.white} />
+                  </View>
+                  <View style={styles.flex}>
+                    <Text style={styles.small}>পরীক্ষা প্রস্তুতি · {subj.part_label}</Text>
+                    <Text style={styles.orderTitle}>{title}</Text>
+                    <View style={styles.progressRow}>
+                      <View style={styles.track}>
+                        <View style={[styles.fill, { width: `${Math.max(subj.progress_percent, 4)}%` }]} />
+                      </View>
+                      <Text style={styles.progressPct}>{bn(subj.progress_percent)}%</Text>
+                    </View>
+                    <Text style={styles.small}>
+                      {bn(done)} / {bn(total)} আইটেম সম্পন্ন
+                      {subj.owned_until ? ` · অ্যাক্সেস শেষ: ${accessDate(subj.owned_until)}` : ''}
+                      {left !== null && left <= 7 ? ` · ${bn(left)} দিন বাকি` : ''}
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={() => router.push(`/(app)/exam-prep/${subj.id}` as Href)}
+                    style={({ pressed }) => [styles.smallBtn, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.smallBtnText}>চালিয়ে যান</Text>
+                  </Pressable>
+                </View>
+              );
+            })}
+            {access.live_packages.map((lp) => (
+              <View key={lp.package_id} style={styles.courseRow}>
+                <View style={[styles.courseIcon, { backgroundColor: '#1f8a96' }]}>
+                  <Ionicons name="videocam" size={20} color={colors.white} />
+                </View>
+                <View style={styles.flex}>
+                  <Text style={styles.small}>লাইভ ক্লাস প্যাকেজ</Text>
+                  <Text style={styles.orderTitle}>{lp.package_name}</Text>
+                  <Text style={styles.small}>অ্যাক্সেস শেষ: {accessDate(lp.until)}</Text>
+                </View>
+                <Pressable
+                  onPress={() => router.push('/(app)/live' as Href)}
+                  style={({ pressed }) => [styles.smallBtn, pressed && styles.pressed]}
+                >
+                  <Text style={styles.smallBtnText}>ক্লাস দেখুন</Text>
+                </Pressable>
+              </View>
+            ))}
+          </Section>
+
+          <Section title="My access">
             <View style={styles.tiles}>
               <AccessTile title="Exam Preparation" until={access.exam_prep_until} onBrowse={() => browse('exam_prep')} />
               <AccessTile title="Basic Module" until={access.basic_until} onBrowse={() => browse('basic')} />
@@ -292,4 +371,25 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
   },
   smallBtnText: { color: colors.white, fontWeight: '700', fontSize: 12 },
+  emptyCourse: { gap: 8, paddingVertical: 4 },
+  courseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  courseIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: '#0a2f5b',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
+  track: { flex: 1, height: 6, borderRadius: 999, backgroundColor: '#e6eff7', overflow: 'hidden' },
+  fill: { height: '100%', backgroundColor: '#1566b8', borderRadius: 999 },
+  progressPct: { fontSize: 11, fontWeight: '800', color: '#0a2f5b' },
 });

@@ -53,6 +53,14 @@ const envSchema = z.object({
   ZOOM_SDK_KEY: z.string().optional(),
   /** Meeting SDK Client Secret — used to sign join/start JWTs. */
   ZOOM_SDK_SECRET: z.string().optional(),
+  /**
+   * Latest mobile app label (e.g. ProAssist.2.1.0.0). First two digits (major.minor)
+   * drive force-update; older lines are absolute until the user updates.
+   * Overridable via AppSettings.mobile_latest_version.
+   */
+  MOBILE_LATEST_VERSION: z.string().optional(),
+  MOBILE_UPDATE_URL: z.string().url().optional(),
+  MOBILE_FORCE_MESSAGE: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);

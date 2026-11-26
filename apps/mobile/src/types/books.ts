@@ -9,6 +9,12 @@ export interface ProcessRow {
   steps: ProcessStep[];
 }
 
+/** Admin-attached external PDF file links (https URLs), same as web `pdf_links`. */
+export interface BookPdfLink {
+  title: string;
+  url: string;
+}
+
 export interface BookListItem {
   id: string;
   book_type_id: string;
@@ -23,8 +29,15 @@ export interface BookListItem {
   effective_date?: string;
   language: string;
   tags: string[];
+  /** External PDF files added from admin — open in-app browser to download/view. */
+  pdf_links?: BookPdfLink[];
   subjects?: Array<{ id: string; name: string; name_bn?: string; sort_order: number }>;
   subject_sort_order?: number;
+  /**
+   * True when the learner is enrolled in a subject linked to this book (or is admin/host).
+   * Server redacts `pdf_links` when false.
+   */
+  can_download_pdf?: boolean;
 }
 
 export interface ReaderChapterTopic {

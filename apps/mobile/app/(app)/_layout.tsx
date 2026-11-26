@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { registerForPushNotifications } from '@/lib/push-notifications';
 import { SetNewPasswordScreen } from '@/components/auth/SetNewPasswordScreen';
+import { AppMenuProvider, appStackHeaderOptions } from '@/components/navigation/AppMenu';
 import { colors } from '@/theme';
 
 export default function AppLayout() {
@@ -31,65 +32,61 @@ export default function AppLayout() {
   }
 
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        headerStyle: { backgroundColor: colors.primaryDark },
-        headerTintColor: colors.white,
-        headerTitleStyle: { fontWeight: '700' },
-      }}
-    >
-      <Stack.Screen name="home" />
-      <Stack.Screen
-        name="profile"
-        options={{
-          headerShown: true,
-          title: 'Profile',
-          headerBackTitle: 'Home',
-        }}
-      />
-      <Stack.Screen
-        name="progress"
-        options={{
-          headerShown: true,
-          title: 'Progress Dashboard',
-          headerBackTitle: 'Home',
-        }}
-      />
-      <Stack.Screen name="account" />
-      <Stack.Screen name="contacts" />
-      <Stack.Screen name="blood-bank" />
-      <Stack.Screen name="deductions" />
-      <Stack.Screen name="community" />
-      <Stack.Screen name="saved" />
-      <Stack.Screen name="history" />
-      <Stack.Screen name="notifications" />
-      <Stack.Screen name="books" />
+    <AppMenuProvider>
+      <Stack screenOptions={appStackHeaderOptions({ headerShown: false })}>
+        <Stack.Screen name="home" />
+        <Stack.Screen
+          name="profile"
+          options={appStackHeaderOptions({
+            headerShown: true,
+            title: 'Profile',
+            headerBackTitle: 'Home',
+          })}
+        />
+        <Stack.Screen
+          name="progress"
+          options={appStackHeaderOptions({
+            headerShown: true,
+            title: 'Progress Dashboard',
+            headerBackTitle: 'Home',
+          })}
+        />
+        <Stack.Screen name="account" />
+        <Stack.Screen name="contacts" />
+        <Stack.Screen name="blood-bank" />
+        <Stack.Screen name="deductions" />
+        <Stack.Screen name="community" />
+        <Stack.Screen name="saved" />
+        <Stack.Screen name="history" />
+        <Stack.Screen name="notifications" />
+        <Stack.Screen name="books" />
       <Stack.Screen name="questions" />
+      <Stack.Screen name="question-update" />
       <Stack.Screen name="marathon" />
-      <Stack.Screen name="exams" />
-      <Stack.Screen name="papers" />
-      <Stack.Screen name="pension" />
-      <Stack.Screen name="joining-period" />
-      <Stack.Screen name="qotd" />
-      <Stack.Screen name="exam-routine" />
-      <Stack.Screen name="user-questions" />
-      <Stack.Screen name="exam-week" />
-      <Stack.Screen name="live" />
-      <Stack.Screen name="zoom" />
-      <Stack.Screen name="users" />
-      <Stack.Screen name="schedule" />
-      <Stack.Screen name="circulars" />
-      <Stack.Screen name="policy" />
-      <Stack.Screen name="ibas" />
-      <Stack.Screen name="toolkit" />
-      <Stack.Screen name="salary" />
-      <Stack.Screen name="salary-access" />
-      <Stack.Screen name="pricing" />
-      <Stack.Screen name="exam-prep" />
-      <Stack.Screen name="calculations" />
-      <Stack.Screen name="verify-colleague" />
-    </Stack>
+        <Stack.Screen name="exams" />
+        <Stack.Screen name="papers" />
+        <Stack.Screen name="pension" />
+        <Stack.Screen name="joining-period" />
+        <Stack.Screen name="qotd" />
+        <Stack.Screen name="exam-routine" />
+        <Stack.Screen name="user-questions" />
+        <Stack.Screen name="exam-week" />
+        <Stack.Screen name="live" />
+        <Stack.Screen name="zoom" />
+        <Stack.Screen name="users" />
+        <Stack.Screen name="schedule" />
+        <Stack.Screen name="circulars" />
+        <Stack.Screen name="policy" />
+        <Stack.Screen name="ibas" />
+        <Stack.Screen name="toolkit" />
+        <Stack.Screen name="salary" />
+        <Stack.Screen name="salary-access" />
+        <Stack.Screen name="pricing" />
+        <Stack.Screen name="exam-prep" />
+        <Stack.Screen name="calculations" />
+        <Stack.Screen name="verify-colleague" />
+      </Stack>
+    </AppMenuProvider>
   );
 }
 

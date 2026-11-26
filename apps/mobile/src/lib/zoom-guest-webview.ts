@@ -25,26 +25,54 @@ function zoomBase64Utf8(value: string): string {
 }
 
 /**
- * Guest join URL: prefer=1 auto-connects receive-audio (listen to host).
+ * Guest join URL from S2S web_client_url — stay on /wc/join (in-app), not Zoom app.
+ * prefer=1 auto-connects audio; un= display name; email omitted (avoids Zoom login).
  */
-export function withZoomGuestIdentity(
-  webClientUrl: string,
-  name: string,
-  email?: string,
-): string {
+export function withZoomGuestIdentity(webClientUrl: string, name: string, _email?: string): string {
   try {
     const url = new URL(webClientUrl);
+    // Keep S2S guest path; never send users to /j/ (Zoom app) or /start (host).
+    if (/\/j\//i.test(url.pathname) || /\/wc\/\d+\/start/i.test(url.pathname)) {
+      const mn = url.pathname.match(/\/(?:j|wc)\/(\d+)/i)?.[1];
+      if (mn) url.pathname = `/wc/join/${mn}`;
+    }
     url.searchParams.set('prefer', '1');
     url.searchParams.set('un', zoomBase64Utf8(name));
     url.searchParams.delete('uname');
-    if (email?.trim()) url.searchParams.set('email', email.trim());
+    url.searchParams.delete('email');
     return url.toString();
   } catch {
     const sep = webClientUrl.includes('?') ? '&' : '?';
-    let out = `${webClientUrl}${sep}prefer=1&un=${encodeURIComponent(zoomBase64Utf8(name))}`;
-    if (email?.trim()) out += `&email=${encodeURIComponent(email.trim())}`;
-    return out;
+    return `${webClientUrl}${sep}prefer=1&un=${encodeURIComponent(zoomBase64Utf8(name))}`;
   }
+}
+
+/**
+ * Allow only http(s)/about/data/blob in the Zoom WebView.
+ * Blocks zoomus://, intent://, market:// — those cause ERR_UNKNOWN_URL_SCHEME (-10).
+ */
+export function shouldAllowZoomWebViewNavigation(url: string): boolean {
+  const u = (url || '').trim();
+  if (!u) return false;
+  if (/^(https?:|about:|data:|blob:)/i.test(u)) return true;
+  return false;
+}
+
+/** Hide “Open Zoom App” prompts that bounce to zoomus:// inside the in-app WebView. */
+export function buildZoomSuppressAppRedirectScript(): string {
+  return `(function(){
+    try{
+      var css=[
+        'a[href^="zoomus:"],a[href^="intent:"],a[href*="zoom.us/download"],',
+        '[class*="download-app" i],[class*="open-in-app" i],',
+        'button[aria-label*="Open Zoom" i],button[aria-label*="open in Zoom" i]',
+        '{display:none!important;visibility:hidden!important;pointer-events:none!important;}'
+      ].join('');
+      var s=document.getElementById('proassist-no-app');
+      if(!s){s=document.createElement('style');s.id='proassist-no-app';(document.head||document.documentElement).appendChild(s);}
+      s.textContent=css;
+    }catch(e){}
+  })();true;`;
 }
 
 /**
@@ -131,12 +159,22 @@ export function buildZoomGuestAutoNameJoinScript(displayName: string): string {
     function clickJoinMeeting(){
       try{
         var nodes=document.querySelectorAll('button,a,[role="button"]');
+        // Prefer "Join from your browser" so Zoom does not bounce to zoomus://
         for(var i=0;i<nodes.length;i++){
           var t=((nodes[i].getAttribute('aria-label')||'')+' '+(nodes[i].textContent||'')).toLowerCase().replace(/\\s+/g,' ').trim();
           if(!t) continue;
-          if(t==='join' || t.indexOf('join meeting')!==-1 || t.indexOf('join webinar')!==-1 ||
-             (t.indexOf('join')===0 && t.indexOf('audio')===-1 && t.indexOf('computer')===-1)){
+          if(t.indexOf('join from your browser')!==-1 || t.indexOf('join from browser')!==-1 ||
+             t.indexOf('launch meeting')!==-1 && t.indexOf('browser')!==-1){
             nodes[i].click();
+            return true;
+          }
+        }
+        for(var j=0;j<nodes.length;j++){
+          var t2=((nodes[j].getAttribute('aria-label')||'')+' '+(nodes[j].textContent||'')).toLowerCase().replace(/\\s+/g,' ').trim();
+          if(!t2) continue;
+          if(t2==='join' || t2.indexOf('join meeting')!==-1 || t2.indexOf('join webinar')!==-1 ||
+             (t2.indexOf('join')===0 && t2.indexOf('audio')===-1 && t2.indexOf('computer')===-1 && t2.indexOf('app')===-1)){
+            nodes[j].click();
             return true;
           }
         }

@@ -1,0 +1,48 @@
+﻿{
+  "id": "b6551dd9-48f5-4eb8-9f77-0dd75592b109",
+  "status": "ERRORED",
+  "platform": "ANDROID",
+  "error": {
+    "errorCode": "UNKNOWN_ERROR",
+    "message": "Unknown error. See logs of the Bundle JavaScript build phase for more information."
+  },
+  "artifacts": {},
+  "fingerprint": {
+    "id": "01a20e55-6ff0-7ac8-8f2e-ba56500a8d5e",
+    "hash": "7b17ba736a4566143a75aac2f386d0df1b005f88"
+  },
+  "initiatingActor": {
+    "id": "00943371-dc7e-4e62-934c-7c17cb38a759",
+    "displayName": "rashedunnabi"
+  },
+  "logFiles": [
+    "https://storage.googleapis.com/eas-workflows-production/logs/591b2377-7e29-480a-ba95-472dba9adb95/b6551dd9-48f5-4eb8-9f77-0dd75592b109/2026-11-24T16%3A54%3A46Z-b8f9799b-9a17-4737-b9a0-78ea0cc5f03b.txt?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=www-production%40exponentjs.iam.gserviceaccount.com%2F20261124%2Fauto%2Fstorage%2Fgoog4_request&X-Goog-Date=20261124T165453Z&X-Goog-Expires=900&X-Goog-SignedHeaders=host&X-Goog-Signature=40201bcf655673d44f4b40bd633517288a66e196f6edb5a21928ff924652f9be48ece2d2d0bd89f3e3635f425b50011fc51fb09f33bb6c560653be03279be3d8947e455d89986dcd6def8352519a90c4763eeb8d091730a16556757a97540e187d9257cc8c4f4f8a5ed1f210845da1c1dc0003f0e1998bbc8cc63b56417427e0d2dba43103d45330de2383fb3a8a61e8babe81802d3bf653c6f8e8511ae4eeb957f58f5ada0f55e9bc49ee8c9bacf7423ccadb9c1828b8e794a7324968a213f0086e0b9487d08ceb82043e21df8d83c541eedf2c4c46153b26c960c48043b088801114c79b32f4984a2f02be84a71a8c51ced3d6ceebdbc32c8704c8e649a07e"
+  ],
+  "project": {
+    "id": "591b2377-7e29-480a-ba95-472dba9adb95",
+    "name": "ibas-learn",
+    "slug": "ibas-learn",
+    "ownerAccount": {
+      "id": "aa66a687-c42f-400f-9c47-ff0a886fadf3",
+      "name": "rashedunnabi"
+    }
+  },
+  "distribution": "INTERNAL",
+  "buildProfile": "preview",
+  "sdkVersion": "57.0.0",
+  "appVersion": "1.0.3.3",
+  "appBuildVersion": "1",
+  "gitCommitHash": "808f9ba31bce99b40f5ca049a05ce4bb2f55ef71",
+  "gitCommitMessage": "Zoom iframe issue",
+  "priority": "NORMAL_PLUS",
+  "createdAt": "2026-11-24T16:13:29.905Z",
+  "updatedAt": "2026-11-24T16:55:42.482Z",
+  "completedAt": "2026-11-24T16:55:42.252Z",
+  "expirationDate": "2026-12-08T16:13:29.958Z",
+  "isForIosSimulator": false,
+  "metrics": {
+    "buildWaitTime": 3186,
+    "buildQueueTime": 2478295,
+    "buildDuration": 50866
+  }
+}

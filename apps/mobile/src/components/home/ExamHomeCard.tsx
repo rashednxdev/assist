@@ -70,7 +70,7 @@ export function ExamHomeCard({
         </View>
         <View style={styles.body}>
           <Text style={styles.title}>Exam Preparation</Text>
-          <Text style={styles.sub}>Books, question bank, papers, live class, routine & more</Text>
+          <Text style={styles.sub}>Open subjects, practice modules, papers, QOTD & routine</Text>
         </View>
         <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
       </Pressable>

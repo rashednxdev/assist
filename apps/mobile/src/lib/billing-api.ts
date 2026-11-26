@@ -40,6 +40,20 @@ export async function fetchOrder(id: string): Promise<PaymentOrderRecord> {
   return (await apiFetch<{ data: PaymentOrderRecord }>(`/billing/orders/${id}`)).data;
 }
 
+/** Production bKash flow: learner Send Money outside the app, then submits TrxID for admin confirmation. */
+export async function claimOrder(
+  id: string,
+  body: { trx_id: string; amount: number; payer_account?: string },
+): Promise<PaymentOrderRecord> {
+  return (
+    await apiFetch<{ data: PaymentOrderRecord }>(`/billing/orders/${id}/claim`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  ).data;
+}
+
+/** @deprecated Demo gateway only — prefer claimOrder (TrxID + admin confirmation). */
 export async function payOrder(
   id: string,
   body: { msisdn: string; otp: string; pin: string; simulate_failure?: boolean },
@@ -69,6 +83,19 @@ export async function fetchCart(cartId: string): Promise<CartRecord> {
   return (await apiFetch<{ data: CartRecord }>(`/billing/carts/${cartId}`)).data;
 }
 
+export async function claimCart(
+  cartId: string,
+  body: { trx_id: string; amount: number; payer_account?: string },
+): Promise<CartRecord> {
+  return (
+    await apiFetch<{ data: CartRecord }>(`/billing/carts/${cartId}/claim`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  ).data;
+}
+
+/** @deprecated Demo gateway only — prefer claimCart (TrxID + admin confirmation). */
 export async function payCart(
   cartId: string,
   body: { msisdn: string; otp: string; pin: string; simulate_failure?: boolean },

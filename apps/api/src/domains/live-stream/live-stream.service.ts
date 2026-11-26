@@ -495,12 +495,18 @@ async function permissionFor(
   const sessionId = String(doc._id);
   const hostUserId = String(doc.host_user_id);
   const supportUserId = doc.support_user_id ? String(doc.support_user_id) : '';
-  const canHost = userId === hostUserId || userId === supportUserId || isPlatformAdmin(user) || isLearningHost(user);
+  // Host controls only for the assigned host/support (or platform admin).
+  // Global learning hosts join as audience — keeps mobile "Join live class" simple.
+  const canHost =
+    userId === hostUserId || userId === supportUserId || isPlatformAdmin(user);
   if (userId === hostUserId || userId === supportUserId) {
     return { permission_status: 'host', can_join: true, can_host: true };
   }
-  if (isPlatformAdmin(user) || isLearningHost(user)) {
+  if (isPlatformAdmin(user)) {
     return { permission_status: 'permitted', can_join: true, can_host: true };
+  }
+  if (isLearningHost(user)) {
+    return { permission_status: 'permitted', can_join: true, can_host: false };
   }
 
   const underHiddenPackage = classPackageIds(doc).some((id) => hiddenPackageIds.has(id));
@@ -1242,7 +1248,8 @@ export async function joinLiveStream(
 
   const isSupport = Boolean(doc.support_user_id) && user.id === String(doc.support_user_id);
   const wantsHost = Boolean(opts?.as_host);
-  const mayHost = user.id === String(doc.host_user_id) || isSupport || isPlatformAdmin(user) || isLearningHost(user);
+  // Only assigned host/support or platform admin may open host start — not global learning hosts.
+  const mayHost = user.id === String(doc.host_user_id) || isSupport || isPlatformAdmin(user);
   const role: 'host' | 'audience' = wantsHost && mayHost ? 'host' : 'audience';
 
   if (doc.status === 'paused' && role !== 'host') {

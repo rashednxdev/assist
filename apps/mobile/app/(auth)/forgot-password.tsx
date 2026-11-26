@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { AuthScreenShell } from '@/components/auth/AuthScreenShell';
 import { TextField } from '@/components/ui/TextField';
 import { Button } from '@/components/ui/Button';
-import { forgotPassword } from '@/lib/auth-api';
+import { forgotPassword, isValidBdPhone, normalizeBdPhone } from '@/lib/auth-api';
 import { ApiError } from '@/lib/api';
 import { colors } from '@/theme';
 
@@ -16,17 +16,17 @@ export default function ForgotPasswordScreen() {
 
   async function handleSubmit() {
     setError('');
-    if (!/^01[3-9]\d{8}$/.test(phone.trim())) {
+    const normalized = normalizeBdPhone(phone);
+    if (!isValidBdPhone(normalized)) {
       setError('Enter a valid mobile number (01XXXXXXXXX).');
       return;
     }
     setLoading(true);
     try {
-      const trimmed = phone.trim();
-      const res = await forgotPassword(trimmed);
+      const res = await forgotPassword(normalized);
       router.push({
         pathname: '/(auth)/reset-password',
-        params: { phone: trimmed, phoneHint: res.phone_hint },
+        params: { phone: normalized, phoneHint: res.phone_hint },
       });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not send a reset code. Please try again.');
@@ -38,19 +38,20 @@ export default function ForgotPasswordScreen() {
   return (
     <AuthScreenShell
       title="Forgot password"
-      subtitle="Enter your mobile number. We will text a 6-digit code."
+      subtitle="Enter your mobile number. We will text a 6-digit OTP."
     >
       <TextField
         label="Mobile"
         value={phone}
-        onChangeText={setPhone}
+        onChangeText={(v) => setPhone(normalizeBdPhone(v))}
         keyboardType="phone-pad"
         autoComplete="tel"
         hint="01XXXXXXXXX"
         placeholder="01700000000"
+        maxLength={11}
       />
       {error ? <Text style={styles.error}>{error}</Text> : null}
-      <Button title="Send reset code" onPress={handleSubmit} loading={loading} />
+      <Button title="Send OTP" onPress={handleSubmit} loading={loading} />
     </AuthScreenShell>
   );
 }

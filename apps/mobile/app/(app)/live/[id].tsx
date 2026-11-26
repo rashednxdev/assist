@@ -36,9 +36,11 @@ import {
 import {
   buildZoomGuestAutoNameJoinScript,
   buildZoomGuestUiLockScript,
+  buildZoomSuppressAppRedirectScript,
   ensureGuestListenPermissions,
   ensureGuestSpeakPermissions,
   filterZoomMediaResources,
+  shouldAllowZoomWebViewNavigation,
   withZoomGuestIdentity,
   zoomGuestDisplayName,
 } from '@/lib/zoom-guest-webview';
@@ -335,9 +337,10 @@ export default function LiveStreamDetailScreen() {
   if (join && isZoomJoinPayload(join)) {
     const isHostJoin = join.role === 'host';
     const guestName = zoomGuestDisplayName(join, user);
+    // S2S guest URL already has mn + pwd + un — stay in-app WebView (no Zoom app / no login).
     const zoomUrl = isHostJoin
       ? join.web_client_url
-      : withZoomGuestIdentity(join.web_client_url, guestName, join.user_email);
+      : withZoomGuestIdentity(join.web_client_url, guestName);
 
     return (
       <KeyboardAvoidingView
@@ -347,6 +350,7 @@ export default function LiveStreamDetailScreen() {
         <WebView
           ref={webViewRef}
           originWhitelist={['*']}
+          setSupportMultipleWindows={false}
           allowsInlineMediaPlayback
           mediaPlaybackRequiresUserAction={false}
           mediaCapturePermissionGrantType={isHostJoin || allowSpeech ? 'grant' : 'prompt'}
@@ -357,13 +361,31 @@ export default function LiveStreamDetailScreen() {
           androidLayerType="hardware"
           source={{ uri: zoomUrl }}
           style={styles.webviewFill}
+          injectedJavaScriptBeforeContentLoaded={buildZoomSuppressAppRedirectScript()}
+          onShouldStartLoadWithRequest={(req) => shouldAllowZoomWebViewNavigation(req.url)}
+          onOpenWindow={(e) => {
+            // Block zoomus:// / intent:// so join stays in-app (fixes ERR_UNKNOWN_URL_SCHEME).
+            const target = e.nativeEvent.targetUrl;
+            if (shouldAllowZoomWebViewNavigation(target) && webViewRef.current) {
+              webViewRef.current.injectJavaScript(
+                `window.location.href=${JSON.stringify(target)};true;`,
+              );
+            }
+          }}
           onLoadEnd={() => {
             setWebviewReady(true);
             startLiveAudioSession();
+            webViewRef.current?.injectJavaScript(buildZoomSuppressAppRedirectScript());
             if (!isHostJoin) {
               webViewRef.current?.injectJavaScript(buildZoomGuestAutoNameJoinScript(guestName));
               webViewRef.current?.injectJavaScript(buildZoomGuestUiLockScript(allowSpeech));
             }
+          }}
+          onError={() => {
+            setWebviewReady(true);
+          }}
+          onHttpError={() => {
+            setWebviewReady(true);
           }}
           onPermissionRequest={(event) => {
             try {
@@ -588,7 +610,8 @@ export default function LiveStreamDetailScreen() {
         </View>
       ) : null}
 
-      {session.can_host ? (
+      {/* Host start stays on web. Mobile is one-tap guest join only (no Zoom login / no meeting ID). */}
+      {session.permission_status === 'host' ? (
         <Pressable
           style={[styles.joinBtn, styles.hostBtn, busy && styles.joinBtnDisabled]}
           disabled={busy || session.status === 'cancelled'}
@@ -616,8 +639,8 @@ export default function LiveStreamDetailScreen() {
         )}
       </Pressable>
       <Text style={styles.joinHint}>
-        Join from the mobile app or web browser — one device at a time.
-        {session.status === 'scheduled' && !session.can_host
+        Join from the app — meeting ID and passcode are filled automatically (S2S).
+        {session.status === 'scheduled' && session.permission_status !== 'host'
           ? ' Join opens when the host starts the class.'
           : ''}
       </Text>

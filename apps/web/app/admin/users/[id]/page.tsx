@@ -306,10 +306,13 @@ export default function EditUserPage() {
   }
 
   async function saveModuleAccess(moduleId: string) {
+    const mod = modules.find((m) => m._id === moduleId);
+    const isQuestionEdit = mod?.code === 'QUESTION_EDIT';
     const draft = accessDraft[moduleId] ?? {
       can_read: true,
       can_create: false,
-      can_update: false,
+      // Question Update needs update so the user can modify questions on mobile.
+      can_update: isQuestionEdit,
       can_delete: false,
       can_grade: false,
       can_publish: false,
@@ -325,6 +328,38 @@ export default function EditUserPage() {
       setMessage('Module access saved');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save access');
+    }
+  }
+
+  /** One-click Question Update access: mobile Question Update page with modify permission. */
+  async function grantQuestionEditAccess() {
+    const mod = modules.find((m) => m.code === 'QUESTION_EDIT');
+    if (!mod) {
+      setError(
+        'Question update (QUESTION_EDIT) module is missing. Run migrate:question-edit-module on the API, then refresh.',
+      );
+      return;
+    }
+    setError('');
+    try {
+      await apiFetch(`/users/${userId}/module-access`, {
+        method: 'POST',
+        body: JSON.stringify({
+          module_id: mod._id,
+          can_read: true,
+          can_create: false,
+          can_update: true,
+          can_delete: false,
+          can_grade: false,
+          can_publish: false,
+          bypass_stop: false,
+        }),
+      });
+      const res = await apiFetch<{ data: ModuleAccess[] }>(`/users/${userId}/module-access`);
+      setModuleAccess(res.data);
+      setMessage('Question Update access granted (read + update). User can modify questions on mobile.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to grant Question Update access');
     }
   }
 
@@ -764,10 +799,11 @@ export default function EditUserPage() {
           const renderModuleCard = (mod: ModuleItem) => {
             const existing = moduleAccess.find((a) => a.module_id === mod._id);
             const granted = Boolean(existing);
+            const isQuestionEdit = mod.code === 'QUESTION_EDIT';
             const draft = accessDraft[mod._id] ?? existing ?? {
               can_read: true,
               can_create: false,
-              can_update: false,
+              can_update: isQuestionEdit,
               can_delete: false,
               can_grade: false,
               can_publish: false,
@@ -781,7 +817,9 @@ export default function EditUserPage() {
                 className={
                   granted
                     ? 'rounded-lg border-2 border-emerald-400 bg-emerald-50 p-4 shadow-sm shadow-emerald-100'
-                    : 'rounded-lg border border-border bg-white p-4'
+                    : isQuestionEdit
+                      ? 'rounded-lg border-2 border-amber-300 bg-amber-50/60 p-4'
+                      : 'rounded-lg border border-border bg-white p-4'
                 }
               >
                 <div className="mb-2 flex items-center justify-between gap-2">
@@ -799,6 +837,16 @@ export default function EditUserPage() {
                       )}
                     </div>
                     <div className={`text-xs ${granted ? 'text-emerald-700/80' : 'text-muted'}`}>{mod.code}</div>
+                    {isQuestionEdit ? (
+                      <p className="mt-1 text-xs text-amber-900/80">
+                        Lets this user open mobile <span className="font-semibold">Question Update</span> and modify
+                        existing questions. Needs <span className="font-semibold">read + update</span>
+                        {existing && !existing.can_update ? (
+                          <span className="font-semibold text-amber-800"> — currently read-only; enable update</span>
+                        ) : null}
+                        .
+                      </p>
+                    ) : null}
                   </div>
                   {existing && (
                     <Button type="button" variant="outline" size="sm" onClick={() => revokeAccess(mod._id)}>
@@ -867,9 +915,19 @@ export default function EditUserPage() {
                       {mobileModules.length}
                     </span>
                   </CardTitle>
-                  <Button type="button" size="sm" onClick={() => void grantLearningReadAccess()}>
-                    Grant Learning (read)
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" size="sm" onClick={() => void grantLearningReadAccess()}>
+                      Grant Learning (read)
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void grantQuestionEditAccess()}
+                    >
+                      Grant Question Update (edit)
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <p className="text-xs text-muted">
@@ -877,6 +935,11 @@ export default function EditUserPage() {
                     opens the Learning hub and the free modules (Questions of the Day and Exam Routine). Books, Exam Papers,
                     Question Bank and the other modules stay closed until the user requests a subject package and you accept the
                     bKash payment. Live class is a separate package.
+                  </p>
+                  <p className="text-xs text-muted">
+                    <span className="font-semibold">Grant Question Update (edit)</span> gives selected users mobile{' '}
+                    Question Update access so they can modify existing questions (read + update). Add delete only if they
+                    may trash questions.
                   </p>
                   {mobileModules.length === 0 ? (
                     <p className="text-sm text-muted">No mobile modules found.</p>

@@ -44,6 +44,7 @@ import { orgRouter } from './domains/org/org.routes.js';
 import { contactsRouter } from './domains/contacts/contacts.routes.js';
 import { bloodBankRouter } from './domains/blood-bank/blood-bank.routes.js';
 import { deductionsRouter } from './domains/deductions/deductions.routes.js';
+import { mobileForceUpdateGuard } from './middleware/mobileForceUpdate.js';
 
 export function createApp(): Application {
   const app = express();
@@ -63,6 +64,7 @@ export function createApp(): Application {
   app.use(express.json({ limit: '1mb' }));
   app.use(cookieParser());
   app.use(pinoHttp({ logger }));
+  app.use(mobileForceUpdateGuard);
 
   // Only credential endpoints — /auth/me runs on every page load and must not share this budget.
   app.use(

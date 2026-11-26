@@ -868,7 +868,25 @@ export async function listChapters(bookId: string) {
   return result;
 }
 
-export async function getBookReaderOutline(bookId: string) {
+/**
+ * PDF download is only for learners enrolled in at least one subject linked to the book.
+ * Admins/hosts (scope mode `all`) always allowed. Untagged books are not downloadable for learners.
+ */
+export function userCanDownloadBookPdf(
+  bookSubjectIds: string[],
+  scope: ExamSubjectScope,
+): boolean {
+  if (scope.mode === 'all') return true;
+  if (scope.mode === 'none') return false;
+  if (bookSubjectIds.length === 0) return false;
+  const allow = new Set(scope.ids.map(String));
+  return bookSubjectIds.some((id) => allow.has(String(id)));
+}
+
+export async function getBookReaderOutline(
+  bookId: string,
+  options?: { subjectScope?: ExamSubjectScope },
+) {
   const book = await BookInfo.findById(bookId);
   if (!book || !book.is_active) throw notFound('Book not found');
   const bookType = await BookType.findById(book.book_type_id);
@@ -926,15 +944,28 @@ export async function getBookReaderOutline(bookId: string) {
     }));
   });
 
+  const [withSubjects] = await attachSubjectsToBooks([serializeBook(book, bookType?.name)]);
+  const scope = options?.subjectScope ?? { mode: 'all' as const };
+  const subjectIds = (withSubjects.subjects ?? []).map((s) => s.id);
+  const can_download_pdf = userCanDownloadBookPdf(subjectIds, scope);
+
   return {
-    book: serializeBook(book, bookType?.name),
+    book: {
+      ...withSubjects,
+      can_download_pdf,
+      // Hide PDF URLs from clients that are not enrolled in a linked subject.
+      pdf_links: can_download_pdf ? withSubjects.pdf_links : [],
+    },
     chapters: chapterRows,
     rules,
   };
 }
 
-export async function getBookReaderFull(bookId: string) {
-  const outline = await getBookReaderOutline(bookId);
+export async function getBookReaderFull(
+  bookId: string,
+  options?: { subjectScope?: ExamSubjectScope },
+) {
+  const outline = await getBookReaderOutline(bookId, options);
   const topicIds = outline.chapters.flatMap((c) => c.topics.map((t) => t.id));
   if (topicIds.length === 0) return outline;
 

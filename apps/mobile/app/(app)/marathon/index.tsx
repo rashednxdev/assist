@@ -11,7 +11,7 @@ import {
   type NativeSyntheticEvent,
   type NativeScrollEvent,
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BookEmpty, BookError, BookLoading } from '@/components/books/BookStates';
 import { BookRichText } from '@/components/books/BookRichText';
@@ -26,7 +26,11 @@ import {
   saveMarathonLastQuestion,
   type MarathonLastQuestion,
 } from '@/lib/marathon-progress';
-import { getCachedMarathonItems, getCachedQuestionSubjectLabel } from '@/lib/questions-db';
+import {
+  getCachedMarathonItems,
+  getCachedQuestionSubjectLabel,
+  getCachedSubjectNameById,
+} from '@/lib/questions-db';
 import { questionSyncScopeKey, subscribeQuestionsSync, syncQuestions } from '@/lib/questions-sync';
 import { questionCacheScopeKey } from '@/lib/subject-scope';
 import { useAuth } from '@/lib/auth-context';
@@ -136,6 +140,10 @@ function AnswerBlocks({
 
 export default function MarathonReviewScreen() {
   const { user, refreshUser } = useAuth();
+  const params = useLocalSearchParams<{ exam_subject_id?: string }>();
+  const examSubjectId = Array.isArray(params.exam_subject_id)
+    ? params.exam_subject_id[0]
+    : params.exam_subject_id;
   const { isSaved, toggle } = useSavedShortcuts();
   const [items, setItems] = useState<MarathonReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -168,8 +176,8 @@ export default function MarathonReviewScreen() {
   refreshUserRef.current = refreshUser;
 
   const refreshFromCache = useCallback(() => {
-    setItems(getCachedMarathonItems());
-  }, []);
+    setItems(getCachedMarathonItems(examSubjectId));
+  }, [examSubjectId]);
 
   useEffect(() => {
     void loadMarathonLastQuestion().then((pos) => {
@@ -476,6 +484,19 @@ export default function MarathonReviewScreen() {
         <ReadFilterChips value={readFilter} onChange={setReadFilter} />
       </View>
 
+      {examSubjectId ? (
+        <View style={styles.subjectScope}>
+          <Ionicons name="school-outline" size={16} color="#1566b8" />
+          <Text style={styles.subjectScopeText}>
+            Subject-scoped marathon
+            {getCachedSubjectNameById(examSubjectId)
+              ? ` · ${getCachedSubjectNameById(examSubjectId)}`
+              : ''}{' '}
+            ({items.length} MCQ)
+          </Text>
+        </View>
+      ) : null}
+
       <View style={styles.infoRow}>
         <View style={styles.infoTextCol}>
           {mode === 'questions' ? (
@@ -608,7 +629,9 @@ export default function MarathonReviewScreen() {
                 bookOffsets.current[book.book_id] = e.nativeEvent.layout.y;
               }}
             >
-              <Text style={styles.bookTitle}>{book.book_name}</Text>
+              <View style={styles.bookTitleBanner}>
+                <Text style={styles.bookTitle}>{book.book_name}</Text>
+              </View>
               {book.chapters.map((chapter) => (
                 <View key={chapter.chapter_id} style={styles.chapterBlock}>
                   <Text style={styles.chapterTitle}>{chapter.chapter_label}</Text>
@@ -763,6 +786,20 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     color: colors.textMuted,
   },
+  subjectScope: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    backgroundColor: '#eaf3fc',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#c5dff6',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  subjectScopeText: { flex: 1, fontSize: 12, fontWeight: '700', color: '#0a2f5b' },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -954,6 +991,14 @@ const styles = StyleSheet.create({
   },
   bookBlock: {
     gap: spacing.md,
+  },
+  bookTitleBanner: {
+    backgroundColor: '#e8f2fc',
+    borderLeftWidth: 4,
+    borderLeftColor: colors.primary,
+    borderRadius: 10,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
   },
   bookTitle: {
     fontSize: 18,

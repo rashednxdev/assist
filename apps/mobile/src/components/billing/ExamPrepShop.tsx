@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -58,13 +58,33 @@ function buildGroups(parts: ExamPrepPartOption[], packages: AccessPackageRecord[
 
 export type ExamPrepBasket = ReturnType<typeof useExamPrepBasket>;
 
-export function useExamPrepBasket(catalog: BillingCatalog | null, parts: ExamPrepPartOption[], initialPart?: string) {
+export function useExamPrepBasket(
+  catalog: BillingCatalog | null,
+  parts: ExamPrepPartOption[],
+  initialPart?: string,
+  focusSubjectId?: string,
+) {
   const [active, setActive] = useState(initialPart ?? '');
   const [picked, setPicked] = useState<Record<string, string>>({});
+  const didFocusSubject = useRef(false);
 
   const packages = useMemo(() => (catalog?.packages ?? []).filter((p) => p.kind === 'exam_prep'), [catalog]);
   const groups = useMemo(() => buildGroups(parts, packages), [parts, packages]);
   const group = groups.find((g) => g.id === active) ?? groups[0];
+
+  useEffect(() => {
+    if (!focusSubjectId || didFocusSubject.current || packages.length === 0) return;
+    const pkg = packages.find((p) => p.exam_subject_id === focusSubjectId);
+    const partFromParts = parts.find((p) => p.subjects.some((s) => s.id === focusSubjectId));
+    const partId = pkg?.exam_part_id || partFromParts?.id;
+    if (partId) setActive(partId);
+    if (pkg) {
+      didFocusSubject.current = true;
+      setPicked((cur) => ({ ...cur, [subjectKey(focusSubjectId)]: pkg.id }));
+    } else if (partId) {
+      didFocusSubject.current = true;
+    }
+  }, [focusSubjectId, packages, parts]);
 
   const bundles = useMemo(
     () => (group ? packages.filter((p) => !p.exam_subject_id && inGroup(p, group)).sort(byDuration) : []),

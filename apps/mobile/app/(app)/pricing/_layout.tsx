@@ -1,19 +1,12 @@
 import { Stack } from 'expo-router';
-import { colors } from '@/theme';
+import { appStackHeaderOptions } from '@/components/navigation/AppMenu';
 
 export default function PricingLayout() {
   return (
-    <Stack
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.primaryDark },
-        headerTintColor: colors.white,
-        headerTitleStyle: { fontWeight: '700' },
-        headerBackTitle: '',
-      }}
-    >
-      <Stack.Screen name="index" options={{ title: 'Pricing', headerBackTitle: 'Home' }} />
+    <Stack screenOptions={appStackHeaderOptions()}>
+      <Stack.Screen name="index" options={{ title: 'Courses', headerBackTitle: 'Home' }} />
       <Stack.Screen name="checkout/[orderId]" options={{ title: 'Checkout' }} />
-      <Stack.Screen name="payments" options={{ title: 'Payments & access' }} />
+      <Stack.Screen name="payments" options={{ title: 'My Courses' }} />
     </Stack>
   );
 }

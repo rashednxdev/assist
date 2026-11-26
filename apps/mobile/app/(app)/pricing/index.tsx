@@ -216,7 +216,9 @@ function CheckoutSheet({
             {busy ? <ActivityIndicator color={colors.white} /> : null}
             <Text style={styles.buyBtnText}>{total === 0 ? 'Confirm' : `Pay ${formatBdt(total)} with bKash`}</Text>
           </Pressable>
-          <Text style={[styles.small, styles.center]}>Demo payment — no real money is charged.</Text>
+          <Text style={[styles.small, styles.center]}>
+            Never share PIN or OTP. Only submit the Transaction ID after Send Money.
+          </Text>
         </View>
       </SafeAreaView>
     </Modal>
@@ -225,7 +227,8 @@ function CheckoutSheet({
 
 export default function PricingScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ tab?: string; part?: string }>();
+  const params = useLocalSearchParams<{ tab?: string; part?: string; subject?: string }>();
+  const focusSubjectId = Array.isArray(params.subject) ? params.subject[0] : params.subject;
   const [tab, setTab] = useState<AccessPackageKind>(isPackageKind(params.tab) ? params.tab : 'exam_prep');
   const [catalog, setCatalog] = useState<BillingCatalog | null>(null);
   const [parts, setParts] = useState<ExamPrepPartOption[]>([]);
@@ -234,7 +237,7 @@ export default function PricingScreen() {
   const [selected, setSelected] = useState<AccessPackageRecord | null>(null);
   const [busy, setBusy] = useState(false);
   const [buyError, setBuyError] = useState('');
-  const basket = useExamPrepBasket(catalog, parts, params.part);
+  const basket = useExamPrepBasket(catalog, parts, params.part, focusSubjectId);
   const { setActive: setBasketPart } = basket;
 
   useEffect(() => {
@@ -268,10 +271,26 @@ export default function PricingScreen() {
     setRefreshing(false);
   }
 
-  const inTab = useMemo(() => (catalog?.packages ?? []).filter((p) => p.kind === tab), [catalog, tab]);
+  const inTab = useMemo(() => {
+    const list = (catalog?.packages ?? []).filter((p) => p.kind === tab);
+    if (!focusSubjectId || tab !== 'live') return list;
+    const matches = (p: AccessPackageRecord) =>
+      p.exam_subject_id === focusSubjectId || (p.exam_subject_ids ?? []).includes(focusSubjectId);
+    return [...list].sort((a, b) => Number(matches(b)) - Number(matches(a)));
+  }, [catalog, tab, focusSubjectId]);
 
   const tabMeta = PACKAGE_TABS.find((t) => t.id === tab)!;
   const activeUntil = catalog && tab === 'basic' ? catalog.access.basic_until : undefined;
+
+  const focusedLivePkg = useMemo(() => {
+    if (tab !== 'live' || !focusSubjectId) return null;
+    return (
+      inTab.find(
+        (p) =>
+          p.exam_subject_id === focusSubjectId || (p.exam_subject_ids ?? []).includes(focusSubjectId),
+      ) ?? null
+    );
+  }, [tab, focusSubjectId, inTab]);
 
   async function payBasket() {
     if (basket.chosen.length === 0) return;
@@ -327,7 +346,9 @@ export default function PricingScreen() {
       >
         <LinearGradient colors={[colors.primaryDark, colors.primary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
           <Text style={styles.heroTitle}>Choose a package</Text>
-          <Text style={styles.heroText}>Pay with bKash — access opens as soon as the payment succeeds.</Text>
+          <Text style={styles.heroText}>
+            Pay with bKash Send Money, submit your TrxID, then access opens after confirmation.
+          </Text>
           <Pressable
             onPress={() => router.push('/(app)/pricing/payments' as Href)}
             style={({ pressed }) => [styles.heroBtn, pressed && styles.pressed]}
@@ -376,6 +397,16 @@ export default function PricingScreen() {
         {catalog && tab === 'live' && catalog.access.live_packages.length > 0 ? (
           <Notice tone="success" icon="checkmark-circle-outline">
             You own: {catalog.access.live_packages.map((p) => `${p.package_name} (until ${accessDate(p.until)})`).join(', ')}
+          </Notice>
+        ) : null}
+        {focusedLivePkg ? (
+          <Notice tone="success" icon="locate-outline">
+            Showing live package for this subject first: {focusedLivePkg.exam_subject_name || focusedLivePkg.name}
+          </Notice>
+        ) : null}
+        {focusSubjectId && tab === 'exam_prep' ? (
+          <Notice tone="success" icon="locate-outline">
+            Subject package selected from Exam Preparations — confirm in the basket below.
           </Notice>
         ) : null}
 

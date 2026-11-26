@@ -1,16 +1,9 @@
 import { Stack } from 'expo-router';
-import { colors } from '@/theme';
+import { appStackHeaderOptions } from '@/components/navigation/AppMenu';
 
 export default function PapersLayout() {
   return (
-    <Stack
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.primaryDark },
-        headerTintColor: colors.white,
-        headerTitleStyle: { fontWeight: '700' },
-        headerBackTitle: '',
-      }}
-    >
+    <Stack screenOptions={appStackHeaderOptions()}>
       <Stack.Screen
         name="index"
         options={{
@@ -18,12 +11,7 @@ export default function PapersLayout() {
           headerBackTitle: 'Home',
         }}
       />
-      <Stack.Screen
-        name="[id]"
-        options={{
-          title: 'Paper',
-        }}
-      />
+      <Stack.Screen name="[id]" options={{ title: 'Paper' }} />
     </Stack>
   );
 }

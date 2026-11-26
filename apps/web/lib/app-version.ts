@@ -1,8 +1,8 @@
 /** Must match `APP_VERSION_LABEL` in apps/mobile/src/lib/app-version.ts */
-export const LATEST_MOBILE_APP_VERSION = 'ProAssist.1.0.3.0';
+export const LATEST_MOBILE_APP_VERSION = 'ProAssist.2.0.0.0';
 
 /** Format mobile app version for admin user lists (web does not report its own version). */
-export function formatMobileAppVersion(
+export function formatMobileAppVersionForDisplay(
   version?: string | null,
   platform?: 'mobile' | 'web' | null,
 ): string {

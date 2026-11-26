@@ -7,6 +7,18 @@ import { getDeviceLabel, getOrCreateDeviceId } from './device-id';
 
 const TOKEN_KEY = 'ibas_access_token';
 
+/** Normalize BD mobile input to 01XXXXXXXXX (11 digits). */
+export function normalizeBdPhone(input: string): string {
+  let digits = input.replace(/\D/g, '');
+  if (digits.startsWith('880') && digits.length >= 13) digits = `0${digits.slice(3)}`;
+  if (digits.length === 10 && digits.startsWith('1')) digits = `0${digits}`;
+  return digits.slice(0, 11);
+}
+
+export function isValidBdPhone(phone: string): boolean {
+  return /^01[3-9]\d{8}$/.test(normalizeBdPhone(phone));
+}
+
 export type MeUser = AuthUser & {
   status: string;
   phone?: string;
@@ -118,6 +130,7 @@ export async function register(body: Omit<RegisterDto, 'device_id' | 'device_lab
     method: 'POST',
     body: JSON.stringify({
       ...body,
+      phone: normalizeBdPhone(body.phone),
       user_type: 'applicant',
       device_id,
       device_label: getDeviceLabel(),
@@ -138,8 +151,8 @@ export async function verifyRegistration(phone: string, code: string) {
   }>('/auth/register/verify', {
     method: 'POST',
     body: JSON.stringify({
-      phone,
-      code,
+      phone: normalizeBdPhone(phone),
+      code: code.trim(),
       device_id,
       device_label: getDeviceLabel(),
       app_version: APP_VERSION_LABEL,
@@ -154,7 +167,7 @@ export async function verifyRegistration(phone: string, code: string) {
 export async function resendRegistrationCode(phone: string) {
   const res = await apiFetch<{ data: { sent: true; phone_hint: string } }>('/auth/register/resend', {
     method: 'POST',
-    body: JSON.stringify({ phone }),
+    body: JSON.stringify({ phone: normalizeBdPhone(phone) }),
   });
   return res.data;
 }
@@ -163,12 +176,20 @@ export async function resendRegistrationCode(phone: string) {
 export async function forgotPassword(phone: string) {
   const res = await apiFetch<{ data: { sent: true; phone_hint: string } }>('/auth/password/forgot', {
     method: 'POST',
-    body: JSON.stringify({ phone }),
+    body: JSON.stringify({ phone: normalizeBdPhone(phone) }),
   });
   return res.data;
 }
 
-/** Step 2 — the emailed code plus a new password. No auth token required (that's the point). */
+/** Step 2 — verify the SMS OTP before allowing a new password. */
+export async function verifyResetCode(phone: string, code: string) {
+  await apiFetch<{ data: { verified: true } }>('/auth/password/forgot/verify', {
+    method: 'POST',
+    body: JSON.stringify({ phone: normalizeBdPhone(phone), code: code.trim() }),
+  });
+}
+
+/** Step 3 — set a new password with the verified code. */
 export async function resetPassword(params: {
   phone: string;
   code: string;
@@ -177,7 +198,11 @@ export async function resetPassword(params: {
 }) {
   const res = await apiFetch<{ data: { success: true } }>('/auth/password/reset', {
     method: 'POST',
-    body: JSON.stringify(params),
+    body: JSON.stringify({
+      ...params,
+      phone: normalizeBdPhone(params.phone),
+      code: params.code.trim(),
+    }),
   });
   return res.data;
 }

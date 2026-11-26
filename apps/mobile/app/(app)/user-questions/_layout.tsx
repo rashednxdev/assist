@@ -1,15 +1,10 @@
 import { Stack } from 'expo-router';
-import { colors } from '@/theme';
+import { appStackHeaderOptions } from '@/components/navigation/AppMenu';
 
 export default function UserQuestionsLayout() {
   return (
     <Stack
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.primaryDark },
-        headerTintColor: colors.white,
-        headerTitleStyle: { fontWeight: '700' },
-        headerBackTitle: '',
-      }}
+      screenOptions={appStackHeaderOptions()}
     >
       <Stack.Screen name="index" options={{ title: 'My Submitted Questions', headerBackTitle: 'Home' }} />
       <Stack.Screen name="new" options={{ title: 'Submit a Question', headerBackTitle: 'Back' }} />

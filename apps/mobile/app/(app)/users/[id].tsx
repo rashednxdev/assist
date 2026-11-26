@@ -178,12 +178,14 @@ export default function UserDetailScreen() {
   function draftFor(mod: ModuleCatalogItem) {
     const mid = catalogModuleId(mod);
     const existing = accessFor(mod);
+    const isQuestionEdit = mod.code === 'QUESTION_EDIT';
     return (
       drafts[mid] ??
       existing ?? {
         can_read: true,
         can_create: false,
-        can_update: false,
+        // Question Update needs update so the user can modify questions.
+        can_update: isQuestionEdit,
         can_delete: false,
         can_grade: false,
         can_publish: false,
@@ -221,8 +223,49 @@ export default function UserDetailScreen() {
         delete next[mid];
         return next;
       });
+      if (mod.code === 'QUESTION_EDIT') {
+        setMessage('Question Update access saved — user can modify questions on mobile.');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to grant access');
+    } finally {
+      setBusyModuleId(null);
+    }
+  }
+
+  /** One-click Question Update (read + update) for selected editors. */
+  async function grantQuestionEditAccess() {
+    const mod = mobileModules.find((m) => m.code === 'QUESTION_EDIT');
+    if (!mod || !id) {
+      setError(
+        'Question update module is missing. Run API migrate:question-edit-module, then refresh.',
+      );
+      return;
+    }
+    const mid = catalogModuleId(mod);
+    if (!mid) {
+      setError('Module id missing');
+      return;
+    }
+    setBusyModuleId(mid);
+    setError('');
+    setMessage('');
+    try {
+      await upsertUserModuleAccess(id, {
+        module_id: mid,
+        can_read: true,
+        can_create: false,
+        can_update: true,
+        can_delete: false,
+        can_grade: false,
+        can_publish: false,
+        bypass_stop: false,
+      });
+      const rows = await fetchUserModuleAccess(id);
+      setAccess(rows);
+      setMessage('Question Update access granted (read + update).');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to grant Question Update access');
     } finally {
       setBusyModuleId(null);
     }
@@ -493,6 +536,19 @@ export default function UserDetailScreen() {
             <Text style={styles.hint}>
               Grant or revoke one module at a time. Open details only if extra permissions are needed.
             </Text>
+            <Pressable
+              style={[styles.actionBtn, styles.grantBtn, styles.quickGrantBtn]}
+              onPress={() => void grantQuestionEditAccess()}
+              disabled={Boolean(busyModuleId)}
+            >
+              <Text style={styles.grantBtnText}>
+                {busyModuleId ? '…' : 'Grant Question Update (edit)'}
+              </Text>
+            </Pressable>
+            <Text style={styles.hint}>
+              Gives this user mobile Question Update so they can modify existing questions (read +
+              update). Enable delete in Details only if they may trash questions.
+            </Text>
             {mobileModules.map((mod) => {
               const mid = catalogModuleId(mod);
               const existing = accessFor(mod);
@@ -742,6 +798,11 @@ const styles = StyleSheet.create({
   grantBtn: {
     backgroundColor: '#059669',
     borderColor: '#047857',
+  },
+  quickGrantBtn: {
+    alignSelf: 'stretch',
+    paddingVertical: 12,
+    marginBottom: 4,
   },
   grantBtnText: { fontSize: 12, fontWeight: '800', color: '#ffffff' },
   actionBtnDisabled: { opacity: 0.55 },

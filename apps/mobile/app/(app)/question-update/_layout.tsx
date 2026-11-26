@@ -1,18 +1,11 @@
 import { Stack } from 'expo-router';
+import { appStackHeaderOptions } from '@/components/navigation/AppMenu';
 import { QuestionUpdateCatalogsProvider } from '@/lib/question-update-catalogs';
-import { colors } from '@/theme';
 
 export default function QuestionUpdateLayout() {
   return (
     <QuestionUpdateCatalogsProvider>
-      <Stack
-        screenOptions={{
-          headerStyle: { backgroundColor: colors.primaryDark },
-          headerTintColor: colors.white,
-          headerTitleStyle: { fontWeight: '700' },
-          headerBackTitle: '',
-        }}
-      >
+      <Stack screenOptions={appStackHeaderOptions()}>
         <Stack.Screen
           name="index"
           options={{

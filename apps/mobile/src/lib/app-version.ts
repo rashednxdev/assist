@@ -1,5 +1,11 @@
+import {
+  compareAppVersionLines,
+  getAppVersionLine,
+  isMobileForceUpdateRequired,
+} from '@ibas/shared-types';
+
 /** Display version shown in the home menu. */
-export const APP_VERSION_LABEL = 'ProAssist.1.0.3.0';
+export const APP_VERSION_LABEL = 'ProAssist.2.0.0.1';
 
 export const APP_UPDATE_URL = 'https://sites.google.com/view/ourproassist/home';
 
@@ -17,3 +23,9 @@ export function isLatestMobileAppVersion(
 ): boolean {
   return platform === 'mobile' && version?.trim() === APP_VERSION_LABEL;
 }
+
+export {
+  compareAppVersionLines,
+  getAppVersionLine,
+  isMobileForceUpdateRequired,
+};

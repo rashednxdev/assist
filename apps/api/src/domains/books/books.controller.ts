@@ -184,14 +184,20 @@ export async function listChaptersHandler(req: AuthRequest, res: Response): Prom
 }
 
 export async function getBookReaderOutlineHandler(req: AuthRequest, res: Response): Promise<void> {
-  await booksService.guardBookContent({ bookId: String(req.params.id) }, await bookReadGuard(req));
-  const data = await booksService.getBookReaderOutline(String(req.params.id));
+  const guard = await bookReadGuard(req);
+  await booksService.guardBookContent({ bookId: String(req.params.id) }, guard);
+  const data = await booksService.getBookReaderOutline(String(req.params.id), {
+    subjectScope: guard.subjectScope,
+  });
   res.json({ data });
 }
 
 export async function getBookReaderFullHandler(req: AuthRequest, res: Response): Promise<void> {
-  await booksService.guardBookContent({ bookId: String(req.params.id) }, await bookReadGuard(req));
-  const data = await booksService.getBookReaderFull(String(req.params.id));
+  const guard = await bookReadGuard(req);
+  await booksService.guardBookContent({ bookId: String(req.params.id) }, guard);
+  const data = await booksService.getBookReaderFull(String(req.params.id), {
+    subjectScope: guard.subjectScope,
+  });
   res.json({ data });
 }
 

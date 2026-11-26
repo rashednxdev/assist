@@ -1,4 +1,5 @@
 import type { ModuleAccessGrant, ModuleStop } from '@ibas/shared-types';
+import { APP_VERSION_LABEL } from './app-version';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1';
 const API_TIMEOUT_MS = Number(process.env.EXPO_PUBLIC_API_TIMEOUT_MS ?? 90_000);
@@ -33,6 +34,9 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   const headers = new Headers(init.headers);
   if (!headers.has('Content-Type') && init.body) {
     headers.set('Content-Type', 'application/json');
+  }
+  if (!headers.has('X-App-Version')) {
+    headers.set('X-App-Version', APP_VERSION_LABEL);
   }
   const hadToken = Boolean(accessToken);
   if (accessToken) {

@@ -164,7 +164,10 @@ export function buildZoomWebClientUrl(opts: {
   const mn = String(opts.meetingNumber).replace(/\s+/g, '');
   const params = new URLSearchParams();
   if (opts.userName?.trim()) params.set('un', zoomBase64Utf8(opts.userName));
-  if (opts.userEmail?.trim()) params.set('email', opts.userEmail.trim());
+  // Email on guest join often pushes Zoom toward SSO/login — only attach for host start.
+  if (opts.role === 'host' && opts.userEmail?.trim()) {
+    params.set('email', opts.userEmail.trim());
+  }
 
   if (opts.role === 'host') {
     if (opts.zak) params.set('zak', opts.zak);

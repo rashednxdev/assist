@@ -11,4 +11,15 @@
 -keep class com.swmansion.reanimated.** { *; }
 -keep class com.facebook.react.turbomodule.** { *; }
 
+# React Native / Hermes
+-keep class com.facebook.react.** { *; }
+-keep class com.facebook.hermes.** { *; }
+-keep class com.facebook.jni.** { *; }
+
+# Expo modules
+-keep class expo.modules.** { *; }
+
 # Add any project specific keep options here:
+-dontwarn com.facebook.react.**
+-dontwarn expo.modules.**
+

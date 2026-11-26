@@ -11,3 +11,11 @@ export async function updateAppSettingsHandler(req: AuthRequest, res: Response):
   const dto = updateAppSettingsSchema.parse(req.body);
   res.json({ data: await appSettingsService.updateAppSettings(dto, req.user!.id) });
 }
+
+/** Public — no auth. Used by mobile ForceUpdateGate before/after login. */
+export async function getMobileAppVersionHandler(req: AuthRequest, res: Response): Promise<void> {
+  const current =
+    (typeof req.query.current === 'string' ? req.query.current : null) ||
+    (typeof req.headers['x-app-version'] === 'string' ? req.headers['x-app-version'] : null);
+  res.json({ data: await appSettingsService.getMobileAppVersionPolicy(current) });
+}

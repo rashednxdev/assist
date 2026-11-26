@@ -1,17 +1,11 @@
 import { Stack } from 'expo-router';
-import { colors } from '@/theme';
+import { appStackHeaderOptions } from '@/components/navigation/AppMenu';
 
 export default function ExamPrepLayout() {
   return (
-    <Stack
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.primaryDark },
-        headerTintColor: colors.white,
-        headerTitleStyle: { fontWeight: '700' },
-        headerBackTitle: '',
-      }}
-    >
-      <Stack.Screen name="index" options={{ title: 'Exam Preparation', headerBackTitle: 'Home' }} />
+    <Stack screenOptions={appStackHeaderOptions()}>
+      <Stack.Screen name="index" options={{ title: 'Exam Preparations', headerBackTitle: 'Home' }} />
+      <Stack.Screen name="[subjectId]" options={{ title: 'Subject Workspace', headerBackTitle: 'Back' }} />
     </Stack>
   );
 }

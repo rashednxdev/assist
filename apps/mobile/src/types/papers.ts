@@ -17,6 +17,7 @@ export interface PaperItem {
   duration_minutes: number;
   instructions?: string;
   is_published: boolean;
+  is_exam_of_week?: boolean;
   exam_subject_name?: string;
   exam_subject_name_bn?: string;
   exam_part_name?: string;

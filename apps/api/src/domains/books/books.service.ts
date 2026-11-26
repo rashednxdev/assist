@@ -667,8 +667,9 @@ export async function getBookById(
 ) {
   const book = await assertBookReadable(id, options);
   const bookType = await BookType.findById(book.book_type_id);
-  const [serialized] = await attachSubjectsToBooks([serializeBook(book, bookType?.name)]);
-  return serialized;
+  const base = serializeBook(book, bookType?.name);
+  const attached = await attachSubjectsToBooks([base]);
+  return attached[0] ?? { ...base, subjects: [] };
 }
 
 export async function getBookTree(bookId: string, depth = 2) {
@@ -944,7 +945,9 @@ export async function getBookReaderOutline(
     }));
   });
 
-  const [withSubjects] = await attachSubjectsToBooks([serializeBook(book, bookType?.name)]);
+  const serialized = serializeBook(book, bookType?.name);
+  const attached = await attachSubjectsToBooks([serialized]);
+  const withSubjects = attached[0] ?? { ...serialized, subjects: [] };
   const scope = options?.subjectScope ?? { mode: 'all' as const };
   const subjectIds = (withSubjects.subjects ?? []).map((s) => s.id);
   const can_download_pdf = userCanDownloadBookPdf(subjectIds, scope);

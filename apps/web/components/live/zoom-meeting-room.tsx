@@ -37,8 +37,19 @@ export function ZoomMeetingRoom({ config, onError, onLeave }: ZoomMeetingRoomPro
   const [popupBlocked, setPopupBlocked] = useState(false);
 
   function openClassroom() {
-    const url = config.webClientUrl?.trim();
+    let url = config.webClientUrl?.trim();
     if (!url) return false;
+    // Strip email so assigned hosts/guests are not sent to Zoom login (August S2S path).
+    try {
+      const u = new URL(url);
+      u.searchParams.delete('email');
+      if (config.zak?.trim() && /\/wc\/\d+\/start/i.test(u.pathname)) {
+        u.searchParams.set('zak', config.zak.trim());
+      }
+      url = u.toString();
+    } catch {
+      /* keep original */
+    }
     try {
       popupRef.current?.close();
     } catch {

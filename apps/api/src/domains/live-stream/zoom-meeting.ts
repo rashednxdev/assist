@@ -66,7 +66,7 @@ export interface ZoomMeetingCreated {
   start_url: string;
 }
 
-/** Host-led classroom: guests start muted and off-camera, cannot record, and raise a hand to speak. */
+/** Host-led classroom: open join (no Zoom login / waiting room / registration). */
 export function classroomZoomSettings(opts: {
   autoRecordCloud?: boolean;
   allowSpeech?: boolean;
@@ -74,17 +74,18 @@ export function classroomZoomSettings(opts: {
   alternativeHosts?: string;
 } = {}) {
   return {
-    /** Mic/camera stay off until the person turns them on (browser permission may still appear). */
     host_video: false,
     participant_video: Boolean(opts.allowVideo),
     join_before_host: false,
     mute_upon_entry: true,
     waiting_room: false,
+    /** Critical: do not require Zoom sign-in to join. */
+    meeting_authentication: false,
+    /** 2 = no registration */
+    approval_type: 2,
     audio: 'both' as const,
-    /** Cloud recording is an admin choice for the published replay. Guests never get local record. */
     auto_recording: opts.autoRecordCloud ? 'cloud' : 'none',
     participant_can_unmute_self: Boolean(opts.allowSpeech),
-    /** Host approves who may speak after a raised hand. */
     request_permission_to_unmute_participants: true,
     allow_participants_to_rename: false,
     allow_host_control_participant_mute_state: true,
@@ -147,11 +148,10 @@ function zoomBase64Utf8(value: string): string {
 }
 
 /**
- * Zoom Web Client URLs — work with Server-to-Server OAuth only.
- * Full Zoom UI: two-way AV + screen share (no Meeting SDK JWT).
- *
- * Guest URLs use prefer=1 + base64 `un` so VoIP audio connects immediately
- * (closest Web Client equivalent to Meeting SDK no_disconnect_audio).
+ * August-proven Zoom Web Client URLs (S2S OAuth — no Zoom login for guests):
+ *   Host:  https://zoom.us/wc/{mn}/start?zak=...&un=...
+ *   Guest: https://zoom.us/wc/join/{mn}?prefer=1&pwd=...&un=...
+ * Never attach personal email (Zoom SSO login wall).
  */
 export function buildZoomWebClientUrl(opts: {
   meetingNumber: string;
@@ -164,13 +164,10 @@ export function buildZoomWebClientUrl(opts: {
   const mn = String(opts.meetingNumber).replace(/\s+/g, '');
   const params = new URLSearchParams();
   if (opts.userName?.trim()) params.set('un', zoomBase64Utf8(opts.userName));
-  // Email on guest join often pushes Zoom toward SSO/login — only attach for host start.
-  if (opts.role === 'host' && opts.userEmail?.trim()) {
-    params.set('email', opts.userEmail.trim());
-  }
+  // Intentionally ignore opts.userEmail — email on WC URLs forces Zoom login.
 
   if (opts.role === 'host') {
-    if (opts.zak) params.set('zak', opts.zak);
+    if (opts.zak?.trim()) params.set('zak', opts.zak.trim());
     const qs = params.toString();
     return `https://zoom.us/wc/${mn}/start${qs ? `?${qs}` : ''}`;
   }
@@ -178,6 +175,33 @@ export function buildZoomWebClientUrl(opts: {
   if (opts.password) params.set('pwd', opts.password);
   const qs = params.toString();
   return `https://zoom.us/wc/join/${mn}${qs ? `?${qs}` : ''}`;
+}
+
+/**
+ * Re-assert open join on an existing Zoom meeting (waiting room / auth off).
+ * Best-effort — account-level Zoom policies may still override.
+ */
+export async function ensureOpenAnonymousJoin(meetingNumber: string): Promise<void> {
+  const token = await getAccessToken();
+  const mn = String(meetingNumber).replace(/\s+/g, '');
+  const res = await fetch(`https://api.zoom.us/v2/meetings/${mn}`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      settings: {
+        waiting_room: false,
+        meeting_authentication: false,
+        approval_type: 2,
+      },
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    console.warn(`Zoom open-join patch failed (${res.status}): ${text.slice(0, 200)}`);
+  }
 }
 
 /**

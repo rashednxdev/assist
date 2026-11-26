@@ -74,7 +74,7 @@ export async function getMobileAppVersionPolicy(
   const latest_version =
     settings.mobile_latest_version?.trim() ||
     env.MOBILE_LATEST_VERSION?.trim() ||
-    'ProAssist.2.0.0.1';
+    'ProAssist.2.0.0.6';
   const update_url =
     settings.mobile_update_url?.trim() ||
     env.MOBILE_UPDATE_URL?.trim() ||

@@ -41,6 +41,7 @@ import {
   buildZoomSdkSignature,
   buildZoomWebClientUrl,
   createZoomMeeting,
+  ensureOpenAnonymousJoin,
   ensureZoomCloudRecording,
   ensureZoomFocusMode,
   fetchZoomZakToken,
@@ -518,17 +519,17 @@ async function permissionFor(
     return { permission_status: 'permitted', can_join: true, can_host: false };
   }
 
-  // Selected users / hidden package / paid package: invite or (non-hidden) package ownership.
+  // Selected / enrolled / invite: join without extra admin approval at join time.
   if (inviteOnly) {
     if (!underHiddenPackage && ownsClassPackage(doc, owned)) {
       return { permission_status: 'permitted', can_join: true, can_host: false };
     }
     const invite = await LiveStreamInvite.findOne({ live_stream_id: sessionId, user_id: userId }).lean();
-    if (invite) return { permission_status: 'permitted', can_join: true, can_host: canHost };
+    if (invite) return { permission_status: 'permitted', can_join: true, can_host: false };
     return { permission_status: 'not_permitted', can_join: false, can_host: false };
   }
 
-  // Paid label but not on a package: open after login.
+  // Paid label but not on a package: any registered (logged-in) user may join.
   return { permission_status: 'permitted', can_join: true, can_host: false };
 }
 
@@ -1263,12 +1264,18 @@ export async function joinLiveStream(
 
   doc.video_platform = 'zoom';
   if (!doc.zoom_meeting_number) await ensureZoomMeeting(doc);
+  // Re-assert no waiting room / no Zoom auth on every join (existing meetings may have drifted).
+  await ensureOpenAnonymousJoin(doc.zoom_meeting_number!);
   const userDoc = await User.findById(user.id).select('full_name_en full_name_bn email phone');
   const userName = zoomParticipantName(userDoc);
   const host_name = await resolveHostName(doc.host_user_id);
   let zak: string | undefined;
+  // Fresh ZAK = Zoom account owner — any assigned ProAssist host starts without Zoom login.
   if (role === 'host' && !isSupport) {
     zak = await fetchZoomZakToken();
+    if (!zak?.trim()) {
+      throw badRequest('Could not get Zoom host credentials. Check ZOOM_ACCOUNT_ID / CLIENT_ID / CLIENT_SECRET.');
+    }
   }
   const password = doc.zoom_password ?? '';
   const webClientUrl = buildZoomWebClientUrl({
@@ -1277,7 +1284,6 @@ export async function joinLiveStream(
     role: isSupport ? 'audience' : role,
     zak,
     userName: isSupport ? `Support · ${userName}` : userName,
-    userEmail: userDoc?.email,
   });
   // Meeting SDK is optional (embedded web). Mobile + web-client join use web_client_url.
   const sdk = buildZoomSdkSignature(doc.zoom_meeting_number!, isSupport ? 'audience' : role);
@@ -1287,7 +1293,7 @@ export async function joinLiveStream(
     password,
     web_client_url: webClientUrl,
     user_name: userName,
-    user_email: userDoc?.email,
+    user_email: undefined,
     zak,
     ...(sdk
       ? {

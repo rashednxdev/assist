@@ -2,6 +2,11 @@ import { PermissionsAndroid, Platform } from 'react-native';
 import type { ZoomLiveStreamJoinPayload } from '@ibas/shared-types';
 import type { MeUser } from './auth-api';
 
+/**
+ * August-proven guest helpers: load Zoom Web Client in-app WebView.
+ * No Zoom app, no Zoom login — name + passcode come from the S2S join URL.
+ */
+
 export function zoomGuestDisplayName(
   join: ZoomLiveStreamJoinPayload,
   user: MeUser | null,
@@ -25,17 +30,12 @@ function zoomBase64Utf8(value: string): string {
 }
 
 /**
- * Guest join URL from S2S web_client_url — stay on /wc/join (in-app), not Zoom app.
- * prefer=1 auto-connects audio; un= display name; email omitted (avoids Zoom login).
+ * Guest join URL: prefer=1 auto-connects receive-audio (listen to host).
+ * Do not attach email — Zoom uses it for SSO and asks users to log in.
  */
 export function withZoomGuestIdentity(webClientUrl: string, name: string, _email?: string): string {
   try {
     const url = new URL(webClientUrl);
-    // Keep S2S guest path; never send users to /j/ (Zoom app) or /start (host).
-    if (/\/j\//i.test(url.pathname) || /\/wc\/\d+\/start/i.test(url.pathname)) {
-      const mn = url.pathname.match(/\/(?:j|wc)\/(\d+)/i)?.[1];
-      if (mn) url.pathname = `/wc/join/${mn}`;
-    }
     url.searchParams.set('prefer', '1');
     url.searchParams.set('un', zoomBase64Utf8(name));
     url.searchParams.delete('uname');
@@ -47,38 +47,7 @@ export function withZoomGuestIdentity(webClientUrl: string, name: string, _email
   }
 }
 
-/**
- * Allow only http(s)/about/data/blob in the Zoom WebView.
- * Blocks zoomus://, intent://, market:// — those cause ERR_UNKNOWN_URL_SCHEME (-10).
- */
-export function shouldAllowZoomWebViewNavigation(url: string): boolean {
-  const u = (url || '').trim();
-  if (!u) return false;
-  if (/^(https?:|about:|data:|blob:)/i.test(u)) return true;
-  return false;
-}
-
-/** Hide “Open Zoom App” prompts that bounce to zoomus:// inside the in-app WebView. */
-export function buildZoomSuppressAppRedirectScript(): string {
-  return `(function(){
-    try{
-      var css=[
-        'a[href^="zoomus:"],a[href^="intent:"],a[href*="zoom.us/download"],',
-        '[class*="download-app" i],[class*="open-in-app" i],',
-        'button[aria-label*="Open Zoom" i],button[aria-label*="open in Zoom" i]',
-        '{display:none!important;visibility:hidden!important;pointer-events:none!important;}'
-      ].join('');
-      var s=document.getElementById('proassist-no-app');
-      if(!s){s=document.createElement('style');s.id='proassist-no-app';(document.head||document.documentElement).appendChild(s);}
-      s.textContent=css;
-    }catch(e){}
-  })();true;`;
-}
-
-/**
- * Must complete before opening Zoom WebView — without RECORD_AUDIO,
- * Zoom cannot join computer audio and guests hear nothing.
- */
+/** Mic must be granted before Zoom WebView or guests hear nothing. */
 export async function ensureGuestListenPermissions(): Promise<boolean> {
   if (Platform.OS !== 'android') return true;
   try {
@@ -97,7 +66,7 @@ export async function ensureGuestListenPermissions(): Promise<boolean> {
   }
 }
 
-/** Request camera (and confirm mic) only after the host allows guest speech. */
+/** Camera (+ mic) only after the host allows guest speech. */
 export async function ensureGuestSpeakPermissions(): Promise<boolean> {
   if (Platform.OS !== 'android') return true;
   try {
@@ -118,11 +87,8 @@ export async function ensureGuestSpeakPermissions(): Promise<boolean> {
   }
 }
 
-/** Android WebView: grant mic always; grant camera only when host allowed speech. */
-export function filterZoomMediaResources(
-  resources: string[],
-  allowSpeech: boolean,
-): string[] {
+/** Android WebView: grant mic always; camera only when host allowed speech. */
+export function filterZoomMediaResources(resources: string[], allowSpeech: boolean): string[] {
   if (allowSpeech) return resources;
   return resources.filter((r) => {
     const lower = String(r).toLowerCase();
@@ -132,7 +98,7 @@ export function filterZoomMediaResources(
 }
 
 /**
- * Fill Zoom name field (if shown) and tap Join — name is also passed via URL `un=`.
+ * Fill name if Zoom shows a name field, then tap Join — URL already has `un=`.
  */
 export function buildZoomGuestAutoNameJoinScript(displayName: string): string {
   const safe = JSON.stringify(displayName.trim() || 'Guest');
@@ -159,12 +125,10 @@ export function buildZoomGuestAutoNameJoinScript(displayName: string): string {
     function clickJoinMeeting(){
       try{
         var nodes=document.querySelectorAll('button,a,[role="button"]');
-        // Prefer "Join from your browser" so Zoom does not bounce to zoomus://
         for(var i=0;i<nodes.length;i++){
           var t=((nodes[i].getAttribute('aria-label')||'')+' '+(nodes[i].textContent||'')).toLowerCase().replace(/\\s+/g,' ').trim();
           if(!t) continue;
-          if(t.indexOf('join from your browser')!==-1 || t.indexOf('join from browser')!==-1 ||
-             t.indexOf('launch meeting')!==-1 && t.indexOf('browser')!==-1){
+          if(t.indexOf('join from your browser')!==-1 || t.indexOf('join from browser')!==-1){
             nodes[i].click();
             return true;
           }
@@ -172,8 +136,8 @@ export function buildZoomGuestAutoNameJoinScript(displayName: string): string {
         for(var j=0;j<nodes.length;j++){
           var t2=((nodes[j].getAttribute('aria-label')||'')+' '+(nodes[j].textContent||'')).toLowerCase().replace(/\\s+/g,' ').trim();
           if(!t2) continue;
-          if(t2==='join' || t2.indexOf('join meeting')!==-1 || t2.indexOf('join webinar')!==-1 ||
-             (t2.indexOf('join')===0 && t2.indexOf('audio')===-1 && t2.indexOf('computer')===-1 && t2.indexOf('app')===-1)){
+          if(t2==='join' || t2.indexOf('join meeting')!==-1 ||
+             (t2.indexOf('join')===0 && t2.indexOf('audio')===-1 && t2.indexOf('app')===-1)){
             nodes[j].click();
             return true;
           }
@@ -187,11 +151,8 @@ export function buildZoomGuestAutoNameJoinScript(displayName: string): string {
         tries++;
         fillName();
         clickJoinMeeting();
-        if(tries>=15){
-          clearInterval(window.__proassistNameJoinTimer);
-          window.__proassistNameJoinTimer=null;
-        }
-      }, 700);
+        if(tries>=20){ clearInterval(window.__proassistNameJoinTimer); window.__proassistNameJoinTimer=null; }
+      }, 600);
     }
     fillName();
     clickJoinMeeting();
@@ -199,8 +160,7 @@ export function buildZoomGuestAutoNameJoinScript(displayName: string): string {
 }
 
 /**
- * Guest lock: join listen-only (mic muted, video off).
- * When allowSpeech, unlock Start Video / unmute controls.
+ * Guest lock: listen-only until host allows speech.
  */
 export function buildZoomGuestUiLockScript(allowSpeech: boolean): string {
   return `(function(){
@@ -253,10 +213,7 @@ export function buildZoomGuestUiLockScript(allowSpeech: boolean): string {
         for(var i=0;i<nodes.length;i++){
           var t=labelOf(nodes[i]);
           if(!t) continue;
-          if(pred(t)){
-            nodes[i].click();
-            return true;
-          }
+          if(pred(t)){ nodes[i].click(); return true; }
         }
       }catch(e){}
       return false;
@@ -274,8 +231,7 @@ export function buildZoomGuestUiLockScript(allowSpeech: boolean): string {
       return clickMatching(function(t){
         if(t.indexOf('start video')!==-1 || t.indexOf('turn on')!==-1) return false;
         return t.indexOf('stop video')!==-1 || t.indexOf('stop my video')!==-1 ||
-          t.indexOf('turn off my video')!==-1 || t.indexOf('turn off video')!==-1 ||
-          t==='video' && t.indexOf('stop')!==-1;
+          t.indexOf('turn off my video')!==-1 || t.indexOf('turn off video')!==-1;
       });
     }
 
@@ -291,10 +247,7 @@ export function buildZoomGuestUiLockScript(allowSpeech: boolean): string {
       window.__proassistAudioJoinTimer=setInterval(function(){
         tries++;
         clickJoinAudio();
-        if(tries>=12){
-          clearInterval(window.__proassistAudioJoinTimer);
-          window.__proassistAudioJoinTimer=null;
-        }
+        if(tries>=12){ clearInterval(window.__proassistAudioJoinTimer); window.__proassistAudioJoinTimer=null; }
       }, 1000);
     }
     clickJoinAudio();
@@ -308,10 +261,7 @@ export function buildZoomGuestUiLockScript(allowSpeech: boolean): string {
           vTries++;
           forceStopVideo();
           forceMuteMic();
-          if(vTries>=20){
-            clearInterval(window.__proassistVideoStopTimer);
-            window.__proassistVideoStopTimer=null;
-          }
+          if(vTries>=20){ clearInterval(window.__proassistVideoStopTimer); window.__proassistVideoStopTimer=null; }
         }, 800);
       }
     }
